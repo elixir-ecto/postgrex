@@ -3,40 +3,64 @@ defmodule Postgrex.Connection do
   alias Postgrex.Protocol
   use Postgrex.Protocol.Messages
 
-  defrecordp :state, [:opts, :sock, :tail, :state]
+  defrecordp :state, [:opts, :sock, :tail, :state, :reply_to]
 
-  def start_link(opts) do
-    :gen_server.start_link(__MODULE__, opts, [])
+  def start_link() do
+    :gen_server.start_link(__MODULE__, [], [])
   end
 
-  def init(opts) do
-    :gen_server.cast(self, :startup)
-    { :ok, state(state: :startup, opts: opts, tail: "") }
+  def connect(pid, opts) do
+    :gen_server.call(pid, { :connect, opts })
   end
 
-  def handle_cast(:startup, state(opts: opts, state: :startup) = s) do
+  def init([]) do
+    { :ok, state(state: :not_started, tail: "") }
+  end
+
+  def handle_call({ :connect, opts }, from, state(state: :not_started) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
     host = String.to_char_list!(opts[:host])
-    { :ok, sock } = :gen_tcp.connect(host, opts[:port], sock_opts)
 
-    msg = startup(params: [{ "user", opts[:username] }, { "database", opts[:database] }])
-    send(msg, sock)
-    { :noreply, state(s, sock: sock, state: :auth) }
+    case :gen_tcp.connect(host, opts[:port], sock_opts) do
+      { :ok, sock } ->
+        msg = startup(params: [user: opts[:username], database: opts[:database]])
+        case send(msg, sock) do
+          :ok ->
+            { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: :auth) }
+          { :error, reason } ->
+            reason = { :tcp_send, reason }
+            :gen_server.reply(from, { :error, reason })
+            { :stop, reason, s }
+        end
+
+      { :error, reason } ->
+        reason = { :tcp_connect, reason }
+        :gen_server.reply(from, { :error, reason })
+        { :stop, reason, s }
+    end
+
   end
 
-  def handle_info({ :tcp, _, data }, state(sock: sock, tail: tail) = s) do
-    IO.inspect data
-    s = handle_data(tail <> data, state(s, tail: ""))
-    :inet.setopts(sock, active: :once)
-    { :noreply, s }
+  def handle_info({ :tcp, _, data }, state(reply_to: from, sock: sock, tail: tail) = s) do
+    case handle_data(tail <> data, state(s, tail: "")) do
+      { :ok, s } ->
+        :inet.setopts(sock, active: :once)
+        { :noreply, s }
+      { :error, reason } ->
+        if from, do: :gen_server.reply(from, { :error, error })
+        { :stop, reason, s }
+    end
   end
 
-  def handle_info({ :tcp_closed, _ }, s) do
+  def handle_info({ :tcp_closed, _ }, state(reply_to: from) = s) do
+    if from, do: :gen_server.reply(from, { :error, :tcp_closed })
     { :stop, :tcp_closed, s }
   end
 
-  def handle_info({ :tcp_error, _, reason }, s) do
-    { :stop, { :tcp_error, reason }, s }
+  def handle_info({ :tcp_error, _, reason }, state(reply_to: from) = s) do
+    reason = { :tcp_error, reason }
+    if from, do: :gen_server.reply(from, { :error, reason })
+    { :stop, reason, s }
   end
 
   defp handle_data(<< type :: size(8), size :: size(32), data :: binary >>, s) do
@@ -45,42 +69,53 @@ defmodule Postgrex.Connection do
     case data do
       << data :: [binary, unit(8), size(size)], tail :: binary >> ->
         msg = Protocol.decode(type, size, data)
-        s = message(msg, s)
-        handle_data(tail, s)
+        case message(msg, s) do
+          { :ok, s } -> handle_data(tail, s)
+          { :error, _ } = err -> err
+        end
       tail ->
         state(s, tail: tail)
     end
   end
 
   defp handle_data(data, state(tail: tail) = s) do
-    state(s, tail: tail <> data)
+    { :ok, state(s, tail: tail <> data) }
   end
 
-  defp message(auth(type: :ok), state(state: :auth) = s) do
-    state(s, state: :init)
+  defp message(auth(type: :ok), state(reply_to: from, state: :auth) = s) do
+    :gen_server.reply(from, :ok)
+    { :ok, state(s, reply_to: nil, state: :init) }
   end
 
   defp message(auth(type: :cleartext), state(opts: opts, state: :auth) = s) do
-    IO.puts "yo"
     msg = password(pass: opts[:password])
-    send(msg, s)
-    s
+    send_to_result(msg, s)
   end
 
   defp message(auth(type: :md5, data: salt), state(opts: opts, state: :auth) = s) do
-    IO.puts "heyo"
     digest = :crypto.hash(:md5, [opts[:password], opts[:username]]) |> hexify
     digest = :crypto.hash(:md5, [digest, salt]) |> hexify
     msg = password(pass: ["md5", digest])
-    send(msg, s)
-    s
+    send_to_result(msg, s)
+  end
+
+  defp message(error(fields: fields), _s) do
+    error = { :pgsql_error, fields }
+    { :error, error }
   end
 
   defp send(msg, state(sock: sock)), do: send(msg, sock)
 
   defp send(msg, sock) do
-    binary = Protocol.encode(IO.inspect msg)
-    :ok = :gen_tcp.send(sock, binary)
+    binary = Protocol.encode(msg)
+    :gen_tcp.send(sock, binary)
+  end
+
+  defp send_to_result(msg, state(sock: sock) = s) do
+    case send(msg, sock) do
+      :ok -> { :ok, s }
+      { :error, reason } -> { :error, { :tcp_send, reason } }
+    end
   end
 
   defp hexify(bin) do
