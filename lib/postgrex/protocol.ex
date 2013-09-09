@@ -20,7 +20,8 @@ defmodule Postgrex.Protocol do
 
   @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
                   position: ?P, internal_position: ?p, internal_query: ?q,
-                  where: ?W, file: ?F, line: ?L, routine: ?R ]
+                  where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
+                  contrain: ?n, file: ?F, line: ?L, routine: ?R ]
 
   Enum.each(@auth_types, fn { type, value } ->
     def decode_auth_type(unquote(value)), do: unquote(type)
@@ -29,6 +30,7 @@ defmodule Postgrex.Protocol do
   Enum.each(@error_fields, fn { field, char } ->
     def decode_field_type(unquote(char)), do: unquote(field)
   end)
+  def decode_field_type(_), do: :unknown
 
   # auth
   def decode(?R, size, << type :: size(32), rest :: binary >>) do
