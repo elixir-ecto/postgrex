@@ -5,6 +5,9 @@ defmodule Postgrex.Protocol.Messages do
       defrecordp :startup, [:params]
       defrecordp :password, [:pass]
       defrecordp :error, [:fields]
+      defrecordp :parameter, [:name, :value]
+      defrecordp :backend_key, [:pid, :key]
+      defrecordp :ready, [:status]
     end
   end
 end
@@ -22,15 +25,6 @@ defmodule Postgrex.Protocol do
                   position: ?P, internal_position: ?p, internal_query: ?q,
                   where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
                   contrain: ?n, file: ?F, line: ?L, routine: ?R ]
-
-  Enum.each(@auth_types, fn { type, value } ->
-    def decode_auth_type(unquote(value)), do: unquote(type)
-  end)
-
-  Enum.each(@error_fields, fn { field, char } ->
-    def decode_field_type(unquote(char)), do: unquote(field)
-  end)
-  def decode_field_type(_), do: :unknown
 
   # auth
   def decode(?R, size, << type :: size(32), rest :: binary >>) do
@@ -50,6 +44,27 @@ defmodule Postgrex.Protocol do
     fields = decode_fields(rest)
     error(fields: fields)
   end
+
+  # parameter
+  def decode(?S, _size, rest) do
+    { name, rest } = decode_string(rest)
+    { value, "" } = decode_string(rest)
+    parameter(name: name, value: value)
+  end
+
+  # backend_key
+  def decode(?K, _size, rest) do
+    << pid :: size(32), key :: size(32) >> = rest
+    backend_key(pid: pid, key: key)
+  end
+
+  # ready
+  def decode(?Z, _size, rest) do
+    << status :: size(8) >> = rest
+    ready(status: status)
+  end
+
+  ### encoders ###
 
   def encode(msg) do
     { first, iolist } = encode_msg(msg)
@@ -92,4 +107,13 @@ defmodule Postgrex.Protocol do
     { string, << 0, rest :: binary >> } = :erlang.split_binary(bin, pos)
     { string, rest }
   end
+
+  Enum.each(@auth_types, fn { type, value } ->
+    def decode_auth_type(unquote(value)), do: unquote(type)
+  end)
+
+  Enum.each(@error_fields, fn { field, char } ->
+    def decode_field_type(unquote(char)), do: unquote(field)
+  end)
+  def decode_field_type(_), do: :unknown
 end

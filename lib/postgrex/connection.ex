@@ -3,7 +3,10 @@ defmodule Postgrex.Connection do
   alias Postgrex.Protocol
   use Postgrex.Protocol.Messages
 
-  defrecordp :state, [:opts, :sock, :tail, :state, :reply_to]
+  # possible states: not_started, auth, init, ready
+
+  defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
+                       :backend_key ]
 
   def start_link() do
     :gen_server.start_link(__MODULE__, [], [])
@@ -14,7 +17,7 @@ defmodule Postgrex.Connection do
   end
 
   def init([]) do
-    { :ok, state(state: :not_started, tail: "") }
+    { :ok, state(state: :not_started, tail: "", parameters: []) }
   end
 
   def handle_call({ :connect, opts }, from, state(state: :not_started) = s) do
@@ -47,7 +50,7 @@ defmodule Postgrex.Connection do
         :inet.setopts(sock, active: :once)
         { :noreply, s }
       { :error, reason } ->
-        if from, do: :gen_server.reply(from, { :error, error })
+        if from, do: :gen_server.reply(from, { :error, reason })
         { :stop, reason, s }
     end
   end
@@ -82,9 +85,10 @@ defmodule Postgrex.Connection do
     { :ok, state(s, tail: tail <> data) }
   end
 
-  defp message(auth(type: :ok), state(reply_to: from, state: :auth) = s) do
-    :gen_server.reply(from, :ok)
-    { :ok, state(s, reply_to: nil, state: :init) }
+  ### auth state ###
+
+  defp message(auth(type: :ok), state(state: :auth) = s) do
+    { :ok, state(s, state: :init) }
   end
 
   defp message(auth(type: :cleartext), state(opts: opts, state: :auth) = s) do
@@ -97,6 +101,24 @@ defmodule Postgrex.Connection do
     digest = :crypto.hash(:md5, [digest, salt]) |> hexify
     msg = password(pass: ["md5", digest])
     send_to_result(msg, s)
+  end
+
+  ### init state ###
+
+  defp message(backend_key(pid: pid, key: key), state(state: :init) = s) do
+    { :ok, state(s, backend_key: { pid, key }) }
+  end
+
+  defp message(ready(), state(reply_to: from, state: :init) = s) do
+    :gen_server.reply(from, :ok)
+    { :ok, state(s, state: :ready) }
+  end
+
+  ### asynchronous messages ###
+
+  defp message(parameter(name: name, value: value), state(parameters: params) = s) do
+    params = Dict.put(params, name, value)
+    { :ok, state(s, parameters: params) }
   end
 
   defp message(error(fields: fields), _s) do
