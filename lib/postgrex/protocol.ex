@@ -8,6 +8,7 @@ defmodule Postgrex.Protocol.Messages do
       defrecordp :parameter, [:name, :value]
       defrecordp :backend_key, [:pid, :key]
       defrecordp :ready, [:status]
+      defrecordp :notice, [:fields]
     end
   end
 end
@@ -26,6 +27,8 @@ defmodule Postgrex.Protocol do
                   where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
                   contrain: ?n, file: ?F, line: ?L, routine: ?R ]
 
+  ### decoders ###
+
   # auth
   def decode(?R, size, << type :: size(32), rest :: binary >>) do
     type = decode_auth_type(type)
@@ -43,6 +46,12 @@ defmodule Postgrex.Protocol do
   def decode(?E, _size, rest) do
     fields = decode_fields(rest)
     error(fields: fields)
+  end
+
+  # notice
+  def decode(?N, _size, rest) do
+    fields = decode_fields(rest)
+    notice(fields: fields)
   end
 
   # parameter

@@ -126,6 +126,13 @@ defmodule Postgrex.Connection do
     { :error, error }
   end
 
+  defp message(notice(), s) do
+    # TODO: subscribers
+    { :ok, s }
+  end
+
+  ### helpers ###
+
   defp send(msg, state(sock: sock)), do: send(msg, sock)
 
   defp send(msg, sock) do
