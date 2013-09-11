@@ -22,9 +22,10 @@ defmodule Postgrex.Connection do
 
   def handle_call({ :connect, opts }, from, state(state: :not_started) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
-    host = String.to_char_list!(opts[:host])
+    address = opts[:address]
+    address = if is_binary(address), do: String.to_char_list!(address)
 
-    case :gen_tcp.connect(host, opts[:port], sock_opts) do
+    case :gen_tcp.connect(address, opts[:port], sock_opts) do
       { :ok, sock } ->
         msg = startup(params: [user: opts[:username], database: opts[:database]])
         case send(msg, sock) do
@@ -33,13 +34,13 @@ defmodule Postgrex.Connection do
           { :error, reason } ->
             reason = { :tcp_send, reason }
             :gen_server.reply(from, { :error, reason })
-            { :stop, reason, s }
+            { :stop, :normal, s }
         end
 
       { :error, reason } ->
         reason = { :tcp_connect, reason }
         :gen_server.reply(from, { :error, reason })
-        { :stop, reason, s }
+        { :stop, :normal, s }
     end
 
   end
@@ -50,8 +51,12 @@ defmodule Postgrex.Connection do
         :inet.setopts(sock, active: :once)
         { :noreply, s }
       { :error, reason } ->
-        if from, do: :gen_server.reply(from, { :error, reason })
-        { :stop, reason, s }
+        if from do
+          :gen_server.reply(from, { :error, reason })
+          { :stop, :normal, s }
+        else
+          { :stop, reason, s }
+        end
     end
   end
 
