@@ -24,4 +24,8 @@ defmodule Postgrex do
       err -> err
     end
   end
+
+  def query(pid, statement) do
+    Connection.parse(pid, statement)
+  end
 end

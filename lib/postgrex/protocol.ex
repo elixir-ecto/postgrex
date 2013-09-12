@@ -1,14 +1,24 @@
 defmodule Postgrex.Protocol.Messages do
   defmacro __using__(_opts) do
     quote do
-      defrecordp :auth, [:type, :data]
-      defrecordp :startup, [:params]
-      defrecordp :password, [:pass]
-      defrecordp :error, [:fields]
-      defrecordp :parameter, [:name, :value]
-      defrecordp :backend_key, [:pid, :key]
-      defrecordp :ready, [:status]
-      defrecordp :notice, [:fields]
+      defrecordp :msg_auth, [:type, :data]
+      defrecordp :msg_startup, [:params]
+      defrecordp :msg_password, [:pass]
+      defrecordp :msg_error, [:fields]
+      defrecordp :msg_parameter, [:name, :value]
+      defrecordp :msg_backend_key, [:pid, :key]
+      defrecordp :msg_ready, [:status]
+      defrecordp :msg_notice, [:fields]
+      defrecordp :msg_parse, [:name, :query, :type_oids]
+      defrecordp :msg_describe, [:type, :name]
+      defrecordp :msg_flush, []
+      defrecordp :msg_parse_complete, []
+      defrecordp :msg_parameter_desc, [:type_oids]
+      defrecordp :msg_row_desc, [:fields]
+      defrecordp :msg_no_data, []
+
+      defrecordp :row_field, [ :name, :table_oid, :column, :type_oid, :type_size,
+                               :type_mod, :format ]
     end
   end
 end
@@ -39,38 +49,62 @@ defmodule Postgrex.Protocol do
         << data :: size(rest_size) >> = rest
       _ -> data = nil
     end
-    auth(type: type, data: data)
+    msg_auth(type: type, data: data)
   end
 
   # error
   def decode(?E, _size, rest) do
     fields = decode_fields(rest)
-    error(fields: fields)
+    msg_error(fields: fields)
   end
 
   # notice
   def decode(?N, _size, rest) do
     fields = decode_fields(rest)
-    notice(fields: fields)
+    msg_notice(fields: fields)
   end
 
   # parameter
   def decode(?S, _size, rest) do
     { name, rest } = decode_string(rest)
     { value, "" } = decode_string(rest)
-    parameter(name: name, value: value)
+    msg_parameter(name: name, value: value)
   end
 
   # backend_key
   def decode(?K, _size, rest) do
     << pid :: size(32), key :: size(32) >> = rest
-    backend_key(pid: pid, key: key)
+    msg_backend_key(pid: pid, key: key)
   end
 
   # ready
   def decode(?Z, _size, rest) do
     << status :: size(8) >> = rest
-    ready(status: status)
+    msg_ready(status: status)
+  end
+
+  # parse_complete
+  def decode(?1, _size, _rest) do
+    msg_parse_complete()
+  end
+
+  # parameter_desc
+  def decode(?t, _size, rest) do
+    << len :: size(16), rest :: binary >> = rest
+    oids = decode_many(rest, 32, len)
+    msg_parameter_desc(type_oids: oids)
+  end
+
+  # row_desc
+  def decode(?T, _size, rest) do
+    << len :: size(16), rest :: binary >> = rest
+    fields = decode_row_fields(rest, len)
+    msg_row_desc(fields: fields)
+  end
+
+  # no_data
+  def decode(?n, _size, _rest) do
+    msg_parse_complete()
   end
 
   ### encoders ###
@@ -88,7 +122,7 @@ defmodule Postgrex.Protocol do
   end
 
   # startup
-  defp encode_msg(startup(params: params)) do
+  defp encode_msg(msg_startup(params: params)) do
     params = Enum.flat_map(params, fn { key, value } ->
       [ to_string(key), 0, value, 0 ]
     end)
@@ -97,8 +131,36 @@ defmodule Postgrex.Protocol do
   end
 
   # password
-  defp encode_msg(password(pass: pass)) do
+  defp encode_msg(msg_password(pass: pass)) do
     { ?p, [pass, 0] }
+  end
+
+  # parse
+  defp encode_msg(msg_parse(name: name, query: query, type_oids: oids)) do
+    { len, oids } = Enum.reduce(oids, { 0, [] }, fn oid, { count, list } ->
+      { count+1, [encode_oid(oid), 0 | list] }
+    end)
+    len = << len :: size(16) >>
+    { ?P, [name, 0, query, 0, len | oids] }
+  end
+
+  # describe
+  defp encode_msg(msg_describe(type: type, name: name)) do
+    byte = case type do
+      :statement -> ?S
+      :portal -> ?P
+    end
+    { ?D, [byte, name, 0] }
+  end
+
+  # flush
+  defp encode_msg(msg_flush()) do
+    { ?H, "" }
+  end
+
+  ### encode helpers ###
+
+  def encode_oid(_oid) do
   end
 
   ### decode helpers ###
@@ -115,6 +177,30 @@ defmodule Postgrex.Protocol do
     { pos, 1 } = :binary.match(bin, << 0 >>)
     { string, << 0, rest :: binary >> } = :erlang.split_binary(bin, pos)
     { string, rest }
+  end
+
+  defp decode_row_fields(_rest, 0), do: []
+
+  defp decode_row_fields(rest, count) do
+    { field, rest } = decode_row_field(rest)
+    [ field | decode_row_fields(rest, count-1) ]
+  end
+
+  defp decode_row_field(rest) do
+    { name, rest } = decode_string(rest)
+    << table_oid :: size(32), column :: size(16), type_oid :: size(32),
+       type_size :: size(16), type_mod :: size(32), format :: size(16),
+       rest :: binary >> = rest
+    field = row_field(name: name, table_oid: table_oid, column: column, type_oid: type_oid,
+                      type_size: type_size, type_mod: type_mod, format: format)
+    { field, rest }
+  end
+
+  defp decode_many(_rest, _size, 0), do: []
+
+  defp decode_many(rest, size, count) do
+    << value :: size(size), rest :: binary >> = rest
+    [ value | decode_many(rest, size, count-1) ]
   end
 
   Enum.each(@auth_types, fn { type, value } ->
