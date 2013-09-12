@@ -25,6 +25,7 @@ end
 
 defmodule Postgrex.Protocol do
   use Postgrex.Protocol.Messages
+  import Postgrex.BinaryUtils
 
   @protocol_vsn_major 3
   @protocol_vsn_minor 0
@@ -40,7 +41,7 @@ defmodule Postgrex.Protocol do
   ### decoders ###
 
   # auth
-  def decode(?R, size, << type :: size(32), rest :: binary >>) do
+  def decode(?R, size, << type :: int32, rest :: binary >>) do
     type = decode_auth_type(type)
     case type do
       :md5 -> << data :: [binary, size(4)] >> = rest
@@ -73,13 +74,13 @@ defmodule Postgrex.Protocol do
 
   # backend_key
   def decode(?K, _size, rest) do
-    << pid :: size(32), key :: size(32) >> = rest
+    << pid :: int32, key :: int32 >> = rest
     msg_backend_key(pid: pid, key: key)
   end
 
   # ready
   def decode(?Z, _size, rest) do
-    << status :: size(8) >> = rest
+    << status :: int8 >> = rest
     msg_ready(status: status)
   end
 
@@ -90,14 +91,14 @@ defmodule Postgrex.Protocol do
 
   # parameter_desc
   def decode(?t, _size, rest) do
-    << len :: size(16), rest :: binary >> = rest
+    << len :: int16, rest :: binary >> = rest
     oids = decode_many(rest, 32, len)
     msg_parameter_desc(type_oids: oids)
   end
 
   # row_desc
   def decode(?T, _size, rest) do
-    << len :: size(16), rest :: binary >> = rest
+    << len :: int16, rest :: binary >> = rest
     fields = decode_row_fields(rest, len)
     msg_row_desc(fields: fields)
   end
@@ -115,9 +116,9 @@ defmodule Postgrex.Protocol do
     size = byte_size(binary) + 4
 
     if first do
-      << first :: size(8), size :: size(32), binary :: binary >>
+      << first :: int8, size :: int32, binary :: binary >>
     else
-     << size :: size(32), binary :: binary >>
+     << size :: int32, binary :: binary >>
    end
   end
 
@@ -126,7 +127,7 @@ defmodule Postgrex.Protocol do
     params = Enum.flat_map(params, fn { key, value } ->
       [ to_string(key), 0, value, 0 ]
     end)
-    vsn = << @protocol_vsn_major :: size(16), @protocol_vsn_minor :: size(16) >>
+    vsn = << @protocol_vsn_major :: int16, @protocol_vsn_minor :: int16 >>
     { nil, [vsn, params, 0] }
   end
 
@@ -140,7 +141,7 @@ defmodule Postgrex.Protocol do
     { len, oids } = Enum.reduce(oids, { 0, [] }, fn oid, { count, list } ->
       { count+1, [encode_oid(oid), 0 | list] }
     end)
-    len = << len :: size(16) >>
+    len = << len :: int16 >>
     { ?P, [name, 0, query, 0, len | oids] }
   end
 
@@ -167,7 +168,7 @@ defmodule Postgrex.Protocol do
 
   defp decode_fields(<< 0 >>), do: []
 
-  defp decode_fields(<< field :: size(8), rest :: binary >>) do
+  defp decode_fields(<< field :: int8, rest :: binary >>) do
     type = decode_field_type(field)
     { string, rest } = decode_string(rest)
     [ { type, string } | decode_fields(rest) ]
@@ -188,8 +189,8 @@ defmodule Postgrex.Protocol do
 
   defp decode_row_field(rest) do
     { name, rest } = decode_string(rest)
-    << table_oid :: size(32), column :: size(16), type_oid :: size(32),
-       type_size :: size(16), type_mod :: size(32), format :: size(16),
+    << table_oid :: int32, column :: int16, type_oid :: int32,
+       type_size :: int16, type_mod :: int32, format :: int16,
        rest :: binary >> = rest
     field = row_field(name: name, table_oid: table_oid, column: column, type_oid: type_oid,
                       type_size: type_size, type_mod: type_mod, format: format)

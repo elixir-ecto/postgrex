@@ -2,6 +2,7 @@ defmodule Postgrex.Connection do
   use GenServer.Behaviour
   alias Postgrex.Protocol
   use Postgrex.Protocol.Messages
+  import Postgrex.BinaryUtils
 
   # possible states: not_started, auth, init, ready, parsing, describing
 
@@ -63,14 +64,14 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({ :tcp, _, data }, state(sock: sock, tail: tail) = s) do
+  def handle_info({ :tcp, _, data }, state(reply_to: from, sock: sock, tail: tail) = s) do
     case handle_data(tail <> data, state(s, tail: "")) do
       { :ok, s } ->
         :inet.setopts(sock, active: :once)
         { :noreply, s }
       { :error, reason } ->
         if from do
-          s = reply(s, { :error, reason })
+          :gen_server.reply(from, { :error, reason })
           { :stop, :normal, s }
         else
           { :stop, reason, s }
@@ -78,10 +79,10 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({ :tcp_closed, _ }, s) do
+  def handle_info({ :tcp_closed, _ }, state(reply_to: from) = s) do
     reason = :tcp_closed
     if from do
-      s = reply(s, { :error, reason })
+      :gen_server.reply(from, { :error, reason })
       { :stop, :normal, s }
     else
       { :stop, reason, s }
@@ -98,11 +99,11 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp handle_data(<< type :: size(8), size :: size(32), data :: binary >>, s) do
+  defp handle_data(<< type :: int8, size :: int32, data :: binary >>, s) do
     size = size - 4
 
     case data do
-      << data :: [binary, unit(8), size(size)], tail :: binary >> ->
+      << data :: binary(size), tail :: binary >> ->
         msg = Protocol.decode(type, size, data)
         case message(msg, s) do
           { :ok, s } -> handle_data(tail, s)
