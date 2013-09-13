@@ -16,9 +16,18 @@ defmodule Postgrex.Protocol.Messages do
       defrecordp :msg_parameter_desc, [:type_oids]
       defrecordp :msg_row_desc, [:fields]
       defrecordp :msg_no_data, []
+      defrecordp :msg_bind, [:name_port, :name_stat, :param_formats, :params,
+                             :result_formats]
+      defrecordp :msg_execute, [:name_port, :max_rows]
+      defrecordp :msg_sync, []
+      defrecordp :msg_bind_complete, []
+      defrecordp :msg_portal_suspend, []
+      defrecordp :msg_data_row, [:values]
+      defrecordp :msg_command_complete, [:tag]
+      defrecordp :msg_empty_query, []
 
-      defrecordp :row_field, [ :name, :table_oid, :column, :type_oid, :type_size,
-                               :type_mod, :format ]
+      defrecordp :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
+                              :type_mod, :format]
     end
   end
 end
@@ -81,6 +90,11 @@ defmodule Postgrex.Protocol do
   # ready
   def decode(?Z, _size, rest) do
     << status :: int8 >> = rest
+    status = case status do
+      ?I -> :idle
+      ?T -> :transaction
+      ?E -> :failed
+    end
     msg_ready(status: status)
   end
 
@@ -106,6 +120,34 @@ defmodule Postgrex.Protocol do
   # no_data
   def decode(?n, _size, _rest) do
     msg_parse_complete()
+  end
+
+  # bind_complete
+  def decode(?2, _size, _rest) do
+    msg_bind_complete()
+  end
+
+  # portal_suspended
+  def decode(?s, _size, _rest) do
+    msg_portal_suspend()
+  end
+
+  # data_row
+  def decode(?D, _size, rest) do
+    << count :: int16, rest :: binary >> = rest
+    values = decode_row_values(rest, count)
+    msg_data_row(values: values)
+  end
+
+  # command_complete
+  def decode(?C, _size, rest) do
+    { tag, "" } = decode_string(rest)
+    msg_command_complete(tag: tag)
+  end
+
+  # empty_query
+  def decode(?I, _size, _rest) do
+    msg_empty_query()
   end
 
   ### encoders ###
@@ -138,11 +180,9 @@ defmodule Postgrex.Protocol do
 
   # parse
   defp encode_msg(msg_parse(name: name, query: query, type_oids: oids)) do
-    { len, oids } = Enum.reduce(oids, { 0, [] }, fn oid, { count, list } ->
-      { count+1, [encode_oid(oid), 0 | list] }
-    end)
+    { len, oids } = encode_many(oids, &[encode_oid(&1), 0])
     len = << len :: int16 >>
-    { ?P, [name, 0, query, 0, len | oids] }
+    { ?P, [name, 0, query, 0, len, oids] }
   end
 
   # describe
@@ -159,9 +199,41 @@ defmodule Postgrex.Protocol do
     { ?H, "" }
   end
 
+  # bind
+  defp encode_msg(msg_bind(name_port: port, name_stat: stat, param_formats:
+                           param_formats, params: params, result_formats:
+                           result_formats)) do
+    { len_pfs, pfs } = encode_many(param_formats, &encode_format(&1))
+    { len_ps, ps }   = encode_many(params, &<< byte_size(&1) :: int16, &1 >>)
+    { len_rfs, rfs } = encode_many(result_formats, &encode_format(&1))
+
+    { ?B, [ port, 0, stat, 0, << len_pfs :: int16 >>, pfs, << len_ps :: int16 >>,
+            ps, << len_rfs :: int16 >>, rfs ] }
+  end
+
+  # execute
+  defp encode_msg(msg_execute(name_port: port, max_rows: rows)) do
+    { ?E, [port, 0, << rows :: int32 >>] }
+  end
+
+  # sync
+  defp encode_msg(msg_sync()) do
+    { ?S, "" }
+  end
+
   ### encode helpers ###
 
+  def encode_format(:binary), do: << 0 :: int16 >>
+  def encode_format(:text), do: << 1 :: int16 >>
+
   def encode_oid(_oid) do
+  end
+
+  def encode_many(list, fun) when is_function(fun) do
+    { count, iolist } = Enum.reduce(list, { 0, [] }, fn elem, { count, list } ->
+      { count+1, [fun.(elem) | list] }
+    end)
+    { count, Enum.reverse(iolist) }
   end
 
   ### decode helpers ###
@@ -202,6 +274,14 @@ defmodule Postgrex.Protocol do
   defp decode_many(rest, size, count) do
     << value :: size(size), rest :: binary >> = rest
     [ value | decode_many(rest, size, count-1) ]
+  end
+
+  defp decode_row_values("", 0), do: []
+
+  defp decode_row_values(rest, count) do
+    << length :: int32, rest :: binary >> = rest
+    { value, rest } = :erlang.split_binary(rest, length)
+    [ value | decode_row_values(rest, count-1) ]
   end
 
   Enum.each(@auth_types, fn { type, value } ->

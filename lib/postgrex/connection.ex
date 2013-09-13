@@ -4,10 +4,10 @@ defmodule Postgrex.Connection do
   use Postgrex.Protocol.Messages
   import Postgrex.BinaryUtils
 
-  # possible states: not_started, auth, init, ready, parsing, describing
+  # possible states: auth, init, parsing, describing
 
   defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
-                       :backend_key ]
+                       :backend_key, :rows ]
 
   def start_link() do
     :gen_server.start_link(__MODULE__, [], [])
@@ -17,12 +17,12 @@ defmodule Postgrex.Connection do
     :gen_server.call(pid, { :connect, opts })
   end
 
-  def parse(pid, statement) do
-    :gen_server.call(pid, { :parse, statement })
+  def query(pid, statement) do
+    :gen_server.call(pid, { :query, statement })
   end
 
   def init([]) do
-    { :ok, state(state: [], tail: "", parameters: []) }
+    { :ok, state(state: [], tail: "", parameters: [], rows: []) }
   end
 
   def handle_call({ :connect, opts }, from, state(state: []) = s) do
@@ -49,15 +49,17 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_call({ :parse, statement }, from, state(state: []) = s) do
+  def handle_call({ :query, statement }, from, state(state: []) = s) do
     msgs = [
       msg_parse(name: "", query: statement, type_oids: []),
       msg_describe(type: :statement, name: ""),
-      msg_flush() ]
+      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
+      msg_execute(name_port: "", max_rows: 0),
+      msg_sync() ]
 
     case send_to_result(msgs, s) do
       { :ok, _ } ->
-        { :noreply, next_state(:parsing, state(s, reply_to: from)) }
+        { :noreply, state(s, reply_to: from, state: [:parsing, :describing, :binding, :executing]) }
       err ->
         :gen_server.reply(from, err)
         { :stop, :normal, s }
@@ -149,7 +151,7 @@ defmodule Postgrex.Connection do
   ### parsing state ###
 
   defp message(msg_parse_complete(), state(state: [:parsing|_]) = s) do
-    { :ok, next_state(:describing, s) }
+    { :ok, next_state(s) }
   end
 
   ### describing state ###
@@ -159,6 +161,40 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_row_desc(), state(state: [:describing|_]) = s) do
+    { :ok, next_state(s) }
+  end
+
+  defp message(msg_no_data(), state(state: [:describing|_]) = s) do
+    { :ok, next_state(s) }
+  end
+
+  ### binding state ###
+
+  defp message(msg_bind_complete(), state(state: [:binding|_]) = s) do
+    { :ok, next_state(s) }
+  end
+
+  ### executing state ###
+
+  # defp message(msg_portal_suspend(), state(state: [:executing|_]) = s)
+
+  defp message(msg_data_row(values: values), state(rows: rows, state: [:executing|_]) = s) do
+    row = list_to_tuple(values)
+    { :ok, state(s, rows: [row|rows]) }
+  end
+
+  defp message(msg_command_complete(), state(rows: rows, state: [:executing|_]) = s) do
+    result = Enum.reverse(rows)
+    s = reply({ :ok, result }, s)
+    { :ok, state(s, rows: []) }
+  end
+
+  defp message(msg_empty_query(), state(state: [:executing|_]) = s) do
+    s = reply({ :ok, []}, s)
+    { :ok, s }
+  end
+
+  defp message(msg_ready(), state(state: [:executing|_]) = s) do
     { :ok, next_state(s) }
   end
 

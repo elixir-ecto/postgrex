@@ -26,6 +26,6 @@ defmodule Postgrex do
   end
 
   def query(pid, statement) do
-    Connection.parse(pid, statement)
+    Connection.query(pid, statement)
   end
 end
