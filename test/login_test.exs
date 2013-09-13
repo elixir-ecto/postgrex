@@ -1,4 +1,4 @@
-defmodule PostgrexTest do
+defmodule LoginTest do
   use ExUnit.Case
 
   # NOTE: Make sure there are no "trust all" in pg_hba.conf or catch all "md5",
