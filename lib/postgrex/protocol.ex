@@ -25,6 +25,7 @@ defmodule Postgrex.Protocol.Messages do
       defrecordp :msg_data_row, [:values]
       defrecordp :msg_command_complete, [:tag]
       defrecordp :msg_empty_query, []
+      defrecordp :msg_terminate, []
 
       defrecordp :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
                               :type_mod, :format]
@@ -219,6 +220,11 @@ defmodule Postgrex.Protocol do
   # sync
   defp encode_msg(msg_sync()) do
     { ?S, "" }
+  end
+
+  # terminate
+  defp encode_msg(msg_terminate()) do
+    { ?X, "" }
   end
 
   ### encode helpers ###

@@ -13,6 +13,10 @@ defmodule Postgrex.Connection do
     :gen_server.start_link(__MODULE__, [], [])
   end
 
+  def stop(pid) do
+    :gen_server.call(pid, :stop)
+  end
+
   def connect(pid, opts) do
     :gen_server.call(pid, { :connect, opts })
   end
@@ -23,6 +27,10 @@ defmodule Postgrex.Connection do
 
   def init([]) do
     { :ok, state(state: [], tail: "", parameters: [], rows: []) }
+  end
+
+  def handle_call(:stop, from, state(state: []) = s) do
+    { :stop, :normal, state(s, reply_to: from) }
   end
 
   def handle_call({ :connect, opts }, from, state(state: []) = s) do
@@ -99,6 +107,12 @@ defmodule Postgrex.Connection do
     else
       { :stop, reason, s }
     end
+  end
+
+  def terminate(_reason, state(sock: sock) = s) do
+    send(msg_terminate(), sock)
+    :gen_tcp.close(sock)
+    reply(:ok, s)
   end
 
   defp handle_data(<< type :: int8, size :: int32, data :: binary >>, s) do

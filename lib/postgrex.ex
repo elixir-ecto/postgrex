@@ -25,6 +25,10 @@ defmodule Postgrex do
     end
   end
 
+  def disconnect(pid) do
+    Connection.stop(pid)
+  end
+
   def query(pid, statement) do
     Connection.query(pid, statement)
   end
