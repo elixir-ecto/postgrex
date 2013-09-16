@@ -123,7 +123,7 @@ defmodule Postgrex.Connection do
 
     case data do
       << data :: binary(size), tail :: binary >> ->
-        msg = IO.inspect Protocol.decode(type, size, data)
+        msg = Protocol.decode(type, size, data)
         case message(msg, s) do
           { :ok, s } -> handle_data(tail, s)
           { :error, _ } = err -> err

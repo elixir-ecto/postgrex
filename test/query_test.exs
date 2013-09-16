@@ -11,6 +11,10 @@ defmodule QueryTest do
   end
 
   test "select query", context do
-    assert { :ok, [{ "42" }] } = Postgrex.query(context[:pid], "SELECT 42")
+    assert { :ok, [{ nil }] } = Postgrex.query(context[:pid], "SELECT NULL")
+    assert { :ok, [{ true, false }] } = Postgrex.query(context[:pid], "SELECT true, false")
+    assert { :ok, [{ ?e }] } = Postgrex.query(context[:pid], "SELECT 'e'::char")
+    assert { :ok, [{ 42 }] } = Postgrex.query(context[:pid], "SELECT 42")
+    assert { :ok, [{ 42.0 }] } = Postgrex.query(context[:pid], "SELECT 42::float")
   end
 end
