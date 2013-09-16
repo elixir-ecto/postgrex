@@ -1,13 +1,16 @@
 defmodule Postgrex.Connection do
   use GenServer.Behaviour
-  alias Postgrex.Protocol
   use Postgrex.Protocol.Messages
+  alias Postgrex.Protocol
+  alias Postgrex.Types
   import Postgrex.BinaryUtils
 
-  # possible states: auth, init, parsing, describing
+  # possible states: auth, init, parsing, describing, binding, executing, "ready"
 
   defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
-                       :backend_key, :rows ]
+                       :backend_key, :rows, :statement ]
+
+  defrecordp :statement, [:result_oids]
 
   def start_link() do
     :gen_server.start_link(__MODULE__, [], [])
@@ -61,7 +64,7 @@ defmodule Postgrex.Connection do
     msgs = [
       msg_parse(name: "", query: statement, type_oids: []),
       msg_describe(type: :statement, name: ""),
-      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
+      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: [:binary]),
       msg_execute(name_port: "", max_rows: 0),
       msg_sync() ]
 
@@ -120,7 +123,7 @@ defmodule Postgrex.Connection do
 
     case data do
       << data :: binary(size), tail :: binary >> ->
-        msg = Protocol.decode(type, size, data)
+        msg = IO.inspect Protocol.decode(type, size, data)
         case message(msg, s) do
           { :ok, s } -> handle_data(tail, s)
           { :error, _ } = err -> err
@@ -174,8 +177,10 @@ defmodule Postgrex.Connection do
     { :ok, s }
   end
 
-  defp message(msg_row_desc(), state(state: [:describing|_]) = s) do
-    { :ok, next_state(s) }
+  defp message(msg_row_desc(fields: fields), state(state: [:describing|_]) = s) do
+    oids = Enum.map(fields, fn row_field(type_oid: oid) -> oid end)
+    stat = statement(result_oids: oids)
+    { :ok, state(s, statement: stat) |> next_state }
   end
 
   defp message(msg_no_data(), state(state: [:describing|_]) = s) do
@@ -193,14 +198,25 @@ defmodule Postgrex.Connection do
   # defp message(msg_portal_suspend(), state(state: [:executing|_]) = s)
 
   defp message(msg_data_row(values: values), state(rows: rows, state: [:executing|_]) = s) do
-    row = list_to_tuple(values)
-    { :ok, state(s, rows: [row|rows]) }
+    { :ok, state(s, rows: [values|rows]) }
   end
 
-  defp message(msg_command_complete(), state(rows: rows, state: [:executing|_]) = s) do
-    result = Enum.reverse(rows)
+  defp message(msg_command_complete(), state(statement: stat, rows: rows, state: [:executing|_]) = s) do
+    types = statement(stat, :result_oids)
+      |> Enum.map(&Types.oid_to_type/1)
+      |> list_to_tuple
+
+    result = Enum.reduce(rows, [], fn values, acc ->
+      { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
+        decoded = Types.decode(elem(types, count), value)
+        { count+1, [decoded|list] }
+      end)
+      row = Enum.reverse(row) |> list_to_tuple
+      [ row | acc ]
+    end)
+
     s = reply({ :ok, result }, s)
-    { :ok, state(s, rows: []) }
+    { :ok, state(s, rows: [], statement: nil) }
   end
 
   defp message(msg_empty_query(), state(state: [:executing|_]) = s) do

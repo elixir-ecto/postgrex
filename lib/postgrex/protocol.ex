@@ -205,7 +205,7 @@ defmodule Postgrex.Protocol do
                            param_formats, params: params, result_formats:
                            result_formats)) do
     { len_pfs, pfs } = encode_many(param_formats, &encode_format(&1))
-    { len_ps, ps }   = encode_many(params, &<< byte_size(&1) :: int16, &1 >>)
+    { len_ps, ps }   = encode_many(params, &<< byte_size(&1) :: int32, &1 :: binary >>)
     { len_rfs, rfs } = encode_many(result_formats, &encode_format(&1))
 
     { ?B, [ port, 0, stat, 0, << len_pfs :: int16 >>, pfs, << len_ps :: int16 >>,
@@ -229,8 +229,8 @@ defmodule Postgrex.Protocol do
 
   ### encode helpers ###
 
-  def encode_format(:binary), do: << 0 :: int16 >>
-  def encode_format(:text), do: << 1 :: int16 >>
+  def encode_format(:text), do: << 0 :: int16 >>
+  def encode_format(:binary), do: << 1 :: int16 >>
 
   def encode_oid(_oid) do
   end
@@ -286,8 +286,12 @@ defmodule Postgrex.Protocol do
 
   defp decode_row_values(rest, count) do
     << length :: int32, rest :: binary >> = rest
-    { value, rest } = :erlang.split_binary(rest, length)
-    [ value | decode_row_values(rest, count-1) ]
+    if length == -1 do
+      [ nil | decode_row_values(rest, count-1) ]
+    else
+      { value, rest } = :erlang.split_binary(rest, length)
+      [ value | decode_row_values(rest, count-1) ]
+    end
   end
 
   Enum.each(@auth_types, fn { type, value } ->
