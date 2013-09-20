@@ -258,7 +258,7 @@ defmodule Postgrex.Protocol do
     { string, rest }
   end
 
-  defp decode_row_fields(_rest, 0), do: []
+  defp decode_row_fields("", 0), do: []
 
   defp decode_row_fields(rest, count) do
     { field, rest } = decode_row_field(rest)
@@ -275,7 +275,7 @@ defmodule Postgrex.Protocol do
     { field, rest }
   end
 
-  defp decode_many(_rest, _size, 0), do: []
+  defp decode_many("", _size, 0), do: []
 
   defp decode_many(rest, size, count) do
     << value :: size(size), rest :: binary >> = rest
@@ -284,14 +284,12 @@ defmodule Postgrex.Protocol do
 
   defp decode_row_values("", 0), do: []
 
-  defp decode_row_values(rest, count) do
-    << length :: int32, rest :: binary >> = rest
-    if length == -1 do
-      [ nil | decode_row_values(rest, count-1) ]
-    else
-      { value, rest } = :erlang.split_binary(rest, length)
-      [ value | decode_row_values(rest, count-1) ]
-    end
+  defp decode_row_values(<< -1 :: int32, rest :: binary >>, count) do
+    [ nil | decode_row_values(rest, count-1) ]
+  end
+
+  defp decode_row_values(<< length :: int32, value :: binary(length), rest :: binary >>, count) do
+    [ value | decode_row_values(rest, count-1) ]
   end
 
   Enum.each(@auth_types, fn { type, value } ->

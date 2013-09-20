@@ -222,7 +222,7 @@ defmodule Postgrex.Connection do
 
     result = Enum.reduce(rows, [], fn values, acc ->
       { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
-        decoded = Types.decode(elem(senders, count), value)
+        decoded = Types.decode(elem(senders, count), value, types)
         { count+1, [decoded|list] }
       end)
       row = Enum.reverse(row) |> list_to_tuple
