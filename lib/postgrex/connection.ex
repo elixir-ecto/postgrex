@@ -164,7 +164,7 @@ defmodule Postgrex.Connection do
 
   defp message(msg_ready(), state(state: [:init|_]) = s) do
     s = state(s, bootstrap: true) |> next_state
-    send_query("SELECT oid, typsend FROM pg_type", s)
+    send_query(Types.bootstrap_query, s)
   end
 
   defp message(msg_error(fields: fields), state(state: [:init|_]) = s) do
@@ -209,28 +209,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_command_complete(), state(bootstrap: true, rows: rows, state: [:executing|_]) = s) do
-    types = Enum.reduce(rows, HashDict.new, fn row, acc ->
-      [oid, send] = row
-      { oid, "" } = String.to_integer(oid)
-      send_size = String.length(send)
-
-      send =
-        try do
-          cond do
-          String.ends_with?(send, "_send") ->
-            String.slice(send, 0, send_size - 5) |> binary_to_existing_atom
-          String.ends_with?(send, "send") ->
-            String.slice(send, 0, send_size - 4) |> binary_to_existing_atom
-          true ->
-            nil
-          end
-        catch
-          :error, :badarg -> nil
-        end
-
-      if send, do: Dict.put(acc, oid, send), else: acc
-    end)
-
+    types = Types.build_types(rows)
     s = reply(:ok, s)
     { :ok, state(s, rows: [], statement: nil, bootstrap: false, types: types) }
   end
