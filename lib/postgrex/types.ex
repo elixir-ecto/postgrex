@@ -1,6 +1,11 @@
 defmodule Postgrex.Types do
   import Postgrex.BinaryUtils
 
+  @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
+  @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
+  @days_in_month 30
+  @secs_in_day 24 * 60 * 60
+
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
       [oid, send] = row
@@ -31,14 +36,39 @@ defmodule Postgrex.Types do
 
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false
-  def decode(:bpchar, << c :: int8 >>, _), do: c
+  def decode(:bpchar, bin, _), do: bin
+  def decode(:text, bin, _), do: bin
   def decode(:int2, << n :: int16 >>, _), do: n
   def decode(:int4, << n :: int32 >>, _), do: n
   def decode(:int8, << n :: int64 >>, _), do: n
   def decode(:float4, << n :: float32 >>, _), do: n
   def decode(:float8, << n :: float64 >>, _), do: n
+  def decode(:date, << n :: int32 >>, _), do: decode_date(n)
+  def decode(:time, << n :: int64 >>, _), do: decode_time(n)
+  def decode(:timetz, << n :: int64, _tz :: int32 >>, _), do: decode_time(n)
+  def decode(:timestamp, << n :: int64 >>, _), do: decode_timestamp(n)
+  def decode(:timestamptz, << n :: int64 >>, _), do: decode_timestamp(n)
+  def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
   def decode(:array, bin, types), do: decode_array(bin, types)
   def decode(_, bin, _), do: bin
+
+  defp decode_date(days) do
+    :calendar.gregorian_days_to_date(days + @gd_epoch)
+  end
+
+  defp decode_time(microsecs) do
+    secs = div(microsecs, 1_000_000)
+    :calendar.seconds_to_time(secs)
+  end
+
+  defp decode_timestamp(microsecs) do
+    secs = div(microsecs, 1_000_000)
+    :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
+  end
+
+  defp decode_interval(microsecs, days, months) do
+    { div(microsecs, 1_000_000), days, months }
+  end
 
   defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>, types) do
     { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
