@@ -19,6 +19,7 @@ defmodule QueryTest do
     assert { :ok, [{ 42.0 }] } = Postgrex.query(context[:pid], "SELECT 42::float")
     assert { :ok, [{ "josé" }] } = Postgrex.query(context[:pid], "SELECT 'josé'")
     assert { :ok, [{ "josé" }] } = Postgrex.query(context[:pid], "SELECT 'josé'::varchar")
+    assert { :ok, [{ << 1, 2, 3 >> }] } = Postgrex.query(context[:pid], "SELECT '\\001\\002\\003'::bytea")
   end
 
   test "decode arrays", context do

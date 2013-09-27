@@ -1,6 +1,9 @@
 defmodule Postgrex.Types do
   import Postgrex.BinaryUtils
 
+  @types [ :bool, :bpchar, :text, :bytea, :int2, :int4, :int8, :float4, :float8,
+           :date, :time, :timetz, :timestamp, :timestamptz, :interval, :array ]
+
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
   @days_in_month 30
@@ -15,18 +18,18 @@ defmodule Postgrex.Types do
       send =
         try do
           cond do
-          String.ends_with?(send, "_send") ->
-            String.slice(send, 0, send_size - 5) |> binary_to_existing_atom
-          String.ends_with?(send, "send") ->
-            String.slice(send, 0, send_size - 4) |> binary_to_existing_atom
-          true ->
-            nil
+            String.ends_with?(send, "_send") ->
+              String.slice(send, 0, send_size - 5) |> binary_to_existing_atom
+            String.ends_with?(send, "send") ->
+              String.slice(send, 0, send_size - 4) |> binary_to_existing_atom
+            true ->
+              nil
           end
         catch
           :error, :badarg -> nil
         end
 
-      if send, do: Dict.put(acc, oid, send), else: acc
+      if binary_type?(send), do: Dict.put(acc, oid, send), else: acc
     end)
   end
 
@@ -34,10 +37,16 @@ defmodule Postgrex.Types do
     "SELECT oid, typsend FROM pg_type"
   end
 
+  Enum.each(@types, fn type ->
+    defp binary_type?(unquote(type)), do: true
+  end)
+  defp binary_type?(_), do: false
+
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false
   def decode(:bpchar, bin, _), do: bin
   def decode(:text, bin, _), do: bin
+  def decode(:bytea, bin, _), do: bin
   def decode(:int2, << n :: int16 >>, _), do: n
   def decode(:int4, << n :: int32 >>, _), do: n
   def decode(:int8, << n :: int64 >>, _), do: n

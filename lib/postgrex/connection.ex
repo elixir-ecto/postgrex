@@ -10,7 +10,7 @@ defmodule Postgrex.Connection do
   defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
                        :backend_key, :rows, :statement, :bootstrap, :types ]
 
-  defrecordp :statement, [:result_oids]
+  defrecordp :statement, [:result_types]
 
   def start_link() do
     :gen_server.start_link(__MODULE__, [], [])
@@ -29,14 +29,14 @@ defmodule Postgrex.Connection do
   end
 
   def init([]) do
-    { :ok, state(state: [], tail: "", parameters: [], rows: [], bootstrap: false) }
+    { :ok, state(state: :ready, tail: "", parameters: [], rows: [], bootstrap: false) }
   end
 
-  def handle_call(:stop, from, state(state: []) = s) do
+  def handle_call(:stop, from, state(state: :ready) = s) do
     { :stop, :normal, state(s, reply_to: from) }
   end
 
-  def handle_call({ :connect, opts }, from, state(state: []) = s) do
+  def handle_call({ :connect, opts }, from, state(state: :ready) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
     address = opts[:address]
     address = if is_binary(address), do: String.to_char_list!(address)
@@ -46,8 +46,7 @@ defmodule Postgrex.Connection do
         msg = msg_startup(params: [user: opts[:username], database: opts[:database]])
         case send(msg, sock) do
           :ok ->
-            states = [:auth, :init]
-            { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: states) }
+            { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: :auth) }
           { :error, reason } ->
             reason = { :tcp_send, reason }
             :gen_server.reply(from, { :error, reason })
@@ -61,7 +60,7 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_call({ :query, statement }, from, state(state: []) = s) do
+  def handle_call({ :query, statement }, from, state(state: :ready) = s) do
     case send_query(statement, s) do
       { :ok, s } ->
         { :noreply, state(s, reply_to: from) }
@@ -135,94 +134,113 @@ defmodule Postgrex.Connection do
 
   ### auth state ###
 
-  defp message(msg_auth(type: :ok), state(state: [:auth|_]) = s) do
-    { :ok, next_state(s) }
+  defp message(msg_auth(type: :ok), state(state: :auth) = s) do
+    { :ok, state(s, state: :init) }
   end
 
-  defp message(msg_auth(type: :cleartext), state(opts: opts, state: [:auth|_]) = s) do
+  defp message(msg_auth(type: :cleartext), state(opts: opts, state: :auth) = s) do
     msg = msg_password(pass: opts[:password])
     send_to_result(msg, s)
   end
 
-  defp message(msg_auth(type: :md5, data: salt), state(opts: opts, state: [:auth|_]) = s) do
+  defp message(msg_auth(type: :md5, data: salt), state(opts: opts, state: :auth) = s) do
     digest = :crypto.hash(:md5, [opts[:password], opts[:username]]) |> hexify
     digest = :crypto.hash(:md5, [digest, salt]) |> hexify
     msg = msg_password(pass: ["md5", digest])
     send_to_result(msg, s)
   end
 
-  defp message(msg_error(fields: fields), state(state: [:auth|_]) = s) do
+  defp message(msg_error(fields: fields), state(state: :auth) = s) do
     error = { :pgsql_error, fields }
     { :error, error, s }
   end
 
   ### init state ###
 
-  defp message(msg_backend_key(pid: pid, key: key), state(state: [:init|_]) = s) do
+  defp message(msg_backend_key(pid: pid, key: key), state(state: :init) = s) do
     { :ok, state(s, backend_key: { pid, key }) }
   end
 
-  defp message(msg_ready(), state(state: [:init|_]) = s) do
-    s = state(s, bootstrap: true) |> next_state
+  defp message(msg_ready(), state(state: :init) = s) do
+    s = state(s, bootstrap: true)
     send_query(Types.bootstrap_query, s)
   end
 
-  defp message(msg_error(fields: fields), state(state: [:init|_]) = s) do
+  defp message(msg_error(fields: fields), state(state: :init) = s) do
     error = { :pgsql_error, fields }
     { :error, error, s }
   end
 
   ### parsing state ###
 
-  defp message(msg_parse_complete(), state(state: [:parsing|_]) = s) do
-    { :ok, next_state(s) }
+  defp message(msg_parse_complete(), state(state: :parsing) = s) do
+    { :ok, state(s, state: :describing) }
   end
 
   ### describing state ###
 
-  defp message(msg_parameter_desc(), state(state: [:describing|_]) = s) do
+  defp message(msg_parameter_desc(), state(state: :describing) = s) do
     { :ok, s }
   end
 
-  defp message(msg_row_desc(fields: fields), state(state: [:describing|_]) = s) do
-    oids = Enum.map(fields, fn row_field(type_oid: oid) -> oid end)
-    stat = statement(result_oids: oids)
-    { :ok, state(s, statement: stat) |> next_state }
+  defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap,
+                                                   state: :describing) = s) do
+    rfs = []
+
+    if not bootstrap do
+      types = Enum.map(fields, fn row_field(type_oid: oid) -> Dict.get(types, oid) end)
+      rfs = Enum.map(types, &if &1, do: :binary, else: :text)
+      stat = statement(result_types: list_to_tuple(types))
+    end
+
+    msgs = [
+      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: rfs),
+      msg_execute(name_port: "", max_rows: 0),
+      msg_sync() ]
+
+    case send_to_result(msgs, s) do
+      { :ok, s } ->
+        { :ok, state(s, statement: stat) }
+      err ->
+        err
+    end
   end
 
-  defp message(msg_no_data(), state(state: [:describing|_]) = s) do
-    { :ok, next_state(s) }
+  defp message(msg_no_data(), state(state: :describing) = s) do
+    { :ok, s }
+  end
+
+  defp message(msg_ready(), state(state: :describing) = s) do
+    { :ok, state(s, state: :binding) }
   end
 
   ### binding state ###
 
-  defp message(msg_bind_complete(), state(state: [:binding|_]) = s) do
-    { :ok, next_state(s) }
+  defp message(msg_bind_complete(), state(state: :binding) = s) do
+    { :ok, state(s, state: :executing) }
   end
 
   ### executing state ###
 
-  # defp message(msg_portal_suspend(), state(state: [:executing|_]) = s)
+  # defp message(msg_portal_suspend(), state(state: :executing) = s)
 
-  defp message(msg_data_row(values: values), state(rows: rows, state: [:executing|_]) = s) do
+  defp message(msg_data_row(values: values), state(rows: rows, state: :executing) = s) do
     { :ok, state(s, rows: [values|rows]) }
   end
 
-  defp message(msg_command_complete(), state(bootstrap: true, rows: rows, state: [:executing|_]) = s) do
+  defp message(msg_command_complete(), state(bootstrap: true, rows: rows, state: :executing) = s) do
     types = Types.build_types(rows)
     s = reply(:ok, s)
-    { :ok, state(s, rows: [], statement: nil, bootstrap: false, types: types) }
+    { :ok, state(s, rows: [], bootstrap: false, types: types) }
   end
 
   defp message(msg_command_complete(), state(statement: stat, types: types,
-                                             rows: rows, state: [:executing|_]) = s) do
-    senders = statement(stat, :result_oids)
-      |> Enum.map(&Dict.get(types, &1))
-      |> list_to_tuple
+                                             rows: rows, state: :executing) = s) do
+    res_types = statement(stat, :result_types)
 
     result = Enum.reduce(rows, [], fn values, acc ->
       { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
-        decoded = Types.decode(elem(senders, count), value, types)
+        decoded = Types.decode(elem(res_types, count), value, types)
         { count+1, [decoded|list] }
       end)
       row = Enum.reverse(row) |> list_to_tuple
@@ -233,15 +251,15 @@ defmodule Postgrex.Connection do
     { :ok, state(s, rows: [], statement: nil) }
   end
 
-  defp message(msg_empty_query(), state(state: [:executing|_]) = s) do
-    s = reply({ :ok, []}, s)
+  defp message(msg_empty_query(), state(state: :executing) = s) do
+    s = reply({ :ok, [] }, s)
     { :ok, s }
   end
 
   ### asynchronous messages ###
 
   defp message(msg_ready(), s) do
-    { :ok, state(s, state: []) }
+    { :ok, state(s, state: :ready) }
   end
 
   defp message(msg_parameter(name: name, value: value), state(parameters: params) = s) do
@@ -263,25 +281,19 @@ defmodule Postgrex.Connection do
 
   ### helpers ###
 
-  defp send_query(statement, state(bootstrap: bootstrap) = s) do
-    rfs = if bootstrap, do: [], else: [:binary]
-
+  defp send_query(statement, s) do
     msgs = [
       msg_parse(name: "", query: statement, type_oids: []),
       msg_describe(type: :statement, name: ""),
-      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0),
       msg_sync() ]
 
     case send_to_result(msgs, s) do
       { :ok, s } ->
-        { :ok, state(s, state: [:parsing, :describing, :binding, :executing]) }
+        { :ok, state(s, state: :parsing) }
       err ->
         err
     end
   end
-
-  defp next_state(state(state: [_|next]) = s), do: state(s, state: next)
 
   defp reply(msg, state(reply_to: from) = s) do
     if from, do: :gen_server.reply(from, msg)
