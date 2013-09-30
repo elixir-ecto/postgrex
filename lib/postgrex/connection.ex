@@ -5,12 +5,14 @@ defmodule Postgrex.Connection do
   alias Postgrex.Types
   import Postgrex.BinaryUtils
 
-  # possible states: auth, init, parsing, describing, binding, executing, "ready"
+  # possible states: auth, init, parsing, describing, binding, executing, ready
 
   defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
-                       :backend_key, :rows, :statement, :bootstrap, :types ]
+                       :backend_key, :rows, :statement, :portal, :qparams,
+                       :bootstrap, :types ]
 
   defrecordp :statement, [:result_types]
+  defrecordp :portal, [:param_types]
 
   def start_link() do
     :gen_server.start_link(__MODULE__, [], [])
@@ -24,8 +26,8 @@ defmodule Postgrex.Connection do
     :gen_server.call(pid, { :connect, opts, params })
   end
 
-  def query(pid, statement) do
-    :gen_server.call(pid, { :query, statement })
+  def query(pid, statement, params) do
+    :gen_server.call(pid, { :query, statement, params })
   end
 
   def parameters(pid) do
@@ -64,10 +66,10 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_call({ :query, statement }, from, state(state: :ready) = s) do
+  def handle_call({ :query, statement, params }, from, state(state: :ready) = s) do
     case send_query(statement, s) do
       { :ok, s } ->
-        { :noreply, state(s, reply_to: from) }
+        { :noreply, state(s, qparams: params, reply_to: from) }
       { :error, reason, s } ->
         :gen_server.reply(from, { :error, reason })
         { :stop, :normal, s }
@@ -172,7 +174,7 @@ defmodule Postgrex.Connection do
 
   defp message(msg_ready(), state(state: :init) = s) do
     s = state(s, bootstrap: true)
-    send_query(Types.bootstrap_query, s)
+    send_query(Types.bootstrap_query, state(s, qparams: []))
   end
 
   defp message(msg_error(fields: fields), state(state: :init) = s) do
@@ -188,12 +190,13 @@ defmodule Postgrex.Connection do
 
   ### describing state ###
 
-  defp message(msg_parameter_desc(), state(state: :describing) = s) do
-    { :ok, s }
+  defp message(msg_parameter_desc(type_oids: oids), state(types: types, state: :describing) = s) do
+    param_types = Enum.map(oids, &Dict.get(types, &1))
+    { :ok, state(s, portal: portal(param_types: param_types)) }
   end
 
-  defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap,
-                                                   state: :describing) = s) do
+  defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap, qparams: params,
+                                                   portal: portal, state: :describing) = s) do
     rfs = []
 
     if not bootstrap do
@@ -202,14 +205,19 @@ defmodule Postgrex.Connection do
       stat = statement(result_types: list_to_tuple(types))
     end
 
+    param_types = portal(portal, :param_types)
+    pfs = Enum.map(param_types, &if &1, do: :binary, else: :text)
+    params = Enum.zip(param_types, params)
+      |> Enum.map(fn { type, param } -> Types.encode(type, param) end)
+
     msgs = [
-      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: rfs),
+      msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
       msg_execute(name_port: "", max_rows: 0),
       msg_sync() ]
 
     case send_to_result(msgs, s) do
       { :ok, s } ->
-        { :ok, state(s, statement: stat) }
+        { :ok, state(s, statement: stat, qparams: nil) }
       err ->
         err
     end
@@ -257,7 +265,7 @@ defmodule Postgrex.Connection do
     end)
 
     s = reply({ :ok, result }, s)
-    { :ok, state(s, rows: [], statement: nil) }
+    { :ok, state(s, rows: [], statement: nil, portal: nil) }
   end
 
   defp message(msg_empty_query(), state(state: :executing) = s) do

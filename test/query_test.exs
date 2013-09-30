@@ -57,7 +57,7 @@ defmodule QueryTest do
     assert { :ok, [{ {10920,40,14} }] } = Postgrex.query(context[:pid], "SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'")
   end
 
-  test "parameters", context do
-    assert Postgrex.parameters(context[:pid])["server_version"] =~ %R"\d+.\d+.\d+"
+  test "encode basic types", context do
+    assert { :ok, [{ true, false }] } = Postgrex.query(context[:pid], "SELECT $1::bool, $2::bool", [true, false])
   end
 end

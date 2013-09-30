@@ -29,8 +29,8 @@ defmodule Postgrex do
     Connection.stop(pid)
   end
 
-  def query(pid, statement) do
-    Connection.query(pid, statement)
+  def query(pid, statement, params // []) do
+    Connection.query(pid, statement, params)
   end
 
   def parameters(pid) do

@@ -37,11 +37,6 @@ defmodule Postgrex.Types do
     "SELECT oid, typsend FROM pg_type"
   end
 
-  Enum.each(@types, fn type ->
-    defp binary_type?(unquote(type)), do: true
-  end)
-  defp binary_type?(_), do: false
-
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false
   def decode(:bpchar, bin, _), do: bin
@@ -60,6 +55,14 @@ defmodule Postgrex.Types do
   def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
   def decode(:array, bin, types), do: decode_array(bin, types)
   def decode(_, bin, _), do: bin
+
+  def encode(:bool, true), do: << 1 >>
+  def encode(:bool, false), do: << 0 >>
+
+  Enum.each(@types, fn type ->
+    defp binary_type?(unquote(type)), do: true
+  end)
+  defp binary_type?(_), do: false
 
   defp decode_date(days) do
     :calendar.gregorian_days_to_date(days + @gd_epoch)
