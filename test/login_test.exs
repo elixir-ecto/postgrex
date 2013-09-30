@@ -18,11 +18,15 @@ defmodule LoginTest do
 
   test "parameters" do
     assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [])
-    assert "" == Postgrex.parameters(pid)["application_name"]
-    assert :ok = Postgrex.disconnect(pid)
+    if Postgrex.parameters(pid)["server_version"] =~ %R"9\.\d+\.\d+" do
+      assert "" == Postgrex.parameters(pid)["application_name"]
+      assert :ok = Postgrex.disconnect(pid)
 
-    assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [application_name: "postgrex"])
-    assert "postgrex" == Postgrex.parameters(pid)["application_name"]
-    assert :ok = Postgrex.disconnect(pid)
+      assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [application_name: "postgrex"])
+      assert "postgrex" == Postgrex.parameters(pid)["application_name"]
+      assert :ok = Postgrex.disconnect(pid)
+    else
+      assert :ok = Postgrex.disconnect(pid)
+    end
   end
 end
