@@ -13,13 +13,13 @@ defmodule Postgrex do
     end
   end
 
-  def connect(address, port // 5432, username, password, database) when
+  def connect(address, port // 5432, username, password, database, parameters) when
       is_address(address) and is_port_number(port) and is_binary(username) and
       is_binary(password) and is_binary(database) do
     opts = [ address: address, port: port, username: username,
              password: password, database: database ]
     { :ok, pid } = Connection.start_link()
-    case Connection.connect(pid, opts) do
+    case Connection.connect(pid, opts, parameters) do
       :ok -> { :ok, pid }
       err -> err
     end
@@ -31,5 +31,9 @@ defmodule Postgrex do
 
   def query(pid, statement) do
     Connection.query(pid, statement)
+  end
+
+  def parameters(pid) do
+    Connection.parameters(pid)
   end
 end

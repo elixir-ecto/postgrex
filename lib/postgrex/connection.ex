@@ -20,12 +20,16 @@ defmodule Postgrex.Connection do
     :gen_server.call(pid, :stop)
   end
 
-  def connect(pid, opts) do
-    :gen_server.call(pid, { :connect, opts })
+  def connect(pid, opts, params) do
+    :gen_server.call(pid, { :connect, opts, params })
   end
 
   def query(pid, statement) do
     :gen_server.call(pid, { :query, statement })
+  end
+
+  def parameters(pid) do
+    :gen_server.call(pid, :parameters)
   end
 
   def init([]) do
@@ -36,14 +40,14 @@ defmodule Postgrex.Connection do
     { :stop, :normal, state(s, reply_to: from) }
   end
 
-  def handle_call({ :connect, opts }, from, state(state: :ready) = s) do
+  def handle_call({ :connect, opts, params }, from, state(state: :ready) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
     address = opts[:address]
     address = if is_binary(address), do: String.to_char_list!(address)
 
     case :gen_tcp.connect(address, opts[:port], sock_opts) do
       { :ok, sock } ->
-        msg = msg_startup(params: [user: opts[:username], database: opts[:database]])
+        msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
         case send(msg, sock) do
           :ok ->
             { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: :auth) }
@@ -68,6 +72,11 @@ defmodule Postgrex.Connection do
         :gen_server.reply(from, { :error, reason })
         { :stop, :normal, s }
     end
+  end
+
+  def handle_call(:parameters, from, state(parameters: params, state: :ready) = s) do
+    :gen_server.reply(from, params)
+    { :noreply, s }
   end
 
   def handle_info({ :tcp, _, data }, state(reply_to: from, sock: sock, tail: tail) = s) do

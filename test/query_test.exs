@@ -2,7 +2,7 @@ defmodule QueryTest do
   use ExUnit.Case, async: true
 
   setup do
-    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test")
+    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [])
     { :ok, [pid: pid] }
   end
 
@@ -55,5 +55,9 @@ defmodule QueryTest do
     assert { :ok, [{ {180000,0,0} }] } = Postgrex.query(context[:pid], "SELECT interval '50 hours'")
     assert { :ok, [{ {1,0,0} }] } = Postgrex.query(context[:pid], "SELECT interval '1 second'")
     assert { :ok, [{ {10920,40,14} }] } = Postgrex.query(context[:pid], "SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'")
+  end
+
+  test "parameters", context do
+    assert Postgrex.parameters(context[:pid])["server_version"] =~ %R"\d+.\d+.\d+"
   end
 end
