@@ -66,4 +66,39 @@ defmodule QueryTest do
     assert { :ok, [{ "ẽric" }] } = Postgrex.query(context[:pid], "SELECT $1::varchar", ["ẽric"])
     assert { :ok, [{ << 1, 2, 3 >> }] } = Postgrex.query(context[:pid], "SELECT $1::bytea", [<< 1, 2, 3 >>])
   end
+
+  test "encode date", context do
+    assert { :ok, [{ {1,1,1} }] } = Postgrex.query(context[:pid], "SELECT $1::date", [{1,1,1}])
+    assert { :ok, [{ {1,2,3} }] } = Postgrex.query(context[:pid], "SELECT $1::date", [{1,2,3}])
+    assert { :ok, [{ {2013,9,23} }] } = Postgrex.query(context[:pid], "SELECT $1::date", [{2013,9,23}])
+  end
+
+  test "encode time", context do
+    assert { :ok, [{ {0,0,0} }] } = Postgrex.query(context[:pid], "SELECT $1::time", [{0,0,0}])
+    assert { :ok, [{ {1,2,3} }] } = Postgrex.query(context[:pid], "SELECT $1::time", [{1,2,3}])
+    assert { :ok, [{ {23,59,59} }] } = Postgrex.query(context[:pid], "SELECT $1::time", [{23,59,59}])
+    assert { :ok, [{ {4,5,6} }] } = Postgrex.query(context[:pid], "SELECT $1::time", [{4,5,6}])
+  end
+
+  test "encode timestamp", context do
+    assert { :ok, [{ {{1,1,1},{0,0,0}} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::timestamp", [{{1,1,1},{0,0,0}}])
+    assert { :ok, [{ {{2013,9,23},{14,4,37}} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::timestamp", [{{2013,9,23},{14,4,37}}])
+    assert { :ok, [{ {{2013,9,23},{14,4,37}} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::timestamp", [{{2013,9,23},{14,4,37}}])
+  end
+
+  test "encode interval", context do
+    assert { :ok, [{ {0,0,0} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::interval", [{0,0,0}])
+    assert { :ok, [{ {0,100,0} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::interval", [{0,100,0}])
+    assert { :ok, [{ {180000,0,0} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::interval", [{180000,0,0}])
+    assert { :ok, [{ {1,0,0} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::interval", [{1,0,0}])
+    assert { :ok, [{ {10920,40,14} }] } =
+      Postgrex.query(context[:pid], "SELECT $1::interval", [{10920,40,14}])
+  end
 end

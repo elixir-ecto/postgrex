@@ -70,12 +70,19 @@ defmodule Postgrex.Types do
   def encode(:int8, n), do: << n :: int64 >>
   def encode(:float4, n), do: << n :: float32 >>
   def encode(:float8, n), do: << n :: float64 >>
+  def encode(:date, date), do: encode_date(date)
+  def encode(:time, time), do: encode_time(time)
+  def encode(:timestamp, timestamp), do: encode_timestamp(timestamp)
+  def encode(:timestamptz, timestamp), do: encode_timestamp(timestamp)
+  def encode(:interval, interval), do: encode_interval(interval)
   def encode(_, bin), do: bin
 
   Enum.each(@types, fn type ->
     defp binary_type?(unquote(type)), do: true
   end)
   defp binary_type?(_), do: false
+
+  ### decode helpers ###
 
   defp decode_date(days) do
     :calendar.gregorian_days_to_date(days + @gd_epoch)
@@ -129,5 +136,25 @@ defmodule Postgrex.Types do
                        type, types, acc, count) do
     value = decode(type, value, types)
     decode_elements(rest, type, types, [value|acc], count-1)
+  end
+
+  ### encode helpers ###
+
+  defp encode_date(date) do
+    << :calendar.date_to_gregorian_days(date) - @gd_epoch :: int32 >>
+  end
+
+  defp encode_time(time) do
+    << :calendar.time_to_seconds(time) * 1_000_000 :: int64 >>
+  end
+
+  defp encode_timestamp(timestamp) do
+    secs = :calendar.datetime_to_gregorian_seconds(timestamp) - @gs_epoch
+    << secs * 1_000_000 :: int64 >>
+  end
+
+  defp encode_interval({ secs, days, months }) do
+    microsecs = secs * 1_000_000
+    << microsecs :: int64, days :: int32, months :: int32 >>
   end
 end
