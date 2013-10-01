@@ -1,8 +1,9 @@
 defmodule Postgrex.Types do
   import Postgrex.BinaryUtils
 
-  @types [ :bool, :bpchar, :text, :bytea, :int2, :int4, :int8, :float4, :float8,
-           :date, :time, :timetz, :timestamp, :timestamptz, :interval, :array ]
+  @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
+           :float4, :float8, :date, :time, :timetz, :timestamp, :timestamptz,
+           :interval, :array ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -41,6 +42,7 @@ defmodule Postgrex.Types do
   def decode(:bool, << 0 :: int8 >>, _), do: false
   def decode(:bpchar, bin, _), do: bin
   def decode(:text, bin, _), do: bin
+  def decode(:varchar, bin, _), do: bin
   def decode(:bytea, bin, _), do: bin
   def decode(:int2, << n :: int16 >>, _), do: n
   def decode(:int4, << n :: int32 >>, _), do: n
@@ -56,8 +58,19 @@ defmodule Postgrex.Types do
   def decode(:array, bin, types), do: decode_array(bin, types)
   def decode(_, bin, _), do: bin
 
+  def encode(_, nil), do: nil
   def encode(:bool, true), do: << 1 >>
   def encode(:bool, false), do: << 0 >>
+  def encode(:bpchar, bin), do: bin
+  def encode(:text, bin), do: bin
+  def encode(:varchar, bin), do: bin
+  def encode(:bytea, bin), do: bin
+  def encode(:int2, n), do: << n :: int16 >>
+  def encode(:int4, n), do: << n :: int32 >>
+  def encode(:int8, n), do: << n :: int64 >>
+  def encode(:float4, n), do: << n :: float32 >>
+  def encode(:float8, n), do: << n :: float64 >>
+  def encode(_, bin), do: bin
 
   Enum.each(@types, fn type ->
     defp binary_type?(unquote(type)), do: true

@@ -14,11 +14,11 @@ defmodule QueryTest do
     assert { :ok, [{ nil }] } = Postgrex.query(context[:pid], "SELECT NULL")
     assert { :ok, [{ true, false }] } = Postgrex.query(context[:pid], "SELECT true, false")
     assert { :ok, [{ "e" }] } = Postgrex.query(context[:pid], "SELECT 'e'::char")
-    assert { :ok, [{ "é" }] } = Postgrex.query(context[:pid], "SELECT 'é'::char")
+    assert { :ok, [{ "ẽ" }] } = Postgrex.query(context[:pid], "SELECT 'ẽ'::char")
     assert { :ok, [{ 42 }] } = Postgrex.query(context[:pid], "SELECT 42")
     assert { :ok, [{ 42.0 }] } = Postgrex.query(context[:pid], "SELECT 42::float")
-    assert { :ok, [{ "josé" }] } = Postgrex.query(context[:pid], "SELECT 'josé'")
-    assert { :ok, [{ "josé" }] } = Postgrex.query(context[:pid], "SELECT 'josé'::varchar")
+    assert { :ok, [{ "ẽric" }] } = Postgrex.query(context[:pid], "SELECT 'ẽric'")
+    assert { :ok, [{ "ẽric" }] } = Postgrex.query(context[:pid], "SELECT 'ẽric'::varchar")
     assert { :ok, [{ << 1, 2, 3 >> }] } = Postgrex.query(context[:pid], "SELECT '\\001\\002\\003'::bytea")
   end
 
@@ -58,6 +58,12 @@ defmodule QueryTest do
   end
 
   test "encode basic types", context do
+    assert { :ok, [{ nil, nil }] } = Postgrex.query(context[:pid], "SELECT $1::text, $2::int", [nil, nil])
     assert { :ok, [{ true, false }] } = Postgrex.query(context[:pid], "SELECT $1::bool, $2::bool", [true, false])
+    assert { :ok, [{ "ẽ" }] } = Postgrex.query(context[:pid], "SELECT $1::char", ["ẽ"])
+    assert { :ok, [{ 42 }] } = Postgrex.query(context[:pid], "SELECT $1::int", [42])
+    assert { :ok, [{ 42.0, 43.0 }] } = Postgrex.query(context[:pid], "SELECT $1::float, $2::float", [42, 43.0])
+    assert { :ok, [{ "ẽric" }] } = Postgrex.query(context[:pid], "SELECT $1::varchar", ["ẽric"])
+    assert { :ok, [{ << 1, 2, 3 >> }] } = Postgrex.query(context[:pid], "SELECT $1::bytea", [<< 1, 2, 3 >>])
   end
 end

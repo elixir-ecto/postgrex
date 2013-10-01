@@ -205,8 +205,8 @@ defmodule Postgrex.Protocol do
                            param_formats, params: params, result_formats:
                            result_formats)) do
     { len_pfs, pfs } = encode_many(param_formats, &encode_format(&1))
-    { len_ps, ps }   = encode_many(params, &<< byte_size(&1) :: int32, &1 :: binary >>)
     { len_rfs, rfs } = encode_many(result_formats, &encode_format(&1))
+    { len_ps, ps }   = encode_many(params, &encode_param(&1))
 
     { ?B, [ port, 0, stat, 0, << len_pfs :: int16 >>, pfs, << len_ps :: int16 >>,
             ps, << len_rfs :: int16 >>, rfs ] }
@@ -229,17 +229,25 @@ defmodule Postgrex.Protocol do
 
   ### encode helpers ###
 
-  def encode_format(:text), do: << 0 :: int16 >>
-  def encode_format(:binary), do: << 1 :: int16 >>
+  defp encode_format(:text), do: << 0 :: int16 >>
+  defp encode_format(:binary), do: << 1 :: int16 >>
 
-  def encode_oid(_oid) do
+  defp encode_oid(_oid) do
   end
 
-  def encode_many(list, fun) when is_function(fun) do
+  defp encode_many(list, fun) when is_function(fun) do
     { count, iolist } = Enum.reduce(list, { 0, [] }, fn elem, { count, list } ->
       { count+1, [fun.(elem) | list] }
     end)
     { count, Enum.reverse(iolist) }
+  end
+
+  defp encode_param(param) do
+    if nil?(param) do
+      << -1 :: int32 >>
+    else
+      << byte_size(param) :: int32, param :: binary >>
+    end
   end
 
   ### decode helpers ###
