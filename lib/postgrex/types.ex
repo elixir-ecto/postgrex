@@ -3,7 +3,7 @@ defmodule Postgrex.Types do
 
   @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
            :float4, :float8, :date, :time, :timetz, :timestamp, :timestamptz,
-           :interval, :array ]
+           :interval, :array, :unknown ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -12,9 +12,10 @@ defmodule Postgrex.Types do
 
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
-      [oid, send] = row
+      [oid, send, elem_oid] = row
       { oid, "" } = String.to_integer(oid)
       send_size = String.length(send)
+      { elem, "" } = if elem_oid == "-1", do: nil, else: String.to_integer(elem_oid)
 
       send =
         try do
@@ -30,12 +31,27 @@ defmodule Postgrex.Types do
           :error, :badarg -> nil
         end
 
-      if binary_type?(send), do: Dict.put(acc, oid, send), else: acc
+      if binary_type?(send), do: Dict.put(acc, oid, { send, elem }), else: acc
     end)
   end
 
   def bootstrap_query do
-    "SELECT oid, typsend FROM pg_type"
+    "SELECT oid, typsend, typelem FROM pg_type"
+  end
+
+  def can_decode?(types, oid) do
+    case Dict.fetch(types, oid) do
+      { :ok, { :array, elem } } -> can_decode?(types, elem)
+      { :ok, _ } -> true
+      :error -> false
+    end
+  end
+
+  def oid_to_sender(types, oid) do
+    case Dict.fetch(types, oid) do
+      { :ok, { sender, _ } } -> sender
+      :error -> nil
+    end
   end
 
   def decode(:bool, << 1 :: int8 >>, _), do: true
@@ -56,7 +72,8 @@ defmodule Postgrex.Types do
   def decode(:timestamptz, << n :: int64 >>, _), do: decode_timestamp(n)
   def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
   def decode(:array, bin, types), do: decode_array(bin, types)
-  def decode(_, bin, _), do: bin
+  def decode(:unknown, bin, _), do: bin
+  def decode(_, nil, _), do: nil
 
   def encode(_, nil), do: nil
   def encode(:bool, true), do: << 1 >>
@@ -75,7 +92,6 @@ defmodule Postgrex.Types do
   def encode(:timestamp, timestamp), do: encode_timestamp(timestamp)
   def encode(:timestamptz, timestamp), do: encode_timestamp(timestamp)
   def encode(:interval, interval), do: encode_interval(interval)
-  def encode(_, bin), do: bin
 
   Enum.each(@types, fn type ->
     defp binary_type?(unquote(type)), do: true
@@ -105,8 +121,8 @@ defmodule Postgrex.Types do
   defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>, types) do
     { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
-    type = Dict.get(types, oid)
-    { array, "" } = decode_array(rest, type, types, lengths)
+    sender = oid_to_sender(types, oid)
+    { array, "" } = decode_array(rest, sender, types, lengths)
     array
   end
 
@@ -114,13 +130,13 @@ defmodule Postgrex.Types do
     { [], "" }
   end
 
-  defp decode_array(rest, type, types, [len]) do
-    decode_elements(rest, type, types, [], len)
+  defp decode_array(rest, sender, types, [len]) do
+    decode_elements(rest, sender, types, [], len)
   end
 
-  defp decode_array(rest, type, types, [len|lens]) do
+  defp decode_array(rest, sender, types, [len|lens]) do
     Enum.map_reduce(1..len, rest, fn _, rest ->
-      decode_array(rest, type, types, lens)
+      decode_array(rest, sender, types, lens)
     end)
   end
 
@@ -128,14 +144,14 @@ defmodule Postgrex.Types do
     { Enum.reverse(acc), rest }
   end
 
-  defp decode_elements(<< -1 :: int32, rest :: binary >>, type, types, acc, count) do
-    decode_elements(rest, type, types, [nil|acc], count-1)
+  defp decode_elements(<< -1 :: int32, rest :: binary >>, sender, types, acc, count) do
+    decode_elements(rest, sender, types, [nil|acc], count-1)
   end
 
   defp decode_elements(<< length :: int32, value :: binary(length), rest :: binary >>,
-                       type, types, acc, count) do
-    value = decode(type, value, types)
-    decode_elements(rest, type, types, [value|acc], count-1)
+                       sender, types, acc, count) do
+    value = decode(sender, value, types)
+    decode_elements(rest, sender, types, [value|acc], count-1)
   end
 
   ### encode helpers ###
