@@ -101,4 +101,12 @@ defmodule QueryTest do
     assert { :ok, [{ {10920,40,14} }] } =
       Postgrex.query(context[:pid], "SELECT $1::interval", [{10920,40,14}])
   end
+
+  test "encode arrays", context do
+    assert { :ok, [{ [] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[]])
+    assert { :ok, [{ [1] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[1]])
+    assert { :ok, [{ [1,2] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[1,2]])
+    assert { :ok, [{ [[0],[1]] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[[0],[1]]])
+    assert { :ok, [{ [[0]] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[[0]]])
+  end
 end

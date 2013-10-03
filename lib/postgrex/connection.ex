@@ -197,15 +197,9 @@ defmodule Postgrex.Connection do
   defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap, qparams: params,
                                                    portal: portal, state: :describing) = s) do
     rfs = []
-
     if not bootstrap do
-      { senders, rfs } = Enum.reduce(fields, { [], [] }, fn row_field(type_oid: oid), { senders, rfs } ->
-        sender = Types.oid_to_sender(types, oid)
-        format = if Types.can_decode?(types, oid), do: :binary, else: :text
-        { [sender|senders], [format|rfs] }
-      end)
-      rfs = Enum.reverse(rfs)
-      stat = statement(result_types: senders |> Enum.reverse |> list_to_tuple)
+      { senders, rfs } = extract_row_info(fields, types)
+      stat = statement(result_types: senders |> list_to_tuple)
     end
 
     param_oids = portal(portal, :param_oids)
@@ -215,8 +209,11 @@ defmodule Postgrex.Connection do
       { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
 
     else
-      params = Enum.zip(param_oids, params)
-        |> Enum.map(fn { oid, param } -> Types.encode(Types.oid_to_sender(types, oid), param) end)
+      zipped = Enum.zip(param_oids, params)
+      params = Enum.map(zipped, fn { oid, param } ->
+        sender = Types.oid_to_sender(types, oid)
+        Types.encode(sender, param, oid, types)
+      end)
 
       msgs = [
         msg_bind(name_port: "", name_stat: "", param_formats: [:binary], params: params, result_formats: rfs),
@@ -310,6 +307,15 @@ defmodule Postgrex.Connection do
   end
 
   ### helpers ###
+
+  defp extract_row_info(fields, types) do
+    { senders, rfs } = Enum.reduce(fields, { [], [] }, fn row_field(type_oid: oid), { senders, rfs } ->
+      sender = Types.oid_to_sender(types, oid)
+      format = if Types.can_decode?(types, oid), do: :binary, else: :text
+      { [sender|senders], [format|rfs] }
+    end)
+    { Enum.reverse(senders), Enum.reverse(rfs) }
+  end
 
   defp send_query(statement, s) do
     msgs = [

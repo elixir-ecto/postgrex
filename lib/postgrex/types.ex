@@ -3,7 +3,7 @@ defmodule Postgrex.Types do
 
   @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
            :float4, :float8, :date, :time, :timetz, :timestamp, :timestamptz,
-           :interval, :array, :unknown ]
+           :interval, :array ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -54,6 +54,16 @@ defmodule Postgrex.Types do
     end
   end
 
+  def oid_to_elem(types, oid) do
+    case Dict.fetch(types, oid) do
+      { :ok, { _, elem } } -> elem
+      :error -> nil
+    end
+  end
+
+  # TODO: Text format array decoding. We can decode all arrays but maybe not its
+  # elements, so we need to request text format for those arrays.
+
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false
   def decode(:bpchar, bin, _), do: bin
@@ -72,26 +82,26 @@ defmodule Postgrex.Types do
   def decode(:timestamptz, << n :: int64 >>, _), do: decode_timestamp(n)
   def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
   def decode(:array, bin, types), do: decode_array(bin, types)
-  def decode(:unknown, bin, _), do: bin
   def decode(_, nil, _), do: nil
 
-  def encode(_, nil), do: nil
-  def encode(:bool, true), do: << 1 >>
-  def encode(:bool, false), do: << 0 >>
-  def encode(:bpchar, bin), do: bin
-  def encode(:text, bin), do: bin
-  def encode(:varchar, bin), do: bin
-  def encode(:bytea, bin), do: bin
-  def encode(:int2, n), do: << n :: int16 >>
-  def encode(:int4, n), do: << n :: int32 >>
-  def encode(:int8, n), do: << n :: int64 >>
-  def encode(:float4, n), do: << n :: float32 >>
-  def encode(:float8, n), do: << n :: float64 >>
-  def encode(:date, date), do: encode_date(date)
-  def encode(:time, time), do: encode_time(time)
-  def encode(:timestamp, timestamp), do: encode_timestamp(timestamp)
-  def encode(:timestamptz, timestamp), do: encode_timestamp(timestamp)
-  def encode(:interval, interval), do: encode_interval(interval)
+  def encode(_, nil, _, _), do: nil
+  def encode(:bool, true, _, _), do: << 1 >>
+  def encode(:bool, false, _, _), do: << 0 >>
+  def encode(:bpchar, bin, _, _), do: bin
+  def encode(:text, bin, _, _), do: bin
+  def encode(:varchar, bin, _, _), do: bin
+  def encode(:bytea, bin, _, _), do: bin
+  def encode(:int2, n, _, _), do: << n :: int16 >>
+  def encode(:int4, n, _, _), do: << n :: int32 >>
+  def encode(:int8, n, _, _), do: << n :: int64 >>
+  def encode(:float4, n, _, _), do: << n :: float32 >>
+  def encode(:float8, n, _, _), do: << n :: float64 >>
+  def encode(:date, date, _, _), do: encode_date(date)
+  def encode(:time, time, _, _), do: encode_time(time)
+  def encode(:timestamp, timestamp, _, _), do: encode_timestamp(timestamp)
+  def encode(:timestamptz, timestamp, _, _), do: encode_timestamp(timestamp)
+  def encode(:interval, interval, _, _), do: encode_interval(interval)
+  def encode(:array, list, oid, types), do: encode_array(list, oid, types)
 
   Enum.each(@types, fn type ->
     defp binary_type?(unquote(type)), do: true
@@ -172,5 +182,43 @@ defmodule Postgrex.Types do
   defp encode_interval({ secs, days, months }) do
     microsecs = secs * 1_000_000
     << microsecs :: int64, days :: int32, months :: int32 >>
+  end
+
+  defp encode_array(list, oid, types) do
+    elem_oid = oid_to_elem(types, oid)
+    elem_type = oid_to_sender(types, elem_oid)
+    { data, ndims, lengths } = encode_array(list, elem_type, elem_oid, types, 0, [])
+    bin = iolist_to_binary(data)
+    lengths = bc len inlist Enum.reverse(lengths), do: << len :: int32, 1 :: int32 >>
+    << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
+  end
+
+  defp encode_array([], _type, _oid, _types, ndims, lengths) do
+    { "", ndims, lengths }
+  end
+
+  defp encode_array([head|tail]=list, type, oid, types, ndims, lengths) when is_list(head) do
+    lengths = [length(list)|lengths]
+    { data, ndims, lengths } = encode_array(head, type, oid, types, ndims, lengths)
+    [dimlength|_] = lengths
+
+    rest = Enum.map(tail, fn sublist ->
+      { data, _, [len|_] } = encode_array(sublist, type, oid, types, ndims, lengths)
+      if len != dimlength do
+        # TODO: Handle this throw :)
+        throw { :encode, "nested lists must have lists with matching lengths" }
+      end
+      data
+    end)
+
+    { [data|rest], ndims+1, lengths }
+  end
+
+  defp encode_array(list, type, oid, types, ndims, lengths) do
+    { data, length } = Enum.map_reduce(list, 0, fn elem, length ->
+      bin = encode(type, elem, oid, types)
+      { << byte_size(bin) :: int32, bin :: binary >>, length + 1 }
+    end)
+    { data, ndims+1, [length|lengths] }
   end
 end
