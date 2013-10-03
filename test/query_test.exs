@@ -109,4 +109,9 @@ defmodule QueryTest do
     assert { :ok, [{ [[0],[1]] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[[0],[1]]])
     assert { :ok, [{ [[0]] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[[0]]])
   end
+
+  test "non data statement", context do
+    assert :ok = Postgrex.query(context[:pid], "BEGIN")
+    assert :ok = Postgrex.query(context[:pid], "COMMIT")
+  end
 end

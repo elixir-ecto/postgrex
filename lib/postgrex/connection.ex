@@ -190,6 +190,11 @@ defmodule Postgrex.Connection do
 
   ### describing state ###
 
+  defp message(msg_parse_complete(), state(state: :describing) = s) do
+    s = reply(:ok, s)
+    { :ok, state(s, state: :ready) }
+  end
+
   defp message(msg_parameter_desc(type_oids: oids), state(state: :describing) = s) do
     { :ok, state(s, portal: portal(param_oids: oids)) }
   end

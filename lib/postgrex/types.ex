@@ -64,6 +64,8 @@ defmodule Postgrex.Types do
   # TODO: Text format array decoding. We can decode all arrays but maybe not its
   # elements, so we need to request text format for those arrays.
 
+  # TODO: Composite type encoding/decoding
+
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false
   def decode(:bpchar, bin, _), do: bin
