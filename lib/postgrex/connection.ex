@@ -191,8 +191,18 @@ defmodule Postgrex.Connection do
   ### describing state ###
 
   defp message(msg_parse_complete(), state(state: :describing) = s) do
-    s = reply(:ok, s)
-    { :ok, state(s, state: :ready) }
+    msgs = [
+        msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
+        msg_execute(name_port: "", max_rows: 0),
+        msg_sync() ]
+
+      case send_to_result(msgs, s) do
+        { :ok, s } ->
+          stat = statement(result_types: [])
+          { :ok, state(s, statement: stat, qparams: nil) }
+        err ->
+          err
+      end
   end
 
   defp message(msg_parameter_desc(type_oids: oids), state(state: :describing) = s) do
