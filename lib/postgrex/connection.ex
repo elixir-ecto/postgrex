@@ -224,22 +224,28 @@ defmodule Postgrex.Connection do
       { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
 
     else
-      zipped = Enum.zip(param_oids, params)
-      params = Enum.map(zipped, fn { oid, param } ->
-        sender = Types.oid_to_sender(types, oid)
-        Types.encode(sender, param, oid, types)
-      end)
+      try do
+        zipped = Enum.zip(param_oids, params)
+        params = Enum.map(zipped, fn { oid, param } ->
+          sender = Types.oid_to_sender(types, oid)
+          Types.encode(sender, param, oid, types)
+        end)
 
-      msgs = [
-        msg_bind(name_port: "", name_stat: "", param_formats: [:binary], params: params, result_formats: rfs),
-        msg_execute(name_port: "", max_rows: 0),
-        msg_sync() ]
+        msgs = [
+          msg_bind(name_port: "", name_stat: "", param_formats: [:binary], params: params, result_formats: rfs),
+          msg_execute(name_port: "", max_rows: 0),
+          msg_sync() ]
 
-      case send_to_result(msgs, s) do
-        { :ok, s } ->
-          { :ok, state(s, statement: stat, qparams: nil) }
-        err ->
-          err
+        case send_to_result(msgs, s) do
+          { :ok, s } ->
+            { :ok, state(s, statement: stat, qparams: nil) }
+          err ->
+            err
+        end
+      catch
+        { :postgrex_encode, _ } = err ->
+          s = reply({ :error, err }, s)
+          { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
       end
     end
   end
@@ -274,27 +280,31 @@ defmodule Postgrex.Connection do
 
   defp message(msg_command_complete(), state(statement: stat, types: types,
                                              rows: rows, state: :executing) = s) do
-    res_types = statement(stat, :result_types)
+    if rows == [] do
+      s = reply(:ok, s)
+    else
+      res_types = statement(stat, :result_types)
 
-    result = Enum.reduce(rows, [], fn values, acc ->
-      { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
-        if type = elem(res_types, count) do
-          decoded = Types.decode(type, value, types)
-        else
-          decoded = value
-        end
-        { count+1, [decoded|list] }
+      result = Enum.reduce(rows, [], fn values, acc ->
+        { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
+          if type = elem(res_types, count) do
+            decoded = Types.decode(type, value, types)
+          else
+            decoded = value
+          end
+          { count+1, [decoded|list] }
+        end)
+        row = Enum.reverse(row) |> list_to_tuple
+        [ row | acc ]
       end)
-      row = Enum.reverse(row) |> list_to_tuple
-      [ row | acc ]
-    end)
 
-    s = reply({ :ok, result }, s)
+      s = reply({ :ok, result }, s)
+    end
     { :ok, state(s, rows: [], statement: nil, portal: nil) }
   end
 
   defp message(msg_empty_query(), state(state: :executing) = s) do
-    s = reply({ :ok, [] }, s)
+    s = reply(:ok, s)
     { :ok, s }
   end
 

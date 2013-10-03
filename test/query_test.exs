@@ -110,6 +110,20 @@ defmodule QueryTest do
     assert { :ok, [{ [[0]] }] } = Postgrex.query(context[:pid], "SELECT $1::integer[]", [[[0]]])
   end
 
+  test "fail on encode arrays", context do
+    assert { :error, { :postgrex_encode, _ } } =
+           Postgrex.query(context[:pid], "SELECT $1::integer[]", [[[1], [1,2]]])
+    assert { :ok, [{42}] } = Postgrex.query(context[:pid], "SELECT 42")
+  end
+
+  test "fail on encode wrong value", context do
+    assert { :error, { :postgrex_encode, _ } } =
+           Postgrex.query(context[:pid], "SELECT $1::integer", ["123"])
+    assert { :error, { :postgrex_encode, _ } } =
+           Postgrex.query(context[:pid], "SELECT $1::text", [4.0])
+    assert { :ok, [{42}] } = Postgrex.query(context[:pid], "SELECT 42")
+  end
+
   test "non data statement", context do
     assert :ok = Postgrex.query(context[:pid], "BEGIN")
     assert :ok = Postgrex.query(context[:pid], "COMMIT")
