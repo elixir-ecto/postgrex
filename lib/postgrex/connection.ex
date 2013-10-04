@@ -14,16 +14,19 @@ defmodule Postgrex.Connection do
   defrecordp :statement, [:result_types]
   defrecordp :portal, [:param_oids]
 
-  def start_link() do
-    :gen_server.start_link(__MODULE__, [], [])
+  def start_link(opts, params) do
+    case :gen_server.start_link(__MODULE__, [], []) do
+      { :ok, pid } ->
+        case :gen_server.call(pid, { :connect, opts, params }) do
+          :ok -> { :ok, pid }
+          err -> err
+        end
+      err -> err
+    end
   end
 
   def stop(pid) do
     :gen_server.call(pid, :stop)
-  end
-
-  def connect(pid, opts, params) do
-    :gen_server.call(pid, { :connect, opts, params })
   end
 
   def query(pid, statement, params) do

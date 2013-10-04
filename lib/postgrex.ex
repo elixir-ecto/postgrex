@@ -18,11 +18,7 @@ defmodule Postgrex do
       is_binary(password) and is_binary(database) do
     opts = [ address: address, port: port, username: username,
              password: password, database: database ]
-    { :ok, pid } = Connection.start_link()
-    case Connection.connect(pid, opts, parameters) do
-      :ok -> { :ok, pid }
-      err -> err
-    end
+    Connection.start_link(opts, parameters)
   end
 
   def disconnect(pid) do
