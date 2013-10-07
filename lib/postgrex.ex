@@ -32,4 +32,37 @@ defmodule Postgrex do
   def parameters(pid) do
     Connection.parameters(pid)
   end
+
+  def in_transaction(pid, fun) do
+    case Postgrex.begin(pid) do
+      :ok ->
+        try do
+          value = fun.()
+          case Postgrex.commit(pid) do
+            :ok -> { :ok, value }
+            err -> err
+          end
+        catch
+          :throw, :postgrex_rollback ->
+            Postgrex.rollback(pid)
+            { :ok, :rollback }
+          type, term ->
+            Postgrex.rollback(pid)
+            :erlang.raise(type, term, System.stacktrace)
+        end
+      err -> err
+    end
+  end
+
+  def begin(pid) do
+    Postgrex.Connection.begin(pid)
+  end
+
+  def commit(pid) do
+    Postgrex.Connection.commit(pid)
+  end
+
+  def rollback(pid) do
+    Postgrex.Connection.rollback(pid)
+  end
 end

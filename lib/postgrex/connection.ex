@@ -9,7 +9,7 @@ defmodule Postgrex.Connection do
 
   defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
                        :backend_key, :rows, :statement, :portal, :qparams,
-                       :bootstrap, :types ]
+                       :bootstrap, :types, :transactions ]
 
   defrecordp :statement, [:result_types]
   defrecordp :portal, [:param_oids]
@@ -37,8 +37,21 @@ defmodule Postgrex.Connection do
     :gen_server.call(pid, :parameters)
   end
 
+  def begin(pid) do
+    :gen_server.call(pid, :begin)
+  end
+
+  def rollback(pid) do
+    :gen_server.call(pid, :rollback)
+  end
+
+  def commit(pid) do
+    :gen_server.call(pid, :commit)
+  end
+
   def init([]) do
-    { :ok, state(state: :ready, tail: "", parameters: [], rows: [], bootstrap: false) }
+    { :ok, state(state: :ready, tail: "", parameters: [], rows: [],
+                 bootstrap: false, transactions: 0) }
   end
 
   def handle_call(:stop, from, state(state: :ready) = s) do
@@ -82,6 +95,45 @@ defmodule Postgrex.Connection do
   def handle_call(:parameters, from, state(parameters: params, state: :ready) = s) do
     :gen_server.reply(from, params)
     { :noreply, s }
+  end
+
+  def handle_call(:begin, from, state(transactions: trans, state: :ready) = s) do
+    if trans == 0 do
+      s = state(s, transactions: 1)
+      handle_call({ :query, "BEGIN", [] }, from, s)
+    else
+      s = state(s, transactions: trans + 1)
+      handle_call({ :query, "SAVEPOINT postgrex_#{trans}", [] }, from, s)
+    end
+  end
+
+  def handle_call(:rollback, from, state(transactions: trans, state: :ready) = s) do
+    cond do
+      trans == 0 ->
+        :gen_server.reply(from, :ok)
+        { :noreply, s }
+      trans == 1 ->
+        s = state(s, transactions: 0)
+        handle_call({ :query, "ROLLBACK", [] }, from, s)
+      true ->
+        trans = trans - 1
+        s = state(s, transactions: trans)
+        handle_call({ :query, "ROLLBACK TO SAVEPOINT postgrex_#{trans}", [] }, from, s)
+    end
+  end
+
+  def handle_call(:commit, from, state(transactions: trans, state: :ready) = s) do
+    case trans do
+      0 ->
+        :gen_server.reply(from, :ok)
+        { :noreply, s }
+      1 ->
+        s = state(s, transactions: 0)
+        handle_call({ :query, "COMMIT", [] }, from, s)
+      _ ->
+        :gen_server.reply(from, :ok)
+        { :noreply, state(s, transactions: trans - 1) }
+    end
   end
 
   def handle_info({ :tcp, _, data }, state(reply_to: from, sock: sock, tail: tail) = s) do
@@ -201,8 +253,7 @@ defmodule Postgrex.Connection do
 
       case send_to_result(msgs, s) do
         { :ok, s } ->
-          stat = statement(result_types: [])
-          { :ok, state(s, statement: stat, qparams: nil) }
+          { :ok, state(s, qparams: nil) }
         err ->
           err
       end
@@ -283,7 +334,7 @@ defmodule Postgrex.Connection do
 
   defp message(msg_command_complete(), state(statement: stat, types: types,
                                              rows: rows, state: :executing) = s) do
-    if rows == [] do
+    if nil?(stat) do
       s = reply(:ok, s)
     else
       res_types = statement(stat, :result_types)
@@ -353,10 +404,17 @@ defmodule Postgrex.Connection do
 
     case send_to_result(msgs, s) do
       { :ok, s } ->
-        { :ok, state(s, state: :parsing) }
+        { :ok, state(s, statement: nil, state: :parsing) }
       err ->
         err
     end
+  end
+
+  defp reply(_msg, state(reply_to: nil) = s), do: s
+
+  defp reply(:ok, state(reply_to: from) = s) do
+    :gen_server.reply(from, :ok)
+    state(s, reply_to: nil)
   end
 
   defp reply(msg, state(reply_to: from) = s) do
