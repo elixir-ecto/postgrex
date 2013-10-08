@@ -18,20 +18,16 @@ defmodule Postgrex.Types do
       { elem, "" } = if elem_oid == "-1", do: nil, else: String.to_integer(elem_oid)
 
       send =
-        try do
-          cond do
-            String.ends_with?(send, "_send") ->
-              String.slice(send, 0, send_size - 5) |> binary_to_existing_atom
-            String.ends_with?(send, "send") ->
-              String.slice(send, 0, send_size - 4) |> binary_to_existing_atom
-            true ->
-              nil
-          end
-        catch
-          :error, :badarg -> nil
+        cond do
+          String.ends_with?(send, "_send") ->
+            String.slice(send, 0, send_size - 5) |> binary_to_atom
+          String.ends_with?(send, "send") ->
+            String.slice(send, 0, send_size - 4) |> binary_to_atom
+          true ->
+            nil
         end
 
-      if binary_type?(send), do: Dict.put(acc, oid, { send, elem }), else: acc
+      Dict.put(acc, oid, { send, binary_type?(send), elem })
     end)
   end
 
@@ -44,22 +40,22 @@ defmodule Postgrex.Types do
 
   def can_decode?(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { :array, elem } } -> can_decode?(types, elem)
-      { :ok, _ } -> true
-      :error -> false
+      { :ok, { :array, true, elem } } -> can_decode?(types, elem)
+      { :ok, { _, true, _, } } -> true
+      _-> false
     end
   end
 
   def oid_to_sender(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { sender, _ } } -> sender
+      { :ok, { sender, _, _ } } -> sender
       :error -> nil
     end
   end
 
   def oid_to_elem(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { _, elem } } -> elem
+      { :ok, { _, _, elem } } -> elem
       :error -> nil
     end
   end

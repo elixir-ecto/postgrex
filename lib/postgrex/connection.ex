@@ -11,7 +11,7 @@ defmodule Postgrex.Connection do
                        :backend_key, :rows, :statement, :portal, :qparams,
                        :bootstrap, :types, :transactions ]
 
-  defrecordp :statement, [:result_types, :columns]
+  defrecordp :statement, [:row_info, :columns]
   defrecordp :portal, [:param_oids]
 
   def start_link(opts, params // []) do
@@ -260,43 +260,39 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap, qparams: params,
-                                                   portal: portal, state: :describing) = s) do
+                                                   portal: portal, opts: opts, state: :describing) = s) do
     rfs = []
     if not bootstrap do
-      { senders, rfs, cols } = extract_row_info(fields, types)
-      stat = statement(columns: cols, result_types: senders |> list_to_tuple)
+      { info, rfs, cols } = extract_row_info(fields, types)
+      stat = statement(columns: cols, row_info: list_to_tuple(info))
     end
 
     param_oids = portal(portal, :param_oids)
-    error_oid = Enum.find(param_oids, &!Types.can_decode?(types, &1))
-    if error_oid do
-      s = reply(Postgrex.Error[reason: "unable to encode Postgres type of oid: #{error_oid}"], s)
-      { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
+    try do
+      encoder = opts[:encoder]
+      zipped = Enum.zip(param_oids, params)
+      params = Enum.map(zipped, fn { oid, param } ->
+        sender = Types.oid_to_sender(types, oid)
+        if encoder, do: param = encoder.pre_encode(sender, oid, param)
+        value = if Types.can_decode?(types, oid), do: Types.encode(sender, param, oid, types)
+        if encoder, do: encoder.post_encode(sender, oid, param, value), else: value
+      end)
 
-    else
-      try do
-        zipped = Enum.zip(param_oids, params)
-        params = Enum.map(zipped, fn { oid, param } ->
-          sender = Types.oid_to_sender(types, oid)
-          Types.encode(sender, param, oid, types)
-        end)
+      msgs = [
+        msg_bind(name_port: "", name_stat: "", param_formats: [:binary], params: params, result_formats: rfs),
+        msg_execute(name_port: "", max_rows: 0),
+        msg_sync() ]
 
-        msgs = [
-          msg_bind(name_port: "", name_stat: "", param_formats: [:binary], params: params, result_formats: rfs),
-          msg_execute(name_port: "", max_rows: 0),
-          msg_sync() ]
-
-        case send_to_result(msgs, s) do
-          { :ok, s } ->
-            { :ok, state(s, statement: stat, qparams: nil) }
-          err ->
-            err
-        end
-      catch
-        { :postgrex_encode, msg } ->
-          s = reply(Postgrex.Error[reason: msg], s)
-          { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
+      case send_to_result(msgs, s) do
+        { :ok, s } ->
+          { :ok, state(s, statement: stat, qparams: nil) }
+        err ->
+          err
       end
+    catch
+      { :postgrex_encode, msg } ->
+        s = reply(Postgrex.Error[reason: msg], s)
+        { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
     end
   end
 
@@ -329,19 +325,21 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_command_complete(tag: tag), state(statement: stat,
-      types: types, rows: rows, state: :executing) = s) do
+      types: types, rows: rows, opts: opts, state: :executing) = s) do
     if nil?(stat) do
       s = reply(create_result(tag), s)
     else
-      statement(result_types: res_types, columns: cols) = stat
+      statement(row_info: info, columns: cols) = stat
+      decoder = opts[:decoder]
 
       result = Enum.reduce(rows, [], fn values, acc ->
         { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
-          if type = elem(res_types, count) do
-            decoded = Types.decode(type, value, types)
-          else
-            decoded = value
+          { sender, oid, can_decode } = elem(info, count)
+          if can_decode do
+            decoded = Types.decode(sender, value, types)
           end
+          if decoder, do: decoded = decoder.decode(sender, oid, value, decoded)
+          if nil?(decoded), do: decoded = value
           { count+1, [decoded|list] }
         end)
         row = Enum.reverse(row) |> list_to_tuple
@@ -385,8 +383,9 @@ defmodule Postgrex.Connection do
   defp extract_row_info(fields, types) do
     Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
       sender = Types.oid_to_sender(types, oid)
-      format = if Types.can_decode?(types, oid), do: :binary, else: :text
-      { sender, format, name }
+      can_decode = Types.can_decode?(types, oid)
+      format = if can_decode, do: :binary, else: :text
+      { { sender, oid, can_decode }, format, name }
     end) |> List.unzip |> list_to_tuple
   end
 

@@ -13,11 +13,11 @@ defmodule Postgrex do
     end
   end
 
-  def connect(hostname, port // 5432, username, password, database, parameters) when
+  def connect(hostname, port // 5432, username, password, database, opts, parameters) when
       is_hostname(hostname) and is_port_number(port) and is_binary(username) and
       is_binary(password) and is_binary(database) do
     opts = [ hostname: hostname, port: port, username: username,
-             password: password, database: database ]
+             password: password, database: database ] ++ opts
     Connection.start_link(opts, parameters)
   end
 

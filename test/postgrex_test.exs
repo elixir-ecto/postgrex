@@ -3,7 +3,7 @@ defmodule PostgrexTest do
   import Postgrex.TestHelper
 
   setup do
-    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [])
+    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [], [])
     { :ok, _ } = Postgrex.query(pid, "DROP TABLE IF EXISTS transaction")
     { :ok, _ } = Postgrex.query(pid, "CREATE TABLE transaction (data text)")
     { :ok, [pid: pid] }

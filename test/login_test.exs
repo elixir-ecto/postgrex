@@ -6,24 +6,24 @@ defmodule LoginTest do
 
   test "login cleartext password" do
     assert { :ok, pid } =
-      Postgrex.connect("localhost", "postgrex_cleartext_pw", "postgrex_cleartext_pw", "postgres", [])
+      Postgrex.connect("localhost", "postgrex_cleartext_pw", "postgrex_cleartext_pw", "postgres", [], [])
     assert :ok = Postgrex.disconnect(pid)
   end
 
   test "login md5 password" do
     assert { :ok, pid } =
-      Postgrex.connect("localhost", "postgrex_md5_pw", "postgrex_md5_pw", "postgres", [])
+      Postgrex.connect("localhost", "postgrex_md5_pw", "postgrex_md5_pw", "postgres", [], [])
     assert :ok = Postgrex.disconnect(pid)
   end
 
   test "parameters" do
-    assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [])
+    assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [], [])
     assert Postgrex.parameters(pid)["server_version"] =~ %R"\d+\.\d+\.\d+"
     if Postgrex.parameters(pid)["server_version"] =~ %R"9\.\d+\.\d+" do
       assert "" == Postgrex.parameters(pid)["application_name"]
       assert :ok = Postgrex.disconnect(pid)
 
-      assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [application_name: "postgrex"])
+      assert { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [], [application_name: "postgrex"])
       assert "postgrex" == Postgrex.parameters(pid)["application_name"]
       assert :ok = Postgrex.disconnect(pid)
     else

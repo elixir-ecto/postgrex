@@ -3,7 +3,7 @@ defmodule QueryTest do
   import Postgrex.TestHelper
 
   setup do
-    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [])
+    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [], [])
     { :ok, [pid: pid] }
   end
 
