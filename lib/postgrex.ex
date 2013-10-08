@@ -48,8 +48,9 @@ defmodule Postgrex do
         catch
           :throw, :postgrex_rollback ->
             case Postgrex.rollback(pid) do
-              :ok ->
+              :ok -> nil
               err -> raise err
+            end
           type, term ->
             Postgrex.rollback(pid)
             :erlang.raise(type, term, System.stacktrace)
