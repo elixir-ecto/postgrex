@@ -11,10 +11,10 @@ defmodule Postgrex.Connection do
                        :backend_key, :rows, :statement, :portal, :qparams,
                        :bootstrap, :types, :transactions ]
 
-  defrecordp :statement, [:result_types]
+  defrecordp :statement, [:result_types, :columns]
   defrecordp :portal, [:param_oids]
 
-  def start_link(opts, params) do
+  def start_link(opts, params // []) do
     case :gen_server.start_link(__MODULE__, [], []) do
       { :ok, pid } ->
         case :gen_server.call(pid, { :connect, opts, params }) do
@@ -60,24 +60,22 @@ defmodule Postgrex.Connection do
 
   def handle_call({ :connect, opts, params }, from, state(state: :ready) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
-    address = opts[:address]
-    address = if is_binary(address), do: String.to_char_list!(address)
+    hostname = opts[:hostname]
+    hostname = if is_binary(hostname), do: String.to_char_list!(hostname)
 
-    case :gen_tcp.connect(address, opts[:port], sock_opts) do
+    case :gen_tcp.connect(hostname, opts[:port], sock_opts) do
       { :ok, sock } ->
         msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
         case send(msg, sock) do
           :ok ->
             { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: :auth) }
           { :error, reason } ->
-            reason = { :tcp_send, reason }
-            :gen_server.reply(from, { :error, reason })
+            :gen_server.reply(from, Postgrex.Error[reason: "tcp send: #{reason}"])
             { :stop, :normal, s }
         end
 
       { :error, reason } ->
-        reason = { :tcp_connect, reason }
-        :gen_server.reply(from, { :error, reason })
+        :gen_server.reply(from, Postgrex.Error[reason: "tcp connect: #{reason}"])
         { :stop, :normal, s }
     end
   end
@@ -141,33 +139,33 @@ defmodule Postgrex.Connection do
       { :ok, s } ->
         :inet.setopts(sock, active: :once)
         { :noreply, s }
-      { :error, reason, s } ->
+      { :error, error, s } ->
         if from do
-          :gen_server.reply(from, { :error, reason })
+          :gen_server.reply(from, error)
           { :stop, :normal, s }
         else
-          { :stop, reason, s }
+          { :stop, error, s }
         end
     end
   end
 
   def handle_info({ :tcp_closed, _ }, state(reply_to: from) = s) do
-    reason = :tcp_closed
+    error = Postgrex.Error[reason: "tcp closed"]
     if from do
-      :gen_server.reply(from, { :error, reason })
+      :gen_server.reply(from, error)
       { :stop, :normal, s }
     else
-      { :stop, reason, s }
+      { :stop, error, s }
     end
   end
 
   def handle_info({ :tcp_error, _, reason }, state(reply_to: from) = s) do
-    reason = { :tcp_error, reason }
+    error = Postgrex.Error[reason: "tcp error: #{reason}"]
     if from do
-      :gen_server.reply(from, { :error, reason })
+      :gen_server.reply(from, error)
       { :stop, :normal, s }
     else
-      { :stop, reason, s }
+      { :stop, error, s }
     end
   end
 
@@ -217,8 +215,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_error(fields: fields), state(state: :auth) = s) do
-    error = { :pgsql_error, fields }
-    { :error, error, s }
+    { :error, Postgrex.Error[postgres: fields], s }
   end
 
   ### init state ###
@@ -233,8 +230,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_error(fields: fields), state(state: :init) = s) do
-    error = { :pgsql_error, fields }
-    { :error, error, s }
+    { :error, Postgrex.Error[postgres: fields], s }
   end
 
   ### parsing state ###
@@ -267,14 +263,14 @@ defmodule Postgrex.Connection do
                                                    portal: portal, state: :describing) = s) do
     rfs = []
     if not bootstrap do
-      { senders, rfs } = extract_row_info(fields, types)
-      stat = statement(result_types: senders |> list_to_tuple)
+      { senders, rfs, cols } = extract_row_info(fields, types)
+      stat = statement(columns: cols, result_types: senders |> list_to_tuple)
     end
 
     param_oids = portal(portal, :param_oids)
     error_oid = Enum.find(param_oids, &!Types.can_decode?(types, &1))
     if error_oid do
-      s = reply({ :error, "unable to encode Postgres type of oid: #{error_oid}" }, s)
+      s = reply(Postgrex.Error[reason: "unable to encode Postgres type of oid: #{error_oid}"], s)
       { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
 
     else
@@ -297,8 +293,8 @@ defmodule Postgrex.Connection do
             err
         end
       catch
-        { :postgrex_encode, _ } = err ->
-          s = reply({ :error, err }, s)
+        { :postgrex_encode, msg } ->
+          s = reply(Postgrex.Error[reason: msg], s)
           { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
       end
     end
@@ -332,12 +328,12 @@ defmodule Postgrex.Connection do
     { :ok, state(s, rows: [], bootstrap: false, types: types) }
   end
 
-  defp message(msg_command_complete(), state(statement: stat, types: types,
-                                             rows: rows, state: :executing) = s) do
+  defp message(msg_command_complete(tag: tag), state(statement: stat,
+      types: types, rows: rows, state: :executing) = s) do
     if nil?(stat) do
-      s = reply(:ok, s)
+      s = reply(create_result(tag), s)
     else
-      res_types = statement(stat, :result_types)
+      statement(result_types: res_types, columns: cols) = stat
 
       result = Enum.reduce(rows, [], fn values, acc ->
         { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
@@ -352,13 +348,13 @@ defmodule Postgrex.Connection do
         [ row | acc ]
       end)
 
-      s = reply({ :ok, result }, s)
+      s = reply(create_result(tag, result, cols), s)
     end
     { :ok, state(s, rows: [], statement: nil, portal: nil) }
   end
 
   defp message(msg_empty_query(), state(state: :executing) = s) do
-    s = reply(:ok, s)
+    s = reply(Postgrex.Result[empty?: true], s)
     { :ok, s }
   end
 
@@ -374,8 +370,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_error(fields: fields), s) do
-    error = { :pgsql_error, fields }
-    s = reply({ :error, error }, s)
+    s = reply(Postgrex.Error[postgres: fields], s)
     # TODO: subscribers
     { :ok, s }
   end
@@ -388,12 +383,11 @@ defmodule Postgrex.Connection do
   ### helpers ###
 
   defp extract_row_info(fields, types) do
-    { senders, rfs } = Enum.reduce(fields, { [], [] }, fn row_field(type_oid: oid), { senders, rfs } ->
+    Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
       sender = Types.oid_to_sender(types, oid)
       format = if Types.can_decode?(types, oid), do: :binary, else: :text
-      { [sender|senders], [format|rfs] }
-    end)
-    { Enum.reverse(senders), Enum.reverse(rfs) }
+      { sender, format, name }
+    end) |> List.unzip |> list_to_tuple
   end
 
   defp send_query(statement, s) do
@@ -408,6 +402,34 @@ defmodule Postgrex.Connection do
       err ->
         err
     end
+  end
+
+  defp create_result(tag) do
+    create_result(tag, true, nil, nil)
+  end
+
+  defp create_result(tag, rows, cols) do
+    create_result(tag, false, rows, cols)
+  end
+
+  defp create_result(tag, empty, rows, cols) do
+    { command, nrows } = decode_tag(tag)
+    Postgrex.Result[command: command, size: nrows, rows: rows, empty?: empty,
+                    columns: cols]
+  end
+
+  defp decode_tag(tag) do
+    words = String.split(tag, " ")
+    words = Enum.map(words, fn word ->
+      case String.to_integer(word) do
+        { num, "" } -> num
+        :error -> word
+      end
+    end)
+
+    { command, nums } = Enum.split_while(words, &is_binary(&1))
+    command = Enum.join(command, "_") |> String.downcase |> binary_to_atom
+    { command, List.last(nums) }
   end
 
   defp reply(_msg, state(reply_to: nil) = s), do: s
@@ -436,8 +458,10 @@ defmodule Postgrex.Connection do
 
   defp send_to_result(msg, s) do
     case send(msg, s) do
-      :ok -> { :ok, s }
-      { :error, reason } -> { :error, { :tcp_send, reason }, s }
+      :ok ->
+        { :ok, s }
+      { :error, reason } ->
+        { :error, Postgrex.Error[reason: "tcp send: #{reason}"] , s }
     end
   end
 

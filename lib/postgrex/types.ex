@@ -39,6 +39,9 @@ defmodule Postgrex.Types do
     "SELECT oid, typsend, typelem FROM pg_type"
   end
 
+  # TODO: Consider doing automatic refecth of pg_type if we get an
+  # unrecognized oid
+
   def can_decode?(types, oid) do
     case Dict.fetch(types, oid) do
       { :ok, { :array, elem } } -> can_decode?(types, elem)

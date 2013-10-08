@@ -7,16 +7,16 @@ defmodule Postgrex do
     end
   end
 
-  defmacrop is_address(addr) do
+  defmacrop is_hostname(host) do
     quote do
-      is_binary(unquote(addr)) or elem(unquote(addr), 3)
+      is_binary(unquote(host)) or elem(unquote(host), 3)
     end
   end
 
-  def connect(address, port // 5432, username, password, database, parameters) when
-      is_address(address) and is_port_number(port) and is_binary(username) and
+  def connect(hostname, port // 5432, username, password, database, parameters) when
+      is_hostname(hostname) and is_port_number(port) and is_binary(username) and
       is_binary(password) and is_binary(database) do
-    opts = [ address: address, port: port, username: username,
+    opts = [ hostname: hostname, port: port, username: username,
              password: password, database: database ]
     Connection.start_link(opts, parameters)
   end
@@ -26,7 +26,10 @@ defmodule Postgrex do
   end
 
   def query(pid, statement, params // []) do
-    Connection.query(pid, statement, params)
+    case Connection.query(pid, statement, params) do
+      Postgrex.Result[] = res -> { :ok, res }
+      Postgrex.Error[] = err -> { :error, err }
+    end
   end
 
   def parameters(pid) do
@@ -39,30 +42,40 @@ defmodule Postgrex do
         try do
           value = fun.()
           case Postgrex.commit(pid) do
-            :ok -> { :ok, value }
-            err -> err
+            :ok -> value
+            err -> raise err
           end
         catch
           :throw, :postgrex_rollback ->
-            Postgrex.rollback(pid)
-            { :ok, :rollback }
+            case Postgrex.rollback(pid) do
+              :ok ->
+              err -> raise err
           type, term ->
             Postgrex.rollback(pid)
             :erlang.raise(type, term, System.stacktrace)
         end
-      err -> err
+      err -> raise err
     end
   end
 
   def begin(pid) do
-    Postgrex.Connection.begin(pid)
+    case Postgrex.Connection.begin(pid) do
+      Postgrex.Result[] -> :ok
+      err -> err
+    end
   end
 
   def commit(pid) do
-    Postgrex.Connection.commit(pid)
+    case Postgrex.Connection.commit(pid) do
+      Postgrex.Result[] -> :ok
+      err -> err
+    end
   end
 
   def rollback(pid) do
-    Postgrex.Connection.rollback(pid)
+    case Postgrex.Connection.rollback(pid) do
+      Postgrex.Result[] -> :ok
+      err -> err
+    end
   end
 end
