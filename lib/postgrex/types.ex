@@ -114,7 +114,7 @@ defmodule Postgrex.Types do
   end
 
   defp decode_interval(microsecs, days, months) do
-    { div(microsecs, 1_000_000), days, months }
+    { months, days, div(microsecs, 1_000_000) }
   end
 
   defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>, types) do
@@ -187,7 +187,7 @@ defmodule Postgrex.Types do
     << secs * 1_000_000 :: int64 >>
   end
 
-  defp encode_interval({ secs, days, months }) do
+  defp encode_interval({ months, days, secs }) do
     microsecs = secs * 1_000_000
     << microsecs :: int64, days :: int32, months :: int32 >>
   end

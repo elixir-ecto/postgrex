@@ -53,9 +53,9 @@ defmodule QueryTest do
   test "decode interval", context do
     assert [{ {0,0,0} }] = query("SELECT interval '0'")
     assert [{ {0,100,0} }] = query("SELECT interval '100 days'")
-    assert [{ {180000,0,0} }] = query("SELECT interval '50 hours'")
-    assert [{ {1,0,0} }] = query("SELECT interval '1 second'")
-    assert [{ {10920,40,14} }] = query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'")
+    assert [{ {0,0,180000} }] = query("SELECT interval '50 hours'")
+    assert [{ {0,0,1} }] = query("SELECT interval '1 second'")
+    assert [{ {14,40,10920} }] = query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'")
   end
 
   test "encode basic types", context do
@@ -95,12 +95,12 @@ defmodule QueryTest do
       query("SELECT $1::interval", [{0,0,0}])
     assert [{ {0,100,0} }] =
       query("SELECT $1::interval", [{0,100,0}])
-    assert [{ {180000,0,0} }] =
-      query("SELECT $1::interval", [{180000,0,0}])
-    assert [{ {1,0,0} }] =
-      query("SELECT $1::interval", [{1,0,0}])
-    assert [{ {10920,40,14} }] =
-      query("SELECT $1::interval", [{10920,40,14}])
+    assert [{ {0,0,180000} }] =
+      query("SELECT $1::interval", [{0,0,180000}])
+    assert [{ {0,0,1} }] =
+      query("SELECT $1::interval", [{0,0,1}])
+    assert [{ {14,40,10920} }] =
+      query("SELECT $1::interval", [{14,40,10920}])
   end
 
   test "encode arrays", context do
