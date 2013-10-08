@@ -169,12 +169,16 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def terminate(_reason, state(sock: sock) = s) do
+  def terminate(reason, state(sock: sock) = s) do
     if sock do
       send(msg_terminate(), sock)
       :gen_tcp.close(sock)
     end
-    reply(:ok, s)
+    if reason == :normal do
+      reply(:ok, s)
+    else
+      reply(Postgrex.Error[reason: "terminated: #{reason}"], s)
+    end
   end
 
   defp handle_data(<< type :: int8, size :: int32, data :: binary >> = tail, s) do
@@ -432,11 +436,6 @@ defmodule Postgrex.Connection do
   end
 
   defp reply(_msg, state(reply_to: nil) = s), do: s
-
-  defp reply(:ok, state(reply_to: from) = s) do
-    :gen_server.reply(from, :ok)
-    state(s, reply_to: nil)
-  end
 
   defp reply(msg, state(reply_to: from) = s) do
     if from, do: :gen_server.reply(from, msg)

@@ -3,7 +3,7 @@ defmodule Postgrex.Types do
 
   @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
            :float4, :float8, :date, :time, :timetz, :timestamp, :timestamptz,
-           :interval, :array ]
+           :interval, :array, :unknown ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -42,7 +42,7 @@ defmodule Postgrex.Types do
     case Dict.fetch(types, oid) do
       { :ok, { :array, true, elem } } -> can_decode?(types, elem)
       { :ok, { _, true, _, } } -> true
-      _-> false
+      _ -> false
     end
   end
 
@@ -63,7 +63,7 @@ defmodule Postgrex.Types do
   # TODO: Text format array decoding. We can decode all arrays but maybe not its
   # elements, so we need to request text format for those arrays.
 
-  # TODO: Composite type encoding/decoding
+  # TODO: Types: Composite types (record), numeric, money
 
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false
@@ -83,6 +83,7 @@ defmodule Postgrex.Types do
   def decode(:timestamptz, << n :: int64 >>, _), do: decode_timestamp(n)
   def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
   def decode(:array, bin, types), do: decode_array(bin, types)
+  def decode(:unknown, bin, _), do: bin
   def decode(_, nil, _), do: nil
 
   def encode(sender, value, oid, types) do
