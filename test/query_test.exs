@@ -1,14 +1,17 @@
 defmodule QueryTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  alias Postgrex.Connection, as: P
 
   setup do
-    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [], [])
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test" ]
+    { :ok, pid } = P.start_link(opts)
     { :ok, [pid: pid] }
   end
 
   teardown context do
-    :ok = Postgrex.disconnect(context[:pid])
+    :ok = P.stop(context[:pid])
   end
 
   test "decode basic types", context do

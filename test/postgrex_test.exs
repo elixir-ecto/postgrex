@@ -1,32 +1,35 @@
 defmodule PostgrexTest do
   use ExUnit.Case, async: false
   import Postgrex.TestHelper
+  alias Postgrex.Connection, as: P
 
   setup do
-    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", [], [])
-    { :ok, _ } = Postgrex.query(pid, "DROP TABLE IF EXISTS transaction")
-    { :ok, _ } = Postgrex.query(pid, "CREATE TABLE transaction (data text)")
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test" ]
+    { :ok, pid } = P.start_link(opts)
+    { :ok, _ } = P.query(pid, "DROP TABLE IF EXISTS transaction")
+    { :ok, _ } = P.query(pid, "CREATE TABLE transaction (data text)")
     { :ok, [pid: pid] }
   end
 
   teardown context do
-    :ok = Postgrex.disconnect(context[:pid])
+    :ok = P.stop(context[:pid])
   end
 
   test "transaction returns value", context do
-    assert 42 == Postgrex.in_transaction(context[:pid], fn -> 42 end)
+    assert 42 == P.in_transaction(context[:pid], fn -> 42 end)
   end
 
   test "one level transaction commits", context do
-    Postgrex.in_transaction(context[:pid], fn ->
+    P.in_transaction(context[:pid], fn ->
       :ok = query("INSERT INTO transaction VALUES ('hey')")
     end)
     assert [{"hey"}] = query("SELECT * FROM transaction")
   end
 
   test "two level transaction commits", context do
-    Postgrex.in_transaction(context[:pid], fn ->
-      Postgrex.in_transaction(context[:pid], fn ->
+    P.in_transaction(context[:pid], fn ->
+      P.in_transaction(context[:pid], fn ->
         :ok = query("INSERT INTO transaction VALUES ('hey')")
       end)
     end)
@@ -35,7 +38,7 @@ defmodule PostgrexTest do
 
   test "one level transaction rollbacks on error", context do
     assert_raise(RuntimeError, "test", fn ->
-      Postgrex.in_transaction(context[:pid], fn ->
+      P.in_transaction(context[:pid], fn ->
         :ok = query("INSERT INTO transaction VALUES ('hey')")
         raise "test"
       end)
@@ -45,8 +48,8 @@ defmodule PostgrexTest do
 
   test "two level transaction rollbacks on error 1", context do
     assert_raise(RuntimeError, "test", fn ->
-      Postgrex.in_transaction(context[:pid], fn ->
-        Postgrex.in_transaction(context[:pid], fn ->
+      P.in_transaction(context[:pid], fn ->
+        P.in_transaction(context[:pid], fn ->
           :ok = query("INSERT INTO transaction VALUES ('hey')")
           raise "test"
         end)
@@ -57,8 +60,8 @@ defmodule PostgrexTest do
 
   test "two level transaction rollbacks on error 2", context do
     assert_raise(RuntimeError, "test", fn ->
-      Postgrex.in_transaction(context[:pid], fn ->
-        Postgrex.in_transaction(context[:pid], fn ->
+      P.in_transaction(context[:pid], fn ->
+        P.in_transaction(context[:pid], fn ->
           :ok = query("INSERT INTO transaction VALUES ('hey')")
         end)
         raise "test"
@@ -68,10 +71,10 @@ defmodule PostgrexTest do
   end
 
   test "two level transaction partly rollback", context do
-    Postgrex.in_transaction(context[:pid], fn ->
+    P.in_transaction(context[:pid], fn ->
       :ok = query("INSERT INTO transaction VALUES ('hey')")
       try do
-        Postgrex.in_transaction(context[:pid], fn ->
+        P.in_transaction(context[:pid], fn ->
           :ok = query("INSERT INTO transaction VALUES ('you')")
           raise "test"
         end)

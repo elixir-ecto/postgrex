@@ -14,6 +14,8 @@ defmodule Postgrex.Connection do
   defrecordp :statement, [:row_info, :columns]
   defrecordp :portal, [:param_oids]
 
+  ### PUBLIC API ###
+
   def start_link(opts, params // []) do
     case :gen_server.start_link(__MODULE__, [], []) do
       { :ok, pid } ->
@@ -30,8 +32,11 @@ defmodule Postgrex.Connection do
     :gen_server.call(pid, :stop)
   end
 
-  def query(pid, statement, params) do
-    :gen_server.call(pid, { :query, statement, params })
+  def query(pid, statement, params // []) do
+    case :gen_server.call(pid, { :query, statement, params }) do
+      Postgrex.Result[] = res -> { :ok, res }
+      Postgrex.Error[] = err -> { :error, err }
+    end
   end
 
   def parameters(pid) do
@@ -39,23 +44,58 @@ defmodule Postgrex.Connection do
   end
 
   def begin(pid) do
-    :gen_server.call(pid, :begin)
+    case :gen_server.call(pid, :begin) do
+      Postgrex.Result[] -> :ok
+      err -> err
+    end
   end
 
   def rollback(pid) do
-    :gen_server.call(pid, :rollback)
+    case :gen_server.call(pid, :rollback) do
+      Postgrex.Result[] -> :ok
+      err -> err
+    end
   end
 
   def commit(pid) do
-    :gen_server.call(pid, :commit)
+    case :gen_server.call(pid, :commit) do
+      Postgrex.Result[] -> :ok
+      err -> err
+    end
+  end
+
+  def in_transaction(pid, fun) do
+    case begin(pid) do
+      :ok ->
+        try do
+          value = fun.()
+          case commit(pid) do
+            :ok -> value
+            err -> raise err
+          end
+        catch
+          :throw, :postgrex_rollback ->
+            case rollback(pid) do
+              :ok -> nil
+              err -> raise err
+            end
+          type, term ->
+            rollback(pid)
+            :erlang.raise(type, term, System.stacktrace)
+        end
+      err -> raise err
+    end
   end
 
   defp fix_opts(opts) do
     opts
       |> Keyword.update!(:hostname, &if is_binary(&1), do: String.to_char_list!(&1), else: &1)
+      |> Keyword.put_new(:port, 5432)
       |> Keyword.put_new(:encoders, [])
       |> Keyword.put_new(:decoders, [])
   end
+
+  ### GEN_SERVER CALLBACKS ###
 
   def init([]) do
     { :ok, state(state: :ready, tail: "", parameters: [], rows: [],
@@ -186,6 +226,8 @@ defmodule Postgrex.Connection do
       reply(Postgrex.Error[reason: "terminated: #{reason}"], s)
     end
   end
+
+  ### PRIVATE FUNCTIONS ###
 
   defp handle_data(<< type :: int8, size :: int32, data :: binary >> = tail, s) do
     size = size - 4

@@ -47,7 +47,7 @@ end)
 defmodule Postgrex.TestHelper do
   defmacro query(stat, params // []) do
     quote do
-      case Postgrex.query(var!(context)[:pid], unquote(stat), unquote(params)) do
+      case Postgrex.Connection.query(var!(context)[:pid], unquote(stat), unquote(params)) do
         { :ok, Postgrex.Result[empty?: true] } -> :ok
         { :ok, Postgrex.Result[empty?: false, rows: rows] } -> rows
         { :error, Postgrex.Error[] = err } -> err

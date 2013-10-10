@@ -1,6 +1,7 @@
 defmodule CustomCoders do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  alias Postgrex.Connection, as: P
 
   defmodule Coder do
     @behaviour Postgrex.Encoder
@@ -24,13 +25,15 @@ defmodule CustomCoders do
   end
 
   setup do
-    opts = [encoders: [Coder], decoders: [Coder]]
-    { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", opts, [])
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test",
+             encoders: [Coder], decoders: [Coder]]
+    { :ok, pid } = P.start_link(opts)
     { :ok, [pid: pid] }
   end
 
   teardown context do
-    :ok = Postgrex.disconnect(context[:pid])
+    :ok = P.stop(context[:pid])
   end
 
   test "encode and decode", context do
