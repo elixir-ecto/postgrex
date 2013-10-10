@@ -6,25 +6,25 @@ defmodule CustomCoders do
     @behaviour Postgrex.Encoder
     @behaviour Postgrex.Decoder
 
-    def pre_encode(:int4, _oid, param) do
+    def pre_encode(_type, :int4, _oid, param) do
       param+10
     end
 
-    def post_encode(_sender, _oid, _param, encoded) do
+    def post_encode(_type, _sender, _oid, _param, encoded) do
       encoded
     end
 
-    def decode(:int4, _oid, _param, decoded) do
+    def decode(_type, :int4, _oid, _param, decoded) do
       decoded+10
     end
 
-    def decode(_sender, _oid, _param, decoded) do
+    def decode(_type, _sender, _oid, _param, decoded) do
       decoded
     end
   end
 
   setup do
-    opts = [encoder: Coder, decoder: Coder]
+    opts = [encoders: [Coder], decoders: [Coder]]
     { :ok, pid } = Postgrex.connect("localhost", "postgres", "postgres", "postgrex_test", opts, [])
     { :ok, [pid: pid] }
   end

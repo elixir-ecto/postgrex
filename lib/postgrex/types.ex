@@ -12,7 +12,8 @@ defmodule Postgrex.Types do
 
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
-      [oid, send, elem_oid] = row
+      [oid, type, send, elem_oid] = row
+      type = binary_to_atom(type)
       { oid, "" } = String.to_integer(oid)
       send_size = String.length(send)
       { elem, "" } = if elem_oid == "-1", do: nil, else: String.to_integer(elem_oid)
@@ -27,12 +28,12 @@ defmodule Postgrex.Types do
             nil
         end
 
-      Dict.put(acc, oid, { send, binary_type?(send), elem })
+      Dict.put(acc, oid, { send, type, binary_type?(send), elem })
     end)
   end
 
   def bootstrap_query do
-    "SELECT oid, typsend, typelem FROM pg_type"
+    "SELECT oid, typname, typsend, typelem FROM pg_type"
   end
 
   # TODO: Consider doing automatic refecth of pg_type if we get an
@@ -40,22 +41,22 @@ defmodule Postgrex.Types do
 
   def can_decode?(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { :array, true, elem } } -> can_decode?(types, elem)
-      { :ok, { _, true, _, } } -> true
+      { :ok, { :array, _, true, elem } } -> can_decode?(types, elem)
+      { :ok, { _, _, true, _, } } -> true
       _ -> false
     end
   end
 
-  def oid_to_sender(types, oid) do
+  def oid_to_type(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { sender, _, _ } } -> sender
+      { :ok, { sender, type , _, _ } } -> { type, sender }
       :error -> nil
     end
   end
 
   def oid_to_elem(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { _, _, elem } } -> elem
+      { :ok, { _, _, _, elem } } -> elem
       :error -> nil
     end
   end
@@ -121,7 +122,7 @@ defmodule Postgrex.Types do
   defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>, types) do
     { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
-    sender = oid_to_sender(types, oid)
+    { _, sender } = oid_to_type(types, oid)
     { array, "" } = decode_array(rest, sender, types, lengths)
     array
   end
@@ -195,7 +196,7 @@ defmodule Postgrex.Types do
 
   defp encode_array(list, oid, types) do
     elem_oid = oid_to_elem(types, oid)
-    elem_type = oid_to_sender(types, elem_oid)
+    { _, elem_type } = oid_to_type(types, elem_oid)
     { data, ndims, lengths } = encode_array(list, elem_type, elem_oid, types, 0, [])
     bin = iolist_to_binary(data)
     lengths = bc len inlist Enum.reverse(lengths), do: << len :: int32, 1 :: int32 >>

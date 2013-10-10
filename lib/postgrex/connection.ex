@@ -17,6 +17,7 @@ defmodule Postgrex.Connection do
   def start_link(opts, params // []) do
     case :gen_server.start_link(__MODULE__, [], []) do
       { :ok, pid } ->
+        opts = fix_opts(opts)
         case :gen_server.call(pid, { :connect, opts, params }) do
           :ok -> { :ok, pid }
           err -> err
@@ -49,6 +50,13 @@ defmodule Postgrex.Connection do
     :gen_server.call(pid, :commit)
   end
 
+  defp fix_opts(opts) do
+    opts
+      |> Keyword.update!(:hostname, &if is_binary(&1), do: String.to_char_list!(&1), else: &1)
+      |> Keyword.put_new(:encoders, [])
+      |> Keyword.put_new(:decoders, [])
+  end
+
   def init([]) do
     { :ok, state(state: :ready, tail: "", parameters: [], rows: [],
                  bootstrap: false, transactions: 0) }
@@ -60,10 +68,8 @@ defmodule Postgrex.Connection do
 
   def handle_call({ :connect, opts, params }, from, state(state: :ready) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
-    hostname = opts[:hostname]
-    hostname = if is_binary(hostname), do: String.to_char_list!(hostname)
 
-    case :gen_tcp.connect(hostname, opts[:port], sock_opts) do
+    case :gen_tcp.connect(opts[:hostname], opts[:port], sock_opts) do
       { :ok, sock } ->
         msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
         case send(msg, sock) do
@@ -273,13 +279,13 @@ defmodule Postgrex.Connection do
 
     param_oids = portal(portal, :param_oids)
     try do
-      encoder = opts[:encoder]
+      encoders = opts[:encoders]
       zipped = Enum.zip(param_oids, params)
       params = Enum.map(zipped, fn { oid, param } ->
-        sender = Types.oid_to_sender(types, oid)
-        if encoder, do: param = encoder.pre_encode(sender, oid, param)
-        value = if Types.can_decode?(types, oid), do: Types.encode(sender, param, oid, types)
-        if encoder, do: encoder.post_encode(sender, oid, param, value), else: value
+        { type, sender } = Types.oid_to_type(types, oid)
+        value = Enum.reduce(encoders, param, &(&1.pre_encode(type, sender, oid, &2)))
+        value = if Types.can_decode?(types, oid), do: Types.encode(sender, value, oid, types)
+        Enum.reduce(encoders, value, &(&1.post_encode(type, sender, oid, param, &2)))
       end)
 
       msgs = [
@@ -334,16 +340,15 @@ defmodule Postgrex.Connection do
       s = reply(create_result(tag), s)
     else
       statement(row_info: info, columns: cols) = stat
-      decoder = opts[:decoder]
+      decoders = opts[:decoders]
 
       result = Enum.reduce(rows, [], fn values, acc ->
         { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
-          { sender, oid, can_decode } = elem(info, count)
+          { type, sender, oid, can_decode } = elem(info, count)
           if can_decode do
             decoded = Types.decode(sender, value, types)
           end
-          if decoder, do: decoded = decoder.decode(sender, oid, value, decoded)
-          if nil?(decoded), do: decoded = value
+          decoded = Enum.reduce(decoders, decoded, &(&1.decode(type, sender, oid, value, &2)))
           { count+1, [decoded|list] }
         end)
         row = Enum.reverse(row) |> list_to_tuple
@@ -386,10 +391,10 @@ defmodule Postgrex.Connection do
 
   defp extract_row_info(fields, types) do
     Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
-      sender = Types.oid_to_sender(types, oid)
+      { type, sender } = Types.oid_to_type(types, oid)
       can_decode = Types.can_decode?(types, oid)
       format = if can_decode, do: :binary, else: :text
-      { { sender, oid, can_decode }, format, name }
+      { { type, sender, oid, can_decode }, format, name }
     end) |> List.unzip |> list_to_tuple
   end
 
