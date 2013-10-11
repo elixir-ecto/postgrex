@@ -1,4 +1,6 @@
 defmodule Postgrex.Types do
+  @moduledoc false
+
   import Postgrex.BinaryUtils
 
   @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
@@ -85,7 +87,6 @@ defmodule Postgrex.Types do
   def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
   def decode(:array, bin, types), do: decode_array(bin, types)
   def decode(:unknown, bin, _), do: bin
-  def decode(_, nil, _), do: nil
 
   def encode(sender, value, oid, types) do
     do_encode(sender, value, oid, types)
@@ -157,7 +158,6 @@ defmodule Postgrex.Types do
 
   ### encode helpers ###
 
-  defp do_encode(_, nil, _, _), do: nil
   defp do_encode(:bool, true, _, _), do: << 1 >>
   defp do_encode(:bool, false, _, _), do: << 0 >>
   defp do_encode(:bpchar, bin, _, _) when is_binary(bin), do: bin

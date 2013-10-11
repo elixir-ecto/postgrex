@@ -4,8 +4,8 @@ defmodule CustomCoders do
   alias Postgrex.Connection, as: P
 
   defmodule Coder do
-    @behaviour Postgrex.Encoder
-    @behaviour Postgrex.Decoder
+    use Postgrex.Encoder
+    use Postgrex.Decoder
 
     def pre_encode(_type, :int4, _oid, param) do
       param+10

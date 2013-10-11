@@ -1,4 +1,8 @@
 defmodule Postgrex.Connection do
+  @moduledoc """
+  Main API for Postgrex. This module handles the connection to postgres.
+  """
+
   use GenServer.Behaviour
   use Postgrex.Protocol.Messages
   alias Postgrex.Protocol
@@ -16,22 +20,47 @@ defmodule Postgrex.Connection do
 
   ### PUBLIC API ###
 
-  def start_link(opts, params // []) do
+  @doc """
+  Start the connection process and connect to postgres.
+
+  ## Options
+
+    * `:hostname` - Postgres' server hostname (required);
+    * `:port` - Postgres' server port (default: 5432);
+    * `:username` - Postgres username (required);
+    * `:password` - Postgres' user password;
+    * `:encoders` - List of encoders, see `Postgrex.Encoder`;
+    * `:decoders` - List of decoders, see `Postgrex.Decoder`;
+    * `:parameters` - Keyword list of connection parameters;
+  """
+  @spec start_link(Keyword.t) :: { :ok, pid } | { :error, Postgrex.Error.t | term }
+  def start_link(opts) do
     case :gen_server.start_link(__MODULE__, [], []) do
       { :ok, pid } ->
         opts = fix_opts(opts)
-        case :gen_server.call(pid, { :connect, opts, params }) do
+        case :gen_server.call(pid, { :connect, opts }) do
           :ok -> { :ok, pid }
-          err -> err
+          err -> { :error, err }
         end
       err -> err
     end
   end
 
+  @doc """
+  Stop the process and disconnect.
+  """
+  @spec stop(pid) :: :ok
   def stop(pid) do
     :gen_server.call(pid, :stop)
   end
 
+  @doc """
+  Runs an (extended) query and returns the result. Parameters can be set in the
+  query as `$1` embedded in the query string. Parameters are given as a list of
+  elixir values. See the README for information on how Postgrex encodes and
+  decodes elixir values by default. See `Postgrex.Result` for the result data.
+  """
+  @spec query(pid, String.t, list) :: { :ok, Postgrex.Result.t } | { :error, Postgrex.Error.t }
   def query(pid, statement, params // []) do
     case :gen_server.call(pid, { :query, statement, params }) do
       Postgrex.Result[] = res -> { :ok, res }
@@ -39,10 +68,32 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc """
+  Returns a cached list dict of connection parameters.
+  """
+  @spec parameters(pid) :: [{ String.t, String.t }]
   def parameters(pid) do
     :gen_server.call(pid, :parameters)
   end
 
+  @doc """
+  Starts a transaction. Transactions can be nested with the help of savepoints.
+  A transaction won't end until a `rollback/1` or `commit/1` have been issued
+  for every `begin/1`.
+
+  ## Example
+      # Transaction begun
+      Postgrex.Connection.begin(pid)
+      Postgrex.Connection.query(pid, "INSERT INTO comments (text) VALUES ('first')")
+      # Nested subtransaction begun
+      Postgrex.Connection.begin(pid)
+      Postgrex.Connection.query(pid, "INSERT INTO comments (text) VALUES ('second')")
+      # Subtransaction rolled back
+      Postgrex.Connection.rollback(pid)
+      # Only the first commenten will be commited
+      Postgrex.Connection.commit(pid)
+  """
+  @spec begin(pid) :: :ok | { :error, Postgrex.Error.t }
   def begin(pid) do
     case :gen_server.call(pid, :begin) do
       Postgrex.Result[] -> :ok
@@ -50,6 +101,10 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc """
+  Rolls back a transaction. See `begin/1` for more information.
+  """
+  @spec rollback(pid) :: :ok | { :error, Postgrex.Error.t }
   def rollback(pid) do
     case :gen_server.call(pid, :rollback) do
       Postgrex.Result[] -> :ok
@@ -57,6 +112,10 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc """
+  Commits a transaction. See `begin/1` for more information.
+  """
+  @spec commit(pid) :: :ok | { :error, Postgrex.Error.t }
   def commit(pid) do
     case :gen_server.call(pid, :commit) do
       Postgrex.Result[] -> :ok
@@ -64,6 +123,16 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc """
+  Helper for creating reliable transactions. If an error is raised in the given
+  function the transaction is rolled back, otherwise it is commited. A
+  transaction can be cancelled with `throw :postgrex_rollback`. If there is a
+  connection error `Postgrex.Error` will be raised.
+
+  NOTE: Do not use this function in conjunction with `begin/1`, `commit/1` and
+  `rollback/1`.
+  """
+  @spec in_transaction(pid, (() -> term)) :: term | no_return
   def in_transaction(pid, fun) do
     case begin(pid) do
       :ok ->
@@ -97,20 +166,23 @@ defmodule Postgrex.Connection do
 
   ### GEN_SERVER CALLBACKS ###
 
+  @doc false
   def init([]) do
     { :ok, state(state: :ready, tail: "", parameters: [], rows: [],
                  bootstrap: false, transactions: 0) }
   end
 
+  @doc false
   def handle_call(:stop, from, state(state: :ready) = s) do
     { :stop, :normal, state(s, reply_to: from) }
   end
 
-  def handle_call({ :connect, opts, params }, from, state(state: :ready) = s) do
+  def handle_call({ :connect, opts }, from, state(state: :ready) = s) do
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
 
     case :gen_tcp.connect(opts[:hostname], opts[:port], sock_opts) do
       { :ok, sock } ->
+        params = opts[:parameters] || []
         msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
         case send(msg, sock) do
           :ok ->
@@ -180,6 +252,7 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc false
   def handle_info({ :tcp, _, data }, state(reply_to: from, sock: sock, tail: tail) = s) do
     case handle_data(tail <> data, state(s, tail: "")) do
       { :ok, s } ->
@@ -215,6 +288,7 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc false
   def terminate(reason, state(sock: sock) = s) do
     if sock do
       send(msg_terminate(), sock)
@@ -325,9 +399,13 @@ defmodule Postgrex.Connection do
       zipped = Enum.zip(param_oids, params)
       params = Enum.map(zipped, fn { oid, param } ->
         { type, sender } = Types.oid_to_type(types, oid)
-        value = Enum.reduce(encoders, param, &(&1.pre_encode(type, sender, oid, &2)))
-        value = if Types.can_decode?(types, oid), do: Types.encode(sender, value, oid, types)
-        Enum.reduce(encoders, value, &(&1.post_encode(type, sender, oid, param, &2)))
+        if nil?(param) do
+          nil
+        else
+          value = Enum.reduce(encoders, param, &(&1.pre_encode(type, sender, oid, &2)))
+          value = if Types.can_decode?(types, oid), do: Types.encode(sender, value, oid, types)
+          Enum.reduce(encoders, value, &(&1.post_encode(type, sender, oid, param, &2)))
+        end
       end)
 
       msgs = [
@@ -387,11 +465,14 @@ defmodule Postgrex.Connection do
       result = Enum.reduce(rows, [], fn values, acc ->
         { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
           { type, sender, oid, can_decode } = elem(info, count)
-          if can_decode do
-            decoded = Types.decode(sender, value, types)
+          if value do
+            if can_decode do
+              decoded = Types.decode(sender, value, types)
+            end
+            decoded = Enum.reduce(decoders, decoded, &(&1.decode(type, sender, oid, value, &2)))
+            value = if nil?(decoded), do: value, else: decoded
           end
-          decoded = Enum.reduce(decoders, decoded, &(&1.decode(type, sender, oid, value, &2)))
-          { count+1, [decoded|list] }
+          { count+1, [value|list] }
         end)
         row = Enum.reverse(row) |> list_to_tuple
         [ row | acc ]
@@ -403,7 +484,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_empty_query(), state(state: :executing) = s) do
-    s = reply(Postgrex.Result[empty?: true], s)
+    s = reply(Postgrex.Result[], s)
     { :ok, s }
   end
 
@@ -455,16 +536,12 @@ defmodule Postgrex.Connection do
   end
 
   defp create_result(tag) do
-    create_result(tag, true, nil, nil)
+    create_result(tag, nil, nil)
   end
 
   defp create_result(tag, rows, cols) do
-    create_result(tag, false, rows, cols)
-  end
-
-  defp create_result(tag, empty, rows, cols) do
     { command, nrows } = decode_tag(tag)
-    Postgrex.Result[command: command, size: nrows, rows: rows, empty?: empty,
+    Postgrex.Result[command: command, num_rows: nrows || 0, rows: rows,
                     columns: cols]
   end
 

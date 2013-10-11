@@ -25,11 +25,13 @@ defmodule LoginTest do
 
     assert { :ok, pid } = P.start_link(opts)
     assert P.parameters(pid)["server_version"] =~ %R"\d+\.\d+\.\d+"
+
     if P.parameters(pid)["server_version"] =~ %R"9\.\d+\.\d+" do
       assert "" == P.parameters(pid)["application_name"]
       assert :ok = P.stop(pid)
 
-      assert { :ok, pid } = P.start_link(opts, [application_name: "postgrex"])
+      opts = opts ++ [parameters: [application_name: "postgrex"]]
+      assert { :ok, pid } = P.start_link(opts)
       assert "postgrex" == P.parameters(pid)["application_name"]
       assert :ok = P.stop(pid)
     else

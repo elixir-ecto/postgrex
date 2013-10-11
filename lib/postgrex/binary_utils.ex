@@ -1,4 +1,6 @@
 defmodule Postgrex.BinaryUtils do
+  @moduledoc false
+
   defmacro int64 do
     quote do: [signed, 64]
   end

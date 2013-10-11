@@ -1,4 +1,6 @@
 defmodule Postgrex.Protocol.Messages do
+  @moduledoc false
+
   defmacro __using__(_opts) do
     quote do
       defrecordp :msg_auth, [:type, :data]
@@ -34,6 +36,8 @@ defmodule Postgrex.Protocol.Messages do
 end
 
 defmodule Postgrex.Protocol do
+  @moduledoc false
+
   use Postgrex.Protocol.Messages
   import Postgrex.BinaryUtils
 
