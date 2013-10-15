@@ -132,4 +132,22 @@ defmodule QueryTest do
     assert :ok = query("BEGIN")
     assert :ok = query("COMMIT")
   end
+
+  test "result record", context do
+    assert { :ok, res } = P.query(context[:pid], "SELECT 123 AS a, 456 AS b")
+    assert Postgrex.Result[] = res
+    assert res.command == :select
+    assert res.columns == ["a", "b"]
+    assert res.num_rows == 1
+  end
+
+  test "error record", context do
+    assert { :error, Postgrex.Error[] } = P.query(context[:pid], "SELECT 123 + 'a'")
+  end
+
+  test "multi row result", context do
+    assert { :ok, res } = P.query(context[:pid], "SELECT typname FROM pg_type WHERE typname = 'int4' OR typname = 'int8' ORDER BY oid")
+    assert res.num_rows == 2
+    assert res.rows == [{"int8"}, {"int4"}]
+  end
 end

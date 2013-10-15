@@ -16,16 +16,16 @@ defmodule Postgrex.Types do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
       [oid, type, send, elem_oid] = row
       type = binary_to_atom(type)
-      { oid, "" } = String.to_integer(oid)
-      send_size = String.length(send)
-      { elem, "" } = if elem_oid == "-1", do: nil, else: String.to_integer(elem_oid)
+      oid = binary_to_integer(oid)
+      send_size = byte_size(send)
+      elem = binary_to_integer(elem_oid)
 
       send =
         cond do
           String.ends_with?(send, "_send") ->
-            String.slice(send, 0, send_size - 5) |> binary_to_atom
+            :binary.part(send, 0, send_size - 5) |> binary_to_atom
           String.ends_with?(send, "send") ->
-            String.slice(send, 0, send_size - 4) |> binary_to_atom
+            :binary.part(send, 0, send_size - 4) |> binary_to_atom
           true ->
             nil
         end
@@ -62,11 +62,6 @@ defmodule Postgrex.Types do
       :error -> nil
     end
   end
-
-  # TODO: Text format array decoding. We can decode all arrays but maybe not its
-  # elements, so we need to request text format for those arrays.
-
-  # TODO: Types: Composite types (record), numeric, money
 
   def decode(:bool, << 1 :: int8 >>, _), do: true
   def decode(:bool, << 0 :: int8 >>, _), do: false

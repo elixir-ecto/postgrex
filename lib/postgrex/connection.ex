@@ -82,15 +82,19 @@ defmodule Postgrex.Connection do
   for every `begin/1`.
 
   ## Example
+
       # Transaction begun
       Postgrex.Connection.begin(pid)
       Postgrex.Connection.query(pid, "INSERT INTO comments (text) VALUES ('first')")
+
       # Nested subtransaction begun
       Postgrex.Connection.begin(pid)
       Postgrex.Connection.query(pid, "INSERT INTO comments (text) VALUES ('second')")
+
       # Subtransaction rolled back
       Postgrex.Connection.rollback(pid)
-      # Only the first commenten will be commited
+
+      # Only the first comment will be commited because the second was rolled back
       Postgrex.Connection.commit(pid)
   """
   @spec begin(pid) :: :ok | { :error, Postgrex.Error.t }
@@ -392,20 +396,20 @@ defmodule Postgrex.Connection do
       { info, rfs, cols } = extract_row_info(fields, types)
       stat = statement(columns: cols, row_info: list_to_tuple(info))
     end
-
     param_oids = portal(portal, :param_oids)
+
     try do
       encoders = opts[:encoders]
       zipped = Enum.zip(param_oids, params)
-      params = Enum.map(zipped, fn { oid, param } ->
-        { type, sender } = Types.oid_to_type(types, oid)
-        if nil?(param) do
+      params = Enum.map(zipped, fn
+        { _oid, nil } ->
           nil
-        else
+
+        { oid, param } ->
+          { type, sender } = Types.oid_to_type(types, oid)
           value = Enum.reduce(encoders, param, &(&1.pre_encode(type, sender, oid, &2)))
           value = if Types.can_decode?(types, oid), do: Types.encode(sender, value, oid, types)
           Enum.reduce(encoders, value, &(&1.post_encode(type, sender, oid, param, &2)))
-        end
       end)
 
       msgs = [
@@ -463,15 +467,16 @@ defmodule Postgrex.Connection do
       decoders = opts[:decoders]
 
       result = Enum.reduce(rows, [], fn values, acc ->
-        { _, row } = Enum.reduce(values, { 0, [] }, fn value, { count, list } ->
-          { type, sender, oid, can_decode } = elem(info, count)
-          if value do
+        { _, row } = Enum.reduce(values, { 0, [] }, fn
+          nil, { count, list } ->
+            { count + 1, [nil|list] }
+          value, { count, list } ->
+            { type, sender, oid, can_decode } = elem(info, count)
             if can_decode do
               decoded = Types.decode(sender, value, types)
             end
             decoded = Enum.reduce(decoders, decoded, &(&1.decode(type, sender, oid, value, &2)))
             value = if nil?(decoded), do: value, else: decoded
-          end
           { count+1, [value|list] }
         end)
         row = Enum.reverse(row) |> list_to_tuple
@@ -546,7 +551,7 @@ defmodule Postgrex.Connection do
   end
 
   defp decode_tag(tag) do
-    words = String.split(tag, " ")
+    words = :binary.split(tag, " ", [:global])
     words = Enum.map(words, fn word ->
       case String.to_integer(word) do
         { num, "" } -> num
