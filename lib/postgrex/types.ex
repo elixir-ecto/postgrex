@@ -83,12 +83,24 @@ defmodule Postgrex.Types do
   def decode(:array, bin, types), do: decode_array(bin, types)
   def decode(:unknown, bin, _), do: bin
 
-  def encode(sender, value, oid, types) do
-    do_encode(sender, value, oid, types)
-  rescue
-    FunctionClauseError ->
-      throw { :postgrex_encode, "unable to encode value `#{inspect value}` as type #{sender}" }
-  end
+  def encode(:bool, true, _, _), do: << 1 >>
+  def encode(:bool, false, _, _), do: << 0 >>
+  def encode(:bpchar, bin, _, _) when is_binary(bin), do: bin
+  def encode(:text, bin, _, _) when is_binary(bin), do: bin
+  def encode(:varchar, bin, _, _) when is_binary(bin), do: bin
+  def encode(:bytea, bin, _, _) when is_binary(bin), do: bin
+  def encode(:int2, n, _, _) when is_integer(n), do: << n :: int16 >>
+  def encode(:int4, n, _, _) when is_integer(n), do: << n :: int32 >>
+  def encode(:int8, n, _, _) when is_integer(n), do: << n :: int64 >>
+  def encode(:float4, n, _, _) when is_number(n), do: << n :: float32 >>
+  def encode(:float8, n, _, _) when is_number(n), do: << n :: float64 >>
+  def encode(:date, date, _, _), do: encode_date(date)
+  def encode(:time, time, _, _), do: encode_time(time)
+  def encode(:timestamp, timestamp, _, _), do: encode_timestamp(timestamp)
+  def encode(:timestamptz, timestamp, _, _), do: encode_timestamp(timestamp)
+  def encode(:interval, interval, _, _), do: encode_interval(interval)
+  def encode(:array, list, oid, types) when is_list(list), do: encode_array(list, oid, types)
+  def encode(_, _, _, _), do: nil
 
   Enum.each(@types, fn type ->
     defp binary_type?(unquote(type)), do: true
@@ -152,24 +164,6 @@ defmodule Postgrex.Types do
   end
 
   ### encode helpers ###
-
-  defp do_encode(:bool, true, _, _), do: << 1 >>
-  defp do_encode(:bool, false, _, _), do: << 0 >>
-  defp do_encode(:bpchar, bin, _, _) when is_binary(bin), do: bin
-  defp do_encode(:text, bin, _, _) when is_binary(bin), do: bin
-  defp do_encode(:varchar, bin, _, _) when is_binary(bin), do: bin
-  defp do_encode(:bytea, bin, _, _) when is_binary(bin), do: bin
-  defp do_encode(:int2, n, _, _) when is_integer(n), do: << n :: int16 >>
-  defp do_encode(:int4, n, _, _) when is_integer(n), do: << n :: int32 >>
-  defp do_encode(:int8, n, _, _) when is_integer(n), do: << n :: int64 >>
-  defp do_encode(:float4, n, _, _) when is_number(n), do: << n :: float32 >>
-  defp do_encode(:float8, n, _, _) when is_number(n), do: << n :: float64 >>
-  defp do_encode(:date, date, _, _), do: encode_date(date)
-  defp do_encode(:time, time, _, _), do: encode_time(time)
-  defp do_encode(:timestamp, timestamp, _, _), do: encode_timestamp(timestamp)
-  defp do_encode(:timestamptz, timestamp, _, _), do: encode_timestamp(timestamp)
-  defp do_encode(:interval, interval, _, _), do: encode_interval(interval)
-  defp do_encode(:array, list, oid, types) when is_list(list), do: encode_array(list, oid, types)
 
   defp encode_date(date) do
     << :calendar.date_to_gregorian_days(date) - @gd_epoch :: int32 >>

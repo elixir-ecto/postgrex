@@ -55,11 +55,24 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
 
 \* interval is encoded as `{ months, days, seconds }`
 
+## Custom encoder and decoder example
+
+Encoding and decoding from and to JSON:
+
+    def decoder(:json, _sender, _oid, _default, binary) do
+      JSON.decode(binary)
+    end
+
+    def encoder(:json, _sender, _oid, _default, value) do
+      { :text, JSON.encode(param) }
+    end
+
 ## TODO
 
   * Callbacks for asynchronous events
   * Encoding/decoding of composite types, numeric, money
   * Text format decoding of arrays of unknown types
+  * Custom encoder/decoder should work on each element on arrays
 
 ## License
 

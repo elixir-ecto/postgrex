@@ -25,13 +25,23 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:hostname` - Postgres' server hostname (required);
-    * `:port` - Postgres' server port (default: 5432);
-    * `:username` - Postgres username (required);
-    * `:password` - Postgres' user password;
-    * `:encoders` - List of encoders, see `Postgrex.Encoder`;
-    * `:decoders` - List of decoders, see `Postgrex.Decoder`;
+    * `:hostname` - Server hostname (required);
+    * `:port` - Server port (default: 5432);
+    * `:username` - Username (required);
+    * `:password` - User password;
+    * `:encoder` - Custom encoder function;
+    * `:decoder` - Custom decoder function;
+    * `:decode_formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
+
+  ## Function signatures
+
+      @spec encoder(type :: atom, sender :: atom, oid :: integer, default :: fun, param :: term) ::
+            { :binary | :text, binary }
+      @spec decoder(type :: atom, sender :: atom, oid :: integer, default :: fun, bin :: binary) ::
+            term
+      @spec decode_formatter(type :: atom, sender :: atom, oid :: integer) ::
+            :binary | :text
   """
   @spec start_link(Keyword.t) :: { :ok, pid } | { :error, Postgrex.Error.t | term }
   def start_link(opts) do
@@ -164,8 +174,6 @@ defmodule Postgrex.Connection do
     opts
       |> Keyword.update!(:hostname, &if is_binary(&1), do: String.to_char_list!(&1), else: &1)
       |> Keyword.put_new(:port, 5432)
-      |> Keyword.put_new(:encoders, [])
-      |> Keyword.put_new(:decoders, [])
   end
 
   ### GEN_SERVER CALLBACKS ###
@@ -301,7 +309,7 @@ defmodule Postgrex.Connection do
     if reason == :normal do
       reply(:ok, s)
     else
-      reply(Postgrex.Error[reason: "terminated: #{reason}"], s)
+      reply(Postgrex.Error[reason: "terminated: #{inspect reason}"], s)
     end
   end
 
@@ -389,31 +397,19 @@ defmodule Postgrex.Connection do
     { :ok, state(s, portal: portal(param_oids: oids)) }
   end
 
-  defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap, qparams: params,
-                                                   portal: portal, opts: opts, state: :describing) = s) do
+  defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap, opts: opts, state: :describing) = s) do
     rfs = []
     if not bootstrap do
-      { info, rfs, cols } = extract_row_info(fields, types)
+      decode_formatter = opts[:decode_formatter]
+      { info, rfs, cols } = extract_row_info(fields, types, decode_formatter)
       stat = statement(columns: cols, row_info: list_to_tuple(info))
     end
-    param_oids = portal(portal, :param_oids)
 
     try do
-      encoders = opts[:encoders]
-      zipped = Enum.zip(param_oids, params)
-      params = Enum.map(zipped, fn
-        { _oid, nil } ->
-          nil
-
-        { oid, param } ->
-          { type, sender } = Types.oid_to_type(types, oid)
-          value = Enum.reduce(encoders, param, &(&1.pre_encode(type, sender, oid, &2)))
-          value = if Types.can_decode?(types, oid), do: Types.encode(sender, value, oid, types)
-          Enum.reduce(encoders, value, &(&1.post_encode(type, sender, oid, param, &2)))
-      end)
+      { pfs, params } = encode_params(s)
 
       msgs = [
-        msg_bind(name_port: "", name_stat: "", param_formats: [:binary], params: params, result_formats: rfs),
+        msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
         msg_execute(name_port: "", max_rows: 0),
         msg_sync() ]
 
@@ -458,32 +454,18 @@ defmodule Postgrex.Connection do
     { :ok, state(s, rows: [], bootstrap: false, types: types) }
   end
 
-  defp message(msg_command_complete(tag: tag), state(statement: stat,
-      types: types, rows: rows, opts: opts, state: :executing) = s) do
+  defp message(msg_command_complete(tag: tag), state(statement: stat, state: :executing) = s) do
     if nil?(stat) do
       s = reply(create_result(tag), s)
     else
-      statement(row_info: info, columns: cols) = stat
-      decoders = opts[:decoders]
-
-      result = Enum.reduce(rows, [], fn values, acc ->
-        { _, row } = Enum.reduce(values, { 0, [] }, fn
-          nil, { count, list } ->
-            { count + 1, [nil|list] }
-          value, { count, list } ->
-            { type, sender, oid, can_decode } = elem(info, count)
-            if can_decode do
-              decoded = Types.decode(sender, value, types)
-            end
-            decoded = Enum.reduce(decoders, decoded, &(&1.decode(type, sender, oid, value, &2)))
-            value = if nil?(decoded), do: value, else: decoded
-          { count+1, [value|list] }
-        end)
-        row = Enum.reverse(row) |> list_to_tuple
-        [ row | acc ]
-      end)
-
-      s = reply(create_result(tag, result, cols), s)
+      s = try do
+        result = decode_rows(s)
+        statement(columns: cols) = stat
+        reply(create_result(tag, result, cols), s)
+      catch
+        { :postgrex_decode, msg } ->
+          reply(Postgrex.Error[reason: msg], s)
+      end
     end
     { :ok, state(s, rows: [], statement: nil, portal: nil) }
   end
@@ -517,11 +499,88 @@ defmodule Postgrex.Connection do
 
   ### helpers ###
 
-  defp extract_row_info(fields, types) do
+  defp decode_rows(state(statement: stat, types: types, rows: rows, opts: opts)) do
+    statement(row_info: info) = stat
+    decoder = opts[:decoder]
+
+    Enum.reduce(rows, [], fn values, acc ->
+      { _, row } = Enum.reduce(values, { 0, [] }, fn
+        nil, { count, list } ->
+          { count + 1, [nil|list] }
+
+        value, { count, list } when nil?(decoder) ->
+          { _type, sender, _oid, can_decode } = elem(info, count)
+          value = decode_value(can_decode, sender, types, value)
+          { count + 1, [value|list] }
+
+        value, { count, list } ->
+          { type, sender, oid, can_decode } = elem(info, count)
+          default_decoder = &decode_value(can_decode, sender, types, &1)
+          value = decoder.(type, sender, oid, default_decoder, value)
+          { count + 1, [value|list] }
+      end)
+      row = Enum.reverse(row) |> list_to_tuple
+      [ row | acc ]
+    end)
+  end
+
+  defp decode_value(can_decode, sender, types, value) do
+    if can_decode do
+      Types.decode(sender, value, types)
+    else
+      value
+    end
+  end
+
+  defp encode_params(state(qparams: params, portal: portal, types: types, opts: opts)) do
+    param_oids = portal(portal, :param_oids)
+    zipped = Enum.zip(param_oids, params)
+    encoder = opts[:encoder]
+
+    Enum.map(zipped, fn
+      { _oid, nil } ->
+        { :binary, nil }
+
+      { oid, param } when nil?(encoder) ->
+        { type, sender } = Types.oid_to_type(types, oid)
+        encode_param(sender, type, oid, types, param)
+
+      { oid, param } ->
+        { type, sender } = Types.oid_to_type(types, oid)
+        default_encoder = &encode_param(sender, type, oid, types, &1)
+        encoder.(type, sender, oid, default_encoder, param)
+    end) |> :lists.unzip
+  end
+
+  defp encode_param(sender, type, oid, types, param) do
+    result = cond do
+      Types.can_decode?(types, oid) ->
+        bin = Types.encode(sender, param, oid, types)
+        if bin, do: { :binary, bin }
+      is_binary(param) ->
+        { :text, param }
+      true ->
+        nil
+    end
+
+    if nil?(result) do
+      throw { :postgrex_encode, "unable to encode value `#{inspect param}` as type #{type}" }
+    else
+      result
+    end
+  end
+
+  defp extract_row_info(fields, types, decode_formatter) do
     Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
       { type, sender } = Types.oid_to_type(types, oid)
       can_decode = Types.can_decode?(types, oid)
-      format = if can_decode, do: :binary, else: :text
+
+      format = if decode_formatter do
+        decode_formatter.(type, sender, oid)
+      else
+        if can_decode, do: :binary, else: :text
+      end
+
       { { type, sender, oid, can_decode }, format, name }
     end) |> List.unzip |> list_to_tuple
   end

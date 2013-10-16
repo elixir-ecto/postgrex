@@ -115,17 +115,18 @@ defmodule QueryTest do
   end
 
   test "fail on encode arrays", context do
-    assert Postgrex.Error[] =
-           query("SELECT $1::integer[]", [[[1], [1,2]]])
+    assert Postgrex.Error[] = query("SELECT $1::integer[]", [[[1], [1,2]]])
     assert [{42}] = query("SELECT 42")
   end
 
   test "fail on encode wrong value", context do
-    assert Postgrex.Error[] =
-           query("SELECT $1::integer", ["123"])
-    assert Postgrex.Error[] =
-           query("SELECT $1::text", [4.0])
+    assert Postgrex.Error[] = query("SELECT $1::integer", ["123"])
+    assert Postgrex.Error[] = query("SELECT $1::text", [4.0])
     assert [{42}] = query("SELECT 42")
+  end
+
+  test "fallback to text for unknown type", context do
+    assert [{%s'{"a": 123}'}] = query("SELECT $1::json", [%s'{"a": 123}'])
   end
 
   test "non data statement", context do
