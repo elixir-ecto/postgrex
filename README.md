@@ -16,14 +16,14 @@ end
 
 After you are done, run `mix deps.get` in your shell to fetch and compile Postgrex. Start an interactive Elixir shell with `iex -S mix`.
 
-```elixir
-iex(1)> { :ok, pid } = Postgrex.Connection.start_link([hostname: "localhost", username: "postgres", password: "postgres", database: "postgres"])
+```iex
+iex> { :ok, pid } = Postgrex.Connection.start_link([hostname: "localhost", username: "postgres", password: "postgres", database: "postgres"])
 {:ok, #PID<0.69.0>}
-iex(2)> Postgrex.Connection.query(pid, "SELECT user_id, text FROM comments")
+iex> Postgrex.Connection.query(pid, "SELECT user_id, text FROM comments")
 {:ok,
  Postgrex.Result[command: :select, empty?: false, columns: ["user_id", "text"],
   rows: [{3,"hey"},{4,"there"}], size: 2]}
-iex(3)> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')")
+iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')")
 {:ok,
  Postgrex.Result[command: :insert, columns: nil, rows: nil, num_rows: 1]}
 
