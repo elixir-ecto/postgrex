@@ -600,6 +600,12 @@ defmodule Postgrex.Connection do
 
   defp create_result(tag, rows, cols) do
     { command, nrows } = decode_tag(tag)
+
+    # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
+    if nil?(nrows) and command == :select do
+      nrows = length(rows)
+    end
+
     Postgrex.Result[command: command, num_rows: nrows || 0, rows: rows,
                     columns: cols]
   end
