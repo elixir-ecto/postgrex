@@ -20,10 +20,9 @@ defmodule Postgrex.Mixfile do
     []
   end
 
-  defp deps(:prod), do: []
-
-  defp deps(_) do
-    deps(:prod) ++
-      [ { :ex_doc, github: "elixir-lang/ex_doc" } ]
+  defp deps(:dev) do
+    [ { :ex_doc, github: "elixir-lang/ex_doc" } ]
   end
+
+  defp deps(_), do: []
 end

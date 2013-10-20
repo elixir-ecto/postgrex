@@ -14,6 +14,10 @@ defmodule QueryTest do
     :ok = P.stop(context[:pid])
   end
 
+  defp float_cmp(x, y, eps) do
+    x+eps > y-eps and x-eps < y+eps
+  end
+
   test "decode basic types", context do
     assert [{ nil }] = query("SELECT NULL")
     assert [{ true, false }] = query("SELECT true, false")
@@ -27,6 +31,17 @@ defmodule QueryTest do
     assert [{ "ẽric" }] = query("SELECT 'ẽric'")
     assert [{ "ẽric" }] = query("SELECT 'ẽric'::varchar")
     assert [{ << 1, 2, 3 >> }] = query("SELECT '\\001\\002\\003'::bytea")
+  end
+
+  test "decode numeric", context do
+    assert [{ 42 }] = query("SELECT 42.0")
+    assert [{ 42 }] = query("SELECT 42.0::numeric(100, 10)")
+    assert [{ 0.4242 }] = query("SELECT 0.4242")
+    assert [{ 42.4242 }] = query("SELECT 42.4242")
+    assert [{ 12345.12345 }] = query("SELECT 12345.12345")
+    assert [{ 0.00012345 }] = query("SELECT 0.00012345")
+    assert [{ 1_000_000_000 }] = query("SELECT 1000000000.0")
+    assert [{ 1_000_000_000.1 }] = query("SELECT 1000000000.1")
   end
 
   test "decode arrays", context do
@@ -75,6 +90,19 @@ defmodule QueryTest do
     assert [{ :"-inf" }] = query("SELECT $1::float", [:"-inf"])
     assert [{ "ẽric" }] = query("SELECT $1::varchar", ["ẽric"])
     assert [{ << 1, 2, 3 >> }] = query("SELECT $1::bytea", [<< 1, 2, 3 >>])
+  end
+
+  test "encode numeric", context do
+    assert [{ 42 }] = query("SELECT $1::numeric", [42])
+    assert [{ 0.4242 }] = query("SELECT $1::numeric", [0.4242])
+    assert [{ 42.4242 }] = query("SELECT $1::numeric", [42.4242])
+    assert [{ 0.00012345 }] = query("SELECT $1::numeric", [0.00012345])
+    assert [{ 1_000_000_000 }] = query("SELECT $1::numeric", [1_000_000_000])
+    assert [{ 1_000_000_000.1 }] = query("SELECT $1::numeric", [1_000_000_000.1])
+
+    # YAY for limited precision floats
+    [{ x }] = query("SELECT $1::numeric", [12345.12345])
+    assert float_cmp(x, 12345.12345, 0.00001)
   end
 
   test "encode date", context do

@@ -4,13 +4,14 @@ defmodule Postgrex.Types do
   import Postgrex.BinaryUtils
 
   @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
-           :float4, :float8, :date, :time, :timetz, :timestamp, :timestamptz,
-           :interval, :array, :unknown ]
+           :float4, :float8, :numeric, :date, :time, :timetz, :timestamp,
+           :timestamptz, :interval, :array, :unknown ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
   @days_in_month 30
   @secs_in_day 24 * 60 * 60
+  @numeric_base 10_000
 
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
@@ -80,6 +81,8 @@ defmodule Postgrex.Types do
   def decode(:float8, << 127, 240, 0, 0, 0, 0, 0, 0 >>, _), do: :inf
   def decode(:float8, << 255, 240, 0, 0, 0, 0, 0, 0 >>, _), do: :"-inf"
   def decode(:float8, << n :: float64 >>, _), do: n
+  def decode(:numeric, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>, _),
+    do: decode_numeric(ndigits, weight, sign, scale, tail)
   def decode(:date, << n :: int32 >>, _), do: decode_date(n)
   def decode(:time, << n :: int64 >>, _), do: decode_time(n)
   def decode(:timetz, << n :: int64, _tz :: int32 >>, _), do: decode_time(n)
@@ -106,6 +109,7 @@ defmodule Postgrex.Types do
   def encode(:float8, :inf, _, _), do: << 127, 240, 0, 0, 0, 0, 0, 0 >>
   def encode(:float8, :"-inf", _, _), do: << 255, 240, 0, 0, 0, 0, 0, 0 >>
   def encode(:float8, n, _, _) when is_number(n), do: << n :: float64 >>
+  def encode(:numeric, n, _, _), do: encode_numeric(n)
   def encode(:date, date, _, _), do: encode_date(date)
   def encode(:time, time, _, _), do: encode_time(time)
   def encode(:timestamp, timestamp, _, _), do: encode_timestamp(timestamp)
@@ -120,6 +124,38 @@ defmodule Postgrex.Types do
   defp binary_type?(_), do: false
 
   ### decode helpers ###
+
+  defp decode_numeric(0, 0, 0xC000, 0, ""), do: :NaN
+
+  defp decode_numeric(num_digits, weight, sign, _scale, tail) do
+    ^num_digits = div(byte_size(tail), 2)
+    { value, weight } = decode_numeric_int(tail, weight, 0)
+    value = decode_numeric_float(value, weight)
+
+    case sign do
+      0x0000 -> value
+      0x4000 -> -value
+    end
+  end
+
+  defp decode_numeric_int("", weight, acc), do: { acc, weight }
+
+  defp decode_numeric_int(<< digit :: int16, tail :: binary >>, weight, acc) do
+    acc = (acc * @numeric_base) + digit
+    decode_numeric_int(tail, weight - 1, acc)
+  end
+
+  defp decode_numeric_float(value, -1), do: value
+
+  defp decode_numeric_float(value, weight) when weight < 0 do
+    value = value / @numeric_base
+    decode_numeric_float(value, weight + 1)
+  end
+
+  defp decode_numeric_float(value, weight) when weight >= 0 do
+    value = value * @numeric_base
+    decode_numeric_float(value, weight - 1)
+  end
 
   defp decode_date(days) do
     :calendar.gregorian_days_to_date(days + @gd_epoch)
@@ -176,6 +212,56 @@ defmodule Postgrex.Types do
   end
 
   ### encode helpers ###
+
+  defp encode_numeric(:NaN), do: << 0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16 >>
+
+  defp encode_numeric(number) do
+    sign = cond do
+      number < 0  -> 0x4000
+      number >= 0 -> 0x0000
+    end
+
+    number = abs(number)
+    int_part = trunc(number)
+    float_part = number - trunc(number)
+
+    { weight, int_digits } = encode_numeric_int(int_part, -1, [])
+    float_digits = encode_numeric_float(float_part, [])
+    digits = int_digits ++ float_digits
+
+    digits = bc digit inlist digits, do: << digit :: uint16 >>
+    ndigits = div(byte_size(digits), 2)
+
+    << ndigits :: int16, weight :: int16, sign :: uint16, 0 :: int16, digits :: binary >>
+  end
+
+  defp encode_numeric_float(number, acc) do
+    cond do
+      number == 0 ->
+        Enum.reverse(acc)
+      true ->
+        number = number * @numeric_base
+        digit = trunc(number)
+        rest = number - digit
+        encode_numeric_float(rest, [digit|acc])
+    end
+  end
+
+  defp encode_numeric_int(number, weight, acc) do
+    cond do
+      number < 1 ->
+        { weight, acc }
+      number < @numeric_base ->
+        digit = trunc(number)
+        rest = number - digit
+        encode_numeric_int(rest, weight+1, [digit|acc])
+      true ->
+        rest = number / @numeric_base
+        digit = trunc(number - trunc(rest) * @numeric_base)
+        rest = (number - digit) / @numeric_base
+        encode_numeric_int(rest, weight+1, [digit|acc])
+    end
+  end
 
   defp encode_date(date) do
     << :calendar.date_to_gregorian_days(date) - @gd_epoch :: int32 >>

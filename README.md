@@ -47,13 +47,15 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
     float          42.0
     text           "eric"
     bytea          << 42 >>
+    numeric        42 | 42.5 *
     date           { 2013, 10, 12 }
     time           { 0, 37, 14 }
     timestamp(tz)  { { 2013, 10, 12 }, { 0, 37, 14 } }
-    interval       { 14, 40, 10920 } *
+    interval       { 14, 40, 10920 } **
     array          [ 1, 2, 3 ]
 
-\* interval is encoded as `{ months, days, seconds }`
+\* numeric is only decoded as float when it is a non-integer value, this is to not lose precision when it is an integer value (elixir's integers are of arbitrary precision). NOTE: floating point encoding and decoding is lossy, use with caution!
+\*\* interval is encoded as `{ months, days, seconds }`.
 
 ## Custom encoder and decoder example
 
@@ -75,6 +77,7 @@ end
   * Encoding/decoding of composite types, numeric, money
   * Text format decoding of arrays of unknown types
   * Custom encoder/decoder should work on each element on arrays
+  * Lossless numeric encoding/decoding with future arbitrary precision decimal type
 
 ## License
 
