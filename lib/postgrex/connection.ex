@@ -609,10 +609,19 @@ defmodule Postgrex.Connection do
                     columns: cols]
   end
 
+  # Workaround for 0.10.3 compatibility
+  defmacrop integer_parse(string) do
+    if { :parse, 1 } in Integer.__info__(:functions) do
+      quote do: Integer.parse(unquote(string))
+    else
+      quote do: String.to_integer(unquote(string))
+    end
+  end
+
   defp decode_tag(tag) do
     words = :binary.split(tag, " ", [:global])
     words = Enum.map(words, fn word ->
-      case String.to_integer(word) do
+      case integer_parse(word) do
         { num, "" } -> num
         :error -> word
       end
