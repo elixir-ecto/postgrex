@@ -380,17 +380,7 @@ defmodule Postgrex.Connection do
   ### describing state ###
 
   defp message(msg_parse_complete(), state(state: :describing) = s) do
-    msgs = [
-        msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
-        msg_execute(name_port: "", max_rows: 0),
-        msg_sync() ]
-
-      case send_to_result(msgs, s) do
-        { :ok, s } ->
-          { :ok, state(s, qparams: nil) }
-        err ->
-          err
-      end
+    send_params(s, [])
   end
 
   defp message(msg_parameter_desc(type_oids: oids), state(state: :describing) = s) do
@@ -403,27 +393,10 @@ defmodule Postgrex.Connection do
       decode_formatter = opts[:decode_formatter]
       { info, rfs, cols } = extract_row_info(fields, types, decode_formatter)
       stat = statement(columns: cols, row_info: list_to_tuple(info))
+      s = state(s, statement: stat)
     end
 
-    try do
-      { pfs, params } = encode_params(s)
-
-      msgs = [
-        msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
-        msg_execute(name_port: "", max_rows: 0),
-        msg_sync() ]
-
-      case send_to_result(msgs, s) do
-        { :ok, s } ->
-          { :ok, state(s, statement: stat, qparams: nil) }
-        err ->
-          err
-      end
-    catch
-      { :postgrex_encode, msg } ->
-        s = reply(Postgrex.Error[reason: msg], s)
-        { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
-    end
+    send_params(s, rfs)
   end
 
   defp message(msg_no_data(), state(state: :describing) = s) do
@@ -529,6 +502,28 @@ defmodule Postgrex.Connection do
       Types.decode(sender, value, types)
     else
       value
+    end
+  end
+
+  defp send_params(s, rfs) do
+    try do
+      { pfs, params } = encode_params(s)
+
+      msgs = [
+        msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
+        msg_execute(name_port: "", max_rows: 0),
+        msg_sync() ]
+
+      case send_to_result(msgs, s) do
+        { :ok, s } ->
+          { :ok, state(s, qparams: nil) }
+        err ->
+          err
+      end
+    catch
+      { :postgrex_encode, msg } ->
+        s = reply(Postgrex.Error[reason: msg], s)
+        { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
     end
   end
 

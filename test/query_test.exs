@@ -151,4 +151,11 @@ defmodule QueryTest do
     assert res.num_rows == 2
     assert res.rows == [{"int8"}, {"int4"}]
   end
+
+  test "insert", context do
+    :ok = query("CREATE TABLE test (id int, text text)")
+    [] = query("SELECT * FROM test")
+    :ok = query("INSERT INTO test VALUES ($1, $2)", [42, "fortytwo"])
+    [{42, "fortytwo"}] = query("SELECT * FROM test")
+  end
 end
