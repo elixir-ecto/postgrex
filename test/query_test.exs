@@ -160,7 +160,7 @@ defmodule QueryTest do
   end
 
   test "fallback to text for unknown type", context do
-    assert [{%s'{"a": 123}'}] = query("SELECT $1::json", [%s'{"a": 123}'])
+    assert [{"123"}] = query("SELECT $1::oid", ["123"])
   end
 
   test "non data statement", context do
