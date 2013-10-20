@@ -72,7 +72,13 @@ defmodule Postgrex.Types do
   def decode(:int2, << n :: int16 >>, _), do: n
   def decode(:int4, << n :: int32 >>, _), do: n
   def decode(:int8, << n :: int64 >>, _), do: n
+  def decode(:float4, << 127, 192, 0, 0 >>, _), do: :NaN
+  def decode(:float4, << 127, 128, 0, 0 >>, _), do: :inf
+  def decode(:float4, << 255, 128, 0, 0 >>, _), do: :"-inf"
   def decode(:float4, << n :: float32 >>, _), do: n
+  def decode(:float8, << 127, 248, 0, 0, 0, 0, 0, 0 >>, _), do: :NaN
+  def decode(:float8, << 127, 240, 0, 0, 0, 0, 0, 0 >>, _), do: :inf
+  def decode(:float8, << 255, 240, 0, 0, 0, 0, 0, 0 >>, _), do: :"-inf"
   def decode(:float8, << n :: float64 >>, _), do: n
   def decode(:date, << n :: int32 >>, _), do: decode_date(n)
   def decode(:time, << n :: int64 >>, _), do: decode_time(n)
@@ -92,7 +98,13 @@ defmodule Postgrex.Types do
   def encode(:int2, n, _, _) when is_integer(n), do: << n :: int16 >>
   def encode(:int4, n, _, _) when is_integer(n), do: << n :: int32 >>
   def encode(:int8, n, _, _) when is_integer(n), do: << n :: int64 >>
+  def encode(:float4, :NaN, _, _), do: << 127, 192, 0, 0 >>
+  def encode(:float4, :inf, _, _), do: << 127, 128, 0, 0 >>
+  def encode(:float4, :"-inf", _, _), do: << 255, 128, 0, 0 >>
   def encode(:float4, n, _, _) when is_number(n), do: << n :: float32 >>
+  def encode(:float8, :NaN, _, _), do: << 127, 248, 0, 0, 0, 0, 0, 0 >>
+  def encode(:float8, :inf, _, _), do: << 127, 240, 0, 0, 0, 0, 0, 0 >>
+  def encode(:float8, :"-inf", _, _), do: << 255, 240, 0, 0, 0, 0, 0, 0 >>
   def encode(:float8, n, _, _) when is_number(n), do: << n :: float64 >>
   def encode(:date, date, _, _), do: encode_date(date)
   def encode(:time, time, _, _), do: encode_time(time)
