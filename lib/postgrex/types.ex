@@ -223,16 +223,22 @@ defmodule Postgrex.Types do
 
     number = abs(number)
     int_part = trunc(number)
-    float_part = number - trunc(number)
+    float_part = number - int_part
 
-    { weight, int_digits } = encode_numeric_int(int_part, -1, [])
-    float_digits = encode_numeric_float(float_part, [])
-    digits = int_digits ++ float_digits
+    { weight, digits } = cond do
+      int_part == 0 and float_part == 0 ->
+        { 0, [] }
+      int_part == 0 ->
+        { -1, encode_numeric_float(float_part, []) }
+      true ->
+        { weight, digits } = encode_numeric_int(int_part, 0, [])
+        { weight, digits ++ encode_numeric_float(float_part, []) }
+    end
 
-    digits = bc digit inlist digits, do: << digit :: uint16 >>
-    ndigits = div(byte_size(digits), 2)
+    bin = bc digit inlist digits, do: << digit :: uint16 >>
+    ndigits = div(byte_size(bin), 2)
 
-    << ndigits :: int16, weight :: int16, sign :: uint16, 0 :: int16, digits :: binary >>
+    << ndigits :: int16, weight :: int16, sign :: uint16, 0 :: int16, bin :: binary >>
   end
 
   defp encode_numeric_float(number, acc) do
@@ -249,16 +255,13 @@ defmodule Postgrex.Types do
 
   defp encode_numeric_int(number, weight, acc) do
     cond do
-      number < 1 ->
+      number == 0 ->
         { weight, acc }
       number < @numeric_base ->
-        digit = trunc(number)
-        rest = number - digit
-        encode_numeric_int(rest, weight+1, [digit|acc])
+        { weight, [number|acc] }
       true ->
-        rest = number / @numeric_base
-        digit = trunc(number - trunc(rest) * @numeric_base)
-        rest = (number - digit) / @numeric_base
+        rest = div(number, @numeric_base)
+        digit = number - rest * @numeric_base
         encode_numeric_int(rest, weight+1, [digit|acc])
     end
   end

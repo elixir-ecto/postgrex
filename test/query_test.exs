@@ -42,6 +42,7 @@ defmodule QueryTest do
     assert [{ 0.00012345 }] = query("SELECT 0.00012345")
     assert [{ 1_000_000_000 }] = query("SELECT 1000000000.0")
     assert [{ 1_000_000_000.1 }] = query("SELECT 1000000000.1")
+    assert [{ 123456789123456789123456789 }] = query("SELECT 123456789123456789123456789::numeric")
   end
 
   test "decode arrays", context do
@@ -99,6 +100,7 @@ defmodule QueryTest do
     assert [{ 0.00012345 }] = query("SELECT $1::numeric", [0.00012345])
     assert [{ 1_000_000_000 }] = query("SELECT $1::numeric", [1_000_000_000])
     assert [{ 1_000_000_000.1 }] = query("SELECT $1::numeric", [1_000_000_000.1])
+    assert [{ 123456789123456789123456789 }] = query("SELECT $1::numeric", [123456789123456789123456789])
 
     # YAY for limited precision floats
     [{ x }] = query("SELECT $1::numeric", [12345.12345])
