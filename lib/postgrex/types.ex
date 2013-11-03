@@ -39,14 +39,22 @@ defmodule Postgrex.Types do
     "SELECT oid, typname, typsend, typelem FROM pg_type"
   end
 
-  # TODO: Consider doing automatic refecth of pg_type if we get an
-  # unrecognized oid
-
-  def can_decode?(types, oid) do
+  def format(types, oid, formatter) do
     case Dict.fetch(types, oid) do
-      { :ok, { :array, _, true, elem } } -> can_decode?(types, elem)
-      { :ok, { _, _, true, _, } } -> true
-      _ -> false
+      { :ok, { sender, type, is_binary, elem_oid } } ->
+        cond do
+          formatter && (format = formatter.(sender, type, oid)) ->
+            format
+          sender == :array and format(types, elem_oid, formatter) == :binary ->
+            :binary
+          is_binary ->
+            :binary
+          true ->
+            :text
+        end
+
+      :error ->
+        :text
     end
   end
 
@@ -64,58 +72,85 @@ defmodule Postgrex.Types do
     end
   end
 
-  def decode(:bool, << 1 :: int8 >>, _), do: true
-  def decode(:bool, << 0 :: int8 >>, _), do: false
-  def decode(:bpchar, bin, _), do: bin
-  def decode(:text, bin, _), do: bin
-  def decode(:varchar, bin, _), do: bin
-  def decode(:bytea, bin, _), do: bin
-  def decode(:int2, << n :: int16 >>, _), do: n
-  def decode(:int4, << n :: int32 >>, _), do: n
-  def decode(:int8, << n :: int64 >>, _), do: n
-  def decode(:float4, << 127, 192, 0, 0 >>, _), do: :NaN
-  def decode(:float4, << 127, 128, 0, 0 >>, _), do: :inf
-  def decode(:float4, << 255, 128, 0, 0 >>, _), do: :"-inf"
-  def decode(:float4, << n :: float32 >>, _), do: n
-  def decode(:float8, << 127, 248, 0, 0, 0, 0, 0, 0 >>, _), do: :NaN
-  def decode(:float8, << 127, 240, 0, 0, 0, 0, 0, 0 >>, _), do: :inf
-  def decode(:float8, << 255, 240, 0, 0, 0, 0, 0, 0 >>, _), do: :"-inf"
-  def decode(:float8, << n :: float64 >>, _), do: n
-  def decode(:numeric, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>, _),
-    do: decode_numeric(ndigits, weight, sign, scale, tail)
-  def decode(:date, << n :: int32 >>, _), do: decode_date(n)
-  def decode(:time, << n :: int64 >>, _), do: decode_time(n)
-  def decode(:timetz, << n :: int64, _tz :: int32 >>, _), do: decode_time(n)
-  def decode(:timestamp, << n :: int64 >>, _), do: decode_timestamp(n)
-  def decode(:timestamptz, << n :: int64 >>, _), do: decode_timestamp(n)
-  def decode(:interval, << s :: int64, d :: int32, m :: int32 >>, _), do: decode_interval(s, d, m)
-  def decode(:array, bin, types), do: decode_array(bin, types)
-  def decode(:unknown, bin, _), do: bin
+  def encode_value(sender, type, oid, { types, encoder, formatter }, default, value) do
+    bin = if encoder, do: encoder.(sender, type, oid, default, value)
 
-  def encode(:bool, true, _, _), do: << 1 >>
-  def encode(:bool, false, _, _), do: << 0 >>
-  def encode(:bpchar, bin, _, _) when is_binary(bin), do: bin
-  def encode(:text, bin, _, _) when is_binary(bin), do: bin
-  def encode(:varchar, bin, _, _) when is_binary(bin), do: bin
-  def encode(:bytea, bin, _, _) when is_binary(bin), do: bin
-  def encode(:int2, n, _, _) when is_integer(n), do: << n :: int16 >>
-  def encode(:int4, n, _, _) when is_integer(n), do: << n :: int32 >>
-  def encode(:int8, n, _, _) when is_integer(n), do: << n :: int64 >>
-  def encode(:float4, :NaN, _, _), do: << 127, 192, 0, 0 >>
-  def encode(:float4, :inf, _, _), do: << 127, 128, 0, 0 >>
-  def encode(:float4, :"-inf", _, _), do: << 255, 128, 0, 0 >>
-  def encode(:float4, n, _, _) when is_number(n), do: << n :: float32 >>
-  def encode(:float8, :NaN, _, _), do: << 127, 248, 0, 0, 0, 0, 0, 0 >>
-  def encode(:float8, :inf, _, _), do: << 127, 240, 0, 0, 0, 0, 0, 0 >>
-  def encode(:float8, :"-inf", _, _), do: << 255, 240, 0, 0, 0, 0, 0, 0 >>
-  def encode(:float8, n, _, _) when is_number(n), do: << n :: float64 >>
-  def encode(:numeric, n, _, _), do: encode_numeric(n)
-  def encode(:date, date, _, _), do: encode_date(date)
-  def encode(:time, time, _, _), do: encode_time(time)
-  def encode(:timestamp, timestamp, _, _), do: encode_timestamp(timestamp)
-  def encode(:timestamptz, timestamp, _, _), do: encode_timestamp(timestamp)
-  def encode(:interval, interval, _, _), do: encode_interval(interval)
-  def encode(:array, list, oid, types) when is_list(list), do: encode_array(list, oid, types)
+    result = case format(types, oid, formatter) do
+      :binary ->
+        if bin = bin || default.(value), do: { :binary, bin }
+      :text when not nil?(bin) ->
+        { :text, bin }
+      :text when is_binary(value) ->
+        { :text, value }
+      _ ->
+        nil
+    end
+
+    if nil?(result) do
+      throw { :postgrex_encode, "unable to encode value `#{inspect value}` as type #{type}" }
+    end
+
+    result
+  end
+
+  def decode_value(sender, type, oid, format, decoder, default, bin) do
+    decoded = if decoder, do: decoder.(sender, type, oid, format, default, bin)
+    decoded || default.(bin)
+  end
+
+  def decode(:bool, _, << 1 :: int8 >>), do: true
+  def decode(:bool, _, << 0 :: int8 >>), do: false
+  def decode(:bpchar, _, bin), do: bin
+  def decode(:text, _, bin), do: bin
+  def decode(:varchar, _, bin), do: bin
+  def decode(:bytea, _, bin), do: bin
+  def decode(:int2, _, << n :: int16 >>), do: n
+  def decode(:int4, _, << n :: int32 >>), do: n
+  def decode(:int8, _, << n :: int64 >>), do: n
+  def decode(:float4, _, << 127, 192, 0, 0 >>), do: :NaN
+  def decode(:float4, _, << 127, 128, 0, 0 >>), do: :inf
+  def decode(:float4, _, << 255, 128, 0, 0 >>), do: :"-inf"
+  def decode(:float4, _, << n :: float32 >>), do: n
+  def decode(:float8, _, << 127, 248, 0, 0, 0, 0, 0, 0 >>), do: :NaN
+  def decode(:float8, _, << 127, 240, 0, 0, 0, 0, 0, 0 >>), do: :inf
+  def decode(:float8, _, << 255, 240, 0, 0, 0, 0, 0, 0 >>), do: :"-inf"
+  def decode(:float8, _, << n :: float64 >>), do: n
+  def decode(:numeric, _, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>),
+    do: decode_numeric(ndigits, weight, sign, scale, tail)
+  def decode(:date, _, << n :: int32 >>), do: decode_date(n)
+  def decode(:time, _, << n :: int64 >>), do: decode_time(n)
+  def decode(:timetz, _, << n :: int64, _tz :: int32 >>), do: decode_time(n)
+  def decode(:timestamp, _, << n :: int64 >>), do: decode_timestamp(n)
+  def decode(:timestamptz, _, << n :: int64 >>), do: decode_timestamp(n)
+  def decode(:interval, _, << s :: int64, d :: int32, m :: int32 >>), do: decode_interval(s, d, m)
+  def decode(:array, extra, bin), do: decode_array(bin, extra)
+  def decode(:unknown, _, bin), do: bin
+  def decode(_, _, bin), do: bin
+
+  def encode(:bool, _, _, true), do: << 1 >>
+  def encode(:bool, _, _, false), do: << 0 >>
+  def encode(:bpchar, _, _, bin) when is_binary(bin), do: bin
+  def encode(:text, _, _, bin) when is_binary(bin), do: bin
+  def encode(:varchar, _, _, bin) when is_binary(bin), do: bin
+  def encode(:bytea, _, _, bin) when is_binary(bin), do: bin
+  def encode(:int2, _, _, n) when is_integer(n), do: << n :: int16 >>
+  def encode(:int4, _, _, n) when is_integer(n), do: << n :: int32 >>
+  def encode(:int8, _, _, n) when is_integer(n), do: << n :: int64 >>
+  def encode(:float4, _, _, :NaN), do: << 127, 192, 0, 0 >>
+  def encode(:float4, _, _, :inf), do: << 127, 128, 0, 0 >>
+  def encode(:float4, _, _, :"-inf"), do: << 255, 128, 0, 0 >>
+  def encode(:float4, _, _, n) when is_number(n), do: << n :: float32 >>
+  def encode(:float8, _, _, :NaN), do: << 127, 248, 0, 0, 0, 0, 0, 0 >>
+  def encode(:float8, _, _, :inf), do: << 127, 240, 0, 0, 0, 0, 0, 0 >>
+  def encode(:float8, _, _, :"-inf"), do: << 255, 240, 0, 0, 0, 0, 0, 0 >>
+  def encode(:float8, _, _, n) when is_number(n), do: << n :: float64 >>
+  def encode(:numeric, _, _, n), do: encode_numeric(n)
+  def encode(:date, _, _, date), do: encode_date(date)
+  def encode(:time, _, _, time), do: encode_time(time)
+  def encode(:timestamp, _, _, timestamp), do: encode_timestamp(timestamp)
+  def encode(:timestamptz, _, _, timestamp), do: encode_timestamp(timestamp)
+  def encode(:interval, _, _, interval), do: encode_interval(interval)
+  def encode(:array, oid, extra, list) when is_list(list), do: encode_array(list, oid, extra)
   def encode(_, _, _, _), do: nil
 
   Enum.each(@types, fn type ->
@@ -175,40 +210,45 @@ defmodule Postgrex.Types do
     { months, days, div(microsecs, 1_000_000) }
   end
 
-  defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>, types) do
+  defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>,
+                    { types, _ } = extra) do
     { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
-    { _, sender } = oid_to_type(types, oid)
-    { array, "" } = decode_array(rest, sender, types, lengths)
+    { type, sender } = oid_to_type(types, oid)
+    default = &decode(sender, extra, &1)
+
+    { array, "" } = decode_array(rest, { sender, type, oid }, extra, default, lengths)
     array
   end
 
-  defp decode_array("", _type, _types, []) do
+  defp decode_array("", _type, _extra, _default, []) do
     { [], "" }
   end
 
-  defp decode_array(rest, sender, types, [len]) do
-    decode_elements(rest, sender, types, [], len)
+  defp decode_array(rest, type, extra, default, [len]) do
+    array_elements(rest, type, extra, default, [], len)
   end
 
-  defp decode_array(rest, sender, types, [len|lens]) do
+  defp decode_array(rest, type, extra, default, [len|lens]) do
     Enum.map_reduce(1..len, rest, fn _, rest ->
-      decode_array(rest, sender, types, lens)
+      decode_array(rest, type, extra, default, lens)
     end)
   end
 
-  defp decode_elements(rest, _type, _types, acc, 0) do
+  defp array_elements(rest, _type, _extra, _default, acc, 0) do
     { Enum.reverse(acc), rest }
   end
 
-  defp decode_elements(<< -1 :: int32, rest :: binary >>, sender, types, acc, count) do
-    decode_elements(rest, sender, types, [nil|acc], count-1)
+  defp array_elements(<< -1 :: int32, rest :: binary >>, type, extra, default, acc, count) do
+    array_elements(rest, type, extra, default, [nil|acc], count-1)
   end
 
-  defp decode_elements(<< length :: int32, value :: binary(length), rest :: binary >>,
-                       sender, types, acc, count) do
-    value = decode(sender, value, types)
-    decode_elements(rest, sender, types, [value|acc], count-1)
+  defp array_elements(<< length :: int32, elem :: binary(length), rest :: binary >>,
+                       type_info, extra, default, acc, count) do
+    { sender, type, oid } = type_info
+    { _, decoder } = extra
+    value = decode_value(sender, type, oid, :format, decoder, default, elem)
+    array_elements(rest, type_info, extra, default, [value|acc], count-1)
   end
 
   ### encode helpers ###
@@ -284,26 +324,30 @@ defmodule Postgrex.Types do
     << microsecs :: int64, days :: int32, months :: int32 >>
   end
 
-  defp encode_array(list, oid, types) do
+  defp encode_array(list, oid, { types, _, _ } = extra) do
     elem_oid = oid_to_elem(types, oid)
-    { _, elem_type } = oid_to_type(types, elem_oid)
-    { data, ndims, lengths } = encode_array(list, elem_type, elem_oid, types, 0, [])
+    { elem_sender, elem_type } = oid_to_type(types, elem_oid)
+    type = { elem_sender, elem_type, elem_oid }
+    default = &encode(elem_sender, elem_oid, extra, &1)
+
+    { data, ndims, lengths } = encode_array(list, type, extra, default, 0, [])
     bin = iolist_to_binary(data)
     lengths = bc len inlist Enum.reverse(lengths), do: << len :: int32, 1 :: int32 >>
     << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
   end
 
-  defp encode_array([], _type, _oid, _types, ndims, lengths) do
+  defp encode_array([], _type, _extra, _default, ndims, lengths) do
     { "", ndims, lengths }
   end
 
-  defp encode_array([head|tail]=list, type, oid, types, ndims, lengths) when is_list(head) do
+  defp encode_array([head|tail]=list, type, extra, default, ndims, lengths)
+      when is_list(head) do
     lengths = [length(list)|lengths]
-    { data, ndims, lengths } = encode_array(head, type, oid, types, ndims, lengths)
+    { data, ndims, lengths } = encode_array(head, type, extra, default, ndims, lengths)
     [dimlength|_] = lengths
 
     rest = Enum.map(tail, fn sublist ->
-      { data, _, [len|_] } = encode_array(sublist, type, oid, types, ndims, lengths)
+      { data, _, [len|_] } = encode_array(sublist, type, extra, default, ndims, lengths)
       if len != dimlength do
         throw { :postgrex_encode, "nested lists must have lists with matching lengths" }
       end
@@ -313,9 +357,9 @@ defmodule Postgrex.Types do
     { [data|rest], ndims+1, lengths }
   end
 
-  defp encode_array(list, type, oid, types, ndims, lengths) do
+  defp encode_array(list, { sender, type, oid }, extra, default, ndims, lengths) do
     { data, length } = Enum.map_reduce(list, 0, fn elem, length ->
-      bin = encode(type, elem, oid, types)
+      { :binary, bin } = encode_value(sender, type, oid, extra, default, elem)
       { << byte_size(bin) :: int32, bin :: binary >>, length + 1 }
     end)
     { data, ndims+1, [length|lengths] }

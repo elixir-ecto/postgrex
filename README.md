@@ -74,9 +74,8 @@ end
 ## TODO
 
   * Callbacks for asynchronous events
-  * Encoding/decoding of composite types, numeric, money
+  * Encoding/decoding of composite types, money
   * Text format decoding of arrays of unknown types
-  * Custom encoder/decoder should work on each element on arrays
   * Lossless numeric encoding/decoding with future arbitrary precision decimal type
 
 ## License

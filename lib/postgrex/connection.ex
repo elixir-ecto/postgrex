@@ -31,7 +31,7 @@ defmodule Postgrex.Connection do
     * `:password` - User password;
     * `:encoder` - Custom encoder function;
     * `:decoder` - Custom decoder function;
-    * `:decode_formatter` - Function deciding the format for a type;
+    * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
 
   ## Function signatures
@@ -390,8 +390,7 @@ defmodule Postgrex.Connection do
   defp message(msg_row_desc(fields: fields), state(types: types, bootstrap: bootstrap, opts: opts, state: :describing) = s) do
     rfs = []
     if not bootstrap do
-      decode_formatter = opts[:decode_formatter]
-      { info, rfs, cols } = extract_row_info(fields, types, decode_formatter)
+      { info, rfs, cols } = extract_row_info(fields, types, opts[:decoder], opts[:formatter])
       stat = statement(columns: cols, row_info: list_to_tuple(info))
       s = state(s, statement: stat)
     end
@@ -472,7 +471,7 @@ defmodule Postgrex.Connection do
 
   ### helpers ###
 
-  defp decode_rows(state(statement: stat, types: types, rows: rows, opts: opts)) do
+  defp decode_rows(state(statement: stat, rows: rows, opts: opts)) do
     statement(row_info: info) = stat
     decoder = opts[:decoder]
 
@@ -481,102 +480,62 @@ defmodule Postgrex.Connection do
         nil, { count, list } ->
           { count + 1, [nil|list] }
 
-        value, { count, list } when nil?(decoder) ->
-          { _type, sender, _oid, can_decode } = elem(info, count)
-          value = decode_value(can_decode, sender, types, value)
-          { count + 1, [value|list] }
-
-        value, { count, list } ->
-          { type, sender, oid, can_decode } = elem(info, count)
-          default_decoder = &decode_value(can_decode, sender, types, &1)
-          value = decoder.(type, sender, oid, default_decoder, value)
-          { count + 1, [value|list] }
+        bin, { count, list } ->
+          { sender, type, oid, format, default } = elem(info, count)
+          decoded = Types.decode_value(sender, type, oid, format, decoder, default, bin)
+          { count + 1, [decoded|list] }
       end)
+
       row = Enum.reverse(row) |> list_to_tuple
       [ row | acc ]
     end)
   end
 
-  defp decode_value(can_decode, sender, types, value) do
-    if can_decode do
-      Types.decode(sender, value, types)
-    else
-      value
-    end
-  end
-
   defp send_params(s, rfs) do
-    try do
-      { pfs, params } = encode_params(s)
+    { pfs, params } = encode_params(s)
 
-      msgs = [
-        msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
-        msg_execute(name_port: "", max_rows: 0),
-        msg_sync() ]
+    msgs = [
+      msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
+      msg_execute(name_port: "", max_rows: 0),
+      msg_sync() ]
 
-      case send_to_result(msgs, s) do
-        { :ok, s } ->
-          { :ok, state(s, qparams: nil) }
-        err ->
-          err
-      end
-    catch
-      { :postgrex_encode, msg } ->
-        s = reply(Postgrex.Error[reason: msg], s)
-        { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
+    case send_to_result(msgs, s) do
+      { :ok, s } ->
+        { :ok, state(s, qparams: nil) }
+      err ->
+        err
     end
+  catch
+    { :postgrex_encode, msg } ->
+      s = reply(Postgrex.Error[reason: msg], s)
+      { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
   end
 
   defp encode_params(state(qparams: params, portal: portal, types: types, opts: opts)) do
     param_oids = portal(portal, :param_oids)
     zipped = Enum.zip(param_oids, params)
-    encoder = opts[:encoder]
+    extra = { types, opts[:encoder], opts[:formatter] }
 
     Enum.map(zipped, fn
       { _oid, nil } ->
         { :binary, nil }
 
-      { oid, param } when nil?(encoder) ->
-        { type, sender } = Types.oid_to_type(types, oid)
-        encode_param(sender, type, oid, types, param)
-
       { oid, param } ->
         { type, sender } = Types.oid_to_type(types, oid)
-        default_encoder = &encode_param(sender, type, oid, types, &1)
-        encoder.(type, sender, oid, default_encoder, param)
+        default = &Types.encode(sender, oid, extra, &1)
+        Types.encode_value(sender, type, oid, extra, default, param)
+
     end) |> :lists.unzip
   end
 
-  defp encode_param(sender, type, oid, types, param) do
-    result = cond do
-      Types.can_decode?(types, oid) ->
-        bin = Types.encode(sender, param, oid, types)
-        if bin, do: { :binary, bin }
-      is_binary(param) ->
-        { :text, param }
-      true ->
-        nil
-    end
-
-    if nil?(result) do
-      throw { :postgrex_encode, "unable to encode value `#{inspect param}` as type #{type}" }
-    else
-      result
-    end
-  end
-
-  defp extract_row_info(fields, types, decode_formatter) do
+  defp extract_row_info(fields, types, decoder, formatter) do
     Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
       { type, sender } = Types.oid_to_type(types, oid)
-      can_decode = Types.can_decode?(types, oid)
+      format = Types.format(types, oid, formatter)
+      extra = { types, decoder }
+      default = &Types.decode(sender, extra, &1)
 
-      format = if decode_formatter do
-        decode_formatter.(type, sender, oid)
-      else
-        if can_decode, do: :binary, else: :text
-      end
-
-      { { type, sender, oid, can_decode }, format, name }
+      { { sender, type, oid, format, default }, format, name }
     end) |> List.unzip |> list_to_tuple
   end
 

@@ -3,26 +3,26 @@ defmodule CustomCoders do
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P
 
-  defp encoder(_type, :int4, _oid, default, param) do
-    default.(param + 1)
+  defp encoder(:int4, _type, _oid, default, value) do
+    default.(value + 1)
   end
 
-  defp encoder(_type, _sender, _oid, default, param) do
-    default.(param)
+  defp encoder(_sender, _type, _oid, default, value) do
+    default.(value)
   end
 
-  defp decoder(_type, :int4, _oid, default, bin) do
+  defp decoder(:int4, _type, _oid, _format, default, bin) do
     default.(bin) + 10
   end
 
-  defp decoder(_type, _sender, _oid, default, bin) do
+  defp decoder(_sender, _type, _oid, _format, default, bin) do
     default.(bin)
   end
 
   setup do
     opts = [ hostname: "localhost", username: "postgres",
              password: "postgres", database: "postgrex_test",
-             encoder: &encoder/5, decoder: &decoder/5]
+             encoder: &encoder/5, decoder: &decoder/6]
     { :ok, pid } = P.start_link(opts)
     { :ok, [pid: pid] }
   end
@@ -33,5 +33,6 @@ defmodule CustomCoders do
 
   test "encode and decode", context do
     assert [{53}] = query("SELECT $1::int4", [42])
+    assert [{[53]}] = query("SELECT $1::int4[]", [[42]])
   end
 end
