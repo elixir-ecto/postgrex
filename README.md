@@ -38,21 +38,22 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
 
 ## Data representation
 
-    PostgreSQL     Elixir
-    ----------     ------
-    NULL           nil
-    bool           true | false
-    char           "é"
-    int            42
-    float          42.0
-    text           "eric"
-    bytea          << 42 >>
-    numeric        42 | 42.5 *
-    date           { 2013, 10, 12 }
-    time           { 0, 37, 14 }
-    timestamp(tz)  { { 2013, 10, 12 }, { 0, 37, 14 } }
-    interval       { 14, 40, 10920 } **
-    array          [ 1, 2, 3 ]
+    PostgreSQL      Elixir
+    ----------      ------
+    NULL            nil
+    bool            true | false
+    char            "é"
+    int             42
+    float           42.0
+    text            "eric"
+    bytea           << 42 >>
+    numeric         42 | 42.5 *
+    date            { 2013, 10, 12 }
+    time            { 0, 37, 14 }
+    timestamp(tz)   { { 2013, 10, 12 }, { 0, 37, 14 } }
+    interval        { 14, 40, 10920 } **
+    array           [ 1, 2, 3 ]
+    composite type  { 42, "title", "content" }
 
 \* numeric is only decoded as float when it is a non-integer value, this is to not lose precision when it is an integer value (elixir's integers are of arbitrary precision). NOTE: floating point encoding and decoding is lossy, use with caution!
 \*\* interval is encoded as `{ months, days, seconds }`.
@@ -74,7 +75,6 @@ end
 ## TODO
 
   * Callbacks for asynchronous events
-  * Encoding/decoding of composite types, money
   * Text format decoding of arrays of unknown types
   * Lossless numeric encoding/decoding with future arbitrary precision decimal type
 

@@ -521,7 +521,7 @@ defmodule Postgrex.Connection do
         { :binary, nil }
 
       { oid, param } ->
-        { type, sender } = Types.oid_to_type(types, oid)
+        { sender, type } = Types.oid_to_type(types, oid)
         default = &Types.encode(sender, oid, extra, &1)
         Types.encode_value(sender, type, oid, extra, default, param)
 
@@ -530,7 +530,7 @@ defmodule Postgrex.Connection do
 
   defp extract_row_info(fields, types, decoder, formatter) do
     Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
-      { type, sender } = Types.oid_to_type(types, oid)
+      { sender, type } = Types.oid_to_type(types, oid)
       format = Types.format(types, oid, formatter)
       extra = { types, decoder }
       default = &Types.decode(sender, extra, &1)
@@ -569,19 +569,10 @@ defmodule Postgrex.Connection do
                     columns: cols]
   end
 
-  # Workaround for 0.10.3 compatibility
-  defmacrop integer_parse(string) do
-    if { :parse, 1 } in Integer.__info__(:functions) do
-      quote do: Integer.parse(unquote(string))
-    else
-      quote do: String.to_integer(unquote(string))
-    end
-  end
-
   defp decode_tag(tag) do
     words = :binary.split(tag, " ", [:global])
     words = Enum.map(words, fn word ->
-      case integer_parse(word) do
+      case Integer.parse(word) do
         { num, "" } -> num
         :error -> word
       end

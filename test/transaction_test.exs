@@ -1,4 +1,4 @@
-defmodule PostgrexTest do
+defmodule TransactionTest do
   use ExUnit.Case, async: false
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P

@@ -5,7 +5,7 @@ defmodule Postgrex.Types do
 
   @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
            :float4, :float8, :numeric, :date, :time, :timetz, :timestamp,
-           :timestamptz, :interval, :array, :unknown ]
+           :timestamptz, :interval, :unknown ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -15,11 +15,12 @@ defmodule Postgrex.Types do
 
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
-      [oid, type, send, elem_oid] = row
+      [oid, type, send, elem_oid, comp_oids] = row
       type = binary_to_atom(type)
       oid = binary_to_integer(oid)
       send_size = byte_size(send)
       elem = binary_to_integer(elem_oid)
+      comp_oids = parse_oids(comp_oids)
 
       send =
         cond do
@@ -31,23 +32,49 @@ defmodule Postgrex.Types do
             nil
         end
 
-      Dict.put(acc, oid, { send, type, binary_type?(send), elem })
+      Dict.put(acc, oid, { send, type, elem, comp_oids })
     end)
   end
 
+  defp parse_oids("{}") do
+    []
+  end
+
+  defp parse_oids("{" <> rest) do
+    parse_oids(rest, [])
+  end
+
+  defp parse_oids(bin, acc) do
+    case Integer.parse(bin) do
+      { int, "," <> rest } -> parse_oids(rest, [int|acc])
+      { int, "}" } -> Enum.reverse([int|acc])
+    end
+  end
+
   def bootstrap_query do
-    "SELECT oid, typname, typsend, typelem FROM pg_type"
+    """
+    SELECT t.oid, t.typname, t.typsend, t.typelem, ARRAY (
+      SELECT a.atttypid
+      FROM pg_attribute AS a
+      WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
+      ORDER BY a.attnum
+    )
+    FROM pg_type AS t
+    """
   end
 
   def format(types, oid, formatter) do
     case Dict.fetch(types, oid) do
-      { :ok, { sender, type, is_binary, elem_oid } } ->
+      { :ok, { sender, type, elem_oid, comp_oids } } ->
         cond do
           formatter && (format = formatter.(sender, type, oid)) ->
             format
           sender == :array and format(types, elem_oid, formatter) == :binary ->
             :binary
-          is_binary ->
+          sender == :record and type != :record and
+          Enum.all?(comp_oids, &(format(types, &1, formatter) == :binary)) ->
+            :binary
+          binary_type?(sender) ->
             :binary
           true ->
             :text
@@ -60,14 +87,21 @@ defmodule Postgrex.Types do
 
   def oid_to_type(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { sender, type , _, _ } } -> { type, sender }
+      { :ok, { sender, type, _, _ } } -> { sender, type }
       :error -> nil
     end
   end
 
   def oid_to_elem(types, oid) do
     case Dict.fetch(types, oid) do
-      { :ok, { _, _, _, elem } } -> elem
+      { :ok, { _, _, elem, _ } } -> elem
+      :error -> nil
+    end
+  end
+
+  def oid_to_comp_oids(types, oid) do
+    case Dict.fetch(types, oid) do
+      { :ok, { _, _, _, oids } } -> oids
       :error -> nil
     end
   end
@@ -95,7 +129,11 @@ defmodule Postgrex.Types do
 
   def decode_value(sender, type, oid, format, decoder, default, bin) do
     decoded = if decoder, do: decoder.(sender, type, oid, format, default, bin)
-    decoded || default.(bin)
+    cond do
+      decoded -> decoded
+      format == :binary -> default.(bin)
+      true -> bin
+    end
   end
 
   def decode(:bool, _, << 1 :: int8 >>), do: true
@@ -124,8 +162,8 @@ defmodule Postgrex.Types do
   def decode(:timestamptz, _, << n :: int64 >>), do: decode_timestamp(n)
   def decode(:interval, _, << s :: int64, d :: int32, m :: int32 >>), do: decode_interval(s, d, m)
   def decode(:array, extra, bin), do: decode_array(bin, extra)
+  def decode(:record, extra, bin), do: decode_record(bin, extra)
   def decode(:unknown, _, bin), do: bin
-  def decode(_, _, bin), do: bin
 
   def encode(:bool, _, _, true), do: << 1 >>
   def encode(:bool, _, _, false), do: << 0 >>
@@ -151,6 +189,7 @@ defmodule Postgrex.Types do
   def encode(:timestamptz, _, _, timestamp), do: encode_timestamp(timestamp)
   def encode(:interval, _, _, interval), do: encode_interval(interval)
   def encode(:array, oid, extra, list) when is_list(list), do: encode_array(list, oid, extra)
+  def encode(:record, oid, extra, tuple) when is_tuple(tuple), do: encode_record(tuple, oid, extra)
   def encode(_, _, _, _), do: nil
 
   Enum.each(@types, fn type ->
@@ -214,7 +253,7 @@ defmodule Postgrex.Types do
                     { types, _ } = extra) do
     { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
-    { type, sender } = oid_to_type(types, oid)
+    { sender, type } = oid_to_type(types, oid)
     default = &decode(sender, extra, &1)
 
     { array, "" } = decode_array(rest, { sender, type, oid }, extra, default, lengths)
@@ -247,8 +286,28 @@ defmodule Postgrex.Types do
                        type_info, extra, default, acc, count) do
     { sender, type, oid } = type_info
     { _, decoder } = extra
-    value = decode_value(sender, type, oid, :format, decoder, default, elem)
+    value = decode_value(sender, type, oid, :binary, decoder, default, elem)
     array_elements(rest, type_info, extra, default, [value|acc], count-1)
+  end
+
+  defp decode_record(<< num :: int32, rest :: binary >>, extra) do
+    record_elements(num, rest, extra) |> list_to_tuple
+  end
+
+  defp record_elements(0, <<>>, _types) do
+    []
+  end
+
+  defp record_elements(num, << _oid :: int32, -1 :: int32, rest :: binary >>, extra) do
+    [ nil | record_elements(num-1, rest, extra) ]
+  end
+
+  defp record_elements(num, << oid :: int32, length :: int32, elem :: binary(length), rest :: binary >>,
+                       { types, decoder } = extra) do
+    { sender, type } = oid_to_type(types, oid)
+    default = &decode(sender, extra, &1)
+    value = decode_value(sender, type, oid, :binary, decoder, default, elem)
+    [ value | record_elements(num-1, rest, extra) ]
   end
 
   ### encode helpers ###
@@ -363,5 +422,20 @@ defmodule Postgrex.Types do
       { << byte_size(bin) :: int32, bin :: binary >>, length + 1 }
     end)
     { data, ndims+1, [length|lengths] }
+  end
+
+  defp encode_record(tuple, oid, { types, _, _ } = extra) do
+    list = tuple_to_list(tuple)
+    comp_oids = oid_to_comp_oids(types, oid)
+    zipped = :lists.zip(list, comp_oids)
+
+    { data, count } = Enum.map_reduce(zipped, 0, fn { value, oid }, count ->
+      { sender, type } = oid_to_type(types, oid)
+      default = &encode(sender, oid, extra, &1)
+      { :binary, bin } = encode_value(sender, type, oid, extra, default, value)
+      { << oid :: int32, byte_size(bin) :: int32, bin :: binary >>, count + 1 }
+    end)
+
+    << count :: int32, iolist_to_binary(data) :: binary >>
   end
 end

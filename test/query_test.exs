@@ -1,5 +1,5 @@
 defmodule QueryTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P
 
@@ -80,6 +80,11 @@ defmodule QueryTest do
     assert [{ {14,40,10920} }] = query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'")
   end
 
+  test "decode record", context do
+    assert [{ {1, "2"} }] = query("SELECT (1, '2')::query")
+    assert [{ [{1, "2"}] }] = query("SELECT ARRAY[(1, '2')::query]")
+  end
+
   test "encode basic types", context do
     assert [{ nil, nil }] = query("SELECT $1::text, $2::int", [nil, nil])
     assert [{ true, false }] = query("SELECT $1::bool, $2::bool", [true, false])
@@ -148,6 +153,11 @@ defmodule QueryTest do
     assert [{ [1,2] }] = query("SELECT $1::integer[]", [[1,2]])
     assert [{ [[0],[1]] }] = query("SELECT $1::integer[]", [[[0],[1]]])
     assert [{ [[0]] }] = query("SELECT $1::integer[]", [[[0]]])
+  end
+
+  test "encode record", context do
+    assert [{ {1, "2"} }] = query("SELECT $1::query", [{1, "2"}])
+    assert [{ [{1, "2"}] }] = query("SELECT $1::query[]", [[{1, "2"}]])
   end
 
   test "fail on encode arrays", context do
