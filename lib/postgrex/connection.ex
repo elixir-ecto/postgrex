@@ -65,10 +65,12 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Runs an (extended) query and returns the result. Parameters can be set in the
-  query as `$1` embedded in the query string. Parameters are given as a list of
-  elixir values. See the README for information on how Postgrex encodes and
-  decodes elixir values by default. See `Postgrex.Result` for the result data.
+  Runs an (extended) query and returns the result as `{ :ok, Postgrex.Result[]
+  }` or `{ :error, Postgrex.Error[] }` if there was an error. Parameters can be
+  set in the query as `$1` embedded in the query string. Parameters are given as
+  a list of elixir values. See the README for information on how Postgrex
+  encodes and decodes elixir values by default. See `Postgrex.Result` for the
+  result data.
   """
   @spec query(pid, String.t, list) :: { :ok, Postgrex.Result.t } | { :error, Postgrex.Error.t }
   def query(pid, statement, params // []) do
@@ -79,6 +81,19 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
+  Runs an (extended) query and returns the result or raises `Postgrex.Error` if
+  there was an error. See `query/3`.
+  """
+  @spec query!(pid, String.t, list) :: Postgrex.Result.t | no_return
+  def query!(pid, statement, params // []) do
+    case :gen_server.call(pid, { :query, statement, params }) do
+      Postgrex.Result[] = res -> res
+      Postgrex.Error[] = err -> raise err
+    end
+  end
+
+
+  @doc """
   Returns a cached list dict of connection parameters.
   """
   @spec parameters(pid) :: [{ String.t, String.t }]
@@ -87,9 +102,10 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Starts a transaction. Transactions can be nested with the help of savepoints.
-  A transaction won't end until a `rollback/1` or `commit/1` have been issued
-  for every `begin/1`.
+  Starts a transaction. Returns `:ok` or `{ :error, Postgrex.Error[] }` if an
+  error occurred. Transactions can be nested with the help of savepoints. A
+  transaction won't end until a `rollback/1` or `commit/1` have been issued for
+  every `begin/1`.
 
   ## Example
 
@@ -111,29 +127,71 @@ defmodule Postgrex.Connection do
   def begin(pid) do
     case :gen_server.call(pid, :begin) do
       Postgrex.Result[] -> :ok
-      err -> err
+      Postgrex.Error[] = err -> err
     end
   end
 
   @doc """
-  Rolls back a transaction. See `begin/1` for more information.
+  Starts a transaction. Returns `:ok` if it was successful or raises
+  `Postgrex.Error` if an error occurred. See `begin/1`.
+  """
+  @spec begin!(pid) :: :ok | no_return
+  def begin!(pid) do
+    case :gen_server.call(pid, :begin) do
+      Postgrex.Result[] -> :ok
+      Postgrex.Error[] = err -> raise err
+    end
+  end
+
+  @doc """
+  Rolls back a transaction. Returns `:ok` or `{ :error, Postgrex.Error[] }` if
+  an error occurred. See `begin/1` for more information.
   """
   @spec rollback(pid) :: :ok | { :error, Postgrex.Error.t }
   def rollback(pid) do
     case :gen_server.call(pid, :rollback) do
+      :ok -> :ok
       Postgrex.Result[] -> :ok
-      err -> err
+      Postgrex.Error[] = err -> err
     end
   end
 
   @doc """
-  Commits a transaction. See `begin/1` for more information.
+  Rolls back a transaction. Returns `:ok` if it was successful or raises
+  `Postgrex.Error` if an error occurred. See `rollback/1`.
+  """
+  @spec rollback!(pid) :: :ok | no_return
+  def rollback!(pid) do
+    case :gen_server.call(pid, :rollback) do
+      :ok -> :ok
+      Postgrex.Result[] -> :ok
+      Postgrex.Error[] = err -> raise err
+    end
+  end
+
+  @doc """
+  Commits a transaction. Returns `:ok` or `{ :error, Postgrex.Error[] }` if an
+  error occurred. See `begin/1` for more information.
   """
   @spec commit(pid) :: :ok | { :error, Postgrex.Error.t }
   def commit(pid) do
     case :gen_server.call(pid, :commit) do
+      :ok -> :ok
       Postgrex.Result[] -> :ok
-      err -> err
+      Postgrex.Error[] = err -> err
+    end
+  end
+
+  @doc """
+  Commits a transaction. Returns `:ok` if it was successful or raises
+  `Postgrex.Error` if an error occurred. See `commit/1`.
+  """
+  @spec commit!(pid) :: :ok | no_return
+  def commit!(pid) do
+    case :gen_server.call(pid, :commit) do
+      :ok -> :ok
+      Postgrex.Result[] -> :ok
+      Postgrex.Error[] = err -> raise err
     end
   end
 
