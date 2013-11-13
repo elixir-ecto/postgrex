@@ -36,11 +36,11 @@ defmodule Postgrex.Connection do
 
   ## Function signatures
 
-      @spec encoder(type :: atom, sender :: atom, oid :: integer, default :: fun, param :: term) ::
+      @spec encoder(info :: TypeInfo.t, default :: fun, param :: term) ::
             { :binary | :text, binary }
-      @spec decoder(type :: atom, sender :: atom, oid :: integer, default :: fun, bin :: binary) ::
+      @spec decoder(info :: TypeInfo.t, default :: fun, bin :: binary) ::
             term
-      @spec decode_formatter(type :: atom, sender :: atom, oid :: integer) ::
+      @spec decode_formatter(info :: TypeInfo.t) ::
             :binary | :text
   """
   @spec start_link(Keyword.t) :: { :ok, pid } | { :error, Postgrex.Error.t | term }
@@ -530,8 +530,8 @@ defmodule Postgrex.Connection do
           { count + 1, [nil|list] }
 
         bin, { count, list } ->
-          { sender, type, oid, format, default } = elem(info, count)
-          decoded = Types.decode_value(sender, type, oid, format, decoder, default, bin)
+          { info, format, default } = elem(info, count)
+          decoded = Types.decode_value(info, format, decoder, default, bin)
           { count + 1, [decoded|list] }
       end)
 
@@ -574,21 +574,21 @@ defmodule Postgrex.Connection do
         { :binary, nil }
 
       { oid, param } ->
-        { sender, type } = Types.oid_to_type(types, oid)
-        default = &Types.encode(sender, oid, extra, &1)
-        Types.encode_value(sender, type, oid, extra, default, param)
+        info = Dict.fetch!(types, oid)
+        default = &Types.encode(info, extra, &1)
+        Types.encode_value(info, extra, default, param)
 
     end) |> :lists.unzip
   end
 
   defp extract_row_info(fields, types, decoder, formatter) do
     Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
-      { sender, type } = Types.oid_to_type(types, oid)
+      info = Dict.fetch!(types, oid)
       format = Types.format(types, oid, formatter)
       extra = { types, decoder }
-      default = &Types.decode(sender, extra, &1)
+      default = &Types.decode(info, extra, &1)
 
-      { { sender, type, oid, format, default }, format, name }
+      { { info, format, default }, format, name }
     end) |> List.unzip |> list_to_tuple
   end
 

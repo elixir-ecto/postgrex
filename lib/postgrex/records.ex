@@ -17,6 +17,8 @@ defrecord Postgrex.Result, [:command, :columns, :rows, :num_rows] do
     num_rows: integer ]
 end
 
+defrecord Postgrex.TypeInfo, [:oid, :sender, :type, :array_elem, :comp_elems]
+
 defexception Postgrex.Error, [:postgres, :reason] do
   def message(Postgrex.Error[postgres: kw]) when is_list(kw) do
     "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"

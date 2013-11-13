@@ -2,27 +2,28 @@ defmodule CustomCoders do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P
+  alias Postgrex.TypeInfo
 
-  defp encoder(:int4, _type, _oid, default, value) do
+  defp encoder(TypeInfo[sender: :int4], default, value) do
     default.(value + 1)
   end
 
-  defp encoder(_sender, _type, _oid, default, value) do
+  defp encoder(_info, default, value) do
     default.(value)
   end
 
-  defp decoder(:int4, _type, _oid, _format, default, bin) do
+  defp decoder(TypeInfo[sender: :int4], _format, default, bin) do
     default.(bin) + 10
   end
 
-  defp decoder(_sender, _type, _oid, _format, default, bin) do
+  defp decoder(_info, _format, default, bin) do
     default.(bin)
   end
 
   setup do
     opts = [ hostname: "localhost", username: "postgres",
              password: "postgres", database: "postgrex_test",
-             encoder: &encoder/5, decoder: &decoder/6]
+             encoder: &encoder/3, decoder: &decoder/4]
     { :ok, pid } = P.start_link(opts)
     { :ok, [pid: pid] }
   end
