@@ -124,7 +124,7 @@ defmodule Postgrex.Protocol do
 
   # no_data
   def decode(?n, _size, _rest) do
-    msg_parse_complete()
+    msg_no_data()
   end
 
   # bind_complete

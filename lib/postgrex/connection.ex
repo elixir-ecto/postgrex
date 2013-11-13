@@ -11,9 +11,9 @@ defmodule Postgrex.Connection do
 
   # possible states: auth, init, parsing, describing, binding, executing, ready
 
-  defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :parameters,
-                       :backend_key, :rows, :statement, :portal, :qparams,
-                       :bootstrap, :types, :transactions ]
+  defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :reply,
+                       :parameters, :backend_key, :rows, :statement, :portal,
+                       :qparams, :bootstrap, :types, :transactions ]
 
   defrecordp :statement, [:row_info, :columns]
   defrecordp :portal, [:param_oids]
@@ -258,13 +258,11 @@ defmodule Postgrex.Connection do
           :ok ->
             { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: :auth) }
           { :error, reason } ->
-            :gen_server.reply(from, Postgrex.Error[reason: "tcp send: #{reason}"])
-            { :stop, :normal, s }
+            { :stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s }
         end
 
       { :error, reason } ->
-        :gen_server.reply(from, Postgrex.Error[reason: "tcp connect: #{reason}"])
-        { :stop, :normal, s }
+        { :stop, :normal, Postgrex.Error[reason: "tcp connect: #{reason}"], s }
     end
   end
 
@@ -273,14 +271,12 @@ defmodule Postgrex.Connection do
       { :ok, s } ->
         { :noreply, state(s, qparams: params, reply_to: from) }
       { :error, reason, s } ->
-        :gen_server.reply(from, { :error, reason })
-        { :stop, :normal, s }
+        { :stop, :normal, { :error, reason }, s }
     end
   end
 
-  def handle_call(:parameters, from, state(parameters: params, state: :ready) = s) do
-    :gen_server.reply(from, params)
-    { :noreply, s }
+  def handle_call(:parameters, _from, state(parameters: params, state: :ready) = s) do
+    { :reply, params, s }
   end
 
   def handle_call(:begin, from, state(transactions: trans, state: :ready) = s) do
@@ -296,8 +292,7 @@ defmodule Postgrex.Connection do
   def handle_call(:rollback, from, state(transactions: trans, state: :ready) = s) do
     cond do
       trans == 0 ->
-        :gen_server.reply(from, :ok)
-        { :noreply, s }
+        { :reply, :ok, s }
       trans == 1 ->
         s = state(s, transactions: 0)
         handle_call({ :query, "ROLLBACK", [] }, from, s)
@@ -311,26 +306,24 @@ defmodule Postgrex.Connection do
   def handle_call(:commit, from, state(transactions: trans, state: :ready) = s) do
     case trans do
       0 ->
-        :gen_server.reply(from, :ok)
-        { :noreply, s }
+        { :reply, :ok, s }
       1 ->
         s = state(s, transactions: 0)
         handle_call({ :query, "COMMIT", [] }, from, s)
       _ ->
-        :gen_server.reply(from, :ok)
-        { :noreply, state(s, transactions: trans - 1) }
+        { :reply, :ok, state(s, transactions: trans - 1) }
     end
   end
 
   @doc false
-  def handle_info({ :tcp, _, data }, state(reply_to: from, sock: sock, tail: tail) = s) do
+  def handle_info({ :tcp, _, data }, state(reply_to: to, sock: sock, tail: tail) = s) do
     case handle_data(tail <> data, state(s, tail: "")) do
       { :ok, s } ->
         :inet.setopts(sock, active: :once)
         { :noreply, s }
       { :error, error, s } ->
-        if from do
-          :gen_server.reply(from, error)
+        if to do
+          :gen_server.reply(to, error)
           { :stop, :normal, s }
         else
           { :stop, error, s }
@@ -338,20 +331,20 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({ :tcp_closed, _ }, state(reply_to: from) = s) do
+  def handle_info({ :tcp_closed, _ }, state(reply_to: to) = s) do
     error = Postgrex.Error[reason: "tcp closed"]
-    if from do
-      :gen_server.reply(from, error)
+    if to do
+      :gen_server.reply(to, error)
       { :stop, :normal, s }
     else
       { :stop, error, s }
     end
   end
 
-  def handle_info({ :tcp_error, _, reason }, state(reply_to: from) = s) do
+  def handle_info({ :tcp_error, _, reason }, state(reply_to: to) = s) do
     error = Postgrex.Error[reason: "tcp error: #{reason}"]
-    if from do
-      :gen_server.reply(from, error)
+    if to do
+      :gen_server.reply(to, error)
       { :stop, :normal, s }
     else
       { :stop, error, s }
@@ -359,15 +352,18 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def terminate(reason, state(sock: sock) = s) do
+  def terminate(reason, state(reply_to: to, reply: reply, sock: sock)) do
     if sock do
       send(msg_terminate(), sock)
       :gen_tcp.close(sock)
     end
-    if reason == :normal do
-      reply(:ok, s)
-    else
-      reply(Postgrex.Error[reason: "terminated: #{inspect reason}"], s)
+
+    if to do
+      if reason == :normal do
+        :gen_server.reply(to, reply || :ok)
+      else
+        :gen_server.reply(to, Postgrex.Error[reason: "terminated: #{inspect reason}"])
+      end
     end
   end
 
@@ -437,7 +433,7 @@ defmodule Postgrex.Connection do
 
   ### describing state ###
 
-  defp message(msg_parse_complete(), state(state: :describing) = s) do
+  defp message(msg_no_data(), state(state: :describing) = s) do
     send_params(s, [])
   end
 
@@ -454,10 +450,6 @@ defmodule Postgrex.Connection do
     end
 
     send_params(s, rfs)
-  end
-
-  defp message(msg_no_data(), state(state: :describing) = s) do
-    { :ok, s }
   end
 
   defp message(msg_ready(), state(state: :describing) = s) do
@@ -480,35 +472,35 @@ defmodule Postgrex.Connection do
 
   defp message(msg_command_complete(), state(bootstrap: true, rows: rows, state: :executing) = s) do
     types = Types.build_types(rows)
-    s = reply(:ok, s)
-    { :ok, state(s, rows: [], bootstrap: false, types: types) }
+    { :ok, state(s, reply: :ok, rows: [], bootstrap: false, types: types) }
   end
 
   defp message(msg_command_complete(tag: tag), state(statement: stat, state: :executing) = s) do
-    if nil?(stat) do
-      s = reply(create_result(tag), s)
-    else
-      s = try do
-        result = decode_rows(s)
-        statement(columns: cols) = stat
-        reply(create_result(tag, result, cols), s)
-      catch
-        { :postgrex_decode, msg } ->
-          reply(Postgrex.Error[reason: msg], s)
+    reply =
+      if nil?(stat) do
+        create_result(tag)
+      else
+        try do
+          result = decode_rows(s)
+          statement(columns: cols) = stat
+          create_result(tag, result, cols)
+        catch
+          { :postgrex_decode, msg } ->
+            Postgrex.Error[reason: msg]
+        end
       end
-    end
-    { :ok, state(s, rows: [], statement: nil, portal: nil) }
+    { :ok, state(s, reply: reply, rows: [], statement: nil, portal: nil) }
   end
 
   defp message(msg_empty_query(), state(state: :executing) = s) do
-    s = reply(Postgrex.Result[], s)
-    { :ok, s }
+    { :ok, state(s, reply: Postgrex.Result[]) }
   end
 
   ### asynchronous messages ###
 
-  defp message(msg_ready(), s) do
-    { :ok, state(s, state: :ready) }
+  defp message(msg_ready(), state(reply_to: to, reply: reply) = s) do
+    if to, do: :gen_server.reply(to, reply)
+    { :ok, state(s, reply_to: nil, reply: nil, state: :ready) }
   end
 
   defp message(msg_parameter(name: name, value: value), state(parameters: params) = s) do
@@ -517,9 +509,8 @@ defmodule Postgrex.Connection do
   end
 
   defp message(msg_error(fields: fields), s) do
-    s = reply(Postgrex.Error[postgres: fields], s)
     # TODO: subscribers
-    { :ok, s }
+    { :ok, state(s, reply: Postgrex.Error[postgres: fields]) }
   end
 
   defp message(msg_notice(), s) do
@@ -550,12 +541,20 @@ defmodule Postgrex.Connection do
   end
 
   defp send_params(s, rfs) do
-    { pfs, params } = encode_params(s)
+    { msgs, s } = try do
+      { pfs, params } = encode_params(s)
 
-    msgs = [
-      msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0),
-      msg_sync() ]
+      msgs = [
+        msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
+        msg_execute(name_port: "", max_rows: 0),
+        msg_sync() ]
+      { msgs, s }
+
+    catch
+      { :postgrex_encode, reason } ->
+        reply = Postgrex.Error[reason: reason]
+        { [msg_sync], state(s, reply: reply, portal: nil) }
+    end
 
     case send_to_result(msgs, s) do
       { :ok, s } ->
@@ -563,10 +562,6 @@ defmodule Postgrex.Connection do
       err ->
         err
     end
-  catch
-    { :postgrex_encode, msg } ->
-      s = reply(Postgrex.Error[reason: msg], s)
-      { :ok, state(s, portal: nil, qparams: nil, state: :ready) }
   end
 
   defp encode_params(state(qparams: params, portal: portal, types: types, opts: opts)) do
@@ -639,13 +634,6 @@ defmodule Postgrex.Connection do
     { command, nums } = Enum.split_while(words, &is_binary(&1))
     command = Enum.join(command, "_") |> String.downcase |> binary_to_atom
     { command, List.last(nums) }
-  end
-
-  defp reply(_msg, state(reply_to: nil) = s), do: s
-
-  defp reply(msg, state(reply_to: from) = s) do
-    if from, do: :gen_server.reply(from, msg)
-    state(s, reply_to: nil)
   end
 
   defp send(msg, state(sock: sock)), do: send(msg, sock)

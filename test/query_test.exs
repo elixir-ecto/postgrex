@@ -204,4 +204,9 @@ defmodule QueryTest do
     :ok = query("INSERT INTO test VALUES ($1, $2)", [42, "fortytwo"])
     [{42, "fortytwo"}] = query("SELECT * FROM test")
   end
+
+  test "connection works after failure", context do
+    assert Postgrex.Error[] = query("wat")
+    assert [{42}] = query("SELECT 42")
+  end
 end
