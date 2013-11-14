@@ -1,4 +1,4 @@
-# v0.1.1-dev
+# v0.2.0 (2013-11-14)
 
 * Enhancements
   * Floats handles NaN, inf and -inf
