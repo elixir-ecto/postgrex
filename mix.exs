@@ -4,13 +4,13 @@ defmodule Postgrex.Mixfile do
   def project do
     [ app: :postgrex,
       version: "0.1.1-dev",
-      elixir: "~> 0.11.2-dev",
+      elixir: "~> 0.11.2",
       deps: deps(Mix.env),
       name: "Postgrex",
       source_url: "https://github.com/ericmj/postgrex",
       docs: fn -> [
         source_ref: System.cmd("git rev-parse --verify --quiet HEAD"),
-        main: "overview",
+        main: "readme",
         readme: true ]
       end ]
   end
