@@ -1,5 +1,10 @@
 ExUnit.start
 
+:ok = :application.start(:crypto)
+:ok = :application.start(:asn1)
+:ok = :application.start(:public_key)
+:ok = :application.start(:ssl)
+
 run_cmd = fn cmd ->
   key = :ecto_setup_cmd_output
   Process.put(key, "")

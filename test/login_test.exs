@@ -38,4 +38,12 @@ defmodule LoginTest do
       assert :ok = P.stop(pid)
     end
   end
+
+  test "ssl" do
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test",
+             ssl: true ]
+    assert { :ok, pid } = P.start_link(opts)
+    assert :ok = P.stop(pid)
+  end
 end

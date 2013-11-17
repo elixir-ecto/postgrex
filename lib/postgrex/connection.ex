@@ -9,7 +9,8 @@ defmodule Postgrex.Connection do
   alias Postgrex.Types
   import Postgrex.BinaryUtils
 
-  # possible states: auth, init, parsing, describing, binding, executing, ready
+  # possible states: ssl, auth, init, parsing, describing, binding, executing,
+  #                  ready
 
   defrecordp :state, [ :opts, :sock, :tail, :state, :reply_to, :reply,
                        :parameters, :backend_key, :rows, :statement, :portal,
@@ -33,6 +34,8 @@ defmodule Postgrex.Connection do
     * `:decoder` - Custom decoder function;
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
+    * `:ssl` - Set to `true` if ssl should be used (default: `false`);
+    * `:ssl_opts` - A list of ssl options, see ssl docs;
 
   ## Function signatures
 
@@ -252,13 +255,11 @@ defmodule Postgrex.Connection do
 
     case :gen_tcp.connect(opts[:hostname], opts[:port], sock_opts) do
       { :ok, sock } ->
-        params = opts[:parameters] || []
-        msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
-        case send(msg, sock) do
-          :ok ->
-            { :noreply, state(s, opts: opts, sock: sock, reply_to: from, state: :auth) }
-          { :error, reason } ->
-            { :stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s }
+        s = state(s, opts: opts, sock: { :gen_tcp, sock }, reply_to: from)
+        if opts[:ssl] do
+          startup_ssl(s)
+        else
+          startup(s)
         end
 
       { :error, reason } ->
@@ -316,10 +317,32 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_info({ :tcp, _, data }, state(reply_to: to, sock: sock, tail: tail) = s) do
+  def handle_info({ :tcp, _, data }, state(reply_to: to, sock: { :gen_tcp, sock }, opts: opts, state: :ssl) = s) do
+    case data do
+      << ?S >> ->
+        case :ssl.connect(sock, opts[:ssl_opts] || []) do
+          { :ok, ssl_sock } ->
+            :ssl.setopts(ssl_sock, active: :once)
+            startup(state(s, sock: { :ssl, ssl_sock }))
+          { :error, reason } ->
+            :gen_server.reply(to, Postgrex.Error[reason: "ssl negotiation failed: #{reason}"])
+            { :stop, :normal, s }
+        end
+
+      << ?N >> ->
+        :gen_server.reply(to, Postgrex.Error[reason: "ssl not available"])
+        { :stop, :normal, s }
+    end
+  end
+
+  def handle_info({ tag, _, data }, state(reply_to: to, sock: { mod, sock }, tail: tail) = s)
+      when tag in [:tcp, :ssl] do
     case handle_data(tail <> data, state(s, tail: "")) do
       { :ok, s } ->
-        :inet.setopts(sock, active: :once)
+        case mod do
+          :gen_tcp -> :inet.setopts(sock, active: :once)
+          :ssl -> :ssl.setopts(sock, active: :once)
+        end
         { :noreply, s }
       { :error, error, s } ->
         if to do
@@ -331,7 +354,8 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({ :tcp_closed, _ }, state(reply_to: to) = s) do
+  def handle_info({ tag, _ }, state(reply_to: to) = s)
+      when tag in [:tcp_closed, :ssl_closed] do
     error = Postgrex.Error[reason: "tcp closed"]
     if to do
       :gen_server.reply(to, error)
@@ -341,7 +365,8 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({ :tcp_error, _, reason }, state(reply_to: to) = s) do
+  def handle_info({ tag, _, reason }, state(reply_to: to) = s)
+      when tag in [:tcp_error, :ssl_error] do
     error = Postgrex.Error[reason: "tcp error: #{reason}"]
     if to do
       :gen_server.reply(to, error)
@@ -355,7 +380,8 @@ defmodule Postgrex.Connection do
   def terminate(reason, state(reply_to: to, reply: reply, sock: sock)) do
     if sock do
       send(msg_terminate(), sock)
-      :gen_tcp.close(sock)
+      { mod, sock } = sock
+      mod.close(sock)
     end
 
     if to do
@@ -520,6 +546,26 @@ defmodule Postgrex.Connection do
 
   ### helpers ###
 
+  defp startup_ssl(state(sock: sock) = s) do
+    case send(msg_ssl_request(), sock) do
+      :ok ->
+        { :noreply, state(s, state: :ssl) }
+      { :error, reason } ->
+        { :stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s }
+    end
+  end
+
+  defp startup(state(sock: sock, opts: opts) = s) do
+    params = opts[:parameters] || []
+    msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
+    case send(msg, sock) do
+      :ok ->
+        { :noreply, state(s, state: :auth) }
+      { :error, reason } ->
+        { :stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s }
+    end
+  end
+
   defp decode_rows(state(statement: stat, rows: rows, opts: opts)) do
     statement(row_info: info) = stat
     decoder = opts[:decoder]
@@ -638,14 +684,14 @@ defmodule Postgrex.Connection do
 
   defp send(msg, state(sock: sock)), do: send(msg, sock)
 
-  defp send(msgs, sock) when is_list(msgs) do
+  defp send(msgs, { mod, sock }) when is_list(msgs) do
     binaries = Enum.map(msgs, &Protocol.encode(&1))
-    :gen_tcp.send(sock, binaries)
+    mod.send(sock, binaries)
   end
 
-  defp send(msg, sock) do
+  defp send(msg, { mod, sock }) do
     binary = Protocol.encode(msg)
-    :gen_tcp.send(sock, binary)
+    mod.send(sock, binary)
   end
 
   defp send_to_result(msg, s) do

@@ -10,7 +10,7 @@ defmodule Postgrex.Mixfile do
       source_url: "https://github.com/ericmj/postgrex",
       docs: fn -> [
         source_ref: System.cmd("git rev-parse --verify --quiet HEAD"),
-        main: "readme",
+        main: "README",
         readme: true ]
       end ]
   end

@@ -28,6 +28,7 @@ defmodule Postgrex.Protocol.Messages do
       defrecordp :msg_command_complete, [:tag]
       defrecordp :msg_empty_query, []
       defrecordp :msg_terminate, []
+      defrecordp :msg_ssl_request, []
 
       defrecordp :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
                               :type_mod, :format]
@@ -229,6 +230,11 @@ defmodule Postgrex.Protocol do
   # terminate
   defp encode_msg(msg_terminate()) do
     { ?X, "" }
+  end
+
+  # ssl_request
+  defp encode_msg(msg_ssl_request()) do
+    { nil, << 1234 :: int16, 5679 :: int16 >> }
   end
 
   ### encode helpers ###
