@@ -36,4 +36,9 @@ defmodule CustomCoders do
     assert [{53}] = query("SELECT $1::int4", [42])
     assert [{[53]}] = query("SELECT $1::int4[]", [[42]])
   end
+
+  test "encode and decode unknown type", context do
+    assert [{"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}] =
+           query("SELECT $1::uuid", ["a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"])
+  end
 end

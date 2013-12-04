@@ -172,6 +172,8 @@ defmodule Postgrex.Types do
     do: decode_record(bin, extra)
   def decode(TypeInfo[sender: :unknown], _, bin),
     do: bin
+  def decode(TypeInfo[], _, _),
+    do: nil
 
   def encode(TypeInfo[sender: :bool], _, true),
     do: << 1 >>
@@ -223,7 +225,7 @@ defmodule Postgrex.Types do
     do: encode_array(list, oid, extra)
   def encode(TypeInfo[sender: :record, oid: oid], extra, tuple) when is_tuple(tuple),
     do: encode_record(tuple, oid, extra)
-  def encode(_, _, _),
+  def encode(TypeInfo[], _, _),
     do: nil
 
   Enum.each(@types, fn type ->
