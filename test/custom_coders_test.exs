@@ -20,7 +20,7 @@ defmodule CustomCoders do
     default.(bin)
   end
 
-  defp formatter(TypeInfo[sender: :float8]), do: :text
+  defp formatter(TypeInfo[sender: "float8"]), do: :text
   defp formatter(TypeInfo[]), do: nil
 
   setup do
@@ -46,6 +46,6 @@ defmodule CustomCoders do
   end
 
   test "dont decode text format", context do
-    assert [{"123.45"}] = query("SELECT 123.45::float")
+    assert [{"123.45"}] = query("SELECT 123.45::float8")
   end
 end
