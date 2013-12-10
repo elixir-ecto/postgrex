@@ -4,7 +4,7 @@ defmodule CustomCoders do
   alias Postgrex.Connection, as: P
   alias Postgrex.TypeInfo
 
-  defp encoder(TypeInfo[sender: :int4], default, value) do
+  defp encoder(TypeInfo[sender: "int4"], default, value) do
     default.(value + 1)
   end
 
@@ -12,7 +12,7 @@ defmodule CustomCoders do
     default.(value)
   end
 
-  defp decoder(TypeInfo[sender: :int4], _format, default, bin) do
+  defp decoder(TypeInfo[sender: "int4"], _format, default, bin) do
     default.(bin) + 10
   end
 

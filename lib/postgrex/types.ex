@@ -4,9 +4,9 @@ defmodule Postgrex.Types do
   alias Postgrex.TypeInfo
   import Postgrex.BinaryUtils
 
-  @types [ :bool, :bpchar, :text, :varchar, :bytea, :int2, :int4, :int8,
-           :float4, :float8, :numeric, :date, :time, :timetz, :timestamp,
-           :timestamptz, :interval, :unknown ]
+  @types [ "bool", "bpchar", "text", "varchar", "bytea", "int2", "int4", "int8",
+           "float4", "float8", "numeric", "date", "time", "timetz", "timestamp",
+           "timestamptz", "interval", "unknown" ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -17,7 +17,6 @@ defmodule Postgrex.Types do
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
       [oid, type, send, array_oid, comp_oids] = row
-      type = binary_to_atom(type)
       oid = binary_to_integer(oid)
       send_size = byte_size(send)
       array_oid = binary_to_integer(array_oid)
@@ -26,9 +25,9 @@ defmodule Postgrex.Types do
       send =
         cond do
           String.ends_with?(send, "_send") ->
-            :binary.part(send, 0, send_size - 5) |> binary_to_atom
+            :binary.part(send, 0, send_size - 5)
           String.ends_with?(send, "send") ->
-            :binary.part(send, 0, send_size - 4) |> binary_to_atom
+            :binary.part(send, 0, send_size - 4)
           true ->
             nil
         end
@@ -72,9 +71,9 @@ defmodule Postgrex.Types do
         cond do
           formatter && (format = formatter.(info)) ->
             format
-          sender == :array and format(types, array_oid, formatter) == :binary ->
+          sender == "array" and format(types, array_oid, formatter) == :binary ->
             :binary
-          sender == :record and type != :record and
+          sender == "record" and type != "record" and
           Enum.all?(comp_oids, &(format(types, &1, formatter) == :binary)) ->
             :binary
           binary_type?(sender) ->
@@ -118,112 +117,112 @@ defmodule Postgrex.Types do
     end
   end
 
-  def decode(TypeInfo[sender: :bool], _, << 1 :: int8 >>),
+  def decode(TypeInfo[sender: "bool"], _, << 1 :: int8 >>),
     do: true
-  def decode(TypeInfo[sender: :bool], _, << 0 :: int8 >>),
+  def decode(TypeInfo[sender: "bool"], _, << 0 :: int8 >>),
     do: false
-  def decode(TypeInfo[sender: :bpchar], _, bin),
+  def decode(TypeInfo[sender: "bpchar"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: :text], _, bin),
+  def decode(TypeInfo[sender: "text"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: :varchar], _, bin),
+  def decode(TypeInfo[sender: "varchar"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: :bytea], _, bin),
+  def decode(TypeInfo[sender: "bytea"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: :int2], _, << n :: int16 >>),
+  def decode(TypeInfo[sender: "int2"], _, << n :: int16 >>),
     do: n
-  def decode(TypeInfo[sender: :int4], _, << n :: int32 >>),
+  def decode(TypeInfo[sender: "int4"], _, << n :: int32 >>),
     do: n
-  def decode(TypeInfo[sender: :int8], _, << n :: int64 >>),
+  def decode(TypeInfo[sender: "int8"], _, << n :: int64 >>),
     do: n
-  def decode(TypeInfo[sender: :float4], _, << 127, 192, 0, 0 >>),
+  def decode(TypeInfo[sender: "float4"], _, << 127, 192, 0, 0 >>),
     do: :NaN
-  def decode(TypeInfo[sender: :float4], _, << 127, 128, 0, 0 >>),
+  def decode(TypeInfo[sender: "float4"], _, << 127, 128, 0, 0 >>),
     do: :inf
-  def decode(TypeInfo[sender: :float4], _, << 255, 128, 0, 0 >>),
+  def decode(TypeInfo[sender: "float4"], _, << 255, 128, 0, 0 >>),
     do: :"-inf"
-  def decode(TypeInfo[sender: :float4], _, << n :: float32 >>),
+  def decode(TypeInfo[sender: "float4"], _, << n :: float32 >>),
     do: n
-  def decode(TypeInfo[sender: :float8], _, << 127, 248, 0, 0, 0, 0, 0, 0 >>),
+  def decode(TypeInfo[sender: "float8"], _, << 127, 248, 0, 0, 0, 0, 0, 0 >>),
     do: :NaN
-  def decode(TypeInfo[sender: :float8], _, << 127, 240, 0, 0, 0, 0, 0, 0 >>),
+  def decode(TypeInfo[sender: "float8"], _, << 127, 240, 0, 0, 0, 0, 0, 0 >>),
     do: :inf
-  def decode(TypeInfo[sender: :float8], _, << 255, 240, 0, 0, 0, 0, 0, 0 >>),
+  def decode(TypeInfo[sender: "float8"], _, << 255, 240, 0, 0, 0, 0, 0, 0 >>),
     do: :"-inf"
-  def decode(TypeInfo[sender: :float8], _, << n :: float64 >>),
+  def decode(TypeInfo[sender: "float8"], _, << n :: float64 >>),
     do: n
-  def decode(TypeInfo[sender: :numeric], _, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>),
+  def decode(TypeInfo[sender: "numeric"], _, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>),
     do: decode_numeric(ndigits, weight, sign, scale, tail)
-  def decode(TypeInfo[sender: :date], _, << n :: int32 >>),
+  def decode(TypeInfo[sender: "date"], _, << n :: int32 >>),
     do: decode_date(n)
-  def decode(TypeInfo[sender: :time], _, << n :: int64 >>),
+  def decode(TypeInfo[sender: "time"], _, << n :: int64 >>),
     do: decode_time(n)
-  def decode(TypeInfo[sender: :timetz], _, << n :: int64, _tz :: int32 >>),
+  def decode(TypeInfo[sender: "timetz"], _, << n :: int64, _tz :: int32 >>),
     do: decode_time(n)
-  def decode(TypeInfo[sender: :timestamp], _, << n :: int64 >>),
+  def decode(TypeInfo[sender: "timestamp"], _, << n :: int64 >>),
     do: decode_timestamp(n)
-  def decode(TypeInfo[sender: :timestamptz], _, << n :: int64 >>),
+  def decode(TypeInfo[sender: "timestamptz"], _, << n :: int64 >>),
     do: decode_timestamp(n)
-  def decode(TypeInfo[sender: :interval], _, << s :: int64, d :: int32, m :: int32 >>),
+  def decode(TypeInfo[sender: "interval"], _, << s :: int64, d :: int32, m :: int32 >>),
     do: decode_interval(s, d, m)
-  def decode(TypeInfo[sender: :array], extra, bin),
+  def decode(TypeInfo[sender: "array"], extra, bin),
     do: decode_array(bin, extra)
-  def decode(TypeInfo[sender: :record], extra, bin),
+  def decode(TypeInfo[sender: "record"], extra, bin),
     do: decode_record(bin, extra)
-  def decode(TypeInfo[sender: :unknown], _, bin),
+  def decode(TypeInfo[sender: "unknown"], _, bin),
     do: bin
   def decode(TypeInfo[], _, _),
     do: nil
 
-  def encode(TypeInfo[sender: :bool], _, true),
+  def encode(TypeInfo[sender: "bool"], _, true),
     do: << 1 >>
-  def encode(TypeInfo[sender: :bool], _, false),
+  def encode(TypeInfo[sender: "bool"], _, false),
     do: << 0 >>
-  def encode(TypeInfo[sender: :bpchar], _, bin) when is_binary(bin),
+  def encode(TypeInfo[sender: "bpchar"], _, bin) when is_binary(bin),
     do: bin
-  def encode(TypeInfo[sender: :text], _, bin) when is_binary(bin),
+  def encode(TypeInfo[sender: "text"], _, bin) when is_binary(bin),
     do: bin
-  def encode(TypeInfo[sender: :varchar], _, bin) when is_binary(bin),
+  def encode(TypeInfo[sender: "varchar"], _, bin) when is_binary(bin),
     do: bin
-  def encode(TypeInfo[sender: :bytea], _, bin) when is_binary(bin),
+  def encode(TypeInfo[sender: "bytea"], _, bin) when is_binary(bin),
     do: bin
-  def encode(TypeInfo[sender: :int2], _, n) when is_integer(n),
+  def encode(TypeInfo[sender: "int2"], _, n) when is_integer(n),
     do: << n :: int16 >>
-  def encode(TypeInfo[sender: :int4], _, n) when is_integer(n),
+  def encode(TypeInfo[sender: "int4"], _, n) when is_integer(n),
     do: << n :: int32 >>
-  def encode(TypeInfo[sender: :int8], _, n) when is_integer(n),
+  def encode(TypeInfo[sender: "int8"], _, n) when is_integer(n),
     do: << n :: int64 >>
-  def encode(TypeInfo[sender: :float4], _, :NaN),
+  def encode(TypeInfo[sender: "float4"], _, :NaN),
     do: << 127, 192, 0, 0 >>
-  def encode(TypeInfo[sender: :float4], _, :inf),
+  def encode(TypeInfo[sender: "float4"], _, :inf),
     do: << 127, 128, 0, 0 >>
-  def encode(TypeInfo[sender: :float4], _, :"-inf"),
+  def encode(TypeInfo[sender: "float4"], _, :"-inf"),
     do: << 255, 128, 0, 0 >>
-  def encode(TypeInfo[sender: :float4], _, n) when is_number(n),
+  def encode(TypeInfo[sender: "float4"], _, n) when is_number(n),
     do: << n :: float32 >>
-  def encode(TypeInfo[sender: :float8], _, :NaN),
+  def encode(TypeInfo[sender: "float8"], _, :NaN),
     do: << 127, 248, 0, 0, 0, 0, 0, 0 >>
-  def encode(TypeInfo[sender: :float8], _, :inf),
+  def encode(TypeInfo[sender: "float8"], _, :inf),
     do: << 127, 240, 0, 0, 0, 0, 0, 0 >>
-  def encode(TypeInfo[sender: :float8], _, :"-inf"),
+  def encode(TypeInfo[sender: "float8"], _, :"-inf"),
     do: << 255, 240, 0, 0, 0, 0, 0, 0 >>
-  def encode(TypeInfo[sender: :float8], _, n) when is_number(n),
+  def encode(TypeInfo[sender: "float8"], _, n) when is_number(n),
     do: << n :: float64 >>
-  def encode(TypeInfo[sender: :numeric], _, n),
+  def encode(TypeInfo[sender: "numeric"], _, n),
     do: encode_numeric(n)
-  def encode(TypeInfo[sender: :date], _, date),
+  def encode(TypeInfo[sender: "date"], _, date),
     do: encode_date(date)
-  def encode(TypeInfo[sender: :time], _, time),
+  def encode(TypeInfo[sender: "time"], _, time),
     do: encode_time(time)
-  def encode(TypeInfo[sender: :timestamp], _, timestamp),
+  def encode(TypeInfo[sender: "timestamp"], _, timestamp),
     do: encode_timestamp(timestamp)
-  def encode(TypeInfo[sender: :timestamptz], _, timestamp),
+  def encode(TypeInfo[sender: "timestamptz"], _, timestamp),
     do: encode_timestamp(timestamp)
-  def encode(TypeInfo[sender: :interval], _, interval),
+  def encode(TypeInfo[sender: "interval"], _, interval),
     do: encode_interval(interval)
-  def encode(TypeInfo[sender: :array, oid: oid], extra, list) when is_list(list),
+  def encode(TypeInfo[sender: "array", oid: oid], extra, list) when is_list(list),
     do: encode_array(list, oid, extra)
-  def encode(TypeInfo[sender: :record, oid: oid], extra, tuple) when is_tuple(tuple),
+  def encode(TypeInfo[sender: "record", oid: oid], extra, tuple) when is_tuple(tuple),
     do: encode_record(tuple, oid, extra)
   def encode(TypeInfo[], _, _),
     do: nil
