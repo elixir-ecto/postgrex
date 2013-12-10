@@ -1,3 +1,12 @@
+# v0.2.1-dev
+
+* Enhancements
+  * Add support for SSL
+
+* Bug fixes
+  * Fix decoding of unknown type when using custom decoder
+
+
 # v0.2.0 (2013-11-14)
 
 * Enhancements
