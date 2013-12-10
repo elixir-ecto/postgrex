@@ -400,7 +400,7 @@ defmodule Postgrex.Connection do
 
     case data do
       << data :: binary(size), tail :: binary >> ->
-        msg = Protocol.decode(type, size, data)
+        msg = Protocol.parse(type, size, data)
         case message(msg, s) do
           { :ok, s } -> handle_data(tail, s)
           { :error, _, _ } = err -> err
@@ -690,12 +690,12 @@ defmodule Postgrex.Connection do
   defp send(msg, state(sock: sock)), do: send(msg, sock)
 
   defp send(msgs, { mod, sock }) when is_list(msgs) do
-    binaries = Enum.map(msgs, &Protocol.encode(&1))
+    binaries = Enum.map(msgs, &Protocol.msg_to_binary(&1))
     mod.send(sock, binaries)
   end
 
   defp send(msg, { mod, sock }) do
-    binary = Protocol.encode(msg)
+    binary = Protocol.msg_to_binary(msg)
     mod.send(sock, binary)
   end
 
