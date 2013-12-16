@@ -1,4 +1,10 @@
-# v0.3.0-dev
+# v0.3.0 (2013-12-16)
+
+* Bug fixes
+  * Don't try to decode values of text format
+
+* Backwards incompatible changes
+  * Types are stored as binaries instead of atoms, update your custom encoders and decoders
 
 
 # v0.2.1 (2013-12-10)
