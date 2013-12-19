@@ -63,12 +63,16 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
 Encoding and decoding from and to JSON:
 
 ```elixir
-def decoder(:json, _sender, _oid, _default, binary) do
+def decoder(TypeInfo[sender: "json"], binary) do
   JSON.decode(binary)
 end
 
-def encoder(:json, _sender, _oid, _default, value) do
-  { :text, JSON.encode(param) }
+def encoder(TypeInfo[sender: "json"], value) do
+  JSON.encode(value)
+end
+
+def formatter(TypeInfo[sender: "json"]) do
+  :text
 end
 ```
 
