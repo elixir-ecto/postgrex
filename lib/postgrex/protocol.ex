@@ -111,8 +111,8 @@ defmodule Postgrex.Protocol do
 
   # parameter_desc
   def parse(?t, _size, rest) do
-    << len :: int16, rest :: binary >> = rest
-    oids = decode_many(rest, 32, len)
+    << len :: int16, rest :: binary(len, 32) >> = rest
+    oids = lc << oid :: size(32) >> inbits rest, do: oid
     msg_parameter_desc(type_oids: oids)
   end
 
@@ -172,7 +172,7 @@ defmodule Postgrex.Protocol do
 
   # startup
   defp to_binary(msg_startup(params: params)) do
-    params = Enum.flat_map(params, fn { key, value } ->
+    params = Enum.map(params, fn { key, value } ->
       [ to_string(key), 0, value, 0 ]
     end)
     vsn = << @protocol_vsn_major :: int16, @protocol_vsn_minor :: int16 >>
@@ -186,8 +186,8 @@ defmodule Postgrex.Protocol do
 
   # parse
   defp to_binary(msg_parse(name: name, query: query, type_oids: oids)) do
-    { len, oids } = encode_many(oids, &[encode_oid(&1), 0])
-    len = << len :: int16 >>
+    oids = bc oid inlist oids, do: << oid :: int32 >>
+    len = << div(byte_size(oids), 4) :: int16 >>
     { ?P, [name, 0, query, 0, len, oids] }
   end
 
@@ -206,15 +206,17 @@ defmodule Postgrex.Protocol do
   end
 
   # bind
-  defp to_binary(msg_bind(name_port: port, name_stat: stat, param_formats:
-                           param_formats, params: params, result_formats:
-                           result_formats)) do
-    { len_pfs, pfs } = encode_many(param_formats, &encode_format(&1))
-    { len_rfs, rfs } = encode_many(result_formats, &encode_format(&1))
-    { len_ps, ps }   = encode_many(params, &encode_param(&1))
+  defp to_binary(msg_bind(name_port: port, name_stat: stat, param_formats: param_formats,
+                          params: params, result_formats: result_formats)) do
+    pfs = bc format inlist param_formats,  do: << format(format) :: int16 >>
+    rfs = bc format inlist result_formats, do: << format(format) :: int16 >>
+    ps  = bc param  inlist params,         do: << encode_param(param) :: binary >>
 
-    { ?B, [ port, 0, stat, 0, << len_pfs :: int16 >>, pfs, << len_ps :: int16 >>,
-            ps, << len_rfs :: int16 >>, rfs ] }
+    len_pfs = << div(byte_size(pfs), 2) :: int16 >>
+    len_rfs = << div(byte_size(rfs), 2) :: int16 >>
+    len_ps  = << length(params) :: int16 >>
+
+    { ?B, [ port, 0, stat, 0, len_pfs, pfs, len_ps, ps, len_rfs, rfs ] }
   end
 
   # execute
@@ -239,18 +241,8 @@ defmodule Postgrex.Protocol do
 
   ### encode helpers ###
 
-  defp encode_format(:text), do: << 0 :: int16 >>
-  defp encode_format(:binary), do: << 1 :: int16 >>
-
-  defp encode_oid(_oid) do
-  end
-
-  defp encode_many(list, fun) when is_function(fun) do
-    { count, iolist } = Enum.reduce(list, { 0, [] }, fn elem, { count, list } ->
-      { count+1, [fun.(elem) | list] }
-    end)
-    { count, Enum.reverse(iolist) }
-  end
+  defp format(:text),   do: 0
+  defp format(:binary), do: 1
 
   defp encode_param(param) do
     if nil?(param) do
@@ -291,13 +283,6 @@ defmodule Postgrex.Protocol do
     field = row_field(name: name, table_oid: table_oid, column: column, type_oid: type_oid,
                       type_size: type_size, type_mod: type_mod, format: format)
     { field, rest }
-  end
-
-  defp decode_many("", _size, 0), do: []
-
-  defp decode_many(rest, size, count) do
-    << value :: size(size), rest :: binary >> = rest
-    [ value | decode_many(rest, size, count-1) ]
   end
 
   defp decode_row_values("", 0), do: []

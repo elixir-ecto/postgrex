@@ -32,4 +32,8 @@ defmodule Postgrex.BinaryUtils do
   defmacro binary(size) do
     quote do: [binary, size(unquote(size))]
   end
+
+  defmacro binary(size, unit) do
+    quote do: [binary, size(unquote(size)), unit(unquote(unit))]
+  end
 end
