@@ -1,8 +1,10 @@
 # Postgrex
 
+[![Build Status](https://travis-ci.org/ericmj/postgrex.png?branch=master)](https://travis-ci.org/ericmj/postgrex)
+
 PostgreSQL driver for Elixir.
 
-[![Build Status](https://travis-ci.org/ericmj/postgrex.png?branch=master)](https://travis-ci.org/ericmj/postgrex)
+Documentation: http://ericmj.github.io/postgrex
 
 ## Usage
 
@@ -56,6 +58,7 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
     composite type  { 42, "title", "content" }
 
 \* numeric is only decoded as float when it is a non-integer value, this is to not lose precision when it is an integer value (elixir's integers are of arbitrary precision). NOTE: floating point encoding and decoding is lossy, use with caution!
+
 \*\* interval is encoded as `{ months, days, seconds }`.
 
 ## Custom encoder and decoder example
@@ -63,24 +66,54 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
 Encoding and decoding from and to JSON:
 
 ```elixir
-def decoder(TypeInfo[sender: "json"], binary) do
+def decoder(TypeInfo[sender: "json"], _format, _default, binary) do
   JSON.decode(binary)
 end
 
-def encoder(TypeInfo[sender: "json"], value) do
+def decoder(TypeInfo[], _format, default, binary) do
+  default.(binary)
+end
+
+def encoder(TypeInfo[sender: "json"], _default, value) do
   JSON.encode(value)
+end
+
+def encoder(TypeInfo[], default, value) do
+  default.(value)
 end
 
 def formatter(TypeInfo[sender: "json"]) do
   :text
+end
+
+def formatter(TypeInfo[]) do
+  nil
 end
 ```
 
 ## TODO
 
   * Callbacks for asynchronous events
-  * Text format decoding of arrays of unknown types
   * Lossless numeric encoding/decoding with future arbitrary precision decimal type
+
+## Contributing
+
+To contribute you need to compile Postgrex from source and test it:
+
+```
+$ git clone https://github.com/ericmj/postgrex.git
+$ cd postgrex
+$ mix test
+```
+
+The tests requires some modifications to your [hba file](http://www.postgresql.org/docs/9.3/static/auth-pg-hba-conf.html). The path to it can be found by running `$ psql -U postgres -c "SHOW hba_file"` in your shell. Put the following above all other configurations (so that they override):
+
+```
+host    all             postgrex_md5_pw         127.0.0.1/32    md5
+host    all             postgrex_cleartext_pw   127.0.0.1/32    password
+```
+
+The server needs to be restarted for the changes to take effect. Additionally a Postgres user with username `postgres` and password `postgres` or with trust authentication is required.
 
 ## License
 

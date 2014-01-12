@@ -43,7 +43,7 @@ defmodule Postgrex.Connection do
             { :binary | :text, binary }
       @spec decoder(info :: TypeInfo.t, default :: fun, bin :: binary) ::
             term
-      @spec decode_formatter(info :: TypeInfo.t) ::
+      @spec formatter(info :: TypeInfo.t) ::
             :binary | :text | nil
   """
   @spec start_link(Keyword.t) :: { :ok, pid } | { :error, Postgrex.Error.t | term }

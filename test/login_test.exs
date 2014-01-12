@@ -2,9 +2,6 @@ defmodule LoginTest do
   use ExUnit.Case, async: true
   alias Postgrex.Connection, as: P
 
-  # NOTE: Make sure there are no "trust all" in pg_hba.conf or catch all "md5",
-  # find it with `$ psql -U postgres -c "SHOW hba_file"`
-
   test "login cleartext password" do
     opts = [ hostname: "localhost", username: "postgrex_cleartext_pw",
              password: "postgrex_cleartext_pw", database: "postgres" ]
