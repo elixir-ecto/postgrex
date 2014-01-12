@@ -231,6 +231,10 @@ defmodule Postgrex.Connection do
     end
   end
 
+  defp clean_opts(opts) do
+    Keyword.put(opts, :password, :REDACTED)
+  end
+
   defp fix_opts(opts) do
     opts
       |> Keyword.update!(:hostname, &if is_binary(&1), do: String.to_char_list!(&1), else: &1)
@@ -243,6 +247,16 @@ defmodule Postgrex.Connection do
   def init([]) do
     { :ok, state(state: :ready, tail: "", parameters: [], rows: [],
                  bootstrap: false, transactions: 0) }
+  end
+
+  @doc false
+  def format_status(opt, [_pdict, s]) do
+    s = state(s, types: :types_removed)
+    if opt == :normal do
+      [data: [{ 'State', s }]]
+    else
+      s
+    end
   end
 
   @doc false
@@ -442,9 +456,10 @@ defmodule Postgrex.Connection do
     { :ok, state(s, backend_key: { pid, key }) }
   end
 
-  defp message(msg_ready(), state(state: :init) = s) do
-    s = state(s, bootstrap: true)
-    send_query(Types.bootstrap_query, state(s, qparams: []))
+  defp message(msg_ready(), state(opts: opts, state: :init) = s) do
+    opts = clean_opts(opts)
+    s = state(s, opts: opts, bootstrap: true, qparams: [])
+    send_query(Types.bootstrap_query, s)
   end
 
   defp message(msg_error(fields: fields), state(state: :init) = s) do
