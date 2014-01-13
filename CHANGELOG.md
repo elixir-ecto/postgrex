@@ -1,3 +1,9 @@
+# v0.3.1-dev
+
+* Enhancements
+  * Compact state before printing to logs and hide password
+  * Concurrency support, safe to use connection from multiple processes concurrently
+
 # v0.3.0 (2013-12-16)
 
 * Bug fixes

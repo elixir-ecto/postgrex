@@ -6,7 +6,7 @@ defmodule Postgrex.Types do
 
   @types [ "bool", "bpchar", "text", "varchar", "bytea", "int2", "int4", "int8",
            "float4", "float8", "numeric", "date", "time", "timetz", "timestamp",
-           "timestamptz", "interval", "unknown" ]
+           "timestamptz", "interval", "unknown", "void" ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -171,6 +171,8 @@ defmodule Postgrex.Types do
     do: decode_record(bin, extra)
   def decode(TypeInfo[sender: "unknown"], _, bin),
     do: bin
+  def decode(TypeInfo[sender: "void"], _, ""),
+    do: :void
   def decode(TypeInfo[], _, _),
     do: nil
 
