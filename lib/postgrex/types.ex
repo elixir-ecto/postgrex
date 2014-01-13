@@ -6,7 +6,7 @@ defmodule Postgrex.Types do
 
   @types [ "bool", "bpchar", "text", "varchar", "bytea", "int2", "int4", "int8",
            "float4", "float8", "numeric", "date", "time", "timetz", "timestamp",
-           "timestamptz", "interval", "unknown", "void" ]
+           "timestamptz", "interval" ]
 
   @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
   @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
@@ -112,69 +112,69 @@ defmodule Postgrex.Types do
     decoded = if decoder, do: decoder.(info, format, default, bin)
     cond do
       decoded -> decoded
-      format == :binary -> default.(bin)
-      true -> bin
+      true -> default.(bin)
     end
   end
 
-  def decode(TypeInfo[sender: "bool"], _, << 1 :: int8 >>),
+  def decode_binary(TypeInfo[sender: "bool"], _, << 1 :: int8 >>),
     do: true
-  def decode(TypeInfo[sender: "bool"], _, << 0 :: int8 >>),
+  def decode_binary(TypeInfo[sender: "bool"], _, << 0 :: int8 >>),
     do: false
-  def decode(TypeInfo[sender: "bpchar"], _, bin),
+  def decode_binary(TypeInfo[sender: "bpchar"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: "text"], _, bin),
+  def decode_binary(TypeInfo[sender: "text"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: "varchar"], _, bin),
+  def decode_binary(TypeInfo[sender: "varchar"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: "bytea"], _, bin),
+  def decode_binary(TypeInfo[sender: "bytea"], _, bin),
     do: bin
-  def decode(TypeInfo[sender: "int2"], _, << n :: int16 >>),
+  def decode_binary(TypeInfo[sender: "int2"], _, << n :: int16 >>),
     do: n
-  def decode(TypeInfo[sender: "int4"], _, << n :: int32 >>),
+  def decode_binary(TypeInfo[sender: "int4"], _, << n :: int32 >>),
     do: n
-  def decode(TypeInfo[sender: "int8"], _, << n :: int64 >>),
+  def decode_binary(TypeInfo[sender: "int8"], _, << n :: int64 >>),
     do: n
-  def decode(TypeInfo[sender: "float4"], _, << 127, 192, 0, 0 >>),
+  def decode_binary(TypeInfo[sender: "float4"], _, << 127, 192, 0, 0 >>),
     do: :NaN
-  def decode(TypeInfo[sender: "float4"], _, << 127, 128, 0, 0 >>),
+  def decode_binary(TypeInfo[sender: "float4"], _, << 127, 128, 0, 0 >>),
     do: :inf
-  def decode(TypeInfo[sender: "float4"], _, << 255, 128, 0, 0 >>),
+  def decode_binary(TypeInfo[sender: "float4"], _, << 255, 128, 0, 0 >>),
     do: :"-inf"
-  def decode(TypeInfo[sender: "float4"], _, << n :: float32 >>),
+  def decode_binary(TypeInfo[sender: "float4"], _, << n :: float32 >>),
     do: n
-  def decode(TypeInfo[sender: "float8"], _, << 127, 248, 0, 0, 0, 0, 0, 0 >>),
+  def decode_binary(TypeInfo[sender: "float8"], _, << 127, 248, 0, 0, 0, 0, 0, 0 >>),
     do: :NaN
-  def decode(TypeInfo[sender: "float8"], _, << 127, 240, 0, 0, 0, 0, 0, 0 >>),
+  def decode_binary(TypeInfo[sender: "float8"], _, << 127, 240, 0, 0, 0, 0, 0, 0 >>),
     do: :inf
-  def decode(TypeInfo[sender: "float8"], _, << 255, 240, 0, 0, 0, 0, 0, 0 >>),
+  def decode_binary(TypeInfo[sender: "float8"], _, << 255, 240, 0, 0, 0, 0, 0, 0 >>),
     do: :"-inf"
-  def decode(TypeInfo[sender: "float8"], _, << n :: float64 >>),
+  def decode_binary(TypeInfo[sender: "float8"], _, << n :: float64 >>),
     do: n
-  def decode(TypeInfo[sender: "numeric"], _, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>),
+  def decode_binary(TypeInfo[sender: "numeric"], _, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>),
     do: decode_numeric(ndigits, weight, sign, scale, tail)
-  def decode(TypeInfo[sender: "date"], _, << n :: int32 >>),
+  def decode_binary(TypeInfo[sender: "date"], _, << n :: int32 >>),
     do: decode_date(n)
-  def decode(TypeInfo[sender: "time"], _, << n :: int64 >>),
+  def decode_binary(TypeInfo[sender: "time"], _, << n :: int64 >>),
     do: decode_time(n)
-  def decode(TypeInfo[sender: "timetz"], _, << n :: int64, _tz :: int32 >>),
+  def decode_binary(TypeInfo[sender: "timetz"], _, << n :: int64, _tz :: int32 >>),
     do: decode_time(n)
-  def decode(TypeInfo[sender: "timestamp"], _, << n :: int64 >>),
+  def decode_binary(TypeInfo[sender: "timestamp"], _, << n :: int64 >>),
     do: decode_timestamp(n)
-  def decode(TypeInfo[sender: "timestamptz"], _, << n :: int64 >>),
+  def decode_binary(TypeInfo[sender: "timestamptz"], _, << n :: int64 >>),
     do: decode_timestamp(n)
-  def decode(TypeInfo[sender: "interval"], _, << s :: int64, d :: int32, m :: int32 >>),
+  def decode_binary(TypeInfo[sender: "interval"], _, << s :: int64, d :: int32, m :: int32 >>),
     do: decode_interval(s, d, m)
-  def decode(TypeInfo[sender: "array"], extra, bin),
+  def decode_binary(TypeInfo[sender: "array"], extra, bin),
     do: decode_array(bin, extra)
-  def decode(TypeInfo[sender: "record"], extra, bin),
+  def decode_binary(TypeInfo[sender: "record"], extra, bin),
     do: decode_record(bin, extra)
-  def decode(TypeInfo[sender: "unknown"], _, bin),
-    do: bin
-  def decode(TypeInfo[sender: "void"], _, ""),
-    do: :void
-  def decode(TypeInfo[], _, _),
+  def decode_binary(TypeInfo[], _, _),
     do: nil
+
+  def decode_text(TypeInfo[type: "void"], _, ""),
+    do: :void
+  def decode_text(TypeInfo[], _, text),
+    do: text
 
   def encode(TypeInfo[sender: "bool"], _, true),
     do: << 1 >>
@@ -291,7 +291,7 @@ defmodule Postgrex.Types do
     { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
     info = Dict.fetch!(types, oid)
-    default = &decode(info, extra, &1)
+    default = &decode_binary(info, extra, &1)
 
     { array, "" } = decode_array(rest, info, extra, default, lengths)
     array
@@ -341,7 +341,7 @@ defmodule Postgrex.Types do
   defp record_elements(num, << oid :: int32, length :: int32, elem :: binary(length), rest :: binary >>,
                        { types, decoder } = extra) do
     info = Dict.fetch!(types, oid)
-    default = &decode(info, extra, &1)
+    default = &decode_binary(info, extra, &1)
     value = decode_value(info, :binary, decoder, default, elem)
     [ value | record_elements(num-1, rest, extra) ]
   end

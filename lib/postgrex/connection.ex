@@ -698,8 +698,8 @@ defmodule Postgrex.Connection do
 
       default =
         case format do
-          :binary -> &Types.decode(info, extra, &1)
-          :text   -> &(&1)
+          :binary -> &Types.decode_binary(info, extra, &1)
+          :text   -> &Types.decode_text(info, extra, &1)
         end
 
       { { info, format, default }, format, name }
