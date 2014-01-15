@@ -38,3 +38,8 @@
 
 * Backwards incompatible changes
   * Simplify custom decoding and encoding with default function
+
+
+# v0.1.0 (2013-10-14)
+
+First release!

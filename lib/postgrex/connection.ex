@@ -344,7 +344,7 @@ defmodule Postgrex.Connection do
   @doc false
   def terminate(reason, state(queue: queue, sock: sock)) do
     if sock do
-      send(msg_terminate(), sock)
+      msg_send(msg_terminate(), sock)
       { mod, sock } = sock
       mod.close(sock)
     end
@@ -602,7 +602,7 @@ defmodule Postgrex.Connection do
   end
 
   defp startup_ssl(state(sock: sock) = s) do
-    case send(msg_ssl_request(), sock) do
+    case msg_send(msg_ssl_request(), sock) do
       :ok ->
         { :noreply, state(s, state: :ssl) }
       { :error, reason } ->
@@ -613,7 +613,7 @@ defmodule Postgrex.Connection do
   defp startup(state(sock: sock, opts: opts) = s) do
     params = opts[:parameters] || []
     msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
-    case send(msg, sock) do
+    case msg_send(msg, sock) do
       :ok ->
         { :noreply, state(s, state: :auth) }
       { :error, reason } ->
@@ -736,20 +736,20 @@ defmodule Postgrex.Connection do
     { command, List.last(nums) }
   end
 
-  defp send(msg, state(sock: sock)), do: send(msg, sock)
+  defp msg_send(msg, state(sock: sock)), do: msg_send(msg, sock)
 
-  defp send(msgs, { mod, sock }) when is_list(msgs) do
+  defp msg_send(msgs, { mod, sock }) when is_list(msgs) do
     binaries = Enum.map(msgs, &Protocol.msg_to_binary(&1))
     mod.send(sock, binaries)
   end
 
-  defp send(msg, { mod, sock }) do
+  defp msg_send(msg, { mod, sock }) do
     binary = Protocol.msg_to_binary(msg)
     mod.send(sock, binary)
   end
 
   defp send_to_result(msg, s) do
-    case send(msg, s) do
+    case msg_send(msg, s) do
       :ok ->
         { :ok, s }
       { :error, reason } ->

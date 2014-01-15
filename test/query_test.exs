@@ -214,7 +214,7 @@ defmodule QueryTest do
     self_pid = self
     Enum.each(1..10, fn _ ->
       spawn fn ->
-        self_pid <- query("SELECT pg_sleep(0.1)")
+        send self_pid, query("SELECT pg_sleep(0.1)")
       end
     end)
 
