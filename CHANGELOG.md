@@ -1,4 +1,4 @@
-# v0.3.1-dev
+# v0.3.1 (2014-01-15)
 
 * Enhancements
   * Compact state before printing to logs and hide password
