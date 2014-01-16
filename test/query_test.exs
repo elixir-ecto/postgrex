@@ -14,10 +14,6 @@ defmodule QueryTest do
     :ok = P.stop(context[:pid])
   end
 
-  defp float_cmp(x, y, eps) do
-    x+eps > y-eps and x-eps < y+eps
-  end
-
   test "decode basic types", context do
     assert [{ nil }] = query("SELECT NULL")
     assert [{ true, false }] = query("SELECT true, false")
@@ -34,15 +30,18 @@ defmodule QueryTest do
   end
 
   test "decode numeric", context do
-    assert [{ 42 }] = query("SELECT 42.0")
-    assert [{ 42 }] = query("SELECT 42.0::numeric(100, 10)")
-    assert [{ 0.4242 }] = query("SELECT 0.4242")
-    assert [{ 42.4242 }] = query("SELECT 42.4242")
-    assert [{ 12345.12345 }] = query("SELECT 12345.12345")
-    assert [{ 0.00012345 }] = query("SELECT 0.00012345")
-    assert [{ 1_000_000_000 }] = query("SELECT 1000000000.0")
-    assert [{ 1_000_000_000.1 }] = query("SELECT 1000000000.1")
-    assert [{ 123456789123456789123456789 }] = query("SELECT 123456789123456789123456789::numeric")
+    assert [{ Decimal.new("42") }] == query("SELECT 42::numeric")
+    assert [{ Decimal.new("42.0000000000") }] == query("SELECT 42.0::numeric(100, 10)")
+    assert [{ Decimal.new("0.4242") }] == query("SELECT 0.4242")
+    assert [{ Decimal.new("42.4242") }] == query("SELECT 42.4242")
+    assert [{ Decimal.new("12345.12345") }] == query("SELECT 12345.12345")
+    assert [{ Decimal.new("0.00012345") }] == query("SELECT 0.00012345")
+    assert [{ Decimal.new("1000000000.0") }] == query("SELECT 1000000000.0")
+    assert [{ Decimal.new("1000000000.1") }] == query("SELECT 1000000000.1")
+    assert [{ Decimal.new("123456789123456789123456789") }] == query("SELECT 123456789123456789123456789::numeric")
+    assert [{ Decimal.new("123456789123456789123456789.123456789") }] == query("SELECT 123456789123456789123456789.123456789")
+    assert [{ Decimal.new("1.1234500000") }] == query("SELECT 1.1234500000")
+    assert [{ Decimal.new("NaN") }] == query("SELECT 'NaN'::numeric")
   end
 
   test "decode arrays", context do
@@ -99,17 +98,24 @@ defmodule QueryTest do
   end
 
   test "encode numeric", context do
-    assert [{ 42 }] = query("SELECT $1::numeric", [42])
-    assert [{ 0.4242 }] = query("SELECT $1::numeric", [0.4242])
-    assert [{ 42.4242 }] = query("SELECT $1::numeric", [42.4242])
-    assert [{ 0.00012345 }] = query("SELECT $1::numeric", [0.00012345])
-    assert [{ 1_000_000_000 }] = query("SELECT $1::numeric", [1_000_000_000])
-    assert [{ 1_000_000_000.1 }] = query("SELECT $1::numeric", [1_000_000_000.1])
-    assert [{ 123456789123456789123456789 }] = query("SELECT $1::numeric", [123456789123456789123456789])
+    nums = [
+      "42",
+      "0.4242",
+      "42.4242",
+      "0.00012345",
+      "1000000000",
+      "1000000000.0",
+      "123456789123456789123456789",
+      "123456789123456789123456789.123456789",
+      "1.1234500000",
+      "1.0000000000",
+      "NaN"
+    ]
 
-    # YAY for limited precision floats
-    [{ x }] = query("SELECT $1::numeric", [12345.12345])
-    assert float_cmp(x, 12345.12345, 0.00001)
+    Enum.each(nums, fn num ->
+      dec = Decimal.new(num)
+      assert [{ dec }] == query("SELECT $1::numeric", [dec])
+    end)
   end
 
   test "encode date", context do

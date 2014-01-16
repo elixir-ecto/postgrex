@@ -3,6 +3,7 @@ defmodule Postgrex.Types do
 
   alias Postgrex.TypeInfo
   import Postgrex.BinaryUtils
+  require Decimal
 
   @types [ "bool", "bpchar", "text", "varchar", "bytea", "int2", "int4", "int8",
            "float4", "float8", "numeric", "date", "time", "timetz", "timestamp",
@@ -236,36 +237,36 @@ defmodule Postgrex.Types do
 
   ### decode helpers ###
 
-  defp decode_numeric(0, 0, 0xC000, 0, ""), do: :NaN
+  defp decode_numeric(0, _weight, 0xC000, _scale, "") do
+    Decimal.new(1, :qNaN, 0)
+  end
 
-  defp decode_numeric(num_digits, weight, sign, _scale, tail) do
-    ^num_digits = div(byte_size(tail), 2)
-    { value, weight } = decode_numeric_int(tail, weight, 0)
-    value = decode_numeric_float(value, weight)
+  defp decode_numeric(_num_digits, weight, sign, scale, bin) do
+    { value, weight } = decode_numeric_int(bin, weight, 0)
 
     case sign do
-      0x0000 -> value
-      0x4000 -> -value
+      0x0000 -> sign = 1
+      0x4000 -> sign = -1
     end
+
+    { coef, exp } = scale(value, (weight+1)*4, -scale)
+    Decimal.new(sign, coef, exp)
   end
+
+  defp scale(coef, exp, scale) when scale == exp,
+    do: { coef, exp }
+
+  defp scale(coef, exp, scale) when scale > exp,
+    do: scale(div(coef, 10), exp+1, scale)
+
+  defp scale(coef, exp, scale) when scale < exp,
+    do: scale(coef * 10, exp-1, scale)
 
   defp decode_numeric_int("", weight, acc), do: { acc, weight }
 
   defp decode_numeric_int(<< digit :: int16, tail :: binary >>, weight, acc) do
     acc = (acc * @numeric_base) + digit
     decode_numeric_int(tail, weight - 1, acc)
-  end
-
-  defp decode_numeric_float(value, -1), do: value
-
-  defp decode_numeric_float(value, weight) when weight < 0 do
-    value = value / @numeric_base
-    decode_numeric_float(value, weight + 1)
-  end
-
-  defp decode_numeric_float(value, weight) when weight >= 0 do
-    value = value * @numeric_base
-    decode_numeric_float(value, weight - 1)
   end
 
   defp decode_date(days) do
@@ -348,56 +349,78 @@ defmodule Postgrex.Types do
 
   ### encode helpers ###
 
-  defp encode_numeric(:NaN), do: << 0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16 >>
+  defp encode_numeric(dec) when Decimal.is_nan(dec) do
+    << 0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16 >>
+  end
 
-  defp encode_numeric(number) do
-    sign = cond do
-      number < 0  -> 0x4000
-      number >= 0 -> 0x0000
+  defp encode_numeric(dec) do
+    string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
+
+    if List.first(string) == ?- do
+      [_|string] = string
+      sign = 0x4000
+    else
+      sign = 0x0000
     end
 
-    number = abs(number)
-    int_part = trunc(number)
-    float_part = number - int_part
+    { int, float } = Enum.split_while(string, &(&1 != ?.))
+    { weight, int_digits } = Enum.reverse(int) |> encode_numeric_int(0, [])
 
-    { weight, digits } = cond do
-      int_part == 0 and float_part == 0 ->
-        { 0, [] }
-      int_part == 0 ->
-        { -1, encode_numeric_float(float_part, []) }
-      true ->
-        { weight, digits } = encode_numeric_int(int_part, 0, [])
-        { weight, digits ++ encode_numeric_float(float_part, []) }
+    if float != [] do
+      [_|float] = float
+      scale = length(float)
+      float_digits = encode_numeric_float(float, [])
+    else
+      scale = 0
+      float_digits = []
     end
 
+    digits = int_digits ++ float_digits
     bin = bc digit inlist digits, do: << digit :: uint16 >>
     ndigits = div(byte_size(bin), 2)
 
-    << ndigits :: int16, weight :: int16, sign :: uint16, 0 :: int16, bin :: binary >>
+    << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary >>
   end
 
-  defp encode_numeric_float(number, acc) do
-    cond do
-      number == 0 ->
-        Enum.reverse(acc)
-      true ->
-        number = number * @numeric_base
-        digit = trunc(number)
-        rest = number - digit
-        encode_numeric_float(rest, [digit|acc])
-    end
+  defp encode_numeric_float([], [digit|acc]) do
+    [pad_float(digit)|acc]
+    |> trim_zeros
+    |> Enum.reverse
   end
 
-  defp encode_numeric_int(number, weight, acc) do
-    cond do
-      number == 0 ->
-        { weight, acc }
-      number < @numeric_base ->
-        { weight, [number|acc] }
-      true ->
-        rest = div(number, @numeric_base)
-        digit = number - rest * @numeric_base
-        encode_numeric_int(rest, weight+1, [digit|acc])
+  defp encode_numeric_float(list, acc) do
+    { list, rest } = Enum.split(list, 4)
+    digit = list_to_integer(list)
+
+    encode_numeric_float(rest, [digit|acc])
+  end
+
+  defp encode_numeric_int([], weight, acc) do
+    { weight, acc }
+  end
+
+  defp encode_numeric_int(list, weight, acc) do
+    { list, rest } = Enum.split(list, 4)
+    digit = Enum.reverse(list) |> list_to_integer
+
+    if rest != [], do: weight = weight + 1
+
+    encode_numeric_int(rest, weight, [digit|acc])
+  end
+
+  defp trim_zeros([0|tail]), do: trim_zeros(tail)
+  defp trim_zeros(list), do: list
+
+  defp pad_float(0) do
+    0
+  end
+
+  defp pad_float(num) do
+    num10 = num*10
+    if num10 >= @numeric_base do
+      num
+    else
+      pad_float(num10)
     end
   end
 
