@@ -1,4 +1,4 @@
-# v0.4.0-dev
+# v0.4.0 (2014-01-16)
 
 * Enhancements
   * Numerics decode and encode to Decimal

@@ -21,9 +21,9 @@ defmodule LoginTest do
              password: "postgres", database: "postgrex_test" ]
 
     assert { :ok, pid } = P.start_link(opts)
-    assert P.parameters(pid)["server_version"] =~ %R"\d+\.\d+\.\d+"
+    assert String.match? P.parameters(pid)["server_version"], %R"\d+\.\d+\.\d+"
 
-    if P.parameters(pid)["server_version"] =~ %R"9\.\d+\.\d+" do
+    if String.match? P.parameters(pid)["server_version"], %R"9\.\d+\.\d+" do
       assert "" == P.parameters(pid)["application_name"]
       assert :ok = P.stop(pid)
 

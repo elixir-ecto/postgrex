@@ -286,11 +286,11 @@ defmodule Postgrex.Connection do
     { :reply, params, s }
   end
 
-  def handle_call(command, from, state(queue: queue) = s) do
+  def handle_call(command, from, state(state: state, queue: queue) = s) do
     queue = :queue.in({ command, from }, queue)
     s = state(s, queue: queue)
 
-    if state(s, :state) == :ready do
+    if state == :ready do
       case next(s) do
         { :ok, s } -> { :noreply, s }
         { :error, error, s } -> error(error, s)
@@ -422,14 +422,13 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp new_data(<< type :: int8, size :: int32, data :: binary >> = tail, s) do
+  defp new_data(<< type :: int8, size :: int32, data :: binary >> = tail, state(state: state) = s) do
     size = size - 4
 
     case data do
       << data :: binary(size), tail :: binary >> ->
         msg = Protocol.parse(type, size, data)
-        unless state(s, :bootstrap), do: msg
-        case message(state(s, :state), msg, s) do
+        case message(state, msg, s) do
           { :ok, s } -> new_data(tail, s)
           { :error, _, _ } = err -> err
         end
@@ -674,7 +673,7 @@ defmodule Postgrex.Connection do
 
   defp encode_params(state(queue: queue, portal: portal, types: types, opts: opts)) do
     { { :query, _statement, params }, _from } = :queue.get(queue)
-    param_oids = portal(portal, :param_oids)
+    portal(param_oids: param_oids) = portal
     zipped = Enum.zip(param_oids, params)
     extra = { types, opts[:encoder], opts[:formatter] }
 
