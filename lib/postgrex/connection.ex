@@ -75,7 +75,7 @@ defmodule Postgrex.Connection do
   result data.
   """
   @spec query(pid, String.t, list) :: { :ok, Postgrex.Result.t } | { :error, Postgrex.Error.t }
-  def query(pid, statement, params // []) do
+  def query(pid, statement, params \\ []) do
     case :gen_server.call(pid, { :query, statement, params }) do
       Postgrex.Result[] = res -> { :ok, res }
       Postgrex.Error[] = err -> { :error, err }
@@ -87,7 +87,7 @@ defmodule Postgrex.Connection do
   there was an error. See `query/3`.
   """
   @spec query!(pid, String.t, list) :: Postgrex.Result.t | no_return
-  def query!(pid, statement, params // []) do
+  def query!(pid, statement, params \\ []) do
     case :gen_server.call(pid, { :query, statement, params }) do
       Postgrex.Result[] = res -> res
       Postgrex.Error[] = err -> raise err

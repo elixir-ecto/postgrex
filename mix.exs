@@ -4,8 +4,9 @@ defmodule Postgrex.Mixfile do
   def project do
     [ app: :postgrex,
       version: "0.4.1-dev",
-      elixir: "~> 0.12.3-dev",
+      elixir: "~> 0.12.3",
       deps: deps(Mix.env),
+      build_per_environment: false,
       name: "Postgrex",
       source_url: "https://github.com/ericmj/postgrex",
       docs: fn -> [

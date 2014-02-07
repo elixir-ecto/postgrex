@@ -1,2 +1,2 @@
-[ "decimal": {:git, "git://github.com/ericmj/decimal.git", "eef08ae02496d7c9d6bed2b06342d7be0e791223", []},
-  "ex_doc": {:git, "git://github.com/elixir-lang/ex_doc.git", "7a9ad350d2b23dfebc375a1be573c2ea710904ff", []} ]
+[ "decimal": {:git, "git://github.com/ericmj/decimal.git", "ca3ca3de2425b1ee19d175eca92d80dcfe02fdb1", []},
+  "ex_doc": {:git, "git://github.com/elixir-lang/ex_doc.git", "e6386d3f81a9d46bbd9b6f3e4f7c5f1273f465f1", []} ]
