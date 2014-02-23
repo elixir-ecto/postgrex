@@ -29,9 +29,9 @@ CREATE TABLE query (a int, b text);
 """
 
 cmds = [
-  %s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test;"),
-  %s(psql -U postgres -c "CREATE DATABASE postgrex_test ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
-  %s(psql -U postgres -d postgrex_test -c "#{sql}")
+  ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test;"),
+  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
+  ~s(psql -U postgres -d postgrex_test -c "#{sql}")
 ]
 
 Enum.each(cmds, fn cmd ->
