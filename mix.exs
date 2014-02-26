@@ -28,6 +28,6 @@ defmodule Postgrex.Mixfile do
   defp deps(_), do: deps()
 
   defp deps() do
-    [ { :decimal, "~> 0.0.1", github: "ericmj/decimal" } ]
+    [ { :decimal, "~> 0.1.0", github: "ericmj/decimal" } ]
   end
 end
