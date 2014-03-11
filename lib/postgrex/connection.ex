@@ -20,8 +20,6 @@ defmodule Postgrex.Connection do
 
   @timeout :infinity
 
-  @type timeout :: non_neg_integer | :infinity
-
   ### PUBLIC API ###
 
   @doc """
