@@ -53,9 +53,10 @@ Enum.each(cmds, fn cmd ->
 end)
 
 defmodule Postgrex.TestHelper do
-  defmacro query(stat, params \\ []) do
+  defmacro query(stat, params \\ [], timeout \\ :infinity) do
     quote do
-      case Postgrex.Connection.query(var!(context)[:pid], unquote(stat), unquote(params)) do
+      case Postgrex.Connection.query(var!(context)[:pid], unquote(stat),
+                                     unquote(params), unquote(timeout)) do
         { :ok, Postgrex.Result[rows: nil] } -> :ok
         { :ok, Postgrex.Result[rows: rows] } -> rows
         { :error, Postgrex.Error[] = err } -> err
