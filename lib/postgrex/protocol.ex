@@ -51,7 +51,7 @@ defmodule Postgrex.Protocol do
   @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
                   position: ?P, internal_position: ?p, internal_query: ?q,
                   where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
-                  contrain: ?n, file: ?F, line: ?L, routine: ?R ]
+                  constraint: ?n, file: ?F, line: ?L, routine: ?R ]
 
   ### decoders ###
 
