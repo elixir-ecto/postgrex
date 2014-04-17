@@ -216,6 +216,14 @@ defmodule QueryTest do
     assert [{42}] = query("SELECT 42")
   end
 
+  test "simple query", context do
+    assert { :ok, res } = P.simple_query(context[:pid], "SELECT 5; SELECT 123 AS a, 456 AS b; SELECT 5;")
+    assert Postgrex.Result[] = res
+    assert res.command == :select
+    assert res.columns == ["a", "b"]
+    assert res.num_rows == 1
+  end
+
   test "async test", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
