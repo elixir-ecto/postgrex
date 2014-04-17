@@ -22,6 +22,7 @@ defmodule Postgrex.Protocol.Messages do
                              :result_formats]
       defrecordp :msg_execute, [:name_port, :max_rows]
       defrecordp :msg_sync, []
+      defrecordp :msg_query, [:query]
       defrecordp :msg_bind_complete, []
       defrecordp :msg_portal_suspend, []
       defrecordp :msg_data_row, [:values]
@@ -227,6 +228,12 @@ defmodule Postgrex.Protocol do
   # sync
   defp to_binary(msg_sync()) do
     { ?S, "" }
+  end
+
+  # query
+  defp to_binary(msg_query(query: query)) do
+    IO.puts "Query #{query}"
+    { ?Q, [query, 0]}
   end
 
   # terminate

@@ -103,6 +103,31 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc """
+  Runs a "simple query" and returns the result or raises `Postgrex.Error` if
+  there was an error. See `simple_query/3`
+  """
+  @spec simple_query(pid, String.t) :: { :ok, Postgrex.Result.t } | { :error, Postgrex.Error.t }
+  @spec simple_query(pid, String.t, timeout) :: { :ok, Postgrex.Result.t } | { :error, Postgrex.Error.t }
+  def simple_query(pid, statement, timeout \\ @timeout) do
+    case :gen_server.call(pid, { { :simple_query, statement }, timeout }, timeout) do
+      Postgrex.Result[] = res -> { :ok, res }
+      Postgrex.Error[] = err -> { :error, err }
+    end
+  end
+
+  @doc """
+  Runs a "simple query" and returns the result or raises `Postgrex.Error` if
+  there was an error. See `simple_query/3`
+  """
+  @spec simple_query!(pid, String.t) :: Postgrex.Result.t | no_return
+  @spec simple_query!(pid, String.t, timeout) :: Postgrex.Result.t | no_return
+  def simple_query!(pid, statement, timeout \\ @timeout) do
+    case :gen_server.call(pid, { { :simple_query, statement }, timeout }, timeout) do
+      Postgrex.Result[] = res -> res
+      Postgrex.Error[] = err -> raise err
+    end
+  end
 
   @doc """
   Returns a cached list dict of connection parameters.
@@ -417,6 +442,17 @@ defmodule Postgrex.Connection do
     end
   end
 
+  defp command({ :simple_query, query }, s) do
+    msgs = [msg_query(query: query)]
+
+    case send_to_result(msgs, s) do
+      { :ok, s } ->
+        { :ok, state(s, statement: nil, state: :describing) }
+      err ->
+        err
+    end
+  end
+
   defp command(:begin, state(transactions: trans) = s) do
     if trans == 0 do
       s = state(s, transactions: 1)
@@ -465,6 +501,7 @@ defmodule Postgrex.Connection do
     case data do
       << data :: binary(size), tail :: binary >> ->
         msg = Protocol.parse(type, size, data)
+        IO.puts "#{inspect msg}"
         case message(state, msg, s) do
           { :ok, s } -> new_data(tail, s)
           { :error, _, _ } = err -> err
