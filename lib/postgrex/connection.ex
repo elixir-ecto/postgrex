@@ -27,10 +27,10 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:hostname` - Server hostname (required);
+    * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:port` - Server port (default: 5432);
     * `:database` - Database (required);
-    * `:username` - Username (required);
+    * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password;
     * `:encoder` - Custom encoder function;
     * `:decoder` - Custom decoder function;
@@ -51,6 +51,11 @@ defmodule Postgrex.Connection do
   """
   @spec start_link(Keyword.t) :: { :ok, pid } | { :error, Postgrex.Error.t | term }
   def start_link(opts) do
+    opts = opts
+      |> Dict.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
+      |> Dict.put_new(:password, System.get_env("PGPASSWORD"))
+      |> Dict.put_new(:hostname, System.get_env("PGHOST") || "localhost")
+      |> Enum.reject(fn {k,v} -> nil?(v) end)
     case :gen_server.start_link(__MODULE__, [], []) do
       { :ok, pid } ->
         timeout = opts[:connect_timeout] || @timeout
@@ -281,7 +286,7 @@ defmodule Postgrex.Connection do
   end
 
   def handle_call({ :connect, opts }, from, state(queue: queue) = s) do
-    host      = opts[:hostname]
+    host      = opts[:hostname] || System.get_env("PGHOST")
     host      = if is_binary(host), do: String.to_char_list!(host), else: host
     port      = opts[:port] || 5432
     timeout   = opts[:connect_timeout] || @timeout
