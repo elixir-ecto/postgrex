@@ -4,8 +4,7 @@ defmodule QueryTest do
   alias Postgrex.Connection, as: P
 
   setup do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test" ]
+    opts = [ database: "postgrex_test" ]
     { :ok, pid } = P.start_link(opts)
     { :ok, [pid: pid] }
   end

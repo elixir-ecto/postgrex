@@ -43,4 +43,10 @@ defmodule LoginTest do
     assert { :ok, pid } = P.start_link(opts)
     assert :ok = P.stop(pid)
   end
+
+  test "env var defaults" do
+    opts = [ database: "postgrex_test" ]
+    assert { :ok, pid } = P.start_link(opts)
+    assert :ok = P.stop(pid)
+  end
 end

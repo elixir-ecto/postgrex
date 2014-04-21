@@ -4,8 +4,7 @@ defmodule TransactionTest do
   alias Postgrex.Connection, as: P
 
   setup do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test" ]
+    opts = [ database: "postgrex_test" ]
     { :ok, pid } = P.start_link(opts)
     { :ok, _ } = P.query(pid, "DROP TABLE IF EXISTS transaction")
     { :ok, _ } = P.query(pid, "CREATE TABLE transaction (data text)")
