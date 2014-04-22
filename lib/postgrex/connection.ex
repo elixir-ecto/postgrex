@@ -55,7 +55,7 @@ defmodule Postgrex.Connection do
       |> Dict.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
       |> Dict.put_new(:password, System.get_env("PGPASSWORD"))
       |> Dict.put_new(:hostname, System.get_env("PGHOST") || "localhost")
-      |> Enum.reject(fn {k,v} -> nil?(v) end)
+      |> Enum.reject(fn {_k,v} -> nil?(v) end)
     case :gen_server.start_link(__MODULE__, [], []) do
       { :ok, pid } ->
         timeout = opts[:connect_timeout] || @timeout
