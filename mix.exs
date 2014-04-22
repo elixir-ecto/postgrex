@@ -1,3 +1,5 @@
+Code.ensure_loaded?(Hex) and Hex.start
+
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
@@ -13,7 +15,9 @@ defmodule Postgrex.Mixfile do
         source_ref: System.cmd("git rev-parse --verify --quiet HEAD"),
         main: "README",
         readme: true ]
-      end ]
+      end,
+      description: description,
+      package: package ]
   end
 
   # Configuration for the OTP application
@@ -28,6 +32,19 @@ defmodule Postgrex.Mixfile do
   defp deps(_), do: deps()
 
   defp deps() do
-    [ { :decimal, "~> 0.1.0", github: "ericmj/decimal" } ]
+    [ { :decimal, "~> 0.1.2" } ]
+  end
+
+  defp description do
+    """
+    PostgreSQL driver for Elixir.
+    """
+  end
+
+  defp package do
+    [ contributors: ["Eric Meadows-Jönsson"],
+      licenses: ["Apache 2.0"],
+      links: [ { "Github", "https://github.com/ericmj/postgrex" },
+               { "Documentation", "http://ericmj.github.io/postgrex" } ] ]
   end
 end
