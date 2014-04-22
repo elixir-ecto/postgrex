@@ -110,10 +110,10 @@ defmodule Postgrex.Connection do
 
 
   @doc """
-  Returns a cached list dict of connection parameters.
+  Returns a cached map of connection parameters.
   """
-  @spec parameters(pid) :: [{ String.t, String.t }]
-  @spec parameters(pid, timeout) :: [{ String.t, String.t }]
+  @spec parameters(pid) :: map
+  @spec parameters(pid, timeout) :: map
   def parameters(pid, timeout \\ @timeout) do
     :gen_server.call(pid, :parameters, timeout)
   end
@@ -265,7 +265,7 @@ defmodule Postgrex.Connection do
 
   @doc false
   def init([]) do
-    { :ok, state(state: :ready, tail: "", parameters: [], rows: [],
+    { :ok, state(state: :ready, tail: "", parameters: %{}, rows: [],
                  bootstrap: false, transactions: 0, queue: :queue.new) }
   end
 
@@ -287,7 +287,7 @@ defmodule Postgrex.Connection do
 
   def handle_call({ :connect, opts }, from, state(queue: queue) = s) do
     host      = opts[:hostname] || System.get_env("PGHOST")
-    host      = if is_binary(host), do: String.to_char_list!(host), else: host
+    host      = if is_binary(host), do: List.from_char_data!(host), else: host
     port      = opts[:port] || 5432
     timeout   = opts[:connect_timeout] || @timeout
     sock_opts = [ { :active, :once }, { :packet, :raw }, :binary ]
@@ -603,7 +603,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(_, msg_parameter(name: name, value: value), state(parameters: params) = s) do
-    params = Dict.put(params, name, value)
+    params = Map.put(params, name, value)
     { :ok, state(s, parameters: params) }
   end
 

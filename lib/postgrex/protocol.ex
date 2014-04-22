@@ -160,7 +160,7 @@ defmodule Postgrex.Protocol do
 
   def msg_to_binary(msg) do
     { first, iolist } = to_binary(msg)
-    binary = iolist_to_binary(iolist)
+    binary = iodata_to_binary(iolist)
     size = byte_size(binary) + 4
 
     if first do

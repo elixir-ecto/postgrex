@@ -448,7 +448,7 @@ defmodule Postgrex.Types do
     default = &encode(info, extra, &1)
 
     { data, ndims, lengths } = encode_array(list, info, extra, default, 0, [])
-    bin = iolist_to_binary(data)
+    bin = iodata_to_binary(data)
     lengths = bc len inlist Enum.reverse(lengths), do: << len :: int32, 1 :: int32 >>
     << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
   end
@@ -494,6 +494,6 @@ defmodule Postgrex.Types do
       { << oid :: int32, byte_size(bin) :: int32, bin :: binary >>, count + 1 }
     end)
 
-    << count :: int32, iolist_to_binary(data) :: binary >>
+    << count :: int32, iodata_to_binary(data) :: binary >>
   end
 end
