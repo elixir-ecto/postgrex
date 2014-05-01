@@ -349,37 +349,37 @@ defmodule Postgrex.Types do
 
   ### encode helpers ###
 
-  defp encode_numeric(dec) when Decimal.is_nan(dec) do
-    << 0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16 >>
-  end
-
   defp encode_numeric(dec) do
-    string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
-
-    if List.first(string) == ?- do
-      [_|string] = string
-      sign = 0x4000
+    if Decimal.nan?(dec) do
+      << 0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16 >>
     else
-      sign = 0x0000
+      string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
+
+      if List.first(string) == ?- do
+        [_|string] = string
+        sign = 0x4000
+      else
+        sign = 0x0000
+      end
+
+      { int, float } = Enum.split_while(string, &(&1 != ?.))
+      { weight, int_digits } = Enum.reverse(int) |> encode_numeric_int(0, [])
+
+      if float != [] do
+        [_|float] = float
+        scale = length(float)
+        float_digits = encode_numeric_float(float, [])
+      else
+        scale = 0
+        float_digits = []
+      end
+
+      digits = int_digits ++ float_digits
+      bin = bc digit inlist digits, do: << digit :: uint16 >>
+      ndigits = div(byte_size(bin), 2)
+
+      << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary >>
     end
-
-    { int, float } = Enum.split_while(string, &(&1 != ?.))
-    { weight, int_digits } = Enum.reverse(int) |> encode_numeric_int(0, [])
-
-    if float != [] do
-      [_|float] = float
-      scale = length(float)
-      float_digits = encode_numeric_float(float, [])
-    else
-      scale = 0
-      float_digits = []
-    end
-
-    digits = int_digits ++ float_digits
-    bin = bc digit inlist digits, do: << digit :: uint16 >>
-    ndigits = div(byte_size(bin), 2)
-
-    << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary >>
   end
 
   defp encode_numeric_float([], [digit|acc]) do
