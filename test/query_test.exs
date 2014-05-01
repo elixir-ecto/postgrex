@@ -214,24 +214,4 @@ defmodule QueryTest do
     assert Postgrex.Error[] = query("wat")
     assert [{42}] = query("SELECT 42")
   end
-
-  test "async test", context do
-    self_pid = self
-    Enum.each(1..10, fn _ ->
-      spawn fn ->
-        send self_pid, query("SELECT pg_sleep(0.1)")
-      end
-    end)
-
-     Enum.each(1..10, fn _ ->
-      assert_receive [{:void}], 1000
-    end)
-  end
-
-  test "timeout", context do
-    assert [_] = query("SELECT pg_sleep(0.1)", [], 200)
-    assert { :timeout, _ } = catch_exit query("SELECT pg_sleep(0.1)", [], 0)
-    :timer.sleep(100)
-    assert { :noproc, _ } = catch_exit query("SELECT pg_sleep(0.1)", [], 200)
-  end
 end
