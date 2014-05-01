@@ -68,8 +68,8 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Runs an (extended) query and returns the result as `{:ok, Postgrex.Result[]
- }` or `{:error, Postgrex.Error[]}` if there was an error. Parameters can be
+  Runs an (extended) query and returns the result as `{:ok, %Postgrex.Result{}}`
+  or `{:error, Postgrex.Error[]}` if there was an error. Parameters can be
   set in the query as `$1` embedded in the query string. Parameters are given as
   a list of elixir values. See the README for information on how Postgrex
   encodes and decodes elixir values by default. See `Postgrex.Result` for the
@@ -80,7 +80,7 @@ defmodule Postgrex.Connection do
   @spec query(pid, String.t, list, timeout) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
-      Postgrex.Result[] = res -> {:ok, res}
+      %Postgrex.Result{} = res -> {:ok, res}
       Postgrex.Error[] = err -> {:error, err}
     end
   end
@@ -94,7 +94,7 @@ defmodule Postgrex.Connection do
   @spec query!(pid, String.t, list, timeout) :: Postgrex.Result.t | no_return
   def query!(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
-      Postgrex.Result[] = res -> res
+      %Postgrex.Result{} = res -> res
       Postgrex.Error[] = err -> raise err
     end
   end
@@ -135,7 +135,7 @@ defmodule Postgrex.Connection do
   @spec begin(pid, timeout) :: :ok | {:error, Postgrex.Error.t}
   def begin(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
-      Postgrex.Result[] -> :ok
+      %Postgrex.Result{} -> :ok
       Postgrex.Error[] = err -> err
     end
   end
@@ -148,7 +148,7 @@ defmodule Postgrex.Connection do
   @spec begin!(pid, timeout) :: :ok | no_return
   def begin!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
-      Postgrex.Result[] -> :ok
+      %Postgrex.Result{} -> :ok
       Postgrex.Error[] = err -> raise err
     end
   end
@@ -162,7 +162,7 @@ defmodule Postgrex.Connection do
   def rollback(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
       :ok -> :ok
-      Postgrex.Result[] -> :ok
+      %Postgrex.Result{} -> :ok
       Postgrex.Error[] = err -> err
     end
   end
@@ -176,7 +176,7 @@ defmodule Postgrex.Connection do
   def rollback!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
       :ok -> :ok
-      Postgrex.Result[] -> :ok
+      %Postgrex.Result{} -> :ok
       Postgrex.Error[] = err -> raise err
     end
   end
@@ -190,7 +190,7 @@ defmodule Postgrex.Connection do
   def commit(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
       :ok -> :ok
-      Postgrex.Result[] -> :ok
+      %Postgrex.Result{} -> :ok
       Postgrex.Error[] = err -> err
     end
   end
@@ -204,7 +204,7 @@ defmodule Postgrex.Connection do
   def commit!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
       :ok -> :ok
-      Postgrex.Result[] -> :ok
+      %Postgrex.Result{} -> :ok
       Postgrex.Error[] = err -> raise err
     end
   end
@@ -586,7 +586,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:executing, msg_empty_query(), s) do
-    reply(Postgrex.Result[], s)
+    reply(%Postgrex.Result{}, s)
     {:ok, s}
   end
 
@@ -752,8 +752,8 @@ defmodule Postgrex.Connection do
       nrows = length(rows)
     end
 
-    Postgrex.Result[command: command, num_rows: nrows || 0, rows: rows,
-                    columns: cols]
+    %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
+                     columns: cols}
   end
 
   defp decode_tag(tag) do

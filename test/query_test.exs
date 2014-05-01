@@ -185,9 +185,9 @@ defmodule QueryTest do
     assert :ok = query("COMMIT")
   end
 
-  test "result record", context do
+  test "result struct", context do
     assert {:ok, res} = P.query(context[:pid], "SELECT 123 AS a, 456 AS b")
-    assert Postgrex.Result[] = res
+    assert %Postgrex.Result{} = res
     assert res.command == :select
     assert res.columns == ["a", "b"]
     assert res.num_rows == 1

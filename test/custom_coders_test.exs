@@ -4,24 +4,24 @@ defmodule CustomCoders do
   alias Postgrex.Connection, as: P
   alias Postgrex.TypeInfo
 
-  defp encoder(TypeInfo[sender: "int4"], default, value) do
+  defp encoder(%TypeInfo{sender: "int4"}, default, value) do
     default.(value + 1)
   end
 
-  defp encoder(TypeInfo[], default, value) do
+  defp encoder(%TypeInfo{}, default, value) do
     default.(value)
   end
 
-  defp decoder(TypeInfo[sender: "int4"], _format, default, bin) do
+  defp decoder(%TypeInfo{sender: "int4"}, _format, default, bin) do
     default.(bin) + 10
   end
 
-  defp decoder(TypeInfo[], _format, default, bin) do
+  defp decoder(%TypeInfo{}, _format, default, bin) do
     default.(bin)
   end
 
-  defp formatter(TypeInfo[sender: "float8"]), do: :text
-  defp formatter(TypeInfo[]), do: nil
+  defp formatter(%TypeInfo{sender: "float8"}), do: :text
+  defp formatter(%TypeInfo{}), do: nil
 
   setup do
     opts = [ database: "postgrex_test",

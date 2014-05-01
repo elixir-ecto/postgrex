@@ -1,6 +1,6 @@
-defrecord Postgrex.Result, [:command, :columns, :rows, :num_rows] do
+defmodule Postgrex.Result do
   @moduledoc """
-  Result record returned from any successful query. Its fields are:
+  Result struct returned from any successful query. Its fields are:
 
     * `command` - An atom of the query command, for example: `:select` or
                   `:insert`;
@@ -10,15 +10,15 @@ defrecord Postgrex.Result, [:command, :columns, :rows, :num_rows] do
     * `num_rows` - The number of fetched or affected rows;
   """
 
-  record_type [
-    command: atom,
-    columns: [String.t] | nil,
-    rows: [tuple] | nil,
-    num_rows: integer ]
+  defstruct [
+    command: nil :: atom,
+    columns: nil :: [String.t] | nil,
+    rows: nil :: [tuple] | nil,
+    num_rows: nil :: integer ]
 end
 
 # TODO: Add "output" function name for easy text decoding?
-defrecord Postgrex.TypeInfo, [:oid, :sender, :type, :array_elem, :comp_elems] do
+defmodule Postgrex.TypeInfo do
   @moduledoc """
   The information about a type that is provided to the custom encoder/decoder
   functions.
@@ -33,20 +33,10 @@ defrecord Postgrex.TypeInfo, [:oid, :sender, :type, :array_elem, :comp_elems] do
       elements' oid;
   """
 
-  record_type [
-    oid: pos_integer,
-    sender: String.t,
-    type: String.t,
-    array_elem: pos_integer,
-    comp_elems: [pos_integer] ]
-end
-
-defexception Postgrex.Error, [:postgres, :reason] do
-  def message(Postgrex.Error[postgres: kw]) when is_list(kw) do
-    "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
-  end
-
-  def message(Postgrex.Error[reason: msg]) do
-    msg
-  end
+  defstruct [
+    oid: nil :: pos_integer,
+    sender: nil :: String.t,
+    type: nil :: String.t,
+    array_elem: nil :: pos_integer,
+    comp_elems: nil :: [pos_integer] ]
 end

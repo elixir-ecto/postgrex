@@ -54,8 +54,8 @@ defmodule Postgrex.TestHelper do
     quote do
       case Postgrex.Connection.query(var!(context)[:pid], unquote(stat),
                                      unquote(params), unquote(timeout)) do
-        {:ok, Postgrex.Result[rows: nil]} -> :ok
-        {:ok, Postgrex.Result[rows: rows]} -> rows
+        {:ok, %Postgrex.Result{rows: nil}} -> :ok
+        {:ok, %Postgrex.Result{rows: rows}} -> rows
         {:error, Postgrex.Error[] = err} -> err
       end
     end
