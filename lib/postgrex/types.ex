@@ -9,8 +9,8 @@ defmodule Postgrex.Types do
            "float4", "float8", "numeric", "date", "time", "timetz", "timestamp",
            "timestamptz", "interval" ]
 
-  @gd_epoch :calendar.date_to_gregorian_days({ 2000, 1, 1 })
-  @gs_epoch :calendar.datetime_to_gregorian_seconds({ { 2000, 1, 1 }, { 0, 0, 0 } })
+  @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
+  @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
   @days_in_month 30
   @secs_in_day 24 * 60 * 60
   @numeric_base 10_000
@@ -49,8 +49,8 @@ defmodule Postgrex.Types do
 
   defp parse_oids(bin, acc) do
     case Integer.parse(bin) do
-      { int, "," <> rest } -> parse_oids(rest, [int|acc])
-      { int, "}" } -> Enum.reverse([int|acc])
+      {int, "," <> rest} -> parse_oids(rest, [int|acc])
+      {int, "}"} -> Enum.reverse([int|acc])
     end
   end
 
@@ -68,7 +68,7 @@ defmodule Postgrex.Types do
 
   def format(types, oid, formatter) do
     case Dict.fetch(types, oid) do
-      { :ok, TypeInfo[sender: sender, type: type, array_elem: array_oid, comp_elems: comp_oids] = info } ->
+      {:ok, TypeInfo[sender: sender, type: type, array_elem: array_oid, comp_elems: comp_oids] = info} ->
         cond do
           formatter && (format = formatter.(info)) ->
             format
@@ -88,22 +88,22 @@ defmodule Postgrex.Types do
     end
   end
 
-  def encode_value(TypeInfo[] = info, { types, encoder, formatter }, default, value) do
+  def encode_value(TypeInfo[] = info, {types, encoder, formatter}, default, value) do
     bin = if encoder, do: encoder.(info, default, value)
 
     result = case format(types, info.oid, formatter) do
       :binary ->
-        if bin = bin || default.(value), do: { :binary, bin }
+        if bin = bin || default.(value), do: {:binary, bin}
       :text when not nil?(bin) ->
-        { :text, bin }
+        {:text, bin}
       :text when is_binary(value) ->
-        { :text, value }
+        {:text, value}
       _ ->
         nil
     end
 
     if nil?(result) do
-      throw { :postgrex_encode, "unable to encode value `#{inspect value}` as type #{info.type}" }
+      throw {:postgrex_encode, "unable to encode value `#{inspect value}` as type #{info.type}"}
     end
 
     result
@@ -242,19 +242,19 @@ defmodule Postgrex.Types do
   end
 
   defp decode_numeric(_num_digits, weight, sign, scale, bin) do
-    { value, weight } = decode_numeric_int(bin, weight, 0)
+    {value, weight} = decode_numeric_int(bin, weight, 0)
 
     case sign do
       0x0000 -> sign = 1
       0x4000 -> sign = -1
     end
 
-    { coef, exp } = scale(value, (weight+1)*4, -scale)
+    {coef, exp} = scale(value, (weight+1)*4, -scale)
     Decimal.new(sign, coef, exp)
   end
 
   defp scale(coef, exp, scale) when scale == exp,
-    do: { coef, exp }
+    do: {coef, exp}
 
   defp scale(coef, exp, scale) when scale > exp,
     do: scale(div(coef, 10), exp+1, scale)
@@ -262,7 +262,7 @@ defmodule Postgrex.Types do
   defp scale(coef, exp, scale) when scale < exp,
     do: scale(coef * 10, exp-1, scale)
 
-  defp decode_numeric_int("", weight, acc), do: { acc, weight }
+  defp decode_numeric_int("", weight, acc), do: {acc, weight}
 
   defp decode_numeric_int(<< digit :: int16, tail :: binary >>, weight, acc) do
     acc = (acc * @numeric_base) + digit
@@ -284,22 +284,22 @@ defmodule Postgrex.Types do
   end
 
   defp decode_interval(microsecs, days, months) do
-    { months, days, div(microsecs, 1_000_000) }
+    {months, days, div(microsecs, 1_000_000)}
   end
 
   defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>,
-                    { types, _ } = extra) do
-    { dims, rest } = :erlang.split_binary(rest, ndims * 2 * 4)
+                    {types, _} = extra) do
+    {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
     info = Dict.fetch!(types, oid)
     default = &decode_binary(info, extra, &1)
 
-    { array, "" } = decode_array(rest, info, extra, default, lengths)
+    {array, ""} = decode_array(rest, info, extra, default, lengths)
     array
   end
 
   defp decode_array("", _info, _extra, _default, []) do
-    { [], "" }
+    {[], ""}
   end
 
   defp decode_array(rest, info, extra, default, [len]) do
@@ -313,7 +313,7 @@ defmodule Postgrex.Types do
   end
 
   defp array_elements(rest, _info, _extra, _default, acc, 0) do
-    { Enum.reverse(acc), rest }
+    {Enum.reverse(acc), rest}
   end
 
   defp array_elements(<< -1 :: int32, rest :: binary >>, info, extra, default, acc, count) do
@@ -322,7 +322,7 @@ defmodule Postgrex.Types do
 
   defp array_elements(<< length :: int32, elem :: binary(length), rest :: binary >>,
                        info, extra, default, acc, count) do
-    { _, decoder } = extra
+    {_, decoder} = extra
     value = decode_value(info, :binary, decoder, default, elem)
     array_elements(rest, info, extra, default, [value|acc], count-1)
   end
@@ -340,7 +340,7 @@ defmodule Postgrex.Types do
   end
 
   defp record_elements(num, << oid :: int32, length :: int32, elem :: binary(length), rest :: binary >>,
-                       { types, decoder } = extra) do
+                       {types, decoder} = extra) do
     info = Dict.fetch!(types, oid)
     default = &decode_binary(info, extra, &1)
     value = decode_value(info, :binary, decoder, default, elem)
@@ -362,8 +362,8 @@ defmodule Postgrex.Types do
         sign = 0x0000
       end
 
-      { int, float } = Enum.split_while(string, &(&1 != ?.))
-      { weight, int_digits } = Enum.reverse(int) |> encode_numeric_int(0, [])
+      {int, float} = Enum.split_while(string, &(&1 != ?.))
+      {weight, int_digits} = Enum.reverse(int) |> encode_numeric_int(0, [])
 
       if float != [] do
         [_|float] = float
@@ -389,18 +389,18 @@ defmodule Postgrex.Types do
   end
 
   defp encode_numeric_float(list, acc) do
-    { list, rest } = Enum.split(list, 4)
+    {list, rest} = Enum.split(list, 4)
     digit = list_to_integer(list)
 
     encode_numeric_float(rest, [digit|acc])
   end
 
   defp encode_numeric_int([], weight, acc) do
-    { weight, acc }
+    {weight, acc}
   end
 
   defp encode_numeric_int(list, weight, acc) do
-    { list, rest } = Enum.split(list, 4)
+    {list, rest} = Enum.split(list, 4)
     digit = Enum.reverse(list) |> list_to_integer
 
     if rest != [], do: weight = weight + 1
@@ -437,61 +437,61 @@ defmodule Postgrex.Types do
     << secs * 1_000_000 :: int64 >>
   end
 
-  defp encode_interval({ months, days, secs }) do
+  defp encode_interval({months, days, secs}) do
     microsecs = secs * 1_000_000
     << microsecs :: int64, days :: int32, months :: int32 >>
   end
 
-  defp encode_array(list, oid, { types, _, _ } = extra) do
+  defp encode_array(list, oid, {types, _, _} = extra) do
     TypeInfo[array_elem: elem_oid] = Dict.fetch!(types, oid)
     info = Dict.fetch!(types, elem_oid)
     default = &encode(info, extra, &1)
 
-    { data, ndims, lengths } = encode_array(list, info, extra, default, 0, [])
+    {data, ndims, lengths} = encode_array(list, info, extra, default, 0, [])
     bin = iodata_to_binary(data)
     lengths = bc len inlist Enum.reverse(lengths), do: << len :: int32, 1 :: int32 >>
     << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
   end
 
   defp encode_array([], _info, _extra, _default, ndims, lengths) do
-    { "", ndims, lengths }
+    {"", ndims, lengths}
   end
 
   defp encode_array([head|tail]=list, info, extra, default, ndims, lengths)
       when is_list(head) do
     lengths = [length(list)|lengths]
-    { data, ndims, lengths } = encode_array(head, info, extra, default, ndims, lengths)
+    {data, ndims, lengths} = encode_array(head, info, extra, default, ndims, lengths)
     [dimlength|_] = lengths
 
     rest = Enum.map(tail, fn sublist ->
-      { data, _, [len|_] } = encode_array(sublist, info, extra, default, ndims, lengths)
+      {data, _, [len|_]} = encode_array(sublist, info, extra, default, ndims, lengths)
       if len != dimlength do
-        throw { :postgrex_encode, "nested lists must have lists with matching lengths" }
+        throw {:postgrex_encode, "nested lists must have lists with matching lengths"}
       end
       data
     end)
 
-    { [data|rest], ndims+1, lengths }
+    {[data|rest], ndims+1, lengths}
   end
 
   defp encode_array(list, info, extra, default, ndims, lengths) do
-    { data, length } = Enum.map_reduce(list, 0, fn elem, length ->
-      { :binary, bin } = encode_value(info, extra, default, elem)
-      { << byte_size(bin) :: int32, bin :: binary >>, length + 1 }
+    {data, length} = Enum.map_reduce(list, 0, fn elem, length ->
+      {:binary, bin} = encode_value(info, extra, default, elem)
+      {<< byte_size(bin) :: int32, bin :: binary >>, length + 1}
     end)
-    { data, ndims+1, [length|lengths] }
+    {data, ndims+1, [length|lengths]}
   end
 
-  defp encode_record(tuple, oid, { types, _, _ } = extra) do
+  defp encode_record(tuple, oid, {types, _, _} = extra) do
     list = tuple_to_list(tuple)
     TypeInfo[comp_elems: comp_oids] = Dict.fetch!(types, oid)
     zipped = :lists.zip(list, comp_oids)
 
-    { data, count } = Enum.map_reduce(zipped, 0, fn { value, oid }, count ->
+    {data, count} = Enum.map_reduce(zipped, 0, fn {value, oid}, count ->
       info = Dict.fetch!(types, oid)
       default = &encode(info, extra, &1)
-      { :binary, bin } = encode_value(info, extra, default, value)
-      { << oid :: int32, byte_size(bin) :: int32, bin :: binary >>, count + 1 }
+      {:binary, bin} = encode_value(info, extra, default, value)
+      {<< oid :: int32, byte_size(bin) :: int32, bin :: binary >>, count + 1}
     end)
 
     << count :: int32, iodata_to_binary(data) :: binary >>

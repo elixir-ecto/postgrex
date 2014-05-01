@@ -5,10 +5,10 @@ defmodule TransactionTest do
 
   setup do
     opts = [ database: "postgrex_test" ]
-    { :ok, pid } = P.start_link(opts)
-    { :ok, _ } = P.query(pid, "DROP TABLE IF EXISTS transaction")
-    { :ok, _ } = P.query(pid, "CREATE TABLE transaction (data text)")
-    { :ok, [pid: pid] }
+    {:ok, pid} = P.start_link(opts)
+    {:ok, _} = P.query(pid, "DROP TABLE IF EXISTS transaction")
+    {:ok, _} = P.query(pid, "CREATE TABLE transaction (data text)")
+    {:ok, [pid: pid]}
   end
 
   teardown context do

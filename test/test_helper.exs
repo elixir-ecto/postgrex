@@ -1,6 +1,6 @@
 ExUnit.start
 
-{ :ok, _ } = :application.ensure_all_started(:crypto)
+{:ok, _} = :application.ensure_all_started(:crypto)
 
 run_cmd = fn cmd ->
   key = :ecto_setup_cmd_output
@@ -11,7 +11,7 @@ run_cmd = fn cmd ->
   end)
   output = Process.get(key)
   Process.put(key, "")
-  { status, output }
+  {status, output}
 end
 
 sql = """
@@ -32,7 +32,7 @@ cmds = [
 ]
 
 Enum.each(cmds, fn cmd ->
-  { status, output } = run_cmd.(cmd)
+  {status, output} = run_cmd.(cmd)
 
   if status != 0 do
     IO.puts """
@@ -54,9 +54,9 @@ defmodule Postgrex.TestHelper do
     quote do
       case Postgrex.Connection.query(var!(context)[:pid], unquote(stat),
                                      unquote(params), unquote(timeout)) do
-        { :ok, Postgrex.Result[rows: nil] } -> :ok
-        { :ok, Postgrex.Result[rows: rows] } -> rows
-        { :error, Postgrex.Error[] = err } -> err
+        {:ok, Postgrex.Result[rows: nil]} -> :ok
+        {:ok, Postgrex.Result[rows: rows]} -> rows
+        {:error, Postgrex.Error[] = err} -> err
       end
     end
   end
