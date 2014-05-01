@@ -1,7 +1,4 @@
 language: erlang
-notifications:
-  recipients:
-    - eric.meadows.jonsson@gmail.com
 otp_release:
   - 17.0
 before_install:
@@ -31,4 +28,6 @@ env:
   - PGVERSION=9.1
   - PGVERSION=9.2
   - PGVERSION=9.3
-
+notifications:
+  recipients:
+    - eric.meadows.jonsson@gmail.com

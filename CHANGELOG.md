@@ -1,4 +1,6 @@
-# v0.4.1-dev
+# v0.5.0-dev
+
+# v0.4.2 (2014-04-21)
 
 * Enhancements
   * Add timeouts to all synchronous calls. When a timeout is hit an exit error will be raised in the caller process and the connection process will exit
