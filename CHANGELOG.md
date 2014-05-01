@@ -1,4 +1,7 @@
-# v0.5.0-dev
+# v0.5.0 (2014-05-01)
+
+* Backwards incompatible changes
+  * Postgrex.Result and Postgrex.TypeInfo converted to structs
 
 # v0.4.2 (2014-04-21)
 
