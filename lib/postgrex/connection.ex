@@ -4,9 +4,9 @@ defmodule Postgrex.Connection do
   """
 
   use GenServer.Behaviour
-  use Postgrex.Protocol.Messages
   alias Postgrex.Protocol
   alias Postgrex.Types
+  import Postgrex.Protocol.Messages
   import Postgrex.BinaryUtils
 
   # possible states: ssl, auth, init, parsing, describing, binding, executing,

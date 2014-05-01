@@ -1,45 +1,44 @@
 defmodule Postgrex.Protocol.Messages do
   @moduledoc false
 
-  defmacro __using__(_opts) do
-    quote do
-      defrecordp :msg_auth, [:type, :data]
-      defrecordp :msg_startup, [:params]
-      defrecordp :msg_password, [:pass]
-      defrecordp :msg_error, [:fields]
-      defrecordp :msg_parameter, [:name, :value]
-      defrecordp :msg_backend_key, [:pid, :key]
-      defrecordp :msg_ready, [:status]
-      defrecordp :msg_notice, [:fields]
-      defrecordp :msg_parse, [:name, :query, :type_oids]
-      defrecordp :msg_describe, [:type, :name]
-      defrecordp :msg_flush, []
-      defrecordp :msg_parse_complete, []
-      defrecordp :msg_parameter_desc, [:type_oids]
-      defrecordp :msg_row_desc, [:fields]
-      defrecordp :msg_no_data, []
-      defrecordp :msg_bind, [:name_port, :name_stat, :param_formats, :params,
-                             :result_formats]
-      defrecordp :msg_execute, [:name_port, :max_rows]
-      defrecordp :msg_sync, []
-      defrecordp :msg_bind_complete, []
-      defrecordp :msg_portal_suspend, []
-      defrecordp :msg_data_row, [:values]
-      defrecordp :msg_command_complete, [:tag]
-      defrecordp :msg_empty_query, []
-      defrecordp :msg_terminate, []
-      defrecordp :msg_ssl_request, []
+  import Record
+  import Kernel, except: [defrecord: 2]
 
-      defrecordp :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
-                              :type_mod, :format]
-    end
-  end
+  defrecord :msg_auth, [:type, :data]
+  defrecord :msg_startup, [:params]
+  defrecord :msg_password, [:pass]
+  defrecord :msg_error, [:fields]
+  defrecord :msg_parameter, [:name, :value]
+  defrecord :msg_backend_key, [:pid, :key]
+  defrecord :msg_ready, [:status]
+  defrecord :msg_notice, [:fields]
+  defrecord :msg_parse, [:name, :query, :type_oids]
+  defrecord :msg_describe, [:type, :name]
+  defrecord :msg_flush, []
+  defrecord :msg_parse_complete, []
+  defrecord :msg_parameter_desc, [:type_oids]
+  defrecord :msg_row_desc, [:fields]
+  defrecord :msg_no_data, []
+  defrecord :msg_bind, [:name_port, :name_stat, :param_formats, :params,
+                        :result_formats]
+  defrecord :msg_execute, [:name_port, :max_rows]
+  defrecord :msg_sync, []
+  defrecord :msg_bind_complete, []
+  defrecord :msg_portal_suspend, []
+  defrecord :msg_data_row, [:values]
+  defrecord :msg_command_complete, [:tag]
+  defrecord :msg_empty_query, []
+  defrecord :msg_terminate, []
+  defrecord :msg_ssl_request, []
+
+  defrecord :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
+                         :type_mod, :format]
 end
 
 defmodule Postgrex.Protocol do
   @moduledoc false
 
-  use Postgrex.Protocol.Messages
+  import Postgrex.Protocol.Messages
   import Postgrex.BinaryUtils
 
   @protocol_vsn_major 3
