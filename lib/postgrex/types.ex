@@ -290,7 +290,7 @@ defmodule Postgrex.Types do
   defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>,
                     {types, _} = extra) do
     {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
-    lengths = lc << len :: int32, _lbound :: int32 >> inbits dims, do: len
+    lengths = for << len :: int32, _lbound :: int32 <- dims >>, do: len
     info = Dict.fetch!(types, oid)
     default = &decode_binary(info, extra, &1)
 
@@ -375,7 +375,7 @@ defmodule Postgrex.Types do
       end
 
       digits = int_digits ++ float_digits
-      bin = bc digit inlist digits, do: << digit :: uint16 >>
+      bin = for digit <- digits, into: "", do: << digit :: uint16 >>
       ndigits = div(byte_size(bin), 2)
 
       << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary >>
@@ -449,7 +449,7 @@ defmodule Postgrex.Types do
 
     {data, ndims, lengths} = encode_array(list, info, extra, default, 0, [])
     bin = iodata_to_binary(data)
-    lengths = bc len inlist Enum.reverse(lengths), do: << len :: int32, 1 :: int32 >>
+    lengths = for len <- Enum.reverse(lengths), into: "", do: << len :: int32, 1 :: int32 >>
     << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
   end
 

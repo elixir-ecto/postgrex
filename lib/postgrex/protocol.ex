@@ -112,7 +112,7 @@ defmodule Postgrex.Protocol do
   # parameter_desc
   def parse(?t, _size, rest) do
     << len :: int16, rest :: binary(len, 32) >> = rest
-    oids = lc << oid :: size(32) >> inbits rest, do: oid
+    oids = for << oid :: size(32) <- rest >>, do: oid
     msg_parameter_desc(type_oids: oids)
   end
 
@@ -186,7 +186,7 @@ defmodule Postgrex.Protocol do
 
   # parse
   defp to_binary(msg_parse(name: name, query: query, type_oids: oids)) do
-    oids = bc oid inlist oids, do: << oid :: int32 >>
+    oids = for oid <- oids, into: "", do: << oid :: int32 >>
     len = << div(byte_size(oids), 4) :: int16 >>
     {?P, [name, 0, query, 0, len, oids]}
   end
@@ -208,9 +208,9 @@ defmodule Postgrex.Protocol do
   # bind
   defp to_binary(msg_bind(name_port: port, name_stat: stat, param_formats: param_formats,
                           params: params, result_formats: result_formats)) do
-    pfs = bc format inlist param_formats,  do: << format(format) :: int16 >>
-    rfs = bc format inlist result_formats, do: << format(format) :: int16 >>
-    ps  = bc param  inlist params,         do: << encode_param(param) :: binary >>
+    pfs = for format <- param_formats,  into: "", do: << format(format) :: int16 >>
+    rfs = for format <- result_formats, into: "", do: << format(format) :: int16 >>
+    ps  = for param  <- params,         into: "", do: << encode_param(param) :: binary >>
 
     len_pfs = << div(byte_size(pfs), 2) :: int16 >>
     len_rfs = << div(byte_size(rfs), 2) :: int16 >>
