@@ -14,7 +14,8 @@ install:
   - sudo apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::="--force-confnew" install postgresql-$PGVERSION
 before_script:
   - export PATH=`pwd`/elixir/bin:$PATH
-  - MIX_ENV=test mix do deps.get
+  - mix local.hex --force
+  - mix deps.get
   - echo "local all postgres trust" | sudo tee /etc/postgresql/$PGVERSION/main/pg_hba.conf
   - echo "host all postgres 127.0.0.1/32 trust" | sudo tee -a /etc/postgresql/$PGVERSION/main/pg_hba.conf
   - echo "host all postgrex_md5_pw 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/$PGVERSION/main/pg_hba.conf
