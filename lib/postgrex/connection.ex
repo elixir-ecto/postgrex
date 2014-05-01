@@ -9,15 +9,6 @@ defmodule Postgrex.Connection do
   import Postgrex.Protocol.Messages
   import Postgrex.BinaryUtils
 
-  # possible states: ssl, auth, init, parsing, describing, binding, executing,
-  #                  ready
-
-  defrecordp :state, [
-    :opts, :sock, :tail, :state, :parameters, :backend_key, :rows, :statement,
-    :portal, :bootstrap, :types, :transactions, :queue ]
-  defrecordp :statement, [:row_info, :columns]
-  defrecordp :portal, [:param_oids]
-
   @timeout :infinity
 
   ### PUBLIC API ###
@@ -265,13 +256,14 @@ defmodule Postgrex.Connection do
 
   @doc false
   def init([]) do
-    {:ok, state(state: :ready, tail: "", parameters: %{}, rows: [],
-                 bootstrap: false, transactions: 0, queue: :queue.new)}
+    {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
+            rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
+            transactions: 0, queue: :queue.new, opts: nil}}
   end
 
   @doc false
   def format_status(opt, [_pdict, s]) do
-    s = state(s, types: :types_removed)
+    s = %{s | types: :types_removed}
     if opt == :normal do
       [data: [{'State', s}]]
     else
@@ -285,7 +277,7 @@ defmodule Postgrex.Connection do
     {:stop, :normal, s}
   end
 
-  def handle_call({:connect, opts}, from, state(queue: queue) = s) do
+  def handle_call({:connect, opts}, from, %{queue: queue} = s) do
     host      = opts[:hostname] || System.get_env("PGHOST")
     host      = if is_binary(host), do: List.from_char_data!(host), else: host
     port      = opts[:port] || 5432
@@ -295,7 +287,7 @@ defmodule Postgrex.Connection do
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
         queue = :queue.in({{:connect, opts}, from, nil}, queue)
-        s = state(s, opts: opts, sock: {:gen_tcp, sock}, queue: queue)
+        s = %{s | opts: opts, sock: {:gen_tcp, sock}, queue: queue}
         if opts[:ssl] do
           startup_ssl(s)
         else
@@ -307,17 +299,17 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_call(:parameters, _from, state(parameters: params) = s) do
+  def handle_call(:parameters, _from, %{parameters: params} = s) do
     {:reply, params, s}
   end
 
-  def handle_call({command, timeout}, from, state(state: state, queue: queue) = s) do
+  def handle_call({command, timeout}, from, %{state: state, queue: queue} = s) do
     unless timeout == :infinity do
       timer_ref = :erlang.start_timer(timeout, self(), :command)
     end
 
     queue = :queue.in({command, from, timer_ref}, queue)
-    s = state(s, queue: queue)
+    s = %{s | queue: queue}
 
     if state == :ready do
       case next(s) do
@@ -330,7 +322,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_info({:timeout, timer_ref, :command}, state(queue: queue) = s) do
+  def handle_info({:timeout, timer_ref, :command}, %{queue: queue} = s) do
     {first, second} = queue
 
     command = Enum.find(first, &(elem(&1, 2) == timer_ref))
@@ -343,13 +335,13 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({:tcp, _, data}, state(sock: {:gen_tcp, sock}, opts: opts, state: :ssl) = s) do
+  def handle_info({:tcp, _, data}, %{sock: {:gen_tcp, sock}, opts: opts, state: :ssl} = s) do
     case data do
       << ?S >> ->
         case :ssl.connect(sock, opts[:ssl_opts] || []) do
           {:ok, ssl_sock} ->
             :ssl.setopts(ssl_sock, active: :once)
-            startup(state(s, sock: {:ssl, ssl_sock}))
+            startup(%{s | sock: {:ssl, ssl_sock}})
           {:error, reason} ->
             reply(Postgrex.Error[reason: "ssl negotiation failed: #{reason}"], s)
             {:stop, :normal, s}
@@ -361,9 +353,9 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({tag, _, data}, state(sock: {mod, sock}, tail: tail) = s)
+  def handle_info({tag, _, data}, %{sock: {mod, sock}, tail: tail} = s)
       when tag in [:tcp, :ssl] do
-    case new_data(tail <> data, state(s, tail: "")) do
+    case new_data(tail <> data, %{s | tail: ""}) do
       {:ok, s} ->
         case mod do
           :gen_tcp -> :inet.setopts(sock, active: :once)
@@ -384,7 +376,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def terminate(reason, state(queue: queue, sock: sock)) do
+  def terminate(reason, %{queue: queue, sock: sock}) do
     if sock do
       msg_send(msg_terminate(), sock)
       {mod, sock} = sock
@@ -399,7 +391,7 @@ defmodule Postgrex.Connection do
 
   ### PRIVATE FUNCTIONS ###
 
-  defp next(state(queue: queue) = s) do
+  defp next(%{queue: queue} = s) do
     case :queue.out(queue) do
       {{:value, {command, _from, _timer}}, _queue} ->
         command(command, s)
@@ -416,55 +408,55 @@ defmodule Postgrex.Connection do
 
     case send_to_result(msgs, s) do
       {:ok, s} ->
-        {:ok, state(s, statement: nil, state: :parsing)}
+        {:ok, %{s | statement: nil, state: :parsing}}
       err ->
         err
     end
   end
 
-  defp command(:begin, state(transactions: trans) = s) do
+  defp command(:begin, %{transactions: trans} = s) do
     if trans == 0 do
-      s = state(s, transactions: 1)
+      s = %{s | transactions: 1}
       new_query("BEGIN", [], s)
     else
-      s = state(s, transactions: trans + 1)
+      s = %{s | transactions: trans + 1}
       new_query("SAVEPOINT postgrex_#{trans}", [], s)
     end
   end
 
-  defp command(:rollback, state(queue: queue, transactions: trans) = s) do
+  defp command(:rollback, %{queue: queue, transactions: trans} = s) do
     cond do
       trans == 0 ->
         reply(:ok, s)
         queue = :queue.drop(queue)
-        {:ok, state(s, queue: queue)}
+        {:ok, %{s | queue: queue}}
       trans == 1 ->
-        s = state(s, transactions: 0)
+        s = %{s | transactions: 0}
         new_query("ROLLBACK", [], s)
       true ->
         trans = trans - 1
-        s = state(s, transactions: trans)
+        s = %{s | transactions: trans}
         new_query("ROLLBACK TO SAVEPOINT postgrex_#{trans}", [], s)
     end
   end
 
-  defp command(:commit, state(queue: queue, transactions: trans) = s) do
+  defp command(:commit, %{queue: queue, transactions: trans} = s) do
     case trans do
       0 ->
         reply(:ok, s)
         queue = :queue.drop(queue)
-        {:ok, state(s, queue: queue)}
+        {:ok, %{s | queue: queue}}
       1 ->
-        s = state(s, transactions: 0)
+        s = %{s | transactions: 0}
         new_query("COMMIT", [], s)
       _ ->
         reply(:ok, s)
         queue = :queue.drop(queue)
-        {:ok, state(s, queue: queue, transactions: trans - 1)}
+        {:ok, %{s | queue: queue, transactions: trans - 1}}
     end
   end
 
-  defp new_data(<< type :: int8, size :: int32, data :: binary >> = tail, state(state: state) = s) do
+  defp new_data(<< type :: int8, size :: int32, data :: binary >> = tail, %{state: state} = s) do
     size = size - 4
 
     case data do
@@ -475,26 +467,29 @@ defmodule Postgrex.Connection do
           {:error, _, _} = err -> err
         end
       _ ->
-        {:ok, state(s, tail: tail)}
+        {:ok, %{s | tail: tail}}
     end
   end
 
-  defp new_data(data, state(tail: tail) = s) do
-    {:ok, state(s, tail: tail <> data)}
+  defp new_data(data, %{tail: tail} = s) do
+    {:ok, %{s | tail: tail <> data}}
   end
+
+  # possible states: ssl, auth, init, parsing, describing, binding, executing,
+  #                  ready
 
   ### auth state ###
 
   defp message(:auth, msg_auth(type: :ok), s) do
-    {:ok, state(s, state: :init)}
+    {:ok, %{s | state: :init}}
   end
 
-  defp message(:auth, msg_auth(type: :cleartext), state(opts: opts) = s) do
+  defp message(:auth, msg_auth(type: :cleartext), %{opts: opts} = s) do
     msg = msg_password(pass: opts[:password])
     send_to_result(msg, s)
   end
 
-  defp message(:auth, msg_auth(type: :md5, data: salt), state(opts: opts) = s) do
+  defp message(:auth, msg_auth(type: :md5, data: salt), %{opts: opts} = s) do
     digest = :crypto.hash(:md5, [opts[:password], opts[:username]]) |> hexify
     digest = :crypto.hash(:md5, [digest, salt]) |> hexify
     msg = msg_password(pass: ["md5", digest])
@@ -508,12 +503,12 @@ defmodule Postgrex.Connection do
   ### init state ###
 
   defp message(:init, msg_backend_key(pid: pid, key: key), s) do
-    {:ok, state(s, backend_key: {pid, key})}
+    {:ok, %{s | backend_key: {pid, key}}}
   end
 
-  defp message(:init, msg_ready(), state(opts: opts) = s) do
+  defp message(:init, msg_ready(), %{opts: opts} = s) do
     opts = clean_opts(opts)
-    s = state(s, opts: opts, bootstrap: true)
+    s = %{s | opts: opts, bootstrap: true}
     new_query(Types.bootstrap_query, [], s)
   end
 
@@ -524,7 +519,7 @@ defmodule Postgrex.Connection do
   ### parsing state ###
 
   defp message(:parsing, msg_parse_complete(), s) do
-    {:ok, state(s, state: :describing)}
+    {:ok, %{s | state: :describing}}
   end
 
   ### describing state ###
@@ -534,51 +529,51 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:describing, msg_parameter_desc(type_oids: oids), s) do
-    {:ok, state(s, portal: portal(param_oids: oids))}
+    {:ok, %{s | portal: oids}}
   end
 
   defp message(:describing, msg_row_desc(fields: fields),
-               state(types: types, bootstrap: bootstrap, opts: opts) = s) do
+               %{types: types, bootstrap: bootstrap, opts: opts} = s) do
     rfs = []
     if not bootstrap do
       {info, rfs, cols} = extract_row_info(fields, types, opts[:decoder], opts[:formatter])
-      stat = statement(columns: cols, row_info: list_to_tuple(info))
-      s = state(s, statement: stat)
+      stat = %{columns: cols, row_info: list_to_tuple(info)}
+      s = %{s | statement: stat}
     end
 
     send_params(s, rfs)
   end
 
   defp message(:describing, msg_ready(), s) do
-    {:ok, state(s, state: :binding)}
+    {:ok, %{s | state: :binding}}
   end
 
   ### binding state ###
 
   defp message(:binding, msg_bind_complete(), s) do
-    {:ok, state(s, state: :executing)}
+    {:ok, %{s | state: :executing}}
   end
 
   ### executing state ###
 
-  defp message(:executing, msg_data_row(values: values), state(rows: rows) = s) do
-    {:ok, state(s, rows: [values|rows])}
+  defp message(:executing, msg_data_row(values: values), %{rows: rows} = s) do
+    {:ok, %{s | rows: [values|rows]}}
   end
 
-  defp message(:executing, msg_command_complete(), state(bootstrap: true, rows: rows) = s) do
+  defp message(:executing, msg_command_complete(), %{bootstrap: true, rows: rows} = s) do
     reply(:ok, s)
     types = Types.build_types(rows)
-    {:ok, state(s, rows: [], bootstrap: false, types: types)}
+    {:ok, %{s | rows: [], bootstrap: false, types: types}}
   end
 
-  defp message(:executing, msg_command_complete(tag: tag), state(statement: stat) = s) do
+  defp message(:executing, msg_command_complete(tag: tag), %{statement: stat} = s) do
     reply =
       if nil?(stat) do
         create_result(tag)
       else
         try do
           result = decode_rows(s)
-          statement(columns: cols) = stat
+          %{columns: cols} = stat
           create_result(tag, result, cols)
         catch
           {:postgrex_decode, msg} ->
@@ -587,7 +582,7 @@ defmodule Postgrex.Connection do
       end
 
     reply(reply, s)
-    {:ok, state(s, rows: [], statement: nil, portal: nil)}
+    {:ok, %{s | rows: [], statement: nil, portal: nil}}
   end
 
   defp message(:executing, msg_empty_query(), s) do
@@ -597,14 +592,14 @@ defmodule Postgrex.Connection do
 
   ### asynchronous messages ###
 
-  defp message(_, msg_ready(), state(queue: queue) = s) do
+  defp message(_, msg_ready(), %{queue: queue} = s) do
     queue = :queue.drop(queue)
-    next(state(s, queue: queue, state: :ready))
+    next(%{s | queue: queue, state: :ready})
   end
 
-  defp message(_, msg_parameter(name: name, value: value), state(parameters: params) = s) do
+  defp message(_, msg_parameter(name: name, value: value), %{parameters: params} = s) do
     params = Map.put(params, name, value)
-    {:ok, state(s, parameters: params)}
+    {:ok, %{s | parameters: params}}
   end
 
   defp message(_, msg_error(fields: fields), s) do
@@ -627,7 +622,7 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp reply(reply, state(queue: queue)) do
+  defp reply(reply, %{queue: queue}) do
     case :queue.out(queue) do
       {{:value, {_command, from, _timer}}, _queue} ->
         :gen_server.reply(from, reply)
@@ -642,35 +637,34 @@ defmodule Postgrex.Connection do
     true
   end
 
-  defp startup_ssl(state(sock: sock) = s) do
+  defp startup_ssl(%{sock: sock} = s) do
     case msg_send(msg_ssl_request(), sock) do
       :ok ->
-        {:noreply, state(s, state: :ssl)}
+        {:noreply, %{s | state: :ssl}}
       {:error, reason} ->
         {:stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s}
     end
   end
 
-  defp startup(state(sock: sock, opts: opts) = s) do
+  defp startup(%{sock: sock, opts: opts} = s) do
     params = opts[:parameters] || []
     msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
     case msg_send(msg, sock) do
       :ok ->
-        {:noreply, state(s, state: :auth)}
+        {:noreply, %{s | state: :auth}}
       {:error, reason} ->
         {:stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s}
     end
   end
 
-  defp new_query(statement, params, state(queue: queue) = s) do
+  defp new_query(statement, params, %{queue: queue} = s) do
     command = {:query, statement, params}
     {{:value, {_command, from, timer}}, queue} = :queue.out(queue)
     queue = :queue.in_r({command, from, timer}, queue)
-    command(command, state(s, queue: queue))
+    command(command, %{s | queue: queue})
   end
 
-  defp decode_rows(state(statement: stat, rows: rows, opts: opts)) do
-    statement(row_info: info) = stat
+  defp decode_rows(%{statement: %{row_info: info}, rows: rows, opts: opts}) do
     decoder = opts[:decoder]
 
     Enum.reduce(rows, [], fn values, acc ->
@@ -702,7 +696,7 @@ defmodule Postgrex.Connection do
     catch
       {:postgrex_encode, reason} ->
         reply(Postgrex.Error[reason: reason], s)
-        {[msg_sync], state(s, portal: nil)}
+        {[msg_sync], %{s | portal: nil}}
     end
 
     case send_to_result(msgs, s) do
@@ -713,9 +707,8 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp encode_params(state(queue: queue, portal: portal, types: types, opts: opts)) do
+  defp encode_params(%{queue: queue, portal: param_oids, types: types, opts: opts}) do
     {{:query, _statement, params}, _from, _timer} = :queue.get(queue)
-    portal(param_oids: param_oids) = portal
     zipped = Enum.zip(param_oids, params)
     extra = {types, opts[:encoder], opts[:formatter]}
 
@@ -777,7 +770,7 @@ defmodule Postgrex.Connection do
     {command, List.last(nums)}
   end
 
-  defp msg_send(msg, state(sock: sock)), do: msg_send(msg, sock)
+  defp msg_send(msg, %{sock: sock}), do: msg_send(msg, sock)
 
   defp msg_send(msgs, {mod, sock}) when is_list(msgs) do
     binaries = Enum.map(msgs, &Protocol.msg_to_binary(&1))
