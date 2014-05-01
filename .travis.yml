@@ -24,11 +24,14 @@ before_script:
 script:
   - mix test
 env:
-  - PGVERSION=8.4
-  - PGVERSION=9.0
-  - PGVERSION=9.1
-  - PGVERSION=9.2
-  - PGVERSION=9.3
+  global:
+    -PGUSER=postgres
+  matrix:
+    - PGVERSION=8.4
+    - PGVERSION=9.0
+    - PGVERSION=9.1
+    - PGVERSION=9.2
+    - PGVERSION=9.3
 notifications:
   recipients:
     - eric.meadows.jonsson@gmail.com
