@@ -375,20 +375,6 @@ defmodule Postgrex.Connection do
     error(Postgrex.Error[reason: "tcp error: #{reason}"], s)
   end
 
-  @doc false
-  def terminate(reason, %{queue: queue, sock: sock}) do
-    if sock do
-      msg_send(msg_terminate(), sock)
-      {mod, sock} = sock
-      mod.close(sock)
-    end
-
-    reply = Postgrex.Error[reason: "terminated: #{inspect reason}"]
-    Enum.each(:queue.to_list(queue), fn {_command, from, _timer} ->
-      reply(reply, from)
-    end)
-  end
-
   ### PRIVATE FUNCTIONS ###
 
   defp next(%{queue: queue} = s) do
