@@ -56,7 +56,7 @@ defmodule Postgrex.TestHelper do
                                      unquote(params), unquote(timeout)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
-        {:error, Postgrex.Error[] = err} -> err
+        {:error, %Postgrex.Error{} = err} -> err
       end
     end
   end

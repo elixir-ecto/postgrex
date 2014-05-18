@@ -81,7 +81,7 @@ defmodule Postgrex.Connection do
   def query(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
       %Postgrex.Result{} = res -> {:ok, res}
-      Postgrex.Error[] = err -> {:error, err}
+      %Postgrex.Error{} = err -> {:error, err}
     end
   end
 
@@ -95,7 +95,7 @@ defmodule Postgrex.Connection do
   def query!(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
       %Postgrex.Result{} = res -> res
-      Postgrex.Error[] = err -> raise err
+      %Postgrex.Error{} = err -> raise err
     end
   end
 
@@ -136,7 +136,7 @@ defmodule Postgrex.Connection do
   def begin(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
       %Postgrex.Result{} -> :ok
-      Postgrex.Error[] = err -> err
+      %Postgrex.Error{} = err -> err
     end
   end
 
@@ -149,7 +149,7 @@ defmodule Postgrex.Connection do
   def begin!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
       %Postgrex.Result{} -> :ok
-      Postgrex.Error[] = err -> raise err
+      %Postgrex.Error{} = err -> raise err
     end
   end
 
@@ -163,7 +163,7 @@ defmodule Postgrex.Connection do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
-      Postgrex.Error[] = err -> err
+      %Postgrex.Error{} = err -> err
     end
   end
 
@@ -177,7 +177,7 @@ defmodule Postgrex.Connection do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
-      Postgrex.Error[] = err -> raise err
+      %Postgrex.Error{} = err -> raise err
     end
   end
 
@@ -191,7 +191,7 @@ defmodule Postgrex.Connection do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
-      Postgrex.Error[] = err -> err
+      %Postgrex.Error{} = err -> err
     end
   end
 
@@ -205,7 +205,7 @@ defmodule Postgrex.Connection do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
-      Postgrex.Error[] = err -> raise err
+      %Postgrex.Error{} = err -> raise err
     end
   end
 
@@ -295,7 +295,7 @@ defmodule Postgrex.Connection do
         end
 
       {:error, reason} ->
-        {:stop, :normal, Postgrex.Error[reason: "tcp connect: #{reason}"], s}
+        {:stop, :normal, %Postgrex.Error{message: "tcp connect: #{reason}"}, s}
     end
   end
 
@@ -343,12 +343,12 @@ defmodule Postgrex.Connection do
             :ssl.setopts(ssl_sock, active: :once)
             startup(%{s | sock: {:ssl, ssl_sock}})
           {:error, reason} ->
-            reply(Postgrex.Error[reason: "ssl negotiation failed: #{reason}"], s)
+            reply(%Postgrex.Error{message: "ssl negotiation failed: #{reason}"}, s)
             {:stop, :normal, s}
         end
 
       << ?N >> ->
-        reply(Postgrex.Error[reason: "ssl not available"], s)
+        reply(%Postgrex.Error{message: "ssl not available"}, s)
         {:stop, :normal, s}
     end
   end
@@ -368,11 +368,11 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({tag, _}, s) when tag in [:tcp_closed, :ssl_closed] do
-    error(Postgrex.Error[reason: "tcp closed"], s)
+    error(%Postgrex.Error{message: "tcp closed"}, s)
   end
 
   def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(Postgrex.Error[reason: "tcp error: #{reason}"], s)
+    error(%Postgrex.Error{message: "tcp error: #{reason}"}, s)
   end
 
   ### PRIVATE FUNCTIONS ###
@@ -483,7 +483,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:auth, msg_error(fields: fields), s) do
-    {:error, Postgrex.Error[postgres: fields], s}
+    {:error, %Postgrex.Error{postgres: fields}, s}
   end
 
   ### init state ###
@@ -499,7 +499,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:init, msg_error(fields: fields), s) do
-    {:error, Postgrex.Error[postgres: fields], s}
+    {:error, %Postgrex.Error{postgres: fields}, s}
   end
 
   ### parsing state ###
@@ -563,7 +563,7 @@ defmodule Postgrex.Connection do
           create_result(tag, result, cols)
         catch
           {:postgrex_decode, msg} ->
-            Postgrex.Error[reason: msg]
+            %Postgrex.Error{message: msg}
         end
       end
 
@@ -589,7 +589,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(_, msg_error(fields: fields), s) do
-    reply(Postgrex.Error[postgres: fields], s)
+    reply(%Postgrex.Error{message: fields}, s)
     {:ok, s}
   end
 
@@ -628,7 +628,7 @@ defmodule Postgrex.Connection do
       :ok ->
         {:noreply, %{s | state: :ssl}}
       {:error, reason} ->
-        {:stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s}
+        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
     end
   end
 
@@ -639,7 +639,7 @@ defmodule Postgrex.Connection do
       :ok ->
         {:noreply, %{s | state: :auth}}
       {:error, reason} ->
-        {:stop, :normal, Postgrex.Error[reason: "tcp send: #{reason}"], s}
+        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
     end
   end
 
@@ -681,7 +681,7 @@ defmodule Postgrex.Connection do
 
     catch
       {:postgrex_encode, reason} ->
-        reply(Postgrex.Error[reason: reason], s)
+        reply(%Postgrex.Error{message: reason}, s)
         {[msg_sync], %{s | portal: nil}}
     end
 
@@ -773,7 +773,7 @@ defmodule Postgrex.Connection do
       :ok ->
         {:ok, s}
       {:error, reason} ->
-        {:error, Postgrex.Error[reason: "tcp send: #{reason}"] , s}
+        {:error, %Postgrex.Error{message: "tcp send: #{reason}"} , s}
     end
   end
 

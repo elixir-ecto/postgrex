@@ -166,13 +166,13 @@ defmodule QueryTest do
   end
 
   test "fail on encode arrays", context do
-    assert Postgrex.Error[] = query("SELECT $1::integer[]", [[[1], [1,2]]])
+    assert %Postgrex.Error{} = query("SELECT $1::integer[]", [[[1], [1,2]]])
     assert [{42}] = query("SELECT 42")
   end
 
   test "fail on encode wrong value", context do
-    assert Postgrex.Error[] = query("SELECT $1::integer", ["123"])
-    assert Postgrex.Error[] = query("SELECT $1::text", [4.0])
+    assert %Postgrex.Error{} = query("SELECT $1::integer", ["123"])
+    assert %Postgrex.Error{} = query("SELECT $1::text", [4.0])
     assert [{42}] = query("SELECT 42")
   end
 
@@ -194,7 +194,7 @@ defmodule QueryTest do
   end
 
   test "error record", context do
-    assert {:error, Postgrex.Error[]} = P.query(context[:pid], "SELECT 123 + 'a'")
+    assert {:error, %Postgrex.Error{}}= P.query(context[:pid], "SELECT 123 + 'a'")
   end
 
   test "multi row result", context do
@@ -211,7 +211,7 @@ defmodule QueryTest do
   end
 
   test "connection works after failure", context do
-    assert Postgrex.Error[] = query("wat")
+    assert %Postgrex.Error{} = query("wat")
     assert [{42}] = query("SELECT 42")
   end
 

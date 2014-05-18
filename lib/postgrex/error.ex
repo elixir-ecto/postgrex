@@ -1,9 +1,11 @@
-defexception Postgrex.Error, [:postgres, :reason] do
-  def message(Postgrex.Error[postgres: kw]) when is_list(kw) do
-    "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
-  end
+defmodule Postgrex.Error do
+  defexception [:message, :postgres]
 
-  def message(Postgrex.Error[reason: msg]) do
-    msg
+  def exception(opts) do
+    if kw = opts[:postgres] do
+      msg = "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
+    end
+
+    %Postgrex.Error{message: msg || opts[:message], postgres: opts[:postgres]}
   end
 end

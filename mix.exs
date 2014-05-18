@@ -27,7 +27,8 @@ defmodule Postgrex.Mixfile do
 
   defp deps do
     [ { :ex_doc, github: "elixir-lang/ex_doc", only: :dev },
-      { :decimal, "~> 0.2.0" } ]
+      { :decimal, github: "ericmj/decimal" } ]
+      # { :decimal, "~> 0.2.0" } ]
   end
 
   defp description do
