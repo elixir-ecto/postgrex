@@ -1,11 +1,11 @@
 defmodule Postgrex.Error do
   defexception [:message, :postgres]
 
-  def exception(opts) do
-    if kw = opts[:postgres] do
+  def message(e) do
+    if kw = e.postgres do
       msg = "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
     end
 
-    %Postgrex.Error{message: msg || opts[:message], postgres: opts[:postgres]}
+    msg || e.message
   end
 end

@@ -69,7 +69,7 @@ defmodule Postgrex.Connection do
 
   @doc """
   Runs an (extended) query and returns the result as `{:ok, %Postgrex.Result{}}`
-  or `{:error, Postgrex.Error[]}` if there was an error. Parameters can be
+  or `{:error, %Postgrex.Error{}}` if there was an error. Parameters can be
   set in the query as `$1` embedded in the query string. Parameters are given as
   a list of elixir values. See the README for information on how Postgrex
   encodes and decodes elixir values by default. See `Postgrex.Result` for the
@@ -110,7 +110,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Starts a transaction. Returns `:ok` or `{:error, Postgrex.Error[]}` if an
+  Starts a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if an
   error occurred. Transactions can be nested with the help of savepoints. A
   transaction won't end until a `rollback/1` or `commit/1` have been issued for
   every `begin/1`.
@@ -154,7 +154,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Rolls back a transaction. Returns `:ok` or `{:error, Postgrex.Error[]}` if
+  Rolls back a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if
   an error occurred. See `begin/1` for more information.
   """
   @spec rollback(pid) :: :ok | {:error, Postgrex.Error.t}
@@ -182,7 +182,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Commits a transaction. Returns `:ok` or `{:error, Postgrex.Error[]}` if an
+  Commits a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if an
   error occurred. See `begin/1` for more information.
   """
   @spec commit(pid) :: :ok | {:error, Postgrex.Error.t}
