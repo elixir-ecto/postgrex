@@ -194,7 +194,7 @@ defmodule QueryTest do
   end
 
   test "error record", context do
-    assert {:error, %Postgrex.Error{}}= P.query(context[:pid], "SELECT 123 + 'a'")
+    assert {:error, %Postgrex.Error{}} = P.query(context[:pid], "SELECT 123 + 'a'")
   end
 
   test "multi row result", context do

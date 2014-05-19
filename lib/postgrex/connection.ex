@@ -589,7 +589,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(_, msg_error(fields: fields), s) do
-    reply(%Postgrex.Error{message: fields}, s)
+    reply(%Postgrex.Error{postgres: fields}, s)
     {:ok, s}
   end
 
