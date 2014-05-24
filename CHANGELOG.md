@@ -1,3 +1,5 @@
+# v0.5.2
+
 # v0.5.1 (2014-05-24)
 
 * Backwards incompatible changes
