@@ -1,2 +1,2 @@
-%{"decimal": {:git, "git://github.com/ericmj/decimal.git", "021a15695074b5f564170ccbd434c260bf616397", []},
+%{"decimal": {:package, "0.2.1"},
   "ex_doc": {:git, "git://github.com/elixir-lang/ex_doc.git", "1fe2c5daee98de9b94a78eb5d71cb8dd8b469f85", []}}

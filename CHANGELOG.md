@@ -1,5 +1,8 @@
 # v0.5.1-dev
 
+* Backwards incompatible changes
+  * Postgrex.Error exception converted to struct
+
 # v0.5.0 (2014-05-01)
 
 * Backwards incompatible changes
