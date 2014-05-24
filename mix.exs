@@ -5,7 +5,7 @@ defmodule Postgrex.Mixfile do
 
   def project do
     [ app: :postgrex,
-      version: "0.5.1-dev",
+      version: "0.5.1",
       elixir: "~> 0.13.3",
       deps: deps,
       build_per_environment: false,
@@ -39,7 +39,7 @@ defmodule Postgrex.Mixfile do
   defp package do
     [ contributors: ["Eric Meadows-Jönsson"],
       licenses: ["Apache 2.0"],
-      links: [ { "Github", "https://github.com/ericmj/postgrex" },
-               { "Documentation", "http://ericmj.github.io/postgrex" } ] ]
+      links: %{"Github" => "https://github.com/ericmj/postgrex",
+               "Documentation" => "http://ericmj.github.io/postgrex"} ]
   end
 end
