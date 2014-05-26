@@ -3,7 +3,7 @@ defmodule Postgrex.Connection do
   Main API for Postgrex. This module handles the connection to postgres.
   """
 
-  use GenServer.Behaviour
+  use GenServer
   alias Postgrex.Protocol
   alias Postgrex.Types
   import Postgrex.Protocol.Messages
@@ -279,7 +279,7 @@ defmodule Postgrex.Connection do
 
   def handle_call({:connect, opts}, from, %{queue: queue} = s) do
     host      = opts[:hostname] || System.get_env("PGHOST")
-    host      = if is_binary(host), do: List.from_char_data!(host), else: host
+    host      = if is_binary(host), do: String.to_char_list(host), else: host
     port      = opts[:port] || 5432
     timeout   = opts[:connect_timeout] || @timeout
     sock_opts = [ {:active, :once}, {:packet, :raw}, :binary ]
