@@ -27,11 +27,12 @@ defmodule CustomCoders do
     opts = [ database: "postgrex_test",
              encoder: &encoder/3, decoder: &decoder/4, formatter: &formatter/1]
     {:ok, pid} = P.start_link(opts)
-    {:ok, [pid: pid]}
-  end
 
-  teardown context do
-    :ok = P.stop(context[:pid])
+    on_exit fn ->
+      P.stop(pid)
+    end
+
+    {:ok, [pid: pid]}
   end
 
   test "encode and decode", context do

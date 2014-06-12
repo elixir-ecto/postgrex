@@ -8,11 +8,12 @@ defmodule TransactionTest do
     {:ok, pid} = P.start_link(opts)
     {:ok, _} = P.query(pid, "DROP TABLE IF EXISTS transaction")
     {:ok, _} = P.query(pid, "CREATE TABLE transaction (data text)")
-    {:ok, [pid: pid]}
-  end
 
-  teardown context do
-    :ok = P.stop(context[:pid])
+    on_exit fn ->
+      P.stop(pid)
+    end
+
+    {:ok, [pid: pid]}
   end
 
   test "transaction returns value", context do
