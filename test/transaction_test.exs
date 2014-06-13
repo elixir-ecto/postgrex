@@ -9,10 +9,6 @@ defmodule TransactionTest do
     {:ok, _} = P.query(pid, "DROP TABLE IF EXISTS transaction")
     {:ok, _} = P.query(pid, "CREATE TABLE transaction (data text)")
 
-    on_exit fn ->
-      P.stop(pid)
-    end
-
     {:ok, [pid: pid]}
   end
 

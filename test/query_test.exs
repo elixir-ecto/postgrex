@@ -6,11 +6,6 @@ defmodule QueryTest do
   setup do
     opts = [ database: "postgrex_test" ]
     {:ok, pid} = P.start_link(opts)
-
-    on_exit fn ->
-      P.stop(pid)
-    end
-
     {:ok, [pid: pid]}
   end
 
