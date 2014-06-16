@@ -476,8 +476,10 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:auth, msg_auth(type: :md5, data: salt), %{opts: opts} = s) do
-    digest = :crypto.hash(:md5, [opts[:password], opts[:username]]) |> hexify
-    digest = :crypto.hash(:md5, [digest, salt]) |> hexify
+    digest = :crypto.hash(:md5, [opts[:password], opts[:username]])
+             |> Base.encode16(case: :lower)
+    digest = :crypto.hash(:md5, [digest, salt])
+             |> Base.encode16(case: :lower)
     msg = msg_password(pass: ["md5", digest])
     send_to_result(msg, s)
   end
@@ -776,13 +778,4 @@ defmodule Postgrex.Connection do
         {:error, %Postgrex.Error{message: "tcp send: #{reason}"} , s}
     end
   end
-
-  defp hexify(bin) do
-    for << high :: size(4), low :: size(4) <- bin >>, into: "" do
-      << hex_char(high), hex_char(low) >>
-    end
-  end
-
-  defp hex_char(n) when n < 10, do: ?0 + n
-  defp hex_char(n) when n < 16, do: ?a - 10 + n
 end
