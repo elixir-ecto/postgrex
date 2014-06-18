@@ -525,7 +525,7 @@ defmodule Postgrex.Connection do
     rfs = []
     if not bootstrap do
       {info, rfs, cols} = extract_row_info(fields, types, opts[:decoder], opts[:formatter])
-      stat = %{columns: cols, row_info: list_to_tuple(info)}
+      stat = %{columns: cols, row_info: List.to_tuple(info)}
       s = %{s | statement: stat}
     end
 
@@ -666,7 +666,7 @@ defmodule Postgrex.Connection do
           {count + 1, [decoded|list]}
       end)
 
-      row = Enum.reverse(row) |> list_to_tuple
+      row = Enum.reverse(row) |> List.to_tuple
       [ row | acc ]
     end)
   end
@@ -725,7 +725,7 @@ defmodule Postgrex.Connection do
         end
 
       {{info, format, default}, format, name}
-    end) |> List.unzip |> list_to_tuple
+    end) |> List.unzip |> List.to_tuple
   end
 
   defp create_result(tag) do
@@ -754,7 +754,7 @@ defmodule Postgrex.Connection do
     end)
 
     {command, nums} = Enum.split_while(words, &is_binary(&1))
-    command = Enum.join(command, "_") |> String.downcase |> binary_to_atom
+    command = Enum.join(command, "_") |> String.downcase |> String.to_atom
     {command, List.last(nums)}
   end
 
