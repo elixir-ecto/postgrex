@@ -18,9 +18,9 @@ defmodule Postgrex.Types do
   def build_types(rows) do
     Enum.reduce(rows, HashDict.new, fn row, acc ->
       [oid, type, send, array_oid, comp_oids] = row
-      oid = binary_to_integer(oid)
+      oid = String.to_integer(oid)
       send_size = byte_size(send)
-      array_oid = binary_to_integer(array_oid)
+      array_oid = String.to_integer(array_oid)
       comp_oids = parse_oids(comp_oids)
 
       send =
@@ -328,7 +328,7 @@ defmodule Postgrex.Types do
   end
 
   defp decode_record(<< num :: int32, rest :: binary >>, extra) do
-    record_elements(num, rest, extra) |> list_to_tuple
+    record_elements(num, rest, extra) |> List.to_tuple
   end
 
   defp record_elements(0, <<>>, _extra) do
@@ -390,7 +390,7 @@ defmodule Postgrex.Types do
 
   defp encode_numeric_float(list, acc) do
     {list, rest} = Enum.split(list, 4)
-    digit = list_to_integer(list)
+    digit = List.to_integer(list)
 
     encode_numeric_float(rest, [digit|acc])
   end
@@ -401,7 +401,7 @@ defmodule Postgrex.Types do
 
   defp encode_numeric_int(list, weight, acc) do
     {list, rest} = Enum.split(list, 4)
-    digit = Enum.reverse(list) |> list_to_integer
+    digit = Enum.reverse(list) |> List.to_integer
 
     if rest != [], do: weight = weight + 1
 
@@ -448,7 +448,7 @@ defmodule Postgrex.Types do
     default = &encode(info, extra, &1)
 
     {data, ndims, lengths} = encode_array(list, info, extra, default, 0, [])
-    bin = iodata_to_binary(data)
+    bin = IO.iodata_to_binary(data)
     lengths = for len <- Enum.reverse(lengths), into: "", do: << len :: int32, 1 :: int32 >>
     << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
   end
@@ -483,7 +483,7 @@ defmodule Postgrex.Types do
   end
 
   defp encode_record(tuple, oid, {types, _, _} = extra) do
-    list = tuple_to_list(tuple)
+    list = Tuple.to_list(tuple)
     %TypeInfo{comp_elems: comp_oids} = Dict.fetch!(types, oid)
     zipped = :lists.zip(list, comp_oids)
 
@@ -494,6 +494,6 @@ defmodule Postgrex.Types do
       {<< oid :: int32, byte_size(bin) :: int32, bin :: binary >>, count + 1}
     end)
 
-    << count :: int32, iodata_to_binary(data) :: binary >>
+    << count :: int32, IO.iodata_to_binary(data) :: binary >>
   end
 end
