@@ -1,4 +1,4 @@
 %{"decimal": {:package, "0.2.2"},
-  "ex_doc": {:git, "git://github.com/elixir-lang/ex_doc.git", "68c2c1b1856e2d2a91d11c81b36ecd95aa309064", []},
+  "ex_doc": {:git, "git://github.com/elixir-lang/ex_doc.git", "ca71b84b9c3c7e23b4b661e485a909aee3fdbc3b", []},
   "hoedown": {:git, "git://github.com/hoedown/hoedown.git", "0610117f44b173a4e2112afb2f510156a32355b5", []},
-  "markdown": {:git, "git://github.com/devinus/markdown.git", "734db3b3a0c983ea0444dcbfbbcae8256db17019", []}}
+  "markdown": {:git, "git://github.com/devinus/markdown.git", "0345e2044ba71780ba02b2591f1017703d0fa148", []}}

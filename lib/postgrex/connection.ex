@@ -22,7 +22,7 @@ defmodule Postgrex.Connection do
     * `:port` - Server port (default: 5432);
     * `:database` - Database (required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
-    * `:password` - User password;
+    * `:password` - User password (default PGPASSWORD);
     * `:encoder` - Custom encoder function;
     * `:decoder` - Custom decoder function;
     * `:formatter` - Function deciding the format for a type;

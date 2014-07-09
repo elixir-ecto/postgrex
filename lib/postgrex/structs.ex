@@ -10,11 +10,13 @@ defmodule Postgrex.Result do
     * `num_rows` - The number of fetched or affected rows;
   """
 
-  defstruct [
-    command: nil :: atom,
-    columns: nil :: [String.t] | nil,
-    rows: nil :: [tuple] | nil,
-    num_rows: nil :: integer ]
+  @type t :: %__MODULE__{
+    command:  atom,
+    columns:  [String.t] | nil,
+    rows:     [tuple] | nil,
+    num_rows: integer}
+
+  defstruct [:command, :columns, :rows, :num_rows]
 end
 
 # TODO: Add "output" function name for easy text decoding?
@@ -33,10 +35,12 @@ defmodule Postgrex.TypeInfo do
       elements' oid;
   """
 
-  defstruct [
-    oid: nil :: pos_integer,
-    sender: nil :: String.t,
-    type: nil :: String.t,
-    array_elem: nil :: pos_integer,
-    comp_elems: nil :: [pos_integer] ]
+  @type t :: %__MODULE__{
+    oid:        pos_integer,
+    sender:     String.t,
+    type:       String.t,
+    array_elem: pos_integer,
+    comp_elems: [pos_integer]}
+
+  defstruct [:oid, :sender, :type, :array_elem, :comp_elems]
 end

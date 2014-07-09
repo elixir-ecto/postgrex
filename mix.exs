@@ -1,23 +1,21 @@
-Code.ensure_loaded?(Hex) and Hex.start
-
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
   def project do
-    [ app: :postgrex,
-      version: "0.5.3-dev",
-      elixir: "~> 0.14.1",
-      deps: deps,
-      build_per_environment: false,
-      name: "Postgrex",
-      source_url: "https://github.com/ericmj/postgrex",
-      docs: fn -> [
-        source_ref: System.cmd("git rev-parse --verify --quiet HEAD"),
-        main: "README",
-        readme: true ]
-      end,
-      description: description,
-      package: package ]
+    [app: :postgrex,
+     version: "0.5.3-dev",
+     elixir: "~> 0.14.1",
+     deps: deps,
+     build_per_environment: false,
+     name: "Postgrex",
+     source_url: "https://github.com/ericmj/postgrex",
+     docs: fn ->
+      [source_ref: System.cmd("git rev-parse --verify --quiet HEAD"),
+       main: "README",
+       readme: true]
+     end,
+     description: description,
+     package: package]
   end
 
   # Configuration for the OTP application
