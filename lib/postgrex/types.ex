@@ -117,9 +117,9 @@ defmodule Postgrex.Types do
     end
   end
 
-  def decode_binary(%TypeInfo{sender: "bool"}, _, << 1 :: int8 >>),
+  def decode_binary(%TypeInfo{sender: "bool"}, _, <<1 :: int8>>),
     do: true
-  def decode_binary(%TypeInfo{sender: "bool"}, _, << 0 :: int8 >>),
+  def decode_binary(%TypeInfo{sender: "bool"}, _, <<0 :: int8>>),
     do: false
   def decode_binary(%TypeInfo{sender: "bpchar"}, _, bin),
     do: bin
@@ -129,41 +129,41 @@ defmodule Postgrex.Types do
     do: bin
   def decode_binary(%TypeInfo{sender: "bytea"}, _, bin),
     do: bin
-  def decode_binary(%TypeInfo{sender: "int2"}, _, << n :: int16 >>),
+  def decode_binary(%TypeInfo{sender: "int2"}, _, <<n :: int16>>),
     do: n
-  def decode_binary(%TypeInfo{sender: "int4"}, _, << n :: int32 >>),
+  def decode_binary(%TypeInfo{sender: "int4"}, _, <<n :: int32>>),
     do: n
-  def decode_binary(%TypeInfo{sender: "int8"}, _, << n :: int64 >>),
+  def decode_binary(%TypeInfo{sender: "int8"}, _, <<n :: int64>>),
     do: n
-  def decode_binary(%TypeInfo{sender: "float4"}, _, << 127, 192, 0, 0 >>),
+  def decode_binary(%TypeInfo{sender: "float4"}, _, <<127, 192, 0, 0>>),
     do: :NaN
-  def decode_binary(%TypeInfo{sender: "float4"}, _, << 127, 128, 0, 0 >>),
+  def decode_binary(%TypeInfo{sender: "float4"}, _, <<127, 128, 0, 0>>),
     do: :inf
-  def decode_binary(%TypeInfo{sender: "float4"}, _, << 255, 128, 0, 0 >>),
+  def decode_binary(%TypeInfo{sender: "float4"}, _, <<255, 128, 0, 0>>),
     do: :"-inf"
-  def decode_binary(%TypeInfo{sender: "float4"}, _, << n :: float32 >>),
+  def decode_binary(%TypeInfo{sender: "float4"}, _, <<n :: float32>>),
     do: n
-  def decode_binary(%TypeInfo{sender: "float8"}, _, << 127, 248, 0, 0, 0, 0, 0, 0 >>),
+  def decode_binary(%TypeInfo{sender: "float8"}, _, <<127, 248, 0, 0, 0, 0, 0, 0>>),
     do: :NaN
-  def decode_binary(%TypeInfo{sender: "float8"}, _, << 127, 240, 0, 0, 0, 0, 0, 0 >>),
+  def decode_binary(%TypeInfo{sender: "float8"}, _, <<127, 240, 0, 0, 0, 0, 0, 0>>),
     do: :inf
-  def decode_binary(%TypeInfo{sender: "float8"}, _, << 255, 240, 0, 0, 0, 0, 0, 0 >>),
+  def decode_binary(%TypeInfo{sender: "float8"}, _, <<255, 240, 0, 0, 0, 0, 0, 0>>),
     do: :"-inf"
-  def decode_binary(%TypeInfo{sender: "float8"}, _, << n :: float64 >>),
+  def decode_binary(%TypeInfo{sender: "float8"}, _, <<n :: float64>>),
     do: n
-  def decode_binary(%TypeInfo{sender: "numeric"}, _, << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary >>),
+  def decode_binary(%TypeInfo{sender: "numeric"}, _, <<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>),
     do: decode_numeric(ndigits, weight, sign, scale, tail)
-  def decode_binary(%TypeInfo{sender: "date"}, _, << n :: int32 >>),
+  def decode_binary(%TypeInfo{sender: "date"}, _, <<n :: int32>>),
     do: decode_date(n)
-  def decode_binary(%TypeInfo{sender: "time"}, _, << n :: int64 >>),
+  def decode_binary(%TypeInfo{sender: "time"}, _, <<n :: int64>>),
     do: decode_time(n)
-  def decode_binary(%TypeInfo{sender: "timetz"}, _, << n :: int64, _tz :: int32 >>),
+  def decode_binary(%TypeInfo{sender: "timetz"}, _, <<n :: int64, _tz :: int32>>),
     do: decode_time(n)
-  def decode_binary(%TypeInfo{sender: "timestamp"}, _, << n :: int64 >>),
+  def decode_binary(%TypeInfo{sender: "timestamp"}, _, <<n :: int64>>),
     do: decode_timestamp(n)
-  def decode_binary(%TypeInfo{sender: "timestamptz"}, _, << n :: int64 >>),
+  def decode_binary(%TypeInfo{sender: "timestamptz"}, _, <<n :: int64>>),
     do: decode_timestamp(n)
-  def decode_binary(%TypeInfo{sender: "interval"}, _, << s :: int64, d :: int32, m :: int32 >>),
+  def decode_binary(%TypeInfo{sender: "interval"}, _, <<s :: int64, d :: int32, m :: int32>>),
     do: decode_interval(s, d, m)
   def decode_binary(%TypeInfo{sender: "array"}, extra, bin),
     do: decode_array(bin, extra)
@@ -178,9 +178,9 @@ defmodule Postgrex.Types do
     do: text
 
   def encode(%TypeInfo{sender: "bool"}, _, true),
-    do: << 1 >>
+    do: <<1>>
   def encode(%TypeInfo{sender: "bool"}, _, false),
-    do: << 0 >>
+    do: <<0>>
   def encode(%TypeInfo{sender: "bpchar"}, _, bin) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{sender: "text"}, _, bin) when is_binary(bin),
@@ -190,27 +190,27 @@ defmodule Postgrex.Types do
   def encode(%TypeInfo{sender: "bytea"}, _, bin) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{sender: "int2"}, _, n) when is_integer(n),
-    do: << n :: int16 >>
+    do: <<n :: int16>>
   def encode(%TypeInfo{sender: "int4"}, _, n) when is_integer(n),
-    do: << n :: int32 >>
+    do: <<n :: int32>>
   def encode(%TypeInfo{sender: "int8"}, _, n) when is_integer(n),
-    do: << n :: int64 >>
+    do: <<n :: int64>>
   def encode(%TypeInfo{sender: "float4"}, _, :NaN),
-    do: << 127, 192, 0, 0 >>
+    do: <<127, 192, 0, 0>>
   def encode(%TypeInfo{sender: "float4"}, _, :inf),
-    do: << 127, 128, 0, 0 >>
+    do: <<127, 128, 0, 0>>
   def encode(%TypeInfo{sender: "float4"}, _, :"-inf"),
-    do: << 255, 128, 0, 0 >>
+    do: <<255, 128, 0, 0>>
   def encode(%TypeInfo{sender: "float4"}, _, n) when is_number(n),
-    do: << n :: float32 >>
+    do: <<n :: float32>>
   def encode(%TypeInfo{sender: "float8"}, _, :NaN),
-    do: << 127, 248, 0, 0, 0, 0, 0, 0 >>
+    do: <<127, 248, 0, 0, 0, 0, 0, 0>>
   def encode(%TypeInfo{sender: "float8"}, _, :inf),
-    do: << 127, 240, 0, 0, 0, 0, 0, 0 >>
+    do: <<127, 240, 0, 0, 0, 0, 0, 0>>
   def encode(%TypeInfo{sender: "float8"}, _, :"-inf"),
-    do: << 255, 240, 0, 0, 0, 0, 0, 0 >>
+    do: <<255, 240, 0, 0, 0, 0, 0, 0>>
   def encode(%TypeInfo{sender: "float8"}, _, n) when is_number(n),
-    do: << n :: float64 >>
+    do: <<n :: float64>>
   def encode(%TypeInfo{sender: "numeric"}, _, n),
     do: encode_numeric(n)
   def encode(%TypeInfo{sender: "date"}, _, date),
@@ -264,7 +264,7 @@ defmodule Postgrex.Types do
 
   defp decode_numeric_int("", weight, acc), do: {acc, weight}
 
-  defp decode_numeric_int(<< digit :: int16, tail :: binary >>, weight, acc) do
+  defp decode_numeric_int(<<digit :: int16, tail :: binary>>, weight, acc) do
     acc = (acc * @numeric_base) + digit
     decode_numeric_int(tail, weight - 1, acc)
   end
@@ -287,10 +287,10 @@ defmodule Postgrex.Types do
     {months, days, div(microsecs, 1_000_000)}
   end
 
-  defp decode_array(<< ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary >>,
+  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary>>,
                     {types, _} = extra) do
     {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
-    lengths = for << len :: int32, _lbound :: int32 <- dims >>, do: len
+    lengths = for <<len :: int32, _lbound :: int32 <- dims>>, do: len
     info = Dict.fetch!(types, oid)
     default = &decode_binary(info, extra, &1)
 
@@ -316,18 +316,18 @@ defmodule Postgrex.Types do
     {Enum.reverse(acc), rest}
   end
 
-  defp array_elements(<< -1 :: int32, rest :: binary >>, info, extra, default, acc, count) do
+  defp array_elements(<<-1 :: int32, rest :: binary>>, info, extra, default, acc, count) do
     array_elements(rest, info, extra, default, [nil|acc], count-1)
   end
 
-  defp array_elements(<< length :: int32, elem :: binary(length), rest :: binary >>,
+  defp array_elements(<<length :: int32, elem :: binary(length), rest :: binary>>,
                        info, extra, default, acc, count) do
     {_, decoder} = extra
     value = decode_value(info, :binary, decoder, default, elem)
     array_elements(rest, info, extra, default, [value|acc], count-1)
   end
 
-  defp decode_record(<< num :: int32, rest :: binary >>, extra) do
+  defp decode_record(<<num :: int32, rest :: binary>>, extra) do
     record_elements(num, rest, extra) |> List.to_tuple
   end
 
@@ -335,11 +335,11 @@ defmodule Postgrex.Types do
     []
   end
 
-  defp record_elements(num, << _oid :: int32, -1 :: int32, rest :: binary >>, extra) do
+  defp record_elements(num, <<_oid :: int32, -1 :: int32, rest :: binary>>, extra) do
     [ nil | record_elements(num-1, rest, extra) ]
   end
 
-  defp record_elements(num, << oid :: int32, length :: int32, elem :: binary(length), rest :: binary >>,
+  defp record_elements(num, <<oid :: int32, length :: int32, elem :: binary(length), rest :: binary>>,
                        {types, decoder} = extra) do
     info = Dict.fetch!(types, oid)
     default = &decode_binary(info, extra, &1)
@@ -351,7 +351,7 @@ defmodule Postgrex.Types do
 
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
-      << 0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16 >>
+      <<0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16>>
     else
       string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
 
@@ -375,10 +375,10 @@ defmodule Postgrex.Types do
       end
 
       digits = int_digits ++ float_digits
-      bin = for digit <- digits, into: "", do: << digit :: uint16 >>
+      bin = for digit <- digits, into: "", do: <<digit :: uint16>>
       ndigits = div(byte_size(bin), 2)
 
-      << ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary >>
+      <<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary>>
     end
   end
 
@@ -425,21 +425,21 @@ defmodule Postgrex.Types do
   end
 
   defp encode_date(date) do
-    << :calendar.date_to_gregorian_days(date) - @gd_epoch :: int32 >>
+    <<:calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
   end
 
   defp encode_time(time) do
-    << :calendar.time_to_seconds(time) * 1_000_000 :: int64 >>
+    <<:calendar.time_to_seconds(time) * 1_000_000 :: int64>>
   end
 
   defp encode_timestamp(timestamp) do
     secs = :calendar.datetime_to_gregorian_seconds(timestamp) - @gs_epoch
-    << secs * 1_000_000 :: int64 >>
+    <<secs * 1_000_000 :: int64>>
   end
 
   defp encode_interval({months, days, secs}) do
     microsecs = secs * 1_000_000
-    << microsecs :: int64, days :: int32, months :: int32 >>
+    <<microsecs :: int64, days :: int32, months :: int32>>
   end
 
   defp encode_array(list, oid, {types, _, _} = extra) do
@@ -449,8 +449,8 @@ defmodule Postgrex.Types do
 
     {data, ndims, lengths} = encode_array(list, info, extra, default, 0, [])
     bin = IO.iodata_to_binary(data)
-    lengths = for len <- Enum.reverse(lengths), into: "", do: << len :: int32, 1 :: int32 >>
-    << ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary >>
+    lengths = for len <- Enum.reverse(lengths), into: "", do: <<len :: int32, 1 :: int32>>
+    <<ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary>>
   end
 
   defp encode_array([], _info, _extra, _default, ndims, lengths) do
@@ -477,7 +477,7 @@ defmodule Postgrex.Types do
   defp encode_array(list, info, extra, default, ndims, lengths) do
     {data, length} = Enum.map_reduce(list, 0, fn elem, length ->
       {:binary, bin} = encode_value(info, extra, default, elem)
-      {<< byte_size(bin) :: int32, bin :: binary >>, length + 1}
+      {<<byte_size(bin) :: int32, bin :: binary>>, length + 1}
     end)
     {data, ndims+1, [length|lengths]}
   end
@@ -491,9 +491,9 @@ defmodule Postgrex.Types do
       info = Dict.fetch!(types, oid)
       default = &encode(info, extra, &1)
       {:binary, bin} = encode_value(info, extra, default, value)
-      {<< oid :: int32, byte_size(bin) :: int32, bin :: binary >>, count + 1}
+      {<<oid :: int32, byte_size(bin) :: int32, bin :: binary>>, count + 1}
     end)
 
-    << count :: int32, IO.iodata_to_binary(data) :: binary >>
+    <<count :: int32, IO.iodata_to_binary(data) :: binary>>
   end
 end

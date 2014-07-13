@@ -81,7 +81,7 @@ defmodule Postgrex.Connection do
   def query(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
       %Postgrex.Result{} = res -> {:ok, res}
-      %Postgrex.Error{} = err -> {:error, err}
+      %Postgrex.Error{} = err  -> {:error, err}
     end
   end
 
@@ -95,7 +95,7 @@ defmodule Postgrex.Connection do
   def query!(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
       %Postgrex.Result{} = res -> res
-      %Postgrex.Error{} = err -> raise err
+      %Postgrex.Error{} = err  -> raise err
     end
   end
 
@@ -136,7 +136,7 @@ defmodule Postgrex.Connection do
   def begin(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
       %Postgrex.Result{} -> :ok
-      %Postgrex.Error{} = err -> err
+      %Postgrex.Error{} = err -> {:error, err}
     end
   end
 
@@ -163,7 +163,7 @@ defmodule Postgrex.Connection do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
-      %Postgrex.Error{} = err -> err
+      %Postgrex.Error{} = err -> {:error, err}
     end
   end
 
@@ -191,7 +191,7 @@ defmodule Postgrex.Connection do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
-      %Postgrex.Error{} = err -> err
+      %Postgrex.Error{} = err -> {:error, err}
     end
   end
 
@@ -241,7 +241,7 @@ defmodule Postgrex.Connection do
               err -> raise err
             end
           type, term ->
-            rollback(pid, timeout)
+            _ = rollback(pid, timeout)
             :erlang.raise(type, term, System.stacktrace)
         end
       err -> raise err
@@ -337,7 +337,7 @@ defmodule Postgrex.Connection do
 
   def handle_info({:tcp, _, data}, %{sock: {:gen_tcp, sock}, opts: opts, state: :ssl} = s) do
     case data do
-      << ?S >> ->
+      <<?S>> ->
         case :ssl.connect(sock, opts[:ssl_opts] || []) do
           {:ok, ssl_sock} ->
             :ssl.setopts(ssl_sock, active: :once)
@@ -347,7 +347,7 @@ defmodule Postgrex.Connection do
             {:stop, :normal, s}
         end
 
-      << ?N >> ->
+      <<?N>> ->
         reply(%Postgrex.Error{message: "ssl not available"}, s)
         {:stop, :normal, s}
     end
@@ -442,11 +442,11 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp new_data(<< type :: int8, size :: int32, data :: binary >> = tail, %{state: state} = s) do
+  defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do
     size = size - 4
 
     case data do
-      << data :: binary(size), tail :: binary >> ->
+      <<data :: binary(size), tail :: binary>> ->
         msg = Protocol.parse(type, size, data)
         case message(state, msg, s) do
           {:ok, s} -> new_data(tail, s)

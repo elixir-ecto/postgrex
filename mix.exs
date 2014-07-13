@@ -4,15 +4,14 @@ defmodule Postgrex.Mixfile do
   def project do
     [app: :postgrex,
      version: "0.5.3-dev",
-     elixir: "~> 0.14.1",
+     elixir: "~> 0.14.3",
      deps: deps,
      build_per_environment: false,
      name: "Postgrex",
      source_url: "https://github.com/ericmj/postgrex",
      docs: fn ->
-      [source_ref: System.cmd("git rev-parse --verify --quiet HEAD"),
-       main: "README",
-       readme: true]
+       {ref, 0} = System.cmd("git", ["rev-parse", "--verify", "--quiet", "HEAD"])
+       [source_ref: ref, main: "README", readme: true]
      end,
      description: description,
      package: package]
@@ -26,8 +25,7 @@ defmodule Postgrex.Mixfile do
   defp deps do
     [{:ex_doc, github: "elixir-lang/ex_doc", only: :dev},
      {:markdown, github: "devinus/markdown", only: :dev},
-     #{:decimal, github: "ericmj/decimal"} ]
-     {:decimal, "~> 0.2.1"}]
+     {:decimal, "~> 0.2.3"}]
   end
 
   defp description do

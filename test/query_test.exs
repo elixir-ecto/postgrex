@@ -21,7 +21,7 @@ defmodule QueryTest do
     assert [{:"-inf"}] = query("SELECT '-inf'::float")
     assert [{"ẽric"}] = query("SELECT 'ẽric'")
     assert [{"ẽric"}] = query("SELECT 'ẽric'::varchar")
-    assert [{<< 1, 2, 3 >>}] = query("SELECT '\\001\\002\\003'::bytea")
+    assert [{<<1, 2, 3>>}] = query("SELECT '\\001\\002\\003'::bytea")
   end
 
   test "decode numeric", context do
@@ -89,7 +89,7 @@ defmodule QueryTest do
     assert [{:inf}] = query("SELECT $1::float", [:inf])
     assert [{:"-inf"}] = query("SELECT $1::float", [:"-inf"])
     assert [{"ẽric"}] = query("SELECT $1::varchar", ["ẽric"])
-    assert [{<< 1, 2, 3 >>}] = query("SELECT $1::bytea", [<< 1, 2, 3 >>])
+    assert [{<<1, 2, 3>>}] = query("SELECT $1::bytea", [<<1, 2, 3>>])
   end
 
   test "encode numeric", context do
