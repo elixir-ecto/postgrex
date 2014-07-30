@@ -4,7 +4,7 @@ defmodule Postgrex.Mixfile do
   def project do
     [app: :postgrex,
      version: "0.5.4-dev",
-     elixir: "~> 0.14.3",
+     elixir: "~> 0.14.3 or ~> 0.15.0-dev",
      deps: deps,
      build_per_environment: false,
      name: "Postgrex",
