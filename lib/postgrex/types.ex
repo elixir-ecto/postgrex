@@ -462,12 +462,12 @@ defmodule Postgrex.Types do
     {data, ndims, lengths} = encode_array(head, info, extra, default, ndims, lengths)
     [dimlength|_] = lengths
 
-    rest = Enum.map(tail, fn sublist ->
+    rest = Enum.reduce(tail, [], fn sublist, acc ->
       {data, _, [len|_]} = encode_array(sublist, info, extra, default, ndims, lengths)
       if len != dimlength do
         throw {:postgrex_encode, "nested lists must have lists with matching lengths"}
       end
-      data
+      [acc|data]
     end)
 
     {[data|rest], ndims+1, lengths}

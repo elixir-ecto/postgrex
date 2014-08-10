@@ -761,7 +761,7 @@ defmodule Postgrex.Connection do
   defp msg_send(msg, %{sock: sock}), do: msg_send(msg, sock)
 
   defp msg_send(msgs, {mod, sock}) when is_list(msgs) do
-    binaries = Enum.map(msgs, &Protocol.encode_msg/1)
+    binaries = Enum.reduce(msgs, [], &[&2 | Protocol.encode_msg(&1)])
     mod.send(sock, binaries)
   end
 
