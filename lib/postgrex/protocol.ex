@@ -155,7 +155,6 @@ defmodule Postgrex.Protocol do
   ### encoders ###
 
   def encode_msg(msg) do
-    # TODO: Remove first?
     {first, data} = encode(msg)
     size = IO.iodata_length(data) + 4
 
