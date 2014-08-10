@@ -378,7 +378,7 @@ defmodule Postgrex.Types do
       bin = for digit <- digits, into: "", do: <<digit :: uint16>>
       ndigits = div(byte_size(bin), 2)
 
-      <<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, bin :: binary>>
+      [<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16>>, bin]
     end
   end
 
@@ -448,9 +448,8 @@ defmodule Postgrex.Types do
     default = &encode(info, extra, &1)
 
     {data, ndims, lengths} = encode_array(list, info, extra, default, 0, [])
-    bin = IO.iodata_to_binary(data)
-    lengths = for len <- Enum.reverse(lengths), into: "", do: <<len :: int32, 1 :: int32>>
-    <<ndims :: int32, 0 :: int32, elem_oid :: int32, lengths :: binary, bin :: binary>>
+    lengths = for len <- Enum.reverse(lengths), do: <<len :: int32, 1 :: int32>>
+    [<<ndims :: int32, 0 :: int32, elem_oid :: int32>>, lengths, data]
   end
 
   defp encode_array([], _info, _extra, _default, ndims, lengths) do
@@ -476,8 +475,8 @@ defmodule Postgrex.Types do
 
   defp encode_array(list, info, extra, default, ndims, lengths) do
     {data, length} = Enum.map_reduce(list, 0, fn elem, length ->
-      {:binary, bin} = encode_value(info, extra, default, elem)
-      {<<byte_size(bin) :: int32, bin :: binary>>, length + 1}
+      {:binary, data} = encode_value(info, extra, default, elem)
+      {[<<IO.iodata_length(data) :: int32>>, data], length + 1}
     end)
     {data, ndims+1, [length|lengths]}
   end
@@ -490,10 +489,10 @@ defmodule Postgrex.Types do
     {data, count} = Enum.map_reduce(zipped, 0, fn {value, oid}, count ->
       info = Dict.fetch!(types, oid)
       default = &encode(info, extra, &1)
-      {:binary, bin} = encode_value(info, extra, default, value)
-      {<<oid :: int32, byte_size(bin) :: int32, bin :: binary>>, count + 1}
+      {:binary, data} = encode_value(info, extra, default, value)
+      {[<<oid :: int32, IO.iodata_length(data) :: int32>>, data], count + 1}
     end)
 
-    <<count :: int32, IO.iodata_to_binary(data) :: binary>>
+    [<<count :: int32>>, data]
   end
 end

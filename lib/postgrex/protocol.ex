@@ -58,11 +58,13 @@ defmodule Postgrex.Protocol do
   def parse(?R, size, <<type :: int32, rest :: binary>>) do
     type = decode_auth_type(type)
     case type do
-      :md5 -> <<data :: binary-size(4)>> = rest
+      :md5 ->
+        <<data :: binary-size(4)>> = rest
       :gss_cont ->
         rest_size = size - 2
         <<data :: size(rest_size)>> = rest
-      _ -> data = nil
+      _ ->
+        data = nil
     end
     msg_auth(type: type, data: data)
   end
@@ -87,14 +89,12 @@ defmodule Postgrex.Protocol do
   end
 
   # backend_key
-  def parse(?K, _size, rest) do
-    <<pid :: int32, key :: int32>> = rest
+  def parse(?K, _size, <<pid :: int32, key :: int32>>) do
     msg_backend_key(pid: pid, key: key)
   end
 
   # ready
-  def parse(?Z, _size, rest) do
-    <<status :: int8>> = rest
+  def parse(?Z, _size, <<status :: int8>>) do
     status = case status do
       ?I -> :idle
       ?T -> :transaction
@@ -109,15 +109,13 @@ defmodule Postgrex.Protocol do
   end
 
   # parameter_desc
-  def parse(?t, _size, rest) do
-    <<len :: int16, rest :: binary(len, 32)>> = rest
+  def parse(?t, _size, <<len :: int16, rest :: binary(len, 32)>>) do
     oids = for <<oid :: size(32) <- rest>>, do: oid
     msg_parameter_desc(type_oids: oids)
   end
 
   # row_desc
-  def parse(?T, _size, rest) do
-    <<len :: int16, rest :: binary>> = rest
+  def parse(?T, _size, <<len :: int16, rest :: binary>>) do
     fields = decode_row_fields(rest, len)
     msg_row_desc(fields: fields)
   end
@@ -138,8 +136,7 @@ defmodule Postgrex.Protocol do
   end
 
   # data_row
-  def parse(?D, _size, rest) do
-    <<count :: int16, rest :: binary>> = rest
+  def parse(?D, _size, <<count :: int16, rest :: binary>> ) do
     values = decode_row_values(rest, count)
     msg_data_row(values: values)
   end
@@ -157,41 +154,41 @@ defmodule Postgrex.Protocol do
 
   ### encoders ###
 
-  def msg_to_binary(msg) do
-    {first, iolist} = to_binary(msg)
-    binary = IO.iodata_to_binary(iolist)
-    size = byte_size(binary) + 4
+  def encode_msg(msg) do
+    # TODO: Remove first?
+    {first, data} = encode(msg)
+    size = IO.iodata_length(data) + 4
 
     if first do
-      <<first :: int8, size :: int32, binary :: binary>>
+      [first, <<size :: int32>>, data]
     else
-     <<size :: int32, binary :: binary>>
+     [<<size :: int32>>, data]
    end
   end
 
   # startup
-  defp to_binary(msg_startup(params: params)) do
-    params = Enum.map(params, fn {key, value} ->
-      [ to_string(key), 0, value, 0 ]
+  defp encode(msg_startup(params: params)) do
+    params = Enum.reduce(params, [], fn {key, value}, acc ->
+      [acc, to_string(key), 0, value, 0]
     end)
     vsn = <<@protocol_vsn_major :: int16, @protocol_vsn_minor :: int16>>
     {nil, [vsn, params, 0]}
   end
 
   # password
-  defp to_binary(msg_password(pass: pass)) do
+  defp encode(msg_password(pass: pass)) do
     {?p, [pass, 0]}
   end
 
   # parse
-  defp to_binary(msg_parse(name: name, query: query, type_oids: oids)) do
+  defp encode(msg_parse(name: name, query: query, type_oids: oids)) do
     oids = for oid <- oids, into: "", do: <<oid :: int32>>
     len = <<div(byte_size(oids), 4) :: int16>>
     {?P, [name, 0, query, 0, len, oids]}
   end
 
   # describe
-  defp to_binary(msg_describe(type: type, name: name)) do
+  defp encode(msg_describe(type: type, name: name)) do
     byte = case type do
       :statement -> ?S
       :portal -> ?P
@@ -200,41 +197,41 @@ defmodule Postgrex.Protocol do
   end
 
   # flush
-  defp to_binary(msg_flush()) do
+  defp encode(msg_flush()) do
     {?H, ""}
   end
 
   # bind
-  defp to_binary(msg_bind(name_port: port, name_stat: stat, param_formats: param_formats,
+  defp encode(msg_bind(name_port: port, name_stat: stat, param_formats: param_formats,
                           params: params, result_formats: result_formats)) do
     pfs = for format <- param_formats,  into: "", do: <<format(format) :: int16>>
     rfs = for format <- result_formats, into: "", do: <<format(format) :: int16>>
-    ps  = for param  <- params,         into: "", do: <<encode_param(param) :: binary>>
+    ps  = for param  <- params,                   do: encode_param(param)
 
     len_pfs = <<div(byte_size(pfs), 2) :: int16>>
     len_rfs = <<div(byte_size(rfs), 2) :: int16>>
-    len_ps  = <<length(params) :: int16>>
+    len_ps  = <<length(ps) :: int16>>
 
-    {?B, [ port, 0, stat, 0, len_pfs, pfs, len_ps, ps, len_rfs, rfs ]}
+    {?B, [port, 0, stat, 0, len_pfs, pfs, len_ps, ps, len_rfs, rfs]}
   end
 
   # execute
-  defp to_binary(msg_execute(name_port: port, max_rows: rows)) do
+  defp encode(msg_execute(name_port: port, max_rows: rows)) do
     {?E, [port, 0, <<rows :: int32>>]}
   end
 
   # sync
-  defp to_binary(msg_sync()) do
+  defp encode(msg_sync()) do
     {?S, ""}
   end
 
   # terminate
-  defp to_binary(msg_terminate()) do
+  defp encode(msg_terminate()) do
     {?X, ""}
   end
 
   # ssl_request
-  defp to_binary(msg_ssl_request()) do
+  defp encode(msg_ssl_request()) do
     {nil, <<1234 :: int16, 5679 :: int16>>}
   end
 
@@ -247,7 +244,7 @@ defmodule Postgrex.Protocol do
     if nil?(param) do
       <<-1 :: int32>>
     else
-      <<byte_size(param) :: int32, param :: binary>>
+      [<<IO.iodata_length(param) :: int32>>, param]
     end
   end
 
@@ -258,7 +255,7 @@ defmodule Postgrex.Protocol do
   defp decode_fields(<<field :: int8, rest :: binary>>) do
     type = decode_field_type(field)
     {string, rest} = decode_string(rest)
-    [ {type, string} | decode_fields(rest) ]
+    [{type, string} | decode_fields(rest)]
   end
 
   defp decode_string(bin) do
@@ -271,7 +268,7 @@ defmodule Postgrex.Protocol do
 
   defp decode_row_fields(rest, count) do
     {field, rest} = decode_row_field(rest)
-    [ field | decode_row_fields(rest, count-1) ]
+    [field | decode_row_fields(rest, count-1)]
   end
 
   defp decode_row_field(rest) do
@@ -287,11 +284,11 @@ defmodule Postgrex.Protocol do
   defp decode_row_values("", 0), do: []
 
   defp decode_row_values(<<-1 :: int32, rest :: binary>>, count) do
-    [ nil | decode_row_values(rest, count-1) ]
+    [nil | decode_row_values(rest, count-1)]
   end
 
   defp decode_row_values(<<length :: int32, value :: binary(length), rest :: binary>>, count) do
-    [ value | decode_row_values(rest, count-1) ]
+    [value | decode_row_values(rest, count-1)]
   end
 
   Enum.each(@auth_types, fn {type, value} ->
