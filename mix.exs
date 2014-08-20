@@ -3,7 +3,7 @@ defmodule Postgrex.Mixfile do
 
   def project do
     [app: :postgrex,
-     version: "0.5.5-dev",
+     version: "0.5.5",
      elixir: "~> 0.15.0",
      deps: deps,
      build_per_environment: false,
@@ -23,8 +23,8 @@ defmodule Postgrex.Mixfile do
   end
 
   defp deps do
-    [{:ex_doc, github: "elixir-lang/ex_doc", only: :dev},
-     {:markdown, github: "devinus/markdown", only: :dev},
+    [{:ex_doc, only: :dev},
+     {:earmark, only: :dev},
      {:decimal, "~> 0.2.3"}]
   end
 

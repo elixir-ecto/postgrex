@@ -1,3 +1,8 @@
+# v0.5.5 (2014-08-20)
+
+* Enhancements
+  * Reduce the amount of intermediary binaries constructed with the help of iodata
+
 # v0.5.4 (2014-08-04)
 
 # v0.5.3 (2014-07-13)
