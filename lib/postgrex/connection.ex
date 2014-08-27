@@ -34,7 +34,7 @@ defmodule Postgrex.Connection do
   ## Function signatures
 
       @spec encoder(info :: TypeInfo.t, default :: fun, param :: term) ::
-            {:binary | :text, binary}
+            binary
       @spec decoder(info :: TypeInfo.t, default :: fun, bin :: binary) ::
             term
       @spec formatter(info :: TypeInfo.t) ::
@@ -75,9 +75,9 @@ defmodule Postgrex.Connection do
   encodes and decodes elixir values by default. See `Postgrex.Result` for the
   result data.
   """
-  @spec query(pid, String.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  @spec query(pid, String.t, list) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  @spec query(pid, String.t, list, timeout) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec query(pid, iodata) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec query(pid, iodata, list) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec query(pid, iodata, list, timeout) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
       %Postgrex.Result{} = res -> {:ok, res}
@@ -89,9 +89,9 @@ defmodule Postgrex.Connection do
   Runs an (extended) query and returns the result or raises `Postgrex.Error` if
   there was an error. See `query/3`.
   """
-  @spec query!(pid, String.t) :: Postgrex.Result.t | no_return
-  @spec query!(pid, String.t, list) :: Postgrex.Result.t | no_return
-  @spec query!(pid, String.t, list, timeout) :: Postgrex.Result.t | no_return
+  @spec query!(pid, iodata) :: Postgrex.Result.t | no_return
+  @spec query!(pid, iodata, list) :: Postgrex.Result.t | no_return
+  @spec query!(pid, iodata, list, timeout) :: Postgrex.Result.t | no_return
   def query!(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
       %Postgrex.Result{} = res -> res

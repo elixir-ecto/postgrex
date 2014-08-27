@@ -9,6 +9,10 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
+  test "iodata", context do
+    assert [{123}] = query(["S", ?E, ["LEC"|"T"], " ", '123'])
+  end
+
   test "decode basic types", context do
     assert [{nil}] = query("SELECT NULL")
     assert [{true, false}] = query("SELECT true, false")

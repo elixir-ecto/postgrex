@@ -1,3 +1,8 @@
+# v0.5.6
+
+* Enhancements
+  * Query can be constructed of iodata
+
 # v0.5.5 (2014-08-20)
 
 * Enhancements
