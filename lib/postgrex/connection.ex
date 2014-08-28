@@ -61,7 +61,6 @@ defmodule Postgrex.Connection do
   @doc """
   Stop the process and disconnect.
   """
-  @spec stop(pid) :: :ok
   @spec stop(pid, timeout) :: :ok
   def stop(pid, timeout \\ @timeout) do
     :gen_server.call(pid, :stop, timeout)
@@ -75,8 +74,6 @@ defmodule Postgrex.Connection do
   encodes and decodes elixir values by default. See `Postgrex.Result` for the
   result data.
   """
-  @spec query(pid, iodata) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  @spec query(pid, iodata, list) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   @spec query(pid, iodata, list, timeout) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
@@ -89,8 +86,6 @@ defmodule Postgrex.Connection do
   Runs an (extended) query and returns the result or raises `Postgrex.Error` if
   there was an error. See `query/3`.
   """
-  @spec query!(pid, iodata) :: Postgrex.Result.t | no_return
-  @spec query!(pid, iodata, list) :: Postgrex.Result.t | no_return
   @spec query!(pid, iodata, list, timeout) :: Postgrex.Result.t | no_return
   def query!(pid, statement, params \\ [], timeout \\ @timeout) do
     case :gen_server.call(pid, {{:query, statement, params}, timeout}, timeout) do
@@ -103,7 +98,6 @@ defmodule Postgrex.Connection do
   @doc """
   Returns a cached map of connection parameters.
   """
-  @spec parameters(pid) :: map
   @spec parameters(pid, timeout) :: map
   def parameters(pid, timeout \\ @timeout) do
     :gen_server.call(pid, :parameters, timeout)
@@ -131,7 +125,6 @@ defmodule Postgrex.Connection do
       # Only the first comment will be commited because the second was rolled back
       Postgrex.Connection.commit(pid)
   """
-  @spec begin(pid) :: :ok | {:error, Postgrex.Error.t}
   @spec begin(pid, timeout) :: :ok | {:error, Postgrex.Error.t}
   def begin(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
@@ -144,7 +137,6 @@ defmodule Postgrex.Connection do
   Starts a transaction. Returns `:ok` if it was successful or raises
   `Postgrex.Error` if an error occurred. See `begin/1`.
   """
-  @spec begin!(pid) :: :ok | no_return
   @spec begin!(pid, timeout) :: :ok | no_return
   def begin!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:begin, timeout}, timeout) do
@@ -157,7 +149,6 @@ defmodule Postgrex.Connection do
   Rolls back a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if
   an error occurred. See `begin/1` for more information.
   """
-  @spec rollback(pid) :: :ok | {:error, Postgrex.Error.t}
   @spec rollback(pid, timeout) :: :ok | {:error, Postgrex.Error.t}
   def rollback(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
@@ -171,7 +162,6 @@ defmodule Postgrex.Connection do
   Rolls back a transaction. Returns `:ok` if it was successful or raises
   `Postgrex.Error` if an error occurred. See `rollback/1`.
   """
-  @spec rollback!(pid) :: :ok | no_return
   @spec rollback!(pid, timeout) :: :ok | no_return
   def rollback!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:rollback, timeout}, timeout) do
@@ -185,7 +175,6 @@ defmodule Postgrex.Connection do
   Commits a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if an
   error occurred. See `begin/1` for more information.
   """
-  @spec commit(pid) :: :ok | {:error, Postgrex.Error.t}
   @spec commit(pid, timeout) :: :ok | {:error, Postgrex.Error.t}
   def commit(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
@@ -199,7 +188,6 @@ defmodule Postgrex.Connection do
   Commits a transaction. Returns `:ok` if it was successful or raises
   `Postgrex.Error` if an error occurred. See `commit/1`.
   """
-  @spec commit!(pid) :: :ok | no_return
   @spec commit!(pid, timeout) :: :ok | no_return
   def commit!(pid, timeout \\ @timeout) do
     case :gen_server.call(pid, {:commit, timeout}, timeout) do
@@ -223,7 +211,6 @@ defmodule Postgrex.Connection do
   rather the timeout of the `commit/2` and `rollback/2` calls that this function
   makes.
   """
-  @spec in_transaction(pid, (() -> term)) :: term | no_return
   @spec in_transaction(pid, timeout, (() -> term)) :: term | no_return
   def in_transaction(pid, timeout \\ @timeout, fun) do
     case begin(pid) do
