@@ -42,6 +42,6 @@ defmodule CustomCoders do
   end
 
   test "dont decode text format", context do
-    assert [{"123.45"}] = query("SELECT 123.45::float8")
+    assert [{"123.45"}] = query("SELECT 123.45::float8", [])
   end
 end

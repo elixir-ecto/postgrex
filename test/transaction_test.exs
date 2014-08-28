@@ -6,8 +6,8 @@ defmodule TransactionTest do
   setup do
     opts = [ database: "postgrex_test" ]
     {:ok, pid} = P.start_link(opts)
-    {:ok, _} = P.query(pid, "DROP TABLE IF EXISTS transaction")
-    {:ok, _} = P.query(pid, "CREATE TABLE transaction (data text)")
+    {:ok, _} = P.query(pid, "DROP TABLE IF EXISTS transaction", [])
+    {:ok, _} = P.query(pid, "CREATE TABLE transaction (data text)", [])
 
     {:ok, [pid: pid]}
   end
@@ -18,66 +18,66 @@ defmodule TransactionTest do
 
   test "one level transaction commits", context do
     P.in_transaction(context[:pid], fn ->
-      :ok = query("INSERT INTO transaction VALUES ('hey')")
+      :ok = query("INSERT INTO transaction VALUES ('hey')", [])
     end)
-    assert [{"hey"}] = query("SELECT * FROM transaction")
+    assert [{"hey"}] = query("SELECT * FROM transaction", [])
   end
 
   test "two level transaction commits", context do
     P.in_transaction(context[:pid], fn ->
       P.in_transaction(context[:pid], fn ->
-        :ok = query("INSERT INTO transaction VALUES ('hey')")
+        :ok = query("INSERT INTO transaction VALUES ('hey')", [])
       end)
     end)
-    assert [{"hey"}] = query("SELECT * FROM transaction")
+    assert [{"hey"}] = query("SELECT * FROM transaction", [])
   end
 
   test "one level transaction rollbacks on error", context do
     assert_raise(RuntimeError, "test", fn ->
       P.in_transaction(context[:pid], fn ->
-        :ok = query("INSERT INTO transaction VALUES ('hey')")
+        :ok = query("INSERT INTO transaction VALUES ('hey')", [])
         raise "test"
       end)
     end)
-    assert [] = query("SELECT * FROM transaction")
+    assert [] = query("SELECT * FROM transaction", [])
   end
 
   test "two level transaction rollbacks on error 1", context do
     assert_raise(RuntimeError, "test", fn ->
       P.in_transaction(context[:pid], fn ->
         P.in_transaction(context[:pid], fn ->
-          :ok = query("INSERT INTO transaction VALUES ('hey')")
+          :ok = query("INSERT INTO transaction VALUES ('hey')", [])
           raise "test"
         end)
       end)
     end)
-    assert [] = query("SELECT * FROM transaction")
+    assert [] = query("SELECT * FROM transaction", [])
   end
 
   test "two level transaction rollbacks on error 2", context do
     assert_raise(RuntimeError, "test", fn ->
       P.in_transaction(context[:pid], fn ->
         P.in_transaction(context[:pid], fn ->
-          :ok = query("INSERT INTO transaction VALUES ('hey')")
+          :ok = query("INSERT INTO transaction VALUES ('hey')", [])
         end)
         raise "test"
       end)
     end)
-    assert [] = query("SELECT * FROM transaction")
+    assert [] = query("SELECT * FROM transaction", [])
   end
 
   test "two level transaction partly rollback", context do
     P.in_transaction(context[:pid], fn ->
-      :ok = query("INSERT INTO transaction VALUES ('hey')")
+      :ok = query("INSERT INTO transaction VALUES ('hey')", [])
       try do
         P.in_transaction(context[:pid], fn ->
-          :ok = query("INSERT INTO transaction VALUES ('you')")
+          :ok = query("INSERT INTO transaction VALUES ('you')", [])
           raise "test"
         end)
       rescue _ -> :ok
       end
-      :ok = query("INSERT INTO transaction VALUES ('there')")
+      :ok = query("INSERT INTO transaction VALUES ('there')", [])
     end)
-    assert [{"hey"}, {"there"}] = query("SELECT * FROM transaction")
+    assert [{"hey"}, {"there"}] = query("SELECT * FROM transaction", [])
   end
 end
