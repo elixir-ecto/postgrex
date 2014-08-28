@@ -472,7 +472,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:auth, msg_error(fields: fields), s) do
-    {:error, %Postgrex.Error{postgres: fields}, s}
+    {:error, %Postgrex.Error{postgres: Enum.into(fields, %{})}, s}
   end
 
   ### init state ###
@@ -488,7 +488,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(:init, msg_error(fields: fields), s) do
-    {:error, %Postgrex.Error{postgres: fields}, s}
+    {:error, %Postgrex.Error{postgres: Enum.into(fields, %{})}, s}
   end
 
   ### parsing state ###
@@ -578,7 +578,7 @@ defmodule Postgrex.Connection do
   end
 
   defp message(_, msg_error(fields: fields), s) do
-    reply(%Postgrex.Error{postgres: fields}, s)
+    reply(%Postgrex.Error{postgres: Enum.into(fields, %{})}, s)
     {:ok, s}
   end
 

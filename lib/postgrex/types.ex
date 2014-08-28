@@ -5,9 +5,8 @@ defmodule Postgrex.Types do
   import Postgrex.BinaryUtils
   require Decimal
 
-  @types [ "bool", "bpchar", "text", "varchar", "bytea", "int2", "int4", "int8",
-           "float4", "float8", "numeric", "date", "time", "timetz", "timestamp",
-           "timestamptz", "interval" ]
+  @types ~w(bool bpchar text varchar bytea int2 int4 int8 float4 float8 numeric
+            date time timetz timestamp timestamptz interval)
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
