@@ -1,12 +1,18 @@
-# v0.5.6
+# v0.6.0
 
 * Enhancements
-  * Query can be constructed of iodata
+  * Queries can be constructed of `iodata`
+  * Support "type hinted" queries to save one client-server round trip which will reduce query latency
+
+* Backwards incompatible changes
+  * `Postgrex.Error` `postgres` field is converted from keyword list to map
+  * `Postgrex.Connect.query` `params` parameter is no longer optional (pass an empty list if query has no parameters)
+  * The `timeout` parameter for all functions have been moved to a keyword list with the key `:timeout`
 
 # v0.5.5 (2014-08-20)
 
 * Enhancements
-  * Reduce the amount of intermediary binaries constructed with the help of iodata
+  * Reduce the amount of intermediary binaries constructed with the help of `iodata`
 
 # v0.5.4 (2014-08-04)
 
@@ -17,18 +23,18 @@
 # v0.5.1 (2014-05-24)
 
 * Backwards incompatible changes
-  * Postgrex.Error exception converted to struct
+  * `Postgrex.Error` exception converted to struct
 
 # v0.5.0 (2014-05-01)
 
 * Backwards incompatible changes
-  * Postgrex.Result and Postgrex.TypeInfo converted to structs
+  * `Postgrex.Result` and `Postgrex.TypeInfo` converted to structs
 
 # v0.4.2 (2014-04-21)
 
 * Enhancements
   * Add timeouts to all synchronous calls. When a timeout is hit an exit error will be raised in the caller process and the connection process will exit
-  * Add automatic fallback to environment variables PGUSER, PGHOST and PGPASS
+  * Add automatic fallback to environment variables `PGUSER`, `PGHOST` and `PGPASS`
 
 # v0.4.0 (2014-01-16)
 

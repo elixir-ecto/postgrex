@@ -15,7 +15,7 @@ defmodule Postgrex.Types do
   @numeric_base 10_000
 
   def build_types(rows) do
-    Enum.reduce(rows, HashDict.new, fn row, acc ->
+    types = Enum.map(rows, fn row ->
       [oid, type, send, array_oid, comp_oids] = row
       oid = String.to_integer(oid)
       send_size = byte_size(send)
@@ -32,10 +32,13 @@ defmodule Postgrex.Types do
             nil
         end
 
-      info = %TypeInfo{oid: oid, sender: send, type: type, array_elem: array_oid,
-                       comp_elems: comp_oids}
-      Dict.put(acc, oid, info)
+      %TypeInfo{oid: oid, sender: send, type: type, array_elem: array_oid,
+                comp_elems: comp_oids}
     end)
+
+    oids  = Enum.reduce(types, HashDict.new, &Dict.put(&2, &1.oid, &1))
+    types = Enum.reduce(types, HashDict.new, &Dict.put(&2, &1.type, &1))
+    {oids, types}
   end
 
   defp parse_oids("{}") do
@@ -49,7 +52,7 @@ defmodule Postgrex.Types do
   defp parse_oids(bin, acc) do
     case Integer.parse(bin) do
       {int, "," <> rest} -> parse_oids(rest, [int|acc])
-      {int, "}"} -> Enum.reverse([int|acc])
+      {int, "}"}         -> Enum.reverse([int|acc])
     end
   end
 

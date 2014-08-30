@@ -223,8 +223,6 @@ defmodule Postgrex.Connection do
   """
   @spec in_transaction(pid, Keyword.t, (() -> term)) :: term
   def in_transaction(pid, opts \\ [], fun) do
-    timeout = opts[:timeout] || @timeout
-
     case begin(pid) do
       :ok ->
         try do
@@ -281,7 +279,7 @@ defmodule Postgrex.Connection do
     host      = if is_binary(host), do: String.to_char_list(host), else: host
     port      = opts[:port] || 5432
     timeout   = opts[:connect_timeout] || @timeout
-    sock_opts = [ {:active, :once}, {:packet, :raw}, :binary ]
+    sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
@@ -388,17 +386,14 @@ defmodule Postgrex.Connection do
     end
   end
 
-    msgs = [
-      msg_parse(name: "", query: statement, type_oids: []),
-      msg_describe(type: :statement, name: ""),
-      msg_sync() ]
-  defp command({:query, statement, params, opts}, s) do
+  defp command({:query, statement, _params, opts}, s) do
+    param_types  = opts[:param_types]
+    result_types = opts[:result_types]
 
-    case send_to_result(msgs, s) do
-      {:ok, s} ->
-        {:ok, %{s | statement: nil, state: :parsing}}
-      err ->
-        err
+    if param_types && result_types do
+      send_hinted_query(statement, param_types, result_types, s)
+    else
+      send_query(statement, s)
     end
   end
 
@@ -522,16 +517,26 @@ defmodule Postgrex.Connection do
     {:ok, %{s | portal: oids}}
   end
 
-  defp message(:describing, msg_row_desc(fields: fields),
-               %{types: types, bootstrap: bootstrap, opts: opts} = s) do
-    rfs = []
-    if not bootstrap do
-      {info, rfs, cols} = extract_row_info(fields, types, opts[:decoder], opts[:formatter])
-      stat = %{columns: cols, row_info: List.to_tuple(info)}
-      s = %{s | statement: stat}
-    end
+  defp message(:describing, msg_row_desc(), %{bootstrap: true} = s) do
+    send_params(s, [])
+  end
 
-    send_params(s, rfs)
+  # If statement is nil we have not sent a hinted query
+  defp message(:describing, msg_row_desc(fields: fields),
+               %{types: {oids, _}, statement: nil, opts: opts} = s) do
+    {col_oids, col_names} = columns(fields)
+    {info, rfs} = extract_row_info(col_oids, oids, opts[:decoder], opts[:formatter])
+    stat = %{columns: col_names, row_info: List.to_tuple(info)}
+
+    send_params(%{s | statement: stat}, rfs)
+  end
+
+  defp message(:describing, msg_row_desc(fields: fields),
+               %{statement: stat} = s) do
+    {_, col_names} = columns(fields)
+    stat = %{stat | columns: col_names}
+
+    {:ok, %{s | statement: stat, state: :binding}}
   end
 
   defp message(:describing, msg_ready(), s) do
@@ -674,20 +679,20 @@ defmodule Postgrex.Connection do
   end
 
   defp send_params(s, rfs) do
-    {msgs, s} = try do
-      {pfs, params} = encode_params(s)
+    {msgs, s} =
+      try do
+        {pfs, params} = encode_params(s)
 
-      msgs = [
-        msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
-        msg_execute(name_port: "", max_rows: 0),
-        msg_sync() ]
-      {msgs, s}
-
-    catch
-      {:postgrex_encode, reason} ->
-        reply(%Postgrex.Error{message: reason}, s)
-        {[msg_sync], %{s | portal: nil}}
-    end
+        msgs = [
+          msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
+          msg_execute(name_port: "", max_rows: 0),
+          msg_sync() ]
+        {msgs, s}
+      catch
+       {:postgrex_encode, reason} ->
+         reply(%Postgrex.Error{message: reason}, s)
+         {[msg_sync], %{s | portal: nil}}
+      end
 
     case send_to_result(msgs, s) do
       {:ok, s} ->
@@ -697,28 +702,38 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp encode_params(%{queue: queue, portal: param_oids, types: types, opts: opts}) do
+  defp encode_params(%{bootstrap: true}) do
+    {[], []}
+  end
+
+  defp encode_params(%{queue: queue, portal: param_oids, types: {oids, _}, opts: opts}) do
     {{:query, _statement, params, _}, _from, _timer} = :queue.get(queue)
     zipped = Enum.zip(param_oids, params)
-    extra = {types, opts[:encoder], opts[:formatter]}
+    extra = {oids, opts[:encoder], opts[:formatter]}
 
     Enum.map(zipped, fn
       {_oid, nil} ->
         {:binary, nil}
 
       {oid, param} ->
-        info = Dict.fetch!(types, oid)
+        info = Dict.fetch!(oids, oid)
         default = &Types.encode(info, extra, &1)
         Types.encode_value(info, extra, default, param)
 
     end) |> :lists.unzip
   end
 
-  defp extract_row_info(fields, types, decoder, formatter) do
-    Enum.map(fields, fn row_field(name: name, type_oid: oid) ->
-      info = Dict.fetch!(types, oid)
-      format = Types.format(types, oid, formatter)
-      extra = {types, decoder}
+  defp columns(fields) do
+    Enum.map(fields, fn row_field(type_oid: oid, name: name) ->
+      {oid, name}
+    end) |> :lists.unzip
+  end
+
+  defp extract_row_info(columns, oids, decoder, formatter) do
+    Enum.map(columns, fn oid ->
+      info = Dict.fetch!(oids, oid)
+      format = Types.format(oids, oid, formatter)
+      extra = {oids, decoder}
 
       default =
         case format do
@@ -726,8 +741,8 @@ defmodule Postgrex.Connection do
           :text   -> &Types.decode_text(info, extra, &1)
         end
 
-      {{info, format, default}, format, name}
-    end) |> List.unzip |> List.to_tuple
+      {{info, format, default}, format}
+    end) |> :lists.unzip
   end
 
   defp create_result(tag) do
@@ -758,6 +773,40 @@ defmodule Postgrex.Connection do
     {command, nums} = Enum.split_while(words, &is_binary(&1))
     command = Enum.join(command, "_") |> String.downcase |> String.to_atom
     {command, List.last(nums)}
+  end
+
+  defp send_query(statement, s) do
+    msgs = [
+      msg_parse(name: "", query: statement, type_oids: []),
+      msg_describe(type: :statement, name: ""),
+      msg_sync() ]
+
+    case send_to_result(msgs, s) do
+      {:ok, s} ->
+        {:ok, %{s | statement: nil, state: :parsing}}
+      err ->
+        err
+    end
+  end
+
+  defp send_hinted_query(statement, param_types, result_types,
+                         %{types: {oids, types}, opts: opts} = s) do
+    param_oids = Enum.map(param_types, &types[&1].oid)
+
+    result_oids = Enum.map(result_types, &types[&1].oid)
+    {info, rfs} = extract_row_info(result_oids, oids, opts[:decoder], opts[:formatter])
+
+    msgs = [
+      msg_parse(name: "", query: statement, type_oids: param_oids),
+      msg_describe(type: :statement, name: "") ]
+
+    case send_to_result(msgs, s) do
+      {:ok, s} ->
+        stat = %{columns: nil, row_info: List.to_tuple(info)}
+        send_params(%{s | statement: stat, portal: param_oids, state: :parsing}, rfs)
+      err ->
+        err
+    end
   end
 
   defp msg_send(msg, %{sock: sock}), do: msg_send(msg, sock)

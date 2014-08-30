@@ -227,4 +227,11 @@ defmodule QueryTest do
       assert_receive [{:void}], 1000
     end)
   end
+
+  test "hinted query", context do
+    assert [{2, "22", [3, 3]}] = query("SELECT $1 + $1, $2 || $2, $3 || $3",
+                                       [1, "2", [3]],
+                                       param_types: ["int8", "text", "_int8"],
+                                       result_types: ["int8", "text", "_int8"])
+  end
 end
