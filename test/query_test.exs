@@ -233,5 +233,9 @@ defmodule QueryTest do
                                        [1, "2", [3]],
                                        param_types: ["int8", "text", "_int8"],
                                        result_types: ["int8", "text", "_int8"])
+
+    assert %Postgrex.Error{message: "no type of name: no_type"} =
+            query("SELECT $1", [1], param_types: ["no_type"],
+                  result_types: ["no_type"])
   end
 end

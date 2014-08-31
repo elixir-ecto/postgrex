@@ -833,22 +833,45 @@ defmodule Postgrex.Connection do
   end
 
   defp send_hinted_query(statement, param_types, result_types,
-                         %{types: {oids, types}, opts: opts} = s) do
-    param_oids = Enum.map(param_types, &types[&1].oid)
+                         %{types: {oids, _}, opts: opts} = s) do
+    case types_to_oids(param_types, s) do
+      {:ok, param_oids} ->
+        case types_to_oids(result_types, s) do
+          {:ok, result_oids} ->
+            {info, rfs} = extract_row_info(result_oids, oids, opts[:decoder], opts[:formatter])
 
-    result_oids = Enum.map(result_types, &types[&1].oid)
-    {info, rfs} = extract_row_info(result_oids, oids, opts[:decoder], opts[:formatter])
+            msgs = [
+              msg_parse(name: "", query: statement, type_oids: param_oids),
+              msg_describe(type: :statement, name: "") ]
 
-    msgs = [
-      msg_parse(name: "", query: statement, type_oids: param_oids),
-      msg_describe(type: :statement, name: "") ]
-
-    case send_to_result(msgs, s) do
-      {:ok, s} ->
-        stat = %{columns: nil, row_info: List.to_tuple(info)}
-        send_params(%{s | statement: stat, portal: param_oids, state: :parsing}, rfs)
+            case send_to_result(msgs, s) do
+              {:ok, s} ->
+                stat = %{columns: nil, row_info: List.to_tuple(info)}
+                send_params(%{s | statement: stat, portal: param_oids, state: :parsing}, rfs)
+              err ->
+                err
+            end
+          err ->
+            err
+        end
       err ->
         err
+    end
+  end
+
+  defp types_to_oids(type_names, %{types: {_, types}} = s) do
+    result =
+      Enum.flat_map_reduce(type_names, nil, fn name, _acc ->
+        if type = types[name] do
+          {[type.oid], nil}
+        else
+          {:halt, "no type of name: #{name}"}
+        end
+      end)
+
+    case result do
+      {oids,  nil}    -> {:ok, oids}
+      {_oids, reason} -> {:error, %Postgrex.Error{message: reason}, s}
     end
   end
 
