@@ -60,6 +60,10 @@ defmodule Postgrex.Connection do
 
   @doc """
   Stop the process and disconnect.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
   @spec stop(pid, Keyword.t) :: :ok
   def stop(pid, opts \\ []) do
@@ -73,6 +77,30 @@ defmodule Postgrex.Connection do
   a list of elixir values. See the README for information on how Postgrex
   encodes and decodes elixir values by default. See `Postgrex.Result` for the
   result data.
+
+  A *type hinted* query is run if both the options `:param_types` and
+  `:result_types` are given. One client-server round trip can be saved by
+  providing the types to Postgrex because the server doesn't have to be queried
+  for the types of the parameters and the result.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:param_types` - A list of type names for the parameters
+    * `:result_types` - A list of type names for the result rows
+
+  ## Examples
+
+      Postgrex.Connection.query(pid, "CREATE TABLES posts (id serial, title text)")
+
+      Postgrex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')")
+
+      Postgrex.Connection.query(pid, "SELECT title FROM posts")
+
+      Postgrex.Connection.query(pid, "SELECT $1 + $2", [40, 2]")
+
+      Postgrex.Connection.query(pid, "SELECT $1 || $2", ['4', '2'],
+                                param_types: ["text", "text"], result_types: ["text"])
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
@@ -101,6 +129,10 @@ defmodule Postgrex.Connection do
 
   @doc """
   Returns a cached map of connection parameters.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
   @spec parameters(pid, Keyword.t) :: map
   def parameters(pid, opts \\ []) do
@@ -113,7 +145,11 @@ defmodule Postgrex.Connection do
   transaction won't end until a `rollback/1` or `commit/1` have been issued for
   every `begin/1`.
 
-  ## Example
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+
+  ## Examples
 
       # Transaction begun
       Postgrex.Connection.begin(pid)
@@ -154,6 +190,10 @@ defmodule Postgrex.Connection do
   @doc """
   Rolls back a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if
   an error occurred. See `begin/1` for more information.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
   @spec rollback(pid, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def rollback(pid, opts \\ []) do
@@ -182,6 +222,10 @@ defmodule Postgrex.Connection do
   @doc """
   Commits a transaction. Returns `:ok` or `{:error, %Postgrex.Error{}}` if an
   error occurred. See `begin/1` for more information.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
   @spec commit(pid, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def commit(pid, opts \\ []) do
@@ -211,15 +255,14 @@ defmodule Postgrex.Connection do
   Helper for creating reliable transactions. If an error is raised in the given
   function the transaction is rolled back, otherwise it is commited. A
   transaction can be cancelled with `throw :postgrex_rollback`. If there is a
-  connection error `Postgrex.Error` will be raised.
+  connection error `Postgrex.Error` will be raised. Do not use this function in
+  conjunction with `begin/1`, `commit/1` and `rollback/1`.
 
-  NOTE:
+  ## Options
 
-  * Do not use this function in conjunction with `begin/1`, `commit/1` and
-  `rollback/1`.
-  *  The timeout argument is not the maximum timeout of the entire call but
-  rather the timeout of the `commit/2` and `rollback/2` calls that this function
-  makes.
+    * `:timeout` - Call timeout (default: `#{@timeout}`). Note that it is not
+      the maximum timeout of the entire call but rather the timeout of the
+      `commit/2` and `rollback/2` calls that this function makes.
   """
   @spec in_transaction(pid, Keyword.t, (() -> term)) :: term
   def in_transaction(pid, opts \\ [], fun) do
