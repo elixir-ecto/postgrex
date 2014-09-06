@@ -46,7 +46,7 @@ defmodule Postgrex.Connection do
       |> Dict.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
       |> Dict.put_new(:password, System.get_env("PGPASSWORD"))
       |> Dict.put_new(:hostname, System.get_env("PGHOST") || "localhost")
-      |> Enum.reject(fn {_k,v} -> nil?(v) end)
+      |> Enum.reject(fn {_k,v} -> is_nil(v) end)
     case :gen_server.start_link(__MODULE__, [], []) do
       {:ok, pid} ->
         timeout = opts[:connect_timeout] || @timeout
@@ -606,7 +606,7 @@ defmodule Postgrex.Connection do
 
   defp message(:executing, msg_command_complete(tag: tag), %{statement: stat} = s) do
     reply =
-      if nil?(stat) do
+      if is_nil(stat) do
         create_result(tag)
       else
         try do
@@ -796,7 +796,7 @@ defmodule Postgrex.Connection do
     {command, nrows} = decode_tag(tag)
 
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
-    if nil?(nrows) and command == :select do
+    if is_nil(nrows) and command == :select do
       nrows = length(rows)
     end
 
