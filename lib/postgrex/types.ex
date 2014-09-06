@@ -96,7 +96,7 @@ defmodule Postgrex.Types do
     result = case format(types, info.oid, formatter) do
       :binary ->
         if bin = bin || default.(value), do: {:binary, bin}
-      :text when not nil?(bin) ->
+      :text when not is_nil(bin) ->
         {:text, bin}
       :text when is_binary(value) ->
         {:text, value}
@@ -104,7 +104,7 @@ defmodule Postgrex.Types do
         nil
     end
 
-    if nil?(result) do
+    if is_nil(result) do
       throw {:postgrex_encode, "unable to encode value `#{inspect value}` as type #{info.type}"}
     end
 

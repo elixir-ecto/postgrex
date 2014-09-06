@@ -240,7 +240,7 @@ defmodule Postgrex.Protocol do
   defp format(:binary), do: 1
 
   defp encode_param(param) do
-    if nil?(param) do
+    if is_nil(param) do
       <<-1 :: int32>>
     else
       [<<IO.iodata_length(param) :: int32>>, param]
