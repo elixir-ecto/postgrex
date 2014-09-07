@@ -1,4 +1,4 @@
-# v0.6.0
+# v0.6.0 (2014-09-07)
 
 * Enhancements
   * Queries can be constructed of `iodata`
