@@ -91,16 +91,17 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      Postgrex.Connection.query(pid, "CREATE TABLES posts (id serial, title text)")
+      Postgrex.Connection.query(pid, "CREATE TABLE posts (id serial, title text)", [])
 
-      Postgrex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')")
+      Postgrex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')", [])
 
-      Postgrex.Connection.query(pid, "SELECT title FROM posts")
+      Postgrex.Connection.query(pid, "SELECT title FROM posts", [])
 
-      Postgrex.Connection.query(pid, "SELECT $1 + $2", [40, 2]")
+      Postgrex.Connection.query(pid, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
-      Postgrex.Connection.query(pid, "SELECT $1 || $2", ['4', '2'],
+      Postgrex.Connection.query(pid, "SELECT $1 || $2", ["4", "2"],
                                 param_types: ["text", "text"], result_types: ["text"])
+
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
