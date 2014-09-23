@@ -1,301 +1,377 @@
-defmodule Postgrex.Protocol.Messages do
-  @moduledoc false
-
-  import Record
-  import Kernel, except: [defrecord: 2]
-
-  defrecord :msg_auth, [:type, :data]
-  defrecord :msg_startup, [:params]
-  defrecord :msg_password, [:pass]
-  defrecord :msg_error, [:fields]
-  defrecord :msg_parameter, [:name, :value]
-  defrecord :msg_backend_key, [:pid, :key]
-  defrecord :msg_ready, [:status]
-  defrecord :msg_notice, [:fields]
-  defrecord :msg_parse, [:name, :query, :type_oids]
-  defrecord :msg_describe, [:type, :name]
-  defrecord :msg_flush, []
-  defrecord :msg_parse_complete, []
-  defrecord :msg_parameter_desc, [:type_oids]
-  defrecord :msg_row_desc, [:fields]
-  defrecord :msg_no_data, []
-  defrecord :msg_bind, [:name_port, :name_stat, :param_formats, :params,
-                        :result_formats]
-  defrecord :msg_execute, [:name_port, :max_rows]
-  defrecord :msg_sync, []
-  defrecord :msg_bind_complete, []
-  defrecord :msg_portal_suspend, []
-  defrecord :msg_data_row, [:values]
-  defrecord :msg_command_complete, [:tag]
-  defrecord :msg_empty_query, []
-  defrecord :msg_terminate, []
-  defrecord :msg_ssl_request, []
-
-  defrecord :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
-                         :type_mod, :format]
-end
-
 defmodule Postgrex.Protocol do
   @moduledoc false
 
-  import Postgrex.Protocol.Messages
-  import Postgrex.BinaryUtils
+  alias Postgrex.Connection
+  alias Postgrex.Types
+  import Postgrex.Messages
+  import Postgrex.Utils
 
-  @protocol_vsn_major 3
-  @protocol_vsn_minor 0
-
-  @auth_types [ ok: 0, kerberos: 2, cleartext: 3, md5: 5, scm: 6, gss: 7,
-                sspi: 9, gss_cont: 8 ]
-
-  @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
-                  position: ?P, internal_position: ?p, internal_query: ?q,
-                  where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
-                  constraint: ?n, file: ?F, line: ?L, routine: ?R ]
-
-  ### decoders ###
-
-  # auth
-  def parse(?R, size, <<type :: int32, rest :: binary>>) do
-    type = decode_auth_type(type)
-    case type do
-      :md5 ->
-        <<data :: binary-size(4)>> = rest
-      :gss_cont ->
-        rest_size = size - 2
-        <<data :: size(rest_size)>> = rest
-      _ ->
-        data = nil
+  def startup_ssl(%{sock: sock} = s) do
+    case msg_send(msg_ssl_request(), sock) do
+      :ok ->
+        {:noreply, %{s | state: :ssl}}
+      {:error, reason} ->
+        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
     end
-    msg_auth(type: type, data: data)
   end
 
-  # error
-  def parse(?E, _size, rest) do
-    fields = decode_fields(rest)
-    msg_error(fields: fields)
-  end
-
-  # notice
-  def parse(?N, _size, rest) do
-    fields = decode_fields(rest)
-    msg_notice(fields: fields)
-  end
-
-  # parameter
-  def parse(?S, _size, rest) do
-    {name, rest} = decode_string(rest)
-    {value, ""} = decode_string(rest)
-    msg_parameter(name: name, value: value)
-  end
-
-  # backend_key
-  def parse(?K, _size, <<pid :: int32, key :: int32>>) do
-    msg_backend_key(pid: pid, key: key)
-  end
-
-  # ready
-  def parse(?Z, _size, <<status :: int8>>) do
-    status = case status do
-      ?I -> :idle
-      ?T -> :transaction
-      ?E -> :failed
+  def startup(%{sock: sock, opts: opts} = s) do
+    params = opts[:parameters] || []
+    msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
+    case msg_send(msg, sock) do
+      :ok ->
+        {:noreply, %{s | state: :auth}}
+      {:error, reason} ->
+        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
     end
-    msg_ready(status: status)
   end
 
-  # parse_complete
-  def parse(?1, _size, _rest) do
-    msg_parse_complete()
+  def send_query(statement, s) do
+    msgs = [
+      msg_parse(name: "", query: statement, type_oids: []),
+      msg_describe(type: :statement, name: ""),
+      msg_sync() ]
+
+    case send_to_result(msgs, s) do
+      {:ok, s} ->
+        {:ok, %{s | statement: nil, state: :parsing}}
+      err ->
+        err
+    end
   end
 
-  # parameter_desc
-  def parse(?t, _size, <<len :: int16, rest :: binary(len, 32)>>) do
-    oids = for <<oid :: size(32) <- rest>>, do: oid
-    msg_parameter_desc(type_oids: oids)
+  def send_hinted_query(statement, param_types, result_types,
+                        %{types: {oids, _}, opts: opts} = s) do
+    case types_to_oids(param_types, s) do
+      {:ok, param_oids} ->
+        case types_to_oids(result_types, s) do
+          {:ok, result_oids} ->
+            {info, rfs} = extract_row_info(result_oids, oids, opts[:decoder], opts[:formatter])
+
+            msgs = [
+              msg_parse(name: "", query: statement, type_oids: param_oids),
+              msg_describe(type: :statement, name: "") ]
+
+            case send_to_result(msgs, s) do
+              {:ok, s} ->
+                stat = %{columns: nil, row_info: List.to_tuple(info)}
+                send_params(%{s | statement: stat, portal: param_oids, state: :parsing}, rfs)
+              err ->
+                err
+            end
+          err ->
+            err
+        end
+      err ->
+        err
+    end
   end
 
-  # row_desc
-  def parse(?T, _size, <<len :: int16, rest :: binary>>) do
-    fields = decode_row_fields(rest, len)
-    msg_row_desc(fields: fields)
+  # possible states: ssl, auth, init, parsing, describing, binding, executing,
+  #                  ready
+
+  ### auth state ###
+
+  def message(:auth, msg_auth(type: :ok), s) do
+    {:ok, %{s | state: :init}}
   end
 
-  # no_data
-  def parse(?n, _size, _rest) do
-    msg_no_data()
+  def message(:auth, msg_auth(type: :cleartext), %{opts: opts} = s) do
+    msg = msg_password(pass: opts[:password])
+    send_to_result(msg, s)
   end
 
-  # bind_complete
-  def parse(?2, _size, _rest) do
-    msg_bind_complete()
+  def message(:auth, msg_auth(type: :md5, data: salt), %{opts: opts} = s) do
+    digest = :crypto.hash(:md5, [opts[:password], opts[:username]])
+             |> Base.encode16(case: :lower)
+    digest = :crypto.hash(:md5, [digest, salt])
+             |> Base.encode16(case: :lower)
+    msg = msg_password(pass: ["md5", digest])
+    send_to_result(msg, s)
   end
 
-  # portal_suspended
-  def parse(?s, _size, _rest) do
-    msg_portal_suspend()
+  def message(:auth, msg_error(fields: fields), s) do
+    {:error, %Postgrex.Error{postgres: Enum.into(fields, %{})}, s}
   end
 
-  # data_row
-  def parse(?D, _size, <<count :: int16, rest :: binary>> ) do
-    values = decode_row_values(rest, count)
-    msg_data_row(values: values)
+  ### init state ###
+
+  def message(:init, msg_backend_key(pid: pid, key: key), s) do
+    {:ok, %{s | backend_key: {pid, key}}}
   end
 
-  # command_complete
-  def parse(?C, _size, rest) do
-    {tag, ""} = decode_string(rest)
-    msg_command_complete(tag: tag)
+  def message(:init, msg_ready(), %{opts: opts} = s) do
+    opts = clean_opts(opts)
+    s = %{s | opts: opts, bootstrap: true}
+    Connection.new_query(Types.bootstrap_query, [], s)
   end
 
-  # empty_query
-  def parse(?I, _size, _rest) do
-    msg_empty_query()
+  def message(:init, msg_error(fields: fields), s) do
+    {:error, %Postgrex.Error{postgres: Enum.into(fields, %{})}, s}
   end
 
-  ### encoders ###
+  ### parsing state ###
 
-  def encode_msg(msg) do
-    {first, data} = encode(msg)
-    size = IO.iodata_length(data) + 4
-
-    if first do
-      [first, <<size :: int32>>, data]
-    else
-     [<<size :: int32>>, data]
-   end
+  def message(:parsing, msg_parse_complete(), s) do
+    {:ok, %{s | state: :describing}}
   end
 
-  # startup
-  defp encode(msg_startup(params: params)) do
-    params = Enum.reduce(params, [], fn {key, value}, acc ->
-      [acc, to_string(key), 0, value, 0]
+  ### describing state ###
+
+  def message(:describing, msg_no_data(), s) do
+    send_params(s, [])
+  end
+
+  def message(:describing, msg_parameter_desc(type_oids: oids), s) do
+    {:ok, %{s | portal: oids}}
+  end
+
+  def message(:describing, msg_row_desc(), %{bootstrap: true} = s) do
+    send_params(s, [])
+  end
+
+  # If statement is nil we have not sent a hinted query
+  def message(:describing, msg_row_desc(fields: fields),
+               %{types: {oids, _}, statement: nil, opts: opts} = s) do
+    {col_oids, col_names} = columns(fields)
+    {info, rfs} = extract_row_info(col_oids, oids, opts[:decoder], opts[:formatter])
+    stat = %{columns: col_names, row_info: List.to_tuple(info)}
+
+    send_params(%{s | statement: stat}, rfs)
+  end
+
+  def message(:describing, msg_row_desc(fields: fields),
+               %{statement: stat} = s) do
+    {_, col_names} = columns(fields)
+    stat = %{stat | columns: col_names}
+
+    {:ok, %{s | statement: stat, state: :binding}}
+  end
+
+  def message(:describing, msg_ready(), s) do
+    {:ok, %{s | state: :binding}}
+  end
+
+  ### binding state ###
+
+  def message(:binding, msg_bind_complete(), s) do
+    {:ok, %{s | state: :executing}}
+  end
+
+  ### executing state ###
+
+  def message(:executing, msg_data_row(values: values), %{rows: rows} = s) do
+    {:ok, %{s | rows: [values|rows]}}
+  end
+
+  def message(:executing, msg_command_complete(), %{bootstrap: true, rows: rows} = s) do
+    reply(:ok, s)
+    types = Types.build_types(rows)
+    {:ok, %{s | rows: [], bootstrap: false, types: types}}
+  end
+
+  def message(:executing, msg_command_complete(tag: tag), %{statement: stat} = s) do
+    reply =
+      if is_nil(stat) do
+        create_result(tag)
+      else
+        try do
+          result = decode_rows(s)
+          %{columns: cols} = stat
+          create_result(tag, result, cols)
+        catch
+          {:postgrex_decode, msg} ->
+            %Postgrex.Error{message: msg}
+        end
+      end
+
+    reply(reply, s)
+    {:ok, %{s | rows: [], statement: nil, portal: nil}}
+  end
+
+  def message(:executing, msg_empty_query(), s) do
+    reply(%Postgrex.Result{}, s)
+    {:ok, s}
+  end
+
+  ### asynchronous messages ###
+
+  def message(_, msg_ready(), %{queue: queue} = s) do
+    queue = :queue.drop(queue)
+    Connection.next(%{s | queue: queue, state: :ready})
+  end
+
+  def message(_, msg_parameter(name: name, value: value), %{parameters: params} = s) do
+    params = Map.put(params, name, value)
+    {:ok, %{s | parameters: params}}
+  end
+
+  def message(_, msg_error(fields: fields), s) do
+    reply(%Postgrex.Error{postgres: Enum.into(fields, %{})}, s)
+    {:ok, s}
+  end
+
+  def message(_, msg_notice(), s) do
+    # TODO: subscribers
+    {:ok, s}
+  end
+
+  ### helpers ###
+
+  defp decode_rows(%{statement: %{row_info: info}, rows: rows, opts: opts}) do
+    decoder = opts[:decoder]
+
+    Enum.reduce(rows, [], fn values, acc ->
+      {_, row} = Enum.reduce(values, {0, []}, fn
+        nil, {count, list} ->
+          {count + 1, [nil|list]}
+
+        bin, {count, list} ->
+          {info, format, default} = elem(info, count)
+          decoded = Types.decode_value(info, format, decoder, default, bin)
+          {count + 1, [decoded|list]}
+      end)
+
+      row = Enum.reverse(row) |> List.to_tuple
+      [ row | acc ]
     end)
-    vsn = <<@protocol_vsn_major :: int16, @protocol_vsn_minor :: int16>>
-    {nil, [vsn, params, 0]}
   end
 
-  # password
-  defp encode(msg_password(pass: pass)) do
-    {?p, [pass, 0]}
-  end
+  defp send_params(s, rfs) do
+    {msgs, s} =
+      try do
+        {pfs, params} = encode_params(s)
 
-  # parse
-  defp encode(msg_parse(name: name, query: query, type_oids: oids)) do
-    oids = for oid <- oids, into: "", do: <<oid :: int32>>
-    len = <<div(byte_size(oids), 4) :: int16>>
-    {?P, [name, 0, query, 0, len, oids]}
-  end
+        msgs = [
+          msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
+          msg_execute(name_port: "", max_rows: 0),
+          msg_sync() ]
+        {msgs, s}
+      catch
+       {:postgrex_encode, reason} ->
+         reply(%Postgrex.Error{message: reason}, s)
+         {[msg_sync], %{s | portal: nil}}
+      end
 
-  # describe
-  defp encode(msg_describe(type: type, name: name)) do
-    byte = case type do
-      :statement -> ?S
-      :portal -> ?P
-    end
-    {?D, [byte, name, 0]}
-  end
-
-  # flush
-  defp encode(msg_flush()) do
-    {?H, ""}
-  end
-
-  # bind
-  defp encode(msg_bind(name_port: port, name_stat: stat, param_formats: param_formats,
-                          params: params, result_formats: result_formats)) do
-    pfs = for format <- param_formats,  into: "", do: <<format(format) :: int16>>
-    rfs = for format <- result_formats, into: "", do: <<format(format) :: int16>>
-    ps  = for param  <- params,                   do: encode_param(param)
-
-    len_pfs = <<div(byte_size(pfs), 2) :: int16>>
-    len_rfs = <<div(byte_size(rfs), 2) :: int16>>
-    len_ps  = <<length(ps) :: int16>>
-
-    {?B, [port, 0, stat, 0, len_pfs, pfs, len_ps, ps, len_rfs, rfs]}
-  end
-
-  # execute
-  defp encode(msg_execute(name_port: port, max_rows: rows)) do
-    {?E, [port, 0, <<rows :: int32>>]}
-  end
-
-  # sync
-  defp encode(msg_sync()) do
-    {?S, ""}
-  end
-
-  # terminate
-  defp encode(msg_terminate()) do
-    {?X, ""}
-  end
-
-  # ssl_request
-  defp encode(msg_ssl_request()) do
-    {nil, <<1234 :: int16, 5679 :: int16>>}
-  end
-
-  ### encode helpers ###
-
-  defp format(:text),   do: 0
-  defp format(:binary), do: 1
-
-  defp encode_param(param) do
-    if is_nil(param) do
-      <<-1 :: int32>>
-    else
-      [<<IO.iodata_length(param) :: int32>>, param]
+    case send_to_result(msgs, s) do
+      {:ok, s} ->
+        {:ok, s}
+      err ->
+        err
     end
   end
 
-  ### decode helpers ###
-
-  defp decode_fields(<<0>>), do: []
-
-  defp decode_fields(<<field :: int8, rest :: binary>>) do
-    type = decode_field_type(field)
-    {string, rest} = decode_string(rest)
-    [{type, string} | decode_fields(rest)]
+  defp encode_params(%{bootstrap: true}) do
+    {[], []}
   end
 
-  defp decode_string(bin) do
-    {pos, 1} = :binary.match(bin, <<0>>)
-    {string, <<0, rest :: binary>>} = :erlang.split_binary(bin, pos)
-    {string, rest}
+  defp encode_params(%{queue: queue, portal: param_oids, types: {oids, _}, opts: opts}) do
+    {{:query, _statement, params, _}, _from, _timer} = :queue.get(queue)
+    zipped = Enum.zip(param_oids, params)
+    extra = {oids, opts[:encoder], opts[:formatter]}
+
+    Enum.map(zipped, fn
+      {_oid, nil} ->
+        {:binary, nil}
+
+      {oid, param} ->
+        info = Dict.fetch!(oids, oid)
+        default = &Types.encode(info, extra, &1)
+        Types.encode_value(info, extra, default, param)
+
+    end) |> :lists.unzip
   end
 
-  defp decode_row_fields("", 0), do: []
-
-  defp decode_row_fields(rest, count) do
-    {field, rest} = decode_row_field(rest)
-    [field | decode_row_fields(rest, count-1)]
+  defp columns(fields) do
+    Enum.map(fields, fn row_field(type_oid: oid, name: name) ->
+      {oid, name}
+    end) |> :lists.unzip
   end
 
-  defp decode_row_field(rest) do
-    {name, rest} = decode_string(rest)
-    <<table_oid :: int32, column :: int16, type_oid :: int32,
-       type_size :: int16, type_mod :: int32, format :: int16,
-       rest :: binary>> = rest
-    field = row_field(name: name, table_oid: table_oid, column: column, type_oid: type_oid,
-                      type_size: type_size, type_mod: type_mod, format: format)
-    {field, rest}
+  defp extract_row_info(columns, oids, decoder, formatter) do
+    Enum.map(columns, fn oid ->
+      info = Dict.fetch!(oids, oid)
+      format = Types.format(oids, oid, formatter)
+      extra = {oids, decoder}
+
+      default =
+        case format do
+          :binary -> &Types.decode_binary(info, extra, &1)
+          :text   -> &Types.decode_text(info, extra, &1)
+        end
+
+      {{info, format, default}, format}
+    end) |> :lists.unzip
   end
 
-  defp decode_row_values("", 0), do: []
-
-  defp decode_row_values(<<-1 :: int32, rest :: binary>>, count) do
-    [nil | decode_row_values(rest, count-1)]
+  defp create_result(tag) do
+    create_result(tag, nil, nil)
   end
 
-  defp decode_row_values(<<length :: int32, value :: binary(length), rest :: binary>>, count) do
-    [value | decode_row_values(rest, count-1)]
+  defp create_result(tag, rows, cols) do
+    {command, nrows} = decode_tag(tag)
+
+    # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
+    if is_nil(nrows) and command == :select do
+      nrows = length(rows)
+    end
+
+    %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
+                     columns: cols}
   end
 
-  Enum.each(@auth_types, fn {type, value} ->
-    def decode_auth_type(unquote(value)), do: unquote(type)
-  end)
+  defp decode_tag(tag) do
+    words = :binary.split(tag, " ", [:global])
+    words = Enum.map(words, fn word ->
+      case Integer.parse(word) do
+        {num, ""} -> num
+        :error -> word
+      end
+    end)
 
-  Enum.each(@error_fields, fn {field, char} ->
-    def decode_field_type(unquote(char)), do: unquote(field)
-  end)
-  def decode_field_type(_), do: :unknown
+    {command, nums} = Enum.split_while(words, &is_binary(&1))
+    command = Enum.join(command, "_") |> String.downcase |> String.to_atom
+    {command, List.last(nums)}
+  end
+
+  defp types_to_oids(type_names, %{types: {_, types}} = s) do
+    result =
+      Enum.flat_map_reduce(type_names, nil, fn name, _acc ->
+        if type = types[name] do
+          {[type.oid], nil}
+        else
+          {:halt, "no type of name: #{name}"}
+        end
+      end)
+
+    case result do
+      {oids,  nil}    -> {:ok, oids}
+      {_oids, reason} -> {:error, %Postgrex.Error{message: reason}, s}
+    end
+  end
+
+  defp msg_send(msg, %{sock: sock}), do: msg_send(msg, sock)
+
+  defp msg_send(msgs, {mod, sock}) when is_list(msgs) do
+    binaries = Enum.reduce(msgs, [], &[&2 | encode_msg(&1)])
+    mod.send(sock, binaries)
+  end
+
+  defp msg_send(msg, {mod, sock}) do
+    data = encode_msg(msg)
+    mod.send(sock, data)
+  end
+
+  defp send_to_result(msg, s) do
+    case msg_send(msg, s) do
+      :ok ->
+        {:ok, s}
+      {:error, reason} ->
+        {:error, %Postgrex.Error{message: "tcp send: #{reason}"} , s}
+    end
+  end
+
+  defp clean_opts(opts) do
+    Keyword.put(opts, :password, :REDACTED)
+  end
 end
