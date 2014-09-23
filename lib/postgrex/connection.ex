@@ -47,10 +47,10 @@ defmodule Postgrex.Connection do
       |> Dict.put_new(:password, System.get_env("PGPASSWORD"))
       |> Dict.put_new(:hostname, System.get_env("PGHOST") || "localhost")
       |> Enum.reject(fn {_k,v} -> is_nil(v) end)
-    case :gen_server.start_link(__MODULE__, [], []) do
+    case GenServer.start_link(__MODULE__, []) do
       {:ok, pid} ->
         timeout = opts[:connect_timeout] || @timeout
-        case :gen_server.call(pid, {:connect, opts}, timeout) do
+        case GenServer.call(pid, {:connect, opts}, timeout) do
           :ok -> {:ok, pid}
           err -> {:error, err}
         end
@@ -67,7 +67,7 @@ defmodule Postgrex.Connection do
   """
   @spec stop(pid, Keyword.t) :: :ok
   def stop(pid, opts \\ []) do
-    :gen_server.call(pid, :stop, opts[:timeout] || @timeout)
+    GenServer.call(pid, :stop, opts[:timeout] || @timeout)
   end
 
   @doc """
@@ -107,7 +107,7 @@ defmodule Postgrex.Connection do
   def query(pid, statement, params, opts \\ []) do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, message, timeout) do
+    case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res -> {:ok, res}
       %Postgrex.Error{} = err  -> {:error, err}
     end
@@ -121,7 +121,7 @@ defmodule Postgrex.Connection do
   def query!(pid, statement, params, opts \\ []) do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, message, timeout) do
+    case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res -> res
       %Postgrex.Error{} = err  -> raise err
     end
@@ -137,7 +137,7 @@ defmodule Postgrex.Connection do
   """
   @spec parameters(pid, Keyword.t) :: map
   def parameters(pid, opts \\ []) do
-    :gen_server.call(pid, :parameters, opts[:timeout] || @timeout)
+    GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
   end
 
   @doc """
@@ -169,7 +169,7 @@ defmodule Postgrex.Connection do
   @spec begin(pid, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def begin(pid, opts \\ []) do
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, {:begin, opts}, timeout) do
+    case GenServer.call(pid, {:begin, opts}, timeout) do
       %Postgrex.Result{} -> :ok
       %Postgrex.Error{} = err -> {:error, err}
     end
@@ -182,7 +182,7 @@ defmodule Postgrex.Connection do
   @spec begin!(pid, Keyword.t) :: :ok
   def begin!(pid, opts \\ []) do
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, {:begin, opts}, timeout) do
+    case GenServer.call(pid, {:begin, opts}, timeout) do
       %Postgrex.Result{} -> :ok
       %Postgrex.Error{} = err -> raise err
     end
@@ -199,7 +199,7 @@ defmodule Postgrex.Connection do
   @spec rollback(pid, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def rollback(pid, opts \\ []) do
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, {:rollback, opts}, timeout) do
+    case GenServer.call(pid, {:rollback, opts}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
       %Postgrex.Error{} = err -> {:error, err}
@@ -213,7 +213,7 @@ defmodule Postgrex.Connection do
   @spec rollback!(pid, Keyword.t) :: :ok
   def rollback!(pid, opts \\ []) do
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, {:rollback, opts}, timeout) do
+    case GenServer.call(pid, {:rollback, opts}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
       %Postgrex.Error{} = err -> raise err
@@ -231,7 +231,7 @@ defmodule Postgrex.Connection do
   @spec commit(pid, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def commit(pid, opts \\ []) do
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, {:commit, opts}, timeout) do
+    case GenServer.call(pid, {:commit, opts}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
       %Postgrex.Error{} = err -> {:error, err}
@@ -245,7 +245,7 @@ defmodule Postgrex.Connection do
   @spec commit!(pid, Keyword.t) :: :ok
   def commit!(pid, opts \\ []) do
     timeout = opts[:timeout] || @timeout
-    case :gen_server.call(pid, {:commit, opts}, timeout) do
+    case GenServer.call(pid, {:commit, opts}, timeout) do
       :ok -> :ok
       %Postgrex.Result{} -> :ok
       %Postgrex.Error{} = err -> raise err

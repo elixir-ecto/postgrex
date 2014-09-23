@@ -12,7 +12,7 @@ defmodule Postgrex.Utils do
   def reply(reply, %{queue: queue}) do
     case :queue.out(queue) do
       {{:value, {_command, from, _timer}}, _queue} ->
-        :gen_server.reply(from, reply)
+        GenServer.reply(from, reply)
         true
       {:empty, _queue} ->
         false
@@ -20,7 +20,7 @@ defmodule Postgrex.Utils do
   end
 
   def reply(reply, {_, _} = from) do
-    :gen_server.reply(from, reply)
+    GenServer.reply(from, reply)
     true
   end
 end
