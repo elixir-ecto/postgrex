@@ -21,8 +21,11 @@ DROP ROLE IF EXISTS postgrex_md5_pw;
 CREATE USER postgrex_cleartext_pw WITH PASSWORD 'postgrex_cleartext_pw';
 CREATE USER postgrex_md5_pw WITH PASSWORD 'postgrex_md5_pw';
 
-DROP TABLE IF EXISTS query;
-CREATE TABLE query (a int, b text);
+DROP TABLE IF EXISTS composite1;
+CREATE TABLE composite1 (a int, b text);
+
+DROP TABLE IF EXISTS composite2;
+CREATE TABLE composite2 (a int, b int, c int);
 """
 
 cmds = [

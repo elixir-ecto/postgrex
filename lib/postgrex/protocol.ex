@@ -270,15 +270,10 @@ defmodule Postgrex.Protocol do
     zipped = Enum.zip(param_oids, params)
     extra = {oids, opts[:encoder], opts[:formatter]}
 
-    Enum.map(zipped, fn
-      {_oid, nil} ->
-        {:binary, nil}
-
-      {oid, param} ->
-        info = Dict.fetch!(oids, oid)
-        default = &Types.encode(info, extra, &1)
-        Types.encode_value(info, extra, default, param)
-
+    Enum.map(zipped, fn {oid, param} ->
+      info = Dict.fetch!(oids, oid)
+      default = &Types.encode(info, extra, &1)
+      Types.encode_value(info, extra, default, param)
     end) |> :lists.unzip
   end
 

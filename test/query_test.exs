@@ -79,8 +79,8 @@ defmodule QueryTest do
   end
 
   test "decode record", context do
-    assert [{{1, "2"}}] = query("SELECT (1, '2')::query", [])
-    assert [{[{1, "2"}]}] = query("SELECT ARRAY[(1, '2')::query]", [])
+    assert [{{1, "2"}}] = query("SELECT (1, '2')::composite1", [])
+    assert [{[{1, "2"}]}] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
   test "encode basic types", context do
@@ -158,11 +158,13 @@ defmodule QueryTest do
     assert [{[1,2]}] = query("SELECT $1::integer[]", [[1,2]])
     assert [{[[0],[1]]}] = query("SELECT $1::integer[]", [[[0],[1]]])
     assert [{[[0]]}] = query("SELECT $1::integer[]", [[[0]]])
+    assert [{[1, nil, 3]}] = query("SELECT $1::integer[]", [[1, nil, 3]])
   end
 
   test "encode record", context do
-    assert [{{1, "2"}}] = query("SELECT $1::query", [{1, "2"}])
-    assert [{[{1, "2"}]}] = query("SELECT $1::query[]", [[{1, "2"}]])
+    assert [{{1, "2"}}] = query("SELECT $1::composite1", [{1, "2"}])
+    assert [{[{1, "2"}]}] = query("SELECT $1::composite1[]", [[{1, "2"}]])
+    assert [{{1, nil, 3}}] = query("SELECT $1::composite2", [{1, nil, 3}])
   end
 
   test "fail on encode arrays", context do

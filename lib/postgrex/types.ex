@@ -2,6 +2,7 @@ defmodule Postgrex.Types do
   @moduledoc false
 
   alias Postgrex.TypeInfo
+  alias Postgrex.Utils
   import Postgrex.BinaryUtils
   require Decimal
 
@@ -88,6 +89,10 @@ defmodule Postgrex.Types do
       :error ->
         :text
     end
+  end
+
+  def encode_value(_info, _extra, _default, nil) do
+    {:binary, <<-1 :: int32>>}
   end
 
   def encode_value(%TypeInfo{} = info, {types, encoder, formatter}, default, value) do
@@ -478,7 +483,7 @@ defmodule Postgrex.Types do
   defp encode_array(list, info, extra, default, ndims, lengths) do
     {data, length} = Enum.map_reduce(list, 0, fn elem, length ->
       {:binary, data} = encode_value(info, extra, default, elem)
-      {[<<IO.iodata_length(data) :: int32>>, data], length + 1}
+      {Utils.encode_param(data), length + 1}
     end)
     {data, ndims+1, [length|lengths]}
   end
@@ -492,7 +497,7 @@ defmodule Postgrex.Types do
       info = Dict.fetch!(types, oid)
       default = &encode(info, extra, &1)
       {:binary, data} = encode_value(info, extra, default, value)
-      {[<<oid :: int32, IO.iodata_length(data) :: int32>>, data], count + 1}
+      {[<<oid :: int32>>, Utils.encode_param(data)], count + 1}
     end)
 
     [<<count :: int32>>, data]

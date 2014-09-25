@@ -1,6 +1,7 @@
 defmodule Postgrex.Messages do
   @moduledoc false
 
+  alias Postgrex.Utils
   import Postgrex.BinaryUtils
   import Record, only: [defrecord: 2]
 
@@ -198,7 +199,7 @@ defmodule Postgrex.Messages do
                           params: params, result_formats: result_formats)) do
     pfs = for format <- param_formats,  into: "", do: <<format(format) :: int16>>
     rfs = for format <- result_formats, into: "", do: <<format(format) :: int16>>
-    ps  = for param  <- params,                   do: encode_param(param)
+    ps  = for param  <- params,                   do: Utils.encode_param(param)
 
     len_pfs = <<div(byte_size(pfs), 2) :: int16>>
     len_rfs = <<div(byte_size(rfs), 2) :: int16>>
@@ -231,14 +232,6 @@ defmodule Postgrex.Messages do
 
   defp format(:text),   do: 0
   defp format(:binary), do: 1
-
-  defp encode_param(param) do
-    if is_nil(param) do
-      <<-1 :: int32>>
-    else
-      [<<IO.iodata_length(param) :: int32>>, param]
-    end
-  end
 
   ### decode helpers ###
 

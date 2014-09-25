@@ -1,6 +1,13 @@
 defmodule Postgrex.Utils do
   @moduledoc false
 
+  import Postgrex.BinaryUtils
+
+  def encode_param(<<-1 :: int32>>),
+    do: <<-1 :: int32>>
+  def encode_param(param),
+    do: [<<IO.iodata_length(param) :: int32>>, param]
+
   def error(error, s) do
     if reply(error, s) do
       {:stop, :normal, s}

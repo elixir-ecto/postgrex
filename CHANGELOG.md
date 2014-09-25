@@ -1,3 +1,8 @@
+# v0.6.1-dev
+
+* Bug fixes
+  * Fix encoding `nil` values in arrays and composite types
+
 # v0.6.0 (2014-09-07)
 
 * Enhancements
