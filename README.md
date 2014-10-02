@@ -56,6 +56,7 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
     interval        { 14, 40, 10920 } **
     array           [ 1, 2, 3 ]
     composite type  { 42, "title", "content" }
+    hstore          %{ "key" => "value" }
 
 \* [Decimal](http://github.com/ericmj/decimal)
 

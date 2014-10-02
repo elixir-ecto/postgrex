@@ -15,6 +15,7 @@ run_cmd = fn cmd ->
 end
 
 sql = """
+CREATE EXTENSION IF NOT EXISTS "hstore";
 DROP ROLE IF EXISTS postgrex_cleartext_pw;
 DROP ROLE IF EXISTS postgrex_md5_pw;
 

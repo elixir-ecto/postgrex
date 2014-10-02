@@ -83,6 +83,13 @@ defmodule QueryTest do
     assert [{[{1, "2"}]}] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
+  test "decode hstore", context do
+    assert [{%{}}] = query(~s{SELECT ''::hstore}, [])
+    assert [{%{"Bubbles" => "7", "Name" => "Frank"}}] = query(~s{SELECT '"Name" => "Frank", "Bubbles" => "7"'::hstore}, [])
+    assert [{%{"non_existant" => nil, "present" => "&accounted_for"}}] = query(~s{SELECT '"non_existant" => NULL, "present" => "&accounted_for"'::hstore}, [])
+    assert [{%{"spaces in the key" => "are easy!"}}] = query(~s{SELECT '"spaces in the key" => "are easy!"'::hstore}, [])
+  end
+
   test "encode basic types", context do
     assert [{nil, nil}] = query("SELECT $1::text, $2::int", [nil, nil])
     assert [{true, false}] = query("SELECT $1::bool, $2::bool", [true, false])
@@ -165,6 +172,18 @@ defmodule QueryTest do
     assert [{{1, "2"}}] = query("SELECT $1::composite1", [{1, "2"}])
     assert [{[{1, "2"}]}] = query("SELECT $1::composite1[]", [[{1, "2"}]])
     assert [{{1, nil, 3}}] = query("SELECT $1::composite2", [{1, nil, 3}])
+  end
+
+  test "encode hstore", context do
+    maps = [
+      %{},
+      %{"spaces in the key" => "are easy!"},
+      %{"Bubbles" => "7", "Name" => "Frank"},
+      %{"non_existant" => nil, "present" => "&accounted_for"}
+    ]
+    Enum.each maps, fn map ->
+      assert [{^map}] = query(~s{SELECT $1::hstore}, [map])
+    end
   end
 
   test "fail on encode arrays", context do
