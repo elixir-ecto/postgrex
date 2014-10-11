@@ -14,6 +14,7 @@ defmodule Postgrex.Types do
   @days_in_month 30
   @secs_in_day 24 * 60 * 60
   @numeric_base 10_000
+  @binary_null <<-1::int32>>
 
   def build_types(rows) do
     types = Enum.map(rows, fn row ->
@@ -94,7 +95,7 @@ defmodule Postgrex.Types do
   end
 
   def encode_value(_info, _extra, _default, nil) do
-    {:binary, <<-1 :: int32>>}
+    {:binary, @binary_null}
   end
 
   def encode_value(%TypeInfo{} = info, {types, encoder, formatter}, default, value) do
@@ -177,7 +178,7 @@ defmodule Postgrex.Types do
     do: decode_array(bin, extra)
   def decode_binary(%TypeInfo{sender: "record"}, extra, bin),
     do: decode_record(bin, extra)
-  def decode_binary(%TypeInfo{type: "hstore"}, _extra, <<-1::size(32)>>),
+  def decode_binary(%TypeInfo{type: "hstore"}, _extra, @binary_null),
     do: nil
   def decode_binary(%TypeInfo{type: "hstore"}, _extra, payload),
     do: decode_hstore_payload(payload)
@@ -239,9 +240,8 @@ defmodule Postgrex.Types do
     do: encode_array(list, oid, extra)
   def encode(%TypeInfo{sender: "record", oid: oid}, extra, tuple) when is_tuple(tuple),
     do: encode_record(tuple, oid, extra)
-  def encode(%TypeInfo{sender: "hstore"}, _, map) do
-    encode_hstore(map)
-  end
+  def encode(%TypeInfo{sender: "hstore"}, _, map),
+    do: encode_hstore(map)
   def encode(%TypeInfo{}, _, _),
     do: nil
 
@@ -331,7 +331,7 @@ defmodule Postgrex.Types do
     {Enum.reverse(acc), rest}
   end
 
-  defp array_elements(<<-1 :: int32, rest :: binary>>, info, extra, default, acc, count) do
+  defp array_elements(<<@binary_null, rest :: binary>>, info, extra, default, acc, count) do
     array_elements(rest, info, extra, default, [nil|acc], count-1)
   end
 
@@ -381,15 +381,13 @@ defmodule Postgrex.Types do
   end
 
   # In the case of a NULL value, that is returned as <<255, 255, 255, 255>>
-  def decode_hstore_value(<<255, 255, 255, 255, (rest::binary)>>) do
+  def decode_hstore_value(<<@binary_null, (rest::binary)>>) do
     { nil, rest }
   end
 
   def decode_hstore_value(<<(value_size::size(32)), (value::binary-size(value_size)), (rest::binary)>>) do
     { value, rest }
   end
-
-
 
   ### encode helpers ###
 
@@ -549,19 +547,19 @@ defmodule Postgrex.Types do
   end
 
   # NULLs should be left in tact
-  defp hstore_encode_pair(key, <<255, 255, 255, 255>> = value ) do
-    << byte_size(key)::size(32) >> <> key <> value
+  defp hstore_encode_pair(key, @binary_null ) do
+    <<byte_size(key)::size(32)>> <> key <> @binary_null
   end
 
   # each value is comprised of its length followed by the value
   defp hstore_encode_pair(key, value) do
-    << byte_size(key)::size(32) >> <> key <>
-    << byte_size(value)::size(32) >> <> value
+    <<byte_size(key)::size(32)>> <> key <>
+    <<byte_size(value)::size(32)>> <> value
   end
 
   defp hstore_encoded_key(key), do: to_string(key)
 
-  defp hstore_encoded_value(nil), do: <<255,255,255,255>>
+  defp hstore_encoded_value(nil), do: @binary_null
 
   defp hstore_encoded_value(value), do: to_string(value)
 end
