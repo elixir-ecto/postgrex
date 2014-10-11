@@ -376,7 +376,7 @@ defmodule Postgrex.Types do
     decode_hstore_pairs(number_of_pairs - 1, Dict.put(acc, key, value), bin)
   end
 
-  def decode_hstore_key(<<(key_size::size(32)), (key::binary-size(key_size)), (rest::binary)>>) do
+  def decode_hstore_key(<<(key_size::size(32)), (key::binary - size(key_size)), (rest::binary)>>) do
     { key, rest }
   end
 
