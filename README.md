@@ -4,7 +4,7 @@
 
 PostgreSQL driver for Elixir.
 
-Documentation: http://ericmj.github.io/postgrex
+Documentation: http://hexdocs.pm/postgrex/
 
 ## Usage
 

@@ -37,7 +37,6 @@ defmodule Postgrex.Mixfile do
   defp package do
     [contributors: ["Eric Meadows-Jönsson"],
      licenses: ["Apache 2.0"],
-     links: %{"Github" => "https://github.com/ericmj/postgrex",
-              "Documentation" => "http://ericmj.github.io/postgrex"}]
+     links: %{"Github" => "https://github.com/ericmj/postgrex"]
   end
 end
