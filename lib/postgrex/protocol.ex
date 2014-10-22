@@ -294,7 +294,6 @@ defmodule Postgrex.Protocol do
           :binary -> &Types.decode_binary(info, extra, &1)
           :text   -> &Types.decode_text(info, extra, &1)
         end
-
       {{info, format, default}, format}
     end) |> :lists.unzip
   end
