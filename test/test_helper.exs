@@ -4,7 +4,14 @@ else
   []
 end
 
-ExUnit.configure exclude: exclude
+version_exclusions = case System.get_env("PGVERSION") do
+  v when is_binary(v) ->
+    Enum.filter(["8.4", "9.0", "9.1", "9.2", "9.3", "9.4"], fn x -> x > v end) |> Enum.map(&{:min_pg_version, &1})
+  _ ->
+    []
+end
+
+ExUnit.configure exclude: version_exclusions ++ exclude
 
 ExUnit.start
 

@@ -83,6 +83,38 @@ defmodule QueryTest do
     assert [{[{1, "2"}]}] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
+  @tag min_pg_version: 9.2
+  test "decode range", context do
+    assert [{{2,4}}] = query("SELECT '(1,5)'::int4range", [])
+    assert [{{1,6}}] = query("SELECT '[1,6]'::int4range", [])
+    assert [{{:"-inf",4}}] = query("SELECT '(,5)'::int4range", [])
+    assert [{{1,:inf}}] = query("SELECT '[1,)'::int4range", [])
+
+    assert [{{3,7}}] = query("SELECT '(2,8)'::int8range", [])
+    assert [{{2,4}}] = query("SELECT '[2,4]'::int8range", [])
+    assert [{{:"-inf",3}}] = query("SELECT '(,4)'::int8range", [])
+    assert [{{7,:inf}}] = query("SELECT '(6,]'::int8range", [])
+
+    assert [{{Decimal.new("1.0"),Decimal.new("5.999")}}] == query("SELECT numrange(1.0,5.999)", [])
+    assert [{{Decimal.new("1.0"),Decimal.new("5.999")}}] == query("SELECT '[1.0,5.999]'::numrange", [])
+    assert [{{:"-inf",Decimal.new("1.0000000001")}}] == query("SELECT numrange(NULL,1.0000000001)", [])
+    assert [{{Decimal.new("99999999999.9"),:inf}}] == query("SELECT '[99999999999.9,]'::numrange", [])
+
+    assert [{{{2014,1,1},{2014,12,30}}}] = query("SELECT '[1-1-2014,12-31-2014)'::daterange", [])
+    assert [{{{2014,1,2},{2014,12,31}}}] = query("SELECT '(1-1-2014,12-31-2014]'::daterange", [])
+    assert [{{:"-inf",{2014,12,30}}}] = query("SELECT '(,12-31-2014)'::daterange", [])
+    assert [{{{2014,1,2},:inf}}] = query("SELECT '(1-1-2014,]'::daterange", [])
+
+    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT '[1-1-2014 12:00:00, 12-31-2014 12:00:00)'::tsrange", [])
+    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT '(1-1-2014 12:00:00, 12-31-2014 12:00:00]'::tsrange", [])
+    assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT '[,12-31-2014 12:00:00)'::tsrange", [])
+    assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT '[1-1-2014 12:00:00,)'::tsrange", [])
+
+    assert [{{{{2014,1,1},{20,0,0}},{{2014,12,31},{20,0,0}}}}] = query("SELECT '[1-1-2014 12:00:00-800, 12-31-2014 12:00:00-800)'::tstzrange", [])
+    assert [{{:"-inf",{{2014,12,31},{8,0,0}}}}] = query("SELECT '[,12-31-2014 12:00:00+400]'::tstzrange", [])
+    assert [{{{{2014,1,1},{16,0,0}},:inf}}] = query("SELECT '(1-1-2014 12:00:00-4:00:00,]'::tstzrange", [])
+  end
+
   test "encode basic types", context do
     assert [{nil, nil}] = query("SELECT $1::text, $2::int", [nil, nil])
     assert [{true, false}] = query("SELECT $1::bool, $2::bool", [true, false])
@@ -165,6 +197,33 @@ defmodule QueryTest do
     assert [{{1, "2"}}] = query("SELECT $1::composite1", [{1, "2"}])
     assert [{[{1, "2"}]}] = query("SELECT $1::composite1[]", [[{1, "2"}]])
     assert [{{1, nil, 3}}] = query("SELECT $1::composite2", [{1, nil, 3}])
+  end
+
+  @tag min_pg_version: "9.2"
+  test "encode range", context do
+    assert [{{1,3}}] = query("SELECT $1::int4range", [{1,3}])
+    assert [{{:"-inf",5}}] = query("SELECT $1::int4range", [{:"-inf",5}])
+    assert [{{3,:inf}}] = query("SELECT $1::int4range", [{3,:inf}])
+
+    assert [{{2,9}}] = query("SELECT $1::int8range", [{2,9}])
+    assert [{{:"-inf",3}}] = query("SELECT $1::int8range", [{:"-inf",3}])
+    assert [{{6,:inf}}] = query("SELECT $1::int8range", [{6,:inf}])
+
+    assert [{{Decimal.new("0.1"),Decimal.new("9.9")}}] == query("SELECT $1::numrange", [{Decimal.new("0.1"),Decimal.new("9.9")}])
+    assert [{{:"-inf",Decimal.new("99999.99999")}}] == query("SELECT $1::numrange", [{:"-inf",Decimal.new("99999.99999")}])
+    assert [{{Decimal.new("0.000000001"),:inf}}] == query("SELECT $1::numrange", [{Decimal.new("0.000000001"),:inf}])
+
+    assert [{{{2014,1,1},{2014,12,31}}}] = query("SELECT $1::daterange", [{{2014,1,1},{2014,12,31}}])
+    assert [{{:"-inf",{2014,12,31}}}] = query("SELECT $1::daterange", [{:"-inf",{2014,12,31}}])
+    assert [{{{2014,1,1},:inf}}] = query("SELECT $1::daterange", [{{2014,1,1},:inf}])
+
+    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tsrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
+    assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tsrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
+    assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tsrange", [{{{2014,1,1},{12,0,0}},:inf}])
+
+    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
+    assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
+    assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},:inf}])
   end
 
   test "fail on encode arrays", context do

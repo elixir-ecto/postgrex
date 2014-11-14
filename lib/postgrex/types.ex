@@ -5,15 +5,17 @@ defmodule Postgrex.Types do
   alias Postgrex.Utils
   import Postgrex.BinaryUtils
   require Decimal
+  use Bitwise, only_operators: true
 
   @types ~w(bool bpchar text varchar bytea int2 int4 int8 float4 float8 numeric
-            date time timetz timestamp timestamptz interval)
+            date time timetz timestamp timestamptz interval range)
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
   @days_in_month 30
   @secs_in_day 24 * 60 * 60
   @numeric_base 10_000
+  @default_flag 0x02 ||| 0x04
 
   def build_types(rows) do
     types = Enum.map(rows, fn row ->
@@ -158,8 +160,8 @@ defmodule Postgrex.Types do
     do: :"-inf"
   def decode_binary(%TypeInfo{sender: "float8"}, _, <<n :: float64>>),
     do: n
-  def decode_binary(%TypeInfo{sender: "numeric"}, _, <<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>),
-    do: decode_numeric(ndigits, weight, sign, scale, tail)
+  def decode_binary(%TypeInfo{sender: "numeric"}, _, bin),
+    do: decode_numeric(bin)
   def decode_binary(%TypeInfo{sender: "date"}, _, <<n :: int32>>),
     do: decode_date(n)
   def decode_binary(%TypeInfo{sender: "time"}, _, <<n :: int64>>),
@@ -176,6 +178,8 @@ defmodule Postgrex.Types do
     do: decode_array(bin, extra)
   def decode_binary(%TypeInfo{sender: "record"}, extra, bin),
     do: decode_record(bin, extra)
+  def decode_binary(%TypeInfo{sender: "range", type: type}, _, <<flags, payload :: binary>>),
+    do: decode_range(type, flags, payload)
   def decode_binary(%TypeInfo{}, _, _),
     do: nil
 
@@ -234,6 +238,8 @@ defmodule Postgrex.Types do
     do: encode_array(list, oid, extra)
   def encode(%TypeInfo{sender: "record", oid: oid}, extra, tuple) when is_tuple(tuple),
     do: encode_record(tuple, oid, extra)
+  def encode(%TypeInfo{sender: "range", type: type}, _, tuple),
+    do: encode_range(type, tuple)
   def encode(%TypeInfo{}, _, _),
     do: nil
 
@@ -243,6 +249,10 @@ defmodule Postgrex.Types do
   defp binary_type?(_), do: false
 
   ### decode helpers ###
+
+  defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
+    decode_numeric(ndigits, weight, sign, scale, tail)
+  end
 
   defp decode_numeric(0, _weight, 0xC000, _scale, "") do
     Decimal.new(1, :qNaN, 0)
@@ -352,6 +362,76 @@ defmodule Postgrex.Types do
     default = &decode_binary(info, extra, &1)
     value = decode_value(info, :binary, decoder, default, elem)
     [ value | record_elements(num-1, rest, extra) ]
+  end
+
+  defp decode_range("numrange", _flags, <<len :: int32, lower_bound :: binary(len), len2 :: int32, upper_bound :: binary(len2)>>) do
+    {decode_numeric(lower_bound), decode_numeric(upper_bound)}
+  end
+
+  defp decode_range("numrange", flags, <<len :: int32, single_value :: binary(len)>>) do
+    case check_infinite(flags) do
+      :lower ->
+        {:"-inf", decode_numeric(single_value)}
+      :upper ->
+        {decode_numeric(single_value), :inf}
+    end
+  end
+
+  defp decode_range(type, _flags, <<_ :: int32, lower_bound :: int32, _ :: int32, upper_bound :: int32>>) do
+    case type do
+      "int4range" ->
+        {lower_bound, upper_bound - 1}
+      "daterange" ->
+        {decode_date(lower_bound), decode_date(upper_bound - 1)}
+    end
+  end
+
+  defp decode_range(type, flags, <<_ :: int32, single_value :: int32>>) do
+    case {type, check_infinite(flags)} do
+      {"int4range", :lower} ->
+        {:"-inf", single_value - 1}
+      {"daterange", :lower} ->
+        {:"-inf", decode_date(single_value - 1)}
+      {"int4range", :upper} ->
+        {single_value, :inf}
+      {"daterange", :upper} ->
+        {decode_date(single_value), :inf}
+    end
+  end
+
+  defp decode_range("int8range", _flags, <<_ :: int32, lower_bound :: int64, _ :: int32, upper_bound :: int64>>) do
+     {lower_bound, upper_bound - 1}
+  end
+
+  defp decode_range(type, _flags, <<_ :: int32, lower_bound :: int64, _ :: int32, upper_bound :: int64>>) when type in ["tsrange", "tstzrange"] do
+    {decode_timestamp(lower_bound), decode_timestamp(upper_bound)}
+  end
+
+  defp decode_range("int8range", flags, <<_ :: int32, single_value :: int64>>) do
+    case check_infinite(flags) do
+      :lower ->
+        {:"-inf", single_value - 1}
+      :upper ->
+        {single_value, :inf}
+    end
+  end
+
+  defp decode_range(type, flags, <<_ :: int32, single_value :: int64>>) when type in ["tsrange", "tstzrange"] do
+    case check_infinite(flags) do
+      :lower ->
+        {:"-inf", decode_timestamp(single_value)}
+      :upper ->
+        {decode_timestamp(single_value), :inf}
+    end
+  end
+
+  defp check_infinite(flags) do
+    cond do
+      (flags &&& 0x8)  != 0 ->
+        :lower
+      (flags &&& 0x10) != 0 ->
+        :upper
+    end
   end
 
   ### encode helpers ###
@@ -501,5 +581,58 @@ defmodule Postgrex.Types do
     end)
 
     [<<count :: int32>>, data]
+  end
+
+  defp encode_range("int4range", tuple) do
+    encode_range(tuple, &(<<&1 :: int32>>))
+  end
+
+  defp encode_range("int8range", tuple) do
+    encode_range(tuple, &(<<&1 :: int64>>))
+  end
+
+  defp encode_range(type, tuple) when type in ["tsrange", "tstzrange"] do
+    encode_range(tuple, &encode_timestamp/1)
+  end
+
+  defp encode_range("daterange", tuple) do
+    encode_range(tuple, &encode_date/1)
+  end
+
+  defp encode_range("numrange", tuple) do
+    encode_range(tuple, fn(bound) ->
+      [meta, bin] = encode_numeric(bound)
+      meta <> bin
+    end)
+  end
+
+  defp encode_range(tuple, fun) when is_function(fun) do
+    flag = range_flag(tuple)
+
+    case tuple do
+      {:"-inf", upper} ->
+        flag <> encode_bound(upper, fun)
+      {lower, :inf} ->
+        flag <> encode_bound(lower, fun)
+      {lower, upper} ->
+        flag <> encode_bound(lower, fun) <> encode_bound(upper, fun)
+    end
+  end
+
+  defp encode_bound(value, fun) do
+    bin = apply(fun, [value])
+    <<byte_size(bin) :: int32>> <> bin
+  end
+
+  defp range_flag({:"-inf", _upper}) do
+    <<@default_flag ||| 0x08>> # Set lower bound infinity flag
+  end
+
+  defp range_flag({_lower, :inf}) do
+    <<@default_flag ||| 0x10>> # Set upper bound infinity flag
+  end
+
+  defp range_flag({_lower, _upper}) do
+    <<@default_flag>> # Inclusive lower and upper bounds
   end
 end
