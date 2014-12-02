@@ -216,6 +216,18 @@ defmodule Postgrex.Protocol do
     {:ok, s}
   end
 
+  def message(_, msg_notify() = notify, %{listeners: listeners} = s) do
+    channel_name = msg_notify(notify, :channel)
+    if channel_listeners = HashDict.get(listeners, channel_name) do
+      Enum.each(channel_listeners, fn pid ->
+        if Process.alive?(pid) do
+          send(pid, {:notification, self(), notify})
+        end
+      end)
+    end
+    {:ok, s}
+  end
+
   ### helpers ###
 
   defp decode_rows(%{statement: %{row_info: info}, rows: rows, opts: opts}) do

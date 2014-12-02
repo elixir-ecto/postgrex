@@ -127,6 +127,43 @@ defmodule Postgrex.Connection do
     end
   end
 
+  @doc """
+  Listens to an asynchronous notification channel `channel`.
+  A message will be sent to the current process when a notification is
+  received.
+
+  This sends a LISTEN query to the server automatically.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+  """
+  def listen(pid, channel, opts \\ []) do
+    message = {:listen, channel, self(), opts}
+    timeout = opts[:timeout] || @timeout
+    case GenServer.call(pid, message, timeout) do
+      %Postgrex.Result{} -> :ok
+      %Postgrex.Error{} = err  -> raise err
+    end
+  end
+
+  @doc """
+  Unlistens a previously-listened notification channel `channel`.
+
+  This sends an UNLISTEN query to the server automatically.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+  """
+  def unlisten(pid, channel, opts \\ []) do
+    message = {:unlisten, channel, self(), opts}
+    timeout = opts[:timeout] || @timeout
+    case GenServer.call(pid, message, timeout) do
+      %Postgrex.Result{} -> :ok
+      %Postgrex.Error{} = err  -> raise err
+    end
+  end
 
   @doc """
   Returns a cached map of connection parameters.
@@ -295,7 +332,7 @@ defmodule Postgrex.Connection do
   def init([]) do
     {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
-            transactions: 0, queue: :queue.new, opts: nil}}
+            transactions: 0, queue: :queue.new, opts: nil, listeners: HashDict.new}}
   end
 
   @doc false
@@ -444,6 +481,26 @@ defmodule Postgrex.Connection do
     else
       Protocol.send_query(statement, s)
     end
+  end
+
+  defp command({:listen, channel, pid, _opts}, %{listeners: listeners} = s) do
+    # Subscribe `pid` to listen to `channel` notifications.
+    if channel_listeners = HashDict.get(listeners, channel) do
+      channel_listeners = HashSet.put(channel_listeners, pid)
+    else
+      channel_listeners = HashSet.new |> HashSet.put(pid)
+    end
+    s = %{s | listeners: HashDict.put(listeners, channel, channel_listeners) }
+    new_query("LISTEN #{channel}", [], s)
+  end
+
+  defp command({:unlisten, channel, pid, _opts}, %{listeners: listeners} = s) do
+    # Unsubscribe `pid` to listen to `channel` notifications.
+    if channel_listeners = HashDict.get(listeners, channel) do
+      channel_listeners = HashSet.delete(channel_listeners, pid)
+      s = %{s | listeners: HashDict.put(listeners, channel, channel_listeners) }
+    end
+    new_query("UNLISTEN #{channel}", [], s)
   end
 
   defp command({:begin, _opts}, %{transactions: trans} = s) do
