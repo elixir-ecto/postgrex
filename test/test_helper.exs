@@ -1,3 +1,11 @@
+exclude = if System.get_env("PGVERSION") == "8.4" do
+  [requires_notify_payload: true]
+else
+  []
+end
+
+ExUnit.configure exclude: exclude
+
 ExUnit.start
 
 {:ok, _} = :application.ensure_all_started(:crypto)

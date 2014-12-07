@@ -19,17 +19,13 @@ defmodule NotificationTest do
     assert :ok = query("NOTIFY channel", [])
   end
 
+  @tag requires_notify_payload: true
   test "listening, notify, then receive (with payload)", context do
-    # PostgreSQL 8.4 doesn't support notifications with payload.
-    if System.get_env("PGVERSION") == "8.4" do
-      assert 1==1
-    else
-      assert :ok = P.listen(context[:pid], "channel")
+    assert :ok = P.listen(context[:pid], "channel")
 
-      assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context[:pid2], "NOTIFY channel, 'hello'", [])
-      pid = context[:pid]
-      assert_receive {:notification, ^pid, {:msg_notify, _, "channel", "hello"}}, 1_000
-    end
+    assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context[:pid2], "NOTIFY channel, 'hello'", [])
+    pid = context[:pid]
+    assert_receive {:notification, ^pid, {:msg_notify, _, "channel", "hello"}}, 1_000
   end
 
   test "listening, notify, then receive (without payload)", context do
