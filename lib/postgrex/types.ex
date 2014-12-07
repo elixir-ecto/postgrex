@@ -7,7 +7,7 @@ defmodule Postgrex.Types do
   require Decimal
 
   @types ~w(bool bpchar text varchar bytea int2 int4 int8 float4 float8 numeric
-            date time timetz timestamp timestamptz interval)
+            date time timetz timestamp timestamptz interval json)
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
@@ -176,6 +176,8 @@ defmodule Postgrex.Types do
     do: decode_array(bin, extra)
   def decode_binary(%TypeInfo{sender: "record"}, extra, bin),
     do: decode_record(bin, extra)
+  def decode_binary(%TypeInfo{sender: "json"}, _, bin),
+    do: Poison.Parser.parse!(bin)
   def decode_binary(%TypeInfo{}, _, _),
     do: nil
 
@@ -234,6 +236,8 @@ defmodule Postgrex.Types do
     do: encode_array(list, oid, extra)
   def encode(%TypeInfo{sender: "record", oid: oid}, extra, tuple) when is_tuple(tuple),
     do: encode_record(tuple, oid, extra)
+  def encode(%TypeInfo{sender: "json"}, _, json),
+    do: Poison.Encoder.encode(json, [])
   def encode(%TypeInfo{}, _, _),
     do: nil
 

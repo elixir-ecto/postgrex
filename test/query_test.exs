@@ -152,6 +152,11 @@ defmodule QueryTest do
       query("SELECT $1::interval", [{14,40,10920}])
   end
 
+  @tag requires_json_datatype: true
+  test "encode / decode json", context do
+    assert [{%{"hello" => "there"}}] = query("SELECT $1::json", [%{"hello" => "there"}])
+  end
+
   test "encode arrays", context do
     assert [{[]}] = query("SELECT $1::integer[]", [[]])
     assert [{[1]}] = query("SELECT $1::integer[]", [[1]])
