@@ -1,3 +1,18 @@
+version_string = System.get_env("PGVERSION")
+if Regex.match?(~r/^\d.\d$/, version_string) do
+  version_string = version_string <> ".0"
+end
+{:ok, postgres_version} = Version.parse(version_string)
+
+# PostgreSQL JSON datatype was added in 9.2.
+exclude = if Version.match?(postgres_version, "< 9.2.0") do
+  [requires_json_datatype: true]
+else
+  []
+end
+
+ExUnit.configure exclude: exclude
+
 ExUnit.start
 
 {:ok, _} = :application.ensure_all_started(:crypto)
