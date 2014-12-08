@@ -220,9 +220,7 @@ defmodule Postgrex.Protocol do
     channel_name = msg_notify(notify, :channel)
     if channel_listeners = HashDict.get(listeners, channel_name) do
       Enum.each(channel_listeners, fn pid ->
-        if Process.alive?(pid) do
-          send(pid, {:notification, self(), notify})
-        end
+        send(pid, {:notification, self(), notify})
       end)
     end
     {:ok, s}
