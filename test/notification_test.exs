@@ -44,4 +44,13 @@ defmodule NotificationTest do
     pid = context[:pid]
     refute_receive {:notification, ^pid, {:msg_notify, _, "channel", ""}}, 1_000
   end
+
+  test "listen, go away", context do
+    spawn fn ->
+      assert :ok = P.listen(context[:pid], "channel")
+    end
+
+    assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context[:pid2], "NOTIFY channel", [])
+    :timer.sleep(300)
+  end
 end
