@@ -399,27 +399,19 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({:DOWN, monitor_ref, :process, _, _}, %{
-    listener_monitors: listener_monitors,
-    listener_pids: listener_pids,
-    listeners: listeners,
-    queue: queue} = s) do
-    if HashDict.has_key?(listener_monitors, monitor_ref) do
-      {pid, channel} = HashDict.get(listener_monitors, monitor_ref)
+  def handle_info({:DOWN, monitor_ref, :process, _, _}, s) do
+    if HashDict.has_key?(s.listener_monitors, monitor_ref) do
+      {pid, channel} = HashDict.get(s.listener_monitors, monitor_ref)
 
-      listener_monitors = HashDict.delete(listener_monitors, monitor_ref)
-      s = %{s | listener_monitors: listener_monitors }
+      s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
+      s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
 
-      listener_pids = HashDict.delete(listener_pids, {pid, channel})
-      s = %{s | listener_pids: listener_pids }
-
-      if channel_listeners = HashDict.get(listeners, channel) do
+      if channel_listeners = HashDict.get(s.listeners, channel) do
         channel_listeners = Enum.reject(channel_listeners, fn(list_pid) -> list_pid == pid end)
+        s = put_in(s.listeners[channel], channel_listeners)
       end
-      HashDict.put(listeners, channel, channel_listeners)
-      s = %{s | listeners: listeners}
 
-      queue = :queue.in({:query, {nil, nil}, nil}, queue)
+      queue = :queue.in({:query, {nil, nil}, nil}, s.queue)
       s = %{s | queue: queue}
 
       {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
@@ -513,52 +505,41 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp command({:listen, channel, pid, _opts}, %{ \
-    listeners: listeners,
-    listener_monitors: listener_monitors,
-    listener_pids: listener_pids} = s) do
+  defp command({:listen, channel, pid, _opts}, s) do
     # Subscribe `pid` to listen to `channel` notifications.
 
     # Don't monitor the process twice for the same channel.
-    unless HashDict.has_key?(listener_pids, {pid, channel}) do
-      # Monitor the interested PID, and put it in a reverse-lookup table.
-      monitor_ref = Process.monitor pid
-      listener_monitors = HashDict.put(listener_monitors, monitor_ref, {pid, channel})
-      s = %{s | listener_monitors: listener_monitors}
+    case HashDict.fetch(s.listener_pids, {pid, channel}) do
+      :error ->
+        monitor_ref = Process.monitor pid
 
-      listener_pids = HashDict.put(listener_pids, {pid, channel}, monitor_ref)
-      s = %{s | listener_pids: listener_pids}
+        s = put_in(s.listener_monitors[monitor_ref], {pid, channel})
+        s = put_in(s.listener_pids[{pid, channel}], monitor_ref)
+      {:ok, _} ->
     end
 
-    # Record the PID that is interested in this channel.
-    if channel_listeners = HashDict.get(listeners, channel) do
-      channel_listeners = HashSet.put(channel_listeners, pid)
-    else
-      channel_listeners = HashSet.new |> HashSet.put(pid)
+    channel_listeners = case HashDict.fetch(s.listeners, channel) do
+      {:ok, channel_listeners} ->
+        HashSet.put(channel_listeners, pid)
+      :error ->
+        HashSet.new |> HashSet.put(pid)
     end
-    s = %{s | listeners: HashDict.put(listeners, channel, channel_listeners) }
+    s = put_in(s.listeners[channel], channel_listeners)
+
     new_query("LISTEN #{channel}", [], s)
   end
 
-  defp command({:unlisten, channel, pid, _opts}, %{
-    listeners: listeners,
-    listener_monitors: listener_monitors,
-    listener_pids: listener_pids} = s) do
+  defp command({:unlisten, channel, pid, _opts}, s) do
     # Unsubscribe `pid` to listen to `channel` notifications.
-    if channel_listeners = HashDict.get(listeners, channel) do
-      channel_listeners = HashSet.delete(channel_listeners, pid)
-      s = %{s | listeners: HashDict.put(listeners, channel, channel_listeners) }
-    end
+    s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
 
-    if HashDict.has_key?(listener_pids, {pid, channel}) do
-      monitor_ref = HashDict.get(listener_pids, {pid, channel})
+    case HashDict.fetch(s.listener_pids, {pid, channel}) do
+      {:ok, monitor_ref} ->
+        Process.demonitor monitor_ref
 
-      Process.demonitor monitor_ref
-      listener_pids = HashDict.delete(listener_pids, {pid, channel})
-      s = %{s | listener_pids: listener_pids }
-
-      listener_monitors = HashDict.delete(listener_monitors, monitor_ref)
-      s = %{s | listener_monitors: listener_monitors}
+        s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
+        s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
+      :error ->
     end
     new_query("UNLISTEN #{channel}", [], s)
   end
