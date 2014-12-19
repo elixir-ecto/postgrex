@@ -31,6 +31,7 @@ defmodule Postgrex.Messages do
   defrecord :msg_parameter_desc, [:type_oids]
   defrecord :msg_row_desc, [:fields]
   defrecord :msg_no_data, []
+  defrecord :msg_notify, [:pg_pid, :channel, :payload]
   defrecord :msg_bind, [:name_port, :name_stat, :param_formats, :params,
                         :result_formats]
   defrecord :msg_execute, [:name_port, :max_rows]
@@ -139,6 +140,13 @@ defmodule Postgrex.Messages do
   def parse(?C, _size, rest) do
     {tag, ""} = decode_string(rest)
     msg_command_complete(tag: tag)
+  end
+
+  # notify
+  def parse(?A, _size, <<pg_pid :: int32, rest :: binary>>) do
+    {channel, rest} = decode_string(rest)
+    {payload, ""} = decode_string(rest)
+    msg_notify(pg_pid: pg_pid, channel: channel, payload: payload)
   end
 
   # empty_query
