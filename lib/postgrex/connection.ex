@@ -400,21 +400,22 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({:DOWN, monitor_ref, :process, _, _}, s) do
-    if HashDict.has_key?(s.listener_monitors, monitor_ref) do
-      {pid, channel} = HashDict.get(s.listener_monitors, monitor_ref)
+    case HashDict.fetch(s.listener_monitors, monitor_ref) do
+      {:ok, {pid, channel}} ->
 
-      s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
-      s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
+        s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
+        s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
+        s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
 
-      if channel_listeners = HashDict.get(s.listeners, channel) do
-        channel_listeners = Enum.reject(channel_listeners, fn(list_pid) -> list_pid == pid end)
-        s = put_in(s.listeners[channel], channel_listeners)
-      end
+        if HashSet.size(s.listeners[channel]) == 0 do
+          # There are no more listeners for this channel; we can send a
+          # UNLISTEN command now.
+          queue = :queue.in({:query, {nil, nil}, nil}, s.queue)
+          s = %{s | queue: queue}
 
-      queue = :queue.in({:query, {nil, nil}, nil}, s.queue)
-      s = %{s | queue: queue}
-
-      {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
+          {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
+        end
+      :error ->
     end
 
     {:noreply, s}
@@ -508,16 +509,6 @@ defmodule Postgrex.Connection do
   defp command({:listen, channel, pid, _opts}, s) do
     # Subscribe `pid` to listen to `channel` notifications.
 
-    # Don't monitor the process twice for the same channel.
-    case HashDict.fetch(s.listener_pids, {pid, channel}) do
-      :error ->
-        monitor_ref = Process.monitor pid
-
-        s = put_in(s.listener_monitors[monitor_ref], {pid, channel})
-        s = put_in(s.listener_pids[{pid, channel}], monitor_ref)
-      {:ok, _} ->
-    end
-
     channel_listeners = case HashDict.fetch(s.listeners, channel) do
       {:ok, channel_listeners} ->
         HashSet.put(channel_listeners, pid)
@@ -526,22 +517,39 @@ defmodule Postgrex.Connection do
     end
     s = put_in(s.listeners[channel], channel_listeners)
 
-    new_query("LISTEN #{channel}", [], s)
+    # Don't monitor the process twice for the same channel.
+    unless HashDict.has_key?(s.listener_pids, {pid, channel}) do
+      monitor_ref = Process.monitor pid
+
+      s = put_in(s.listener_monitors[monitor_ref], {pid, channel})
+      s = put_in(s.listener_pids[{pid, channel}], monitor_ref)
+
+      new_query("LISTEN #{channel}", [], s)
+    else
+      reply(%Postgrex.Result{command: :listen}, s)
+      {:ok, s}
+    end
   end
 
   defp command({:unlisten, channel, pid, _opts}, s) do
     # Unsubscribe `pid` to listen to `channel` notifications.
-    s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
+    if monitor_ref = HashDict.get(s.listener_pids, {pid, channel}) do
+      Process.demonitor monitor_ref
 
-    case HashDict.fetch(s.listener_pids, {pid, channel}) do
-      {:ok, monitor_ref} ->
-        Process.demonitor monitor_ref
+      s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
+      s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
+      s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
 
-        s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
-        s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
-      :error ->
+      if HashSet.size(s.listeners[channel]) == 0 do
+        new_query("UNLISTEN #{channel}", [], s)
+      else
+        reply(%Postgrex.Result{command: :unlisten}, s)
+        {:ok, s}
+      end
+    else
+      reply(%Postgrex.Result{command: :unlisten}, s)
+      {:ok, s}
     end
-    new_query("UNLISTEN #{channel}", [], s)
   end
 
   defp command({:begin, _opts}, %{transactions: trans} = s) do
