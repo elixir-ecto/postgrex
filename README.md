@@ -36,7 +36,7 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
   * User specified custom encoders and decoders
   * Nested transactions
-  * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2 and 9.3
+  * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, and 9.4
 
 ## Data representation
 
