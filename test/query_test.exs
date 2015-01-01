@@ -83,7 +83,7 @@ defmodule QueryTest do
     assert [{[{1, "2"}]}] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
-  @tag min_pg_version: 9.2
+  @tag min_pg_version: "9.2"
   test "decode range", context do
     assert [{{2,4}}] = query("SELECT '(1,5)'::int4range", [])
     assert [{{1,6}}] = query("SELECT '[1,6]'::int4range", [])
