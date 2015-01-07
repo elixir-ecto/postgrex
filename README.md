@@ -56,10 +56,17 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
     interval        { 14, 40, 10920 } **
     array           [ 1, 2, 3 ]
     composite type  { 42, "title", "content" }
+    int4range/      { 1, 5 } ***
+    int8range
+    daterange       { { 2014, 1, 1 }, { 2014, 12, 31 } }
+    tsrange/        { { { 2014, 1, 1}, { 0, 37, 14 } }, { { 2014, 12, 31 }, { 0, 37, 14 } } }
+    tstzrange
 
 \* [Decimal](http://github.com/ericmj/decimal)
 
 \*\* interval is encoded as `{ months, days, seconds }`.
+
+\*\*\* ranges expect and return the lower and upper bounds as inclusive (e.g., {1, 4} = 1, 2, 3, 4)
 
 ## Custom encoder and decoder example
 
