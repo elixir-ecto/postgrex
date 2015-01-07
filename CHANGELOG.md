@@ -1,5 +1,8 @@
 # v0.6.1-dev
 
+* Enhancements
+  * Add asynchronous notifications through `listen` and `unlisten`
+
 * Bug fixes
   * Fix encoding `nil` values in arrays and composite types
 
