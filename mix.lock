@@ -2,4 +2,6 @@
   "earmark": {:package, "0.1.10"},
   "ex_doc": {:package, "0.6.0"},
   "hoedown": {:git, "git://github.com/hoedown/hoedown.git", "0610117f44b173a4e2112afb2f510156a32355b5", []},
+  "inch_ex": {:package, "0.2.1"},
+  "json": {:package, "0.3.2"},
   "markdown": {:git, "git://github.com/devinus/markdown.git", "a428908a6dd88f351775d1d3da530a1a2aa0d6cb", []}}

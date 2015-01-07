@@ -23,6 +23,8 @@ before_script:
   - sudo service postgresql restart
 script:
   - mix test
+after_script:
+  - MIX_ENV=docs mix do deps.get, inch.report
 env:
   global:
     -PGUSER=postgres
