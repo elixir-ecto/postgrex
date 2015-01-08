@@ -128,40 +128,65 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Listens to an asynchronous notification channel `channel`.
-  A message will be sent to the current process when a notification is
-  received.
-
-  This sends a LISTEN query to the server automatically.
+  Listens to an asynchronous notification channel using the `LISTEN` command.
+  A message `{:notification, connection_pid, payload}` will be sent to the
+  calling process when a notification is received.
 
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
+  @spec listen(pid, String.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def listen(pid, channel, opts \\ []) do
     message = {:listen, channel, self(), opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{} -> :ok
-      %Postgrex.Error{} = err  -> raise err
+      %Postgrex.Result{}      -> :ok
+      %Postgrex.Error{} = err -> {:error, err}
     end
   end
 
   @doc """
-  Unlistens a previously-listened notification channel `channel`.
+  Listens to an asynchronous notification channel `channel`. See `listen/2`.
+  """
+  @spec listen!(pid, String.t, Keyword.t) :: :ok
+  def listen!(pid, channel, opts \\ []) do
+    message = {:listen, channel, self(), opts}
+    timeout = opts[:timeout] || @timeout
+    case GenServer.call(pid, message, timeout) do
+      %Postgrex.Result{}      -> :ok
+      %Postgrex.Error{} = err -> raise err
+    end
+  end
 
-  This sends an UNLISTEN query to the server automatically.
+  @doc """
+  Unlistens a notification channel `channel` for the calling process.
 
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
+  @spec unlisten(pid, String.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def unlisten(pid, channel, opts \\ []) do
     message = {:unlisten, channel, self(), opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{} -> :ok
-      %Postgrex.Error{} = err  -> raise err
+      %Postgrex.Result{}      -> :ok
+      %Postgrex.Error{} = err -> {:error, err}
+    end
+  end
+
+  @doc """
+  Unlistens a previously-listened notification channel `channel`. See
+  `unlisten/2`.
+  """
+  @spec unlisten!(pid, String.t, Keyword.t) :: :ok
+  def unlisten!(pid, channel, opts \\ []) do
+    message = {:unlisten, channel, self(), opts}
+    timeout = opts[:timeout] || @timeout
+    case GenServer.call(pid, message, timeout) do
+      %Postgrex.Result{}      -> :ok
+      %Postgrex.Error{} = err -> raise err
     end
   end
 
