@@ -21,6 +21,7 @@ defmodule CustomCoders do
   end
 
   defp formatter(%TypeInfo{sender: "float8"}), do: :text
+  defp formatter(%TypeInfo{sender: "uuid"}), do: :text
   defp formatter(%TypeInfo{}), do: nil
 
   setup do

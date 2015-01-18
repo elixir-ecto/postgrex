@@ -3,6 +3,7 @@
 * Enhancements
   * Add asynchronous notifications through `listen` and `unlisten`
   * Add support for range types
+  * Add support for uuid type
 
 * Bug fixes
   * Fix encoding `nil` values in arrays and composite types

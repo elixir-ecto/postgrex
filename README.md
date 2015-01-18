@@ -12,14 +12,14 @@ Add Postgrex as a dependency in your `mix.exs` file.
 
 ```elixir
 def deps do
-  [ { :postgrex, "~> 0.6" } ]
+  [{:postgrex, "~> 0.6"} ]
 end
 ```
 
 After you are done, run `mix deps.get` in your shell to fetch and compile Postgrex. Start an interactive Elixir shell with `iex -S mix`.
 
 ```iex
-iex> { :ok, pid } = Postgrex.Connection.start_link([hostname: "localhost", username: "postgres", password: "postgres", database: "postgres"])
+iex> {:ok, pid} = Postgrex.Connection.start_link([hostname: "localhost", username: "postgres", password: "postgres", database: "postgres"])
 {:ok, #PID<0.69.0>}
 iex> Postgrex.Connection.query(pid, "SELECT user_id, text FROM comments", [])
 {:ok,
@@ -48,23 +48,24 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
     int             42
     float           42.0
     text            "eric"
-    bytea           << 42 >>
+    bytea           <<42>>
     numeric         #Decimal<42.0> *
-    date            { 2013, 10, 12 }
-    time            { 0, 37, 14 }
-    timestamp(tz)   { { 2013, 10, 12 }, { 0, 37, 14 } }
-    interval        { 14, 40, 10920 } **
-    array           [ 1, 2, 3 ]
-    composite type  { 42, "title", "content" }
-    int4range/      { 1, 5 } ***
+    date            {2013, 10, 12}
+    time            {0, 37, 14}
+    timestamp(tz)   {{2013, 10, 12}, {0, 37, 14}}
+    interval        {14, 40, 10920} **
+    array           [1, 2, 3]
+    composite type  {42, "title", "content"}
+    int4range       {1, 5} ***
     int8range
-    daterange       { { 2014, 1, 1 }, { 2014, 12, 31 } }
-    tsrange/        { { { 2014, 1, 1}, { 0, 37, 14 } }, { { 2014, 12, 31 }, { 0, 37, 14 } } }
+    daterange       {{2014, 1, 1}, {2014, 12, 31}}
+    tsrange         {{{2014, 1, 1}, {0, 37, 14}}, {{2014, 12, 31}, {0, 37, 14}}}
     tstzrange
+    uuid            <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
 
 \* [Decimal](http://github.com/ericmj/decimal)
 
-\*\* interval is encoded as `{ months, days, seconds }`.
+\*\* interval is encoded as `{months, days, seconds}`.
 
 \*\*\* ranges expect and return the lower and upper bounds as inclusive (e.g., {1, 4} = 1, 2, 3, 4)
 

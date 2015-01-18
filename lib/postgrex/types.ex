@@ -8,7 +8,7 @@ defmodule Postgrex.Types do
   use Bitwise, only_operators: true
 
   @types ~w(bool bpchar text varchar bytea int2 int4 int8 float4 float8 numeric
-            date time timetz timestamp timestamptz interval range)
+            uuid date time timetz timestamp timestamptz interval range)
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
@@ -162,6 +162,8 @@ defmodule Postgrex.Types do
     do: n
   def decode_binary(%TypeInfo{sender: "numeric"}, _, bin),
     do: decode_numeric(bin)
+  def decode_binary(%TypeInfo{sender: "uuid"}, _, bin),
+    do: bin
   def decode_binary(%TypeInfo{sender: "date"}, _, <<n :: int32>>),
     do: decode_date(n)
   def decode_binary(%TypeInfo{sender: "time"}, _, <<n :: int64>>),
@@ -224,6 +226,8 @@ defmodule Postgrex.Types do
     do: <<n :: float64>>
   def encode(%TypeInfo{sender: "numeric"}, _, n),
     do: encode_numeric(n)
+  def encode(%TypeInfo{sender: "uuid"}, _, <<_ :: binary(16)>> = bin),
+    do: bin
   def encode(%TypeInfo{sender: "date"}, _, date),
     do: encode_date(date)
   def encode(%TypeInfo{sender: "time"}, _, time),

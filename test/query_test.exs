@@ -43,6 +43,11 @@ defmodule QueryTest do
     assert [{Decimal.new("NaN")}] == query("SELECT 'NaN'::numeric", [])
   end
 
+  test "decode uuid", context do
+    uuid = <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
+    assert [{^uuid}] = query("SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid", [])
+  end
+
   test "decode arrays", context do
     assert [{[]}] = query("SELECT ARRAY[]::integer[]", [])
     assert [{[1]}] = query("SELECT ARRAY[1]", [])
@@ -147,6 +152,11 @@ defmodule QueryTest do
       dec = Decimal.new(num)
       assert [{dec}] == query("SELECT $1::numeric", [dec])
     end)
+  end
+
+  test "encode uuid", context do
+    uuid = <<0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15>>
+    assert [{^uuid}] = query("SELECT $1::uuid", [uuid])
   end
 
   test "encode date", context do

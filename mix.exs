@@ -11,7 +11,7 @@ defmodule Postgrex.Mixfile do
      source_url: "https://github.com/ericmj/postgrex",
      docs: fn ->
        {ref, 0} = System.cmd("git", ["rev-parse", "--verify", "--quiet", "HEAD"])
-       [source_ref: ref, main: "README", readme: true]
+       [source_ref: ref, main: "README", readme: "README.md"]
      end,
      description: description,
      package: package]
