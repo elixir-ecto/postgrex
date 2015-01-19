@@ -9,11 +9,8 @@ defmodule Postgrex.Utils do
     do: [<<IO.iodata_length(param) :: int32>>, param]
 
   def error(error, s) do
-    if reply(error, s) do
-      {:stop, :normal, s}
-    else
-      {:stop, error, s}
-    end
+    reply(error, s)
+    {:stop, error, s}
   end
 
   def reply(reply, %{queue: queue}) do

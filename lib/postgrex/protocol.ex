@@ -11,7 +11,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         {:noreply, %{s | state: :ssl}}
       {:error, reason} ->
-        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
+        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
     end
   end
 
@@ -22,7 +22,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         {:noreply, %{s | state: :auth}}
       {:error, reason} ->
-        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
+        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
     end
   end
 

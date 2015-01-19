@@ -235,10 +235,13 @@ defmodule Postgrex.Connection do
     timeout   = opts[:timeout] || @timeout
     sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
 
+    queue = :queue.in({{:connect, opts}, from}, queue)
+    s = %{s | opts: opts, queue: queue}
+
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
-        queue = :queue.in({{:connect, opts}, from}, queue)
-        s = %{s | opts: opts, sock: {:gen_tcp, sock}, queue: queue}
+        s = put_in s.sock, {:gen_tcp, sock}
+
         if opts[:ssl] do
           Protocol.startup_ssl(s)
         else
@@ -246,7 +249,7 @@ defmodule Postgrex.Connection do
         end
 
       {:error, reason} ->
-        {:stop, :normal, %Postgrex.Error{message: "tcp connect: #{reason}"}, s}
+        error(%Postgrex.Error{message: "tcp connect: #{reason}"}, s)
     end
   end
 
@@ -299,13 +302,11 @@ defmodule Postgrex.Connection do
             :ssl.setopts(ssl_sock, active: :once)
             Protocol.startup(%{s | sock: {:ssl, ssl_sock}})
           {:error, reason} ->
-            reply(%Postgrex.Error{message: "ssl negotiation failed: #{reason}"}, s)
-            {:stop, :normal, s}
+            error(%Postgrex.Error{message: "ssl negotiation failed: #{reason}"}, s)
         end
 
       <<?N>> ->
-        reply(%Postgrex.Error{message: "ssl not available"}, s)
-        {:stop, :normal, s}
+        error(%Postgrex.Error{message: "ssl not available"}, s)
     end
   end
 
