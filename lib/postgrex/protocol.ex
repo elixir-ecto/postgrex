@@ -11,7 +11,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         {:noreply, %{s | state: :ssl}}
       {:error, reason} ->
-        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
+        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
     end
   end
 
@@ -22,7 +22,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         {:noreply, %{s | state: :auth}}
       {:error, reason} ->
-        {:stop, :normal, %Postgrex.Error{message: "tcp send: #{reason}"}, s}
+        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
     end
   end
 
@@ -276,7 +276,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp encode_params(%{queue: queue, portal: param_oids, types: {oids, _}, opts: opts}) do
-    {{:query, _statement, params, _}, _from, _timer} = :queue.get(queue)
+    {{:query, _statement, params, _}, _from} = :queue.get(queue)
     zipped = Enum.zip(param_oids, params)
     extra = {oids, opts[:encoder], opts[:formatter]}
 

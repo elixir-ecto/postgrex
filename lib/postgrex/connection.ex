@@ -27,7 +27,7 @@ defmodule Postgrex.Connection do
     * `:decoder` - Custom decoder function;
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
-    * `:connect_timeout` - Connect timeout in milliseconds (default: 5000);
+    * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
 
@@ -43,13 +43,13 @@ defmodule Postgrex.Connection do
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
     opts = opts
-      |> Dict.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
-      |> Dict.put_new(:password, System.get_env("PGPASSWORD"))
-      |> Dict.put_new(:hostname, System.get_env("PGHOST") || "localhost")
+      |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
+      |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
+      |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
       |> Enum.reject(fn {_k,v} -> is_nil(v) end)
     case GenServer.start_link(__MODULE__, []) do
       {:ok, pid} ->
-        timeout = opts[:connect_timeout] || @timeout
+        timeout = opts[:timeout] || @timeout
         case GenServer.call(pid, {:connect, opts}, timeout) do
           :ok -> {:ok, pid}
           err -> {:error, err}
@@ -229,16 +229,19 @@ defmodule Postgrex.Connection do
   end
 
   def handle_call({:connect, opts}, from, %{queue: queue} = s) do
-    host      = opts[:hostname] || System.get_env("PGHOST")
+    host      = Keyword.fetch!(opts, :hostname)
     host      = if is_binary(host), do: String.to_char_list(host), else: host
     port      = opts[:port] || 5432
-    timeout   = opts[:connect_timeout] || @timeout
+    timeout   = opts[:timeout] || @timeout
     sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
+
+    queue = :queue.in({{:connect, opts}, from}, queue)
+    s = %{s | opts: opts, queue: queue}
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
-        queue = :queue.in({{:connect, opts}, from, nil}, queue)
-        s = %{s | opts: opts, sock: {:gen_tcp, sock}, queue: queue}
+        s = put_in s.sock, {:gen_tcp, sock}
+
         if opts[:ssl] do
           Protocol.startup_ssl(s)
         else
@@ -246,7 +249,7 @@ defmodule Postgrex.Connection do
         end
 
       {:error, reason} ->
-        {:stop, :normal, %Postgrex.Error{message: "tcp connect: #{reason}"}, s}
+        error(%Postgrex.Error{message: "tcp connect: #{reason}"}, s)
     end
   end
 
@@ -254,16 +257,8 @@ defmodule Postgrex.Connection do
     {:reply, params, s}
   end
 
-  def handle_call(command, from, %{state: state, queue: queue} = s) do
-    # Assume last element in tuple is the options
-    timeout = elem(command, tuple_size(command)-1)[:timeout] || @timeout
-
-    unless timeout == :infinity do
-      timer_ref = :erlang.start_timer(timeout, self(), :command)
-    end
-
-    queue = :queue.in({command, from, timer_ref}, queue)
-    s = %{s | queue: queue}
+  def handle_call(command, from, %{state: state} = s) do
+    s = update_in s.queue, &:queue.in({command, from}, &1)
 
     if state == :ready do
       case next(s) do
@@ -276,39 +271,27 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({:DOWN, monitor_ref, :process, _, _}, s) do
-    case HashDict.fetch(s.listener_monitors, monitor_ref) do
-      {:ok, {pid, channel}} ->
+    state =
+      case HashDict.fetch(s.listener_monitors, monitor_ref) do
+        {:ok, {pid, channel}} ->
+          s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
+          s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
+          s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
 
-        s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
-        s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
-        s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
+          if HashSet.size(s.listeners[channel]) == 0 do
+            # There are no more listeners for this channel
+            # we can send a UNLISTEN command now.
+            s = update_in(s.queue, &:queue.in({:query, {nil, nil}}, &1))
+            {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
+            update_in(s.listeners, &HashDict.delete(&1, channel))
+          else
+            s
+          end
+        :error ->
+          s
+      end
 
-        if HashSet.size(s.listeners[channel]) == 0 do
-          # There are no more listeners for this channel; we can send a
-          # UNLISTEN command now.
-          queue = :queue.in({:query, {nil, nil}, nil}, s.queue)
-          s = %{s | queue: queue}
-
-          {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
-        end
-      :error ->
-    end
-
-    {:noreply, s}
-  end
-
-  @doc false
-  def handle_info({:timeout, timer_ref, :command}, %{queue: queue} = s) do
-    {first, second} = queue
-
-    command = Enum.find(first, &(elem(&1, 2) == timer_ref))
-              || Enum.find(second, &(elem(&1, 2) == timer_ref))
-
-    if command do
-      {:stop, :normal, s}
-    else
-      {:noreply, s}
-    end
+    {:noreply, state}
   end
 
   def handle_info({:tcp, _, data}, %{sock: {:gen_tcp, sock}, opts: opts, state: :ssl} = s) do
@@ -319,13 +302,11 @@ defmodule Postgrex.Connection do
             :ssl.setopts(ssl_sock, active: :once)
             Protocol.startup(%{s | sock: {:ssl, ssl_sock}})
           {:error, reason} ->
-            reply(%Postgrex.Error{message: "ssl negotiation failed: #{reason}"}, s)
-            {:stop, :normal, s}
+            error(%Postgrex.Error{message: "ssl negotiation failed: #{reason}"}, s)
         end
 
       <<?N>> ->
-        reply(%Postgrex.Error{message: "ssl not available"}, s)
-        {:stop, :normal, s}
+        error(%Postgrex.Error{message: "ssl not available"}, s)
     end
   end
 
@@ -354,15 +335,15 @@ defmodule Postgrex.Connection do
   @doc false
   def new_query(statement, params, %{queue: queue} = s) do
     command = {:query, statement, params, []}
-    {{:value, {_command, from, timer}}, queue} = :queue.out(queue)
-    queue = :queue.in_r({command, from, timer}, queue)
+    {{:value, {_command, from}}, queue} = :queue.out(queue)
+    queue = :queue.in_r({command, from}, queue)
     command(command, %{s | queue: queue})
   end
 
   @doc false
   def next(%{queue: queue} = s) do
     case :queue.out(queue) do
-      {{:value, {command, _from, _timer}}, _queue} ->
+      {{:value, {command, _from}}, _queue} ->
         command(command, s)
       {:empty, _queue} ->
         {:ok, s}
@@ -391,6 +372,7 @@ defmodule Postgrex.Connection do
       :error ->
         HashSet.new |> HashSet.put(pid)
     end
+
     s = put_in(s.listeners[channel], channel_listeners)
 
     # Don't monitor the process twice for the same channel.
@@ -417,6 +399,7 @@ defmodule Postgrex.Connection do
       s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
 
       if HashSet.size(s.listeners[channel]) == 0 do
+        s = update_in(s.listeners, &HashDict.delete(&1, channel))
         new_query("UNLISTEN #{channel}", [], s)
       else
         reply(%Postgrex.Result{command: :unlisten}, s)
