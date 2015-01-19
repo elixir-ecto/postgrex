@@ -129,63 +129,66 @@ defmodule Postgrex.Connection do
 
   @doc """
   Listens to an asynchronous notification channel using the `LISTEN` command.
-  A message `{:notification, connection_pid, payload}` will be sent to the
-  calling process when a notification is received.
+  A message `{:notification, connection_pid, ref, channel, payload}` will be
+  sent to the calling process when a notification is received.
 
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec listen(pid, String.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  @spec listen(pid, String.t, Keyword.t) :: {:ok, reference} | {:error, Postgrex.Error.t}
   def listen(pid, channel, opts \\ []) do
     message = {:listen, channel, self(), opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{}      -> :ok
-      %Postgrex.Error{} = err -> {:error, err}
+      ref when is_reference(ref)  -> {:ok, ref}
+      %Postgrex.Error{} = err     -> {:error, err}
     end
   end
 
   @doc """
   Listens to an asynchronous notification channel `channel`. See `listen/2`.
   """
-  @spec listen!(pid, String.t, Keyword.t) :: :ok
+  @spec listen!(pid, String.t, Keyword.t) :: reference
   def listen!(pid, channel, opts \\ []) do
     message = {:listen, channel, self(), opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{}      -> :ok
-      %Postgrex.Error{} = err -> raise err
+      ref when is_reference(ref)  -> ref
+      %Postgrex.Error{} = err     -> raise err
     end
   end
 
   @doc """
-  Unlistens a notification channel `channel` for the calling process.
+  Stops listening on the given channel by passing the reference returned from
+  `listen/2`.
 
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec unlisten(pid, String.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
-  def unlisten(pid, channel, opts \\ []) do
-    message = {:unlisten, channel, self(), opts}
+  @spec unlisten(pid, reference, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  def unlisten(pid, ref, opts \\ []) do
+    message = {:unlisten, ref, opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{}      -> :ok
+      :ok -> :ok
+      %ArgumentError{} = err -> raise err
       %Postgrex.Error{} = err -> {:error, err}
     end
   end
 
   @doc """
-  Unlistens a previously-listened notification channel `channel`. See
-  `unlisten/2`.
+  Stops listening on the given channel by passing the reference returned from
+  `listen/2`.
   """
-  @spec unlisten!(pid, String.t, Keyword.t) :: :ok
-  def unlisten!(pid, channel, opts \\ []) do
-    message = {:unlisten, channel, self(), opts}
+  @spec unlisten!(pid, reference, Keyword.t) :: :ok
+  def unlisten!(pid, ref, opts \\ []) do
+    message = {:unlisten, ref, opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{}      -> :ok
+      :ok -> :ok
+      %ArgumentError{} = err -> raise err
       %Postgrex.Error{} = err -> raise err
     end
   end
@@ -209,7 +212,7 @@ defmodule Postgrex.Connection do
     {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
             queue: :queue.new, opts: nil, listeners: HashDict.new,
-            listener_monitors: HashDict.new, listener_pids: HashDict.new}}
+            listener_channels: HashDict.new}}
   end
 
   @doc false
@@ -235,7 +238,8 @@ defmodule Postgrex.Connection do
     timeout   = opts[:timeout] || @timeout
     sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
 
-    queue = :queue.in({{:connect, opts}, from}, queue)
+    command = new_command({:connect, opts}, from)
+    queue = :queue.in(command, queue)
     s = %{s | opts: opts, queue: queue}
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
@@ -258,7 +262,8 @@ defmodule Postgrex.Connection do
   end
 
   def handle_call(command, from, %{state: state} = s) do
-    s = update_in s.queue, &:queue.in({command, from}, &1)
+    command = new_command(command, from)
+    s = update_in(s.queue, &:queue.in(command, &1))
 
     if state == :ready do
       case next(s) do
@@ -272,20 +277,18 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_info({:DOWN, monitor_ref, :process, _, _}, s) do
-    state =
-      case HashDict.fetch(s.listener_monitors, monitor_ref) do
-        {:ok, {pid, channel}} ->
-          s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
-          s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
-          s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
+  def handle_info({:DOWN, ref, :process, _, _}, s) do
+    s =
+      case HashDict.fetch(s.listeners, ref) do
+        {:ok, {channel, _pid}} ->
+          s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+          s = update_in(s.listeners, &HashDict.delete(&1, ref))
 
-          if HashSet.size(s.listeners[channel]) == 0 do
-            # There are no more listeners for this channel
-            # we can send a UNLISTEN command now.
-            s = update_in(s.queue, &:queue.in({:query, {nil, nil}}, &1))
+          if HashSet.size(s.listener_channels[channel]) == 0 do
+            s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
+            s = add_dummy_command(s)
             {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
-            update_in(s.listeners, &HashDict.delete(&1, channel))
+            s
           else
             s
           end
@@ -293,7 +296,7 @@ defmodule Postgrex.Connection do
           s
       end
 
-    {:noreply, state}
+    {:noreply, s}
   end
 
   def handle_info({:tcp, _, data}, %{sock: {:gen_tcp, sock}, opts: opts, state: :ssl} = s) do
@@ -336,16 +339,18 @@ defmodule Postgrex.Connection do
 
   @doc false
   def new_query(statement, params, %{queue: queue} = s) do
-    command = {:query, statement, params, []}
-    {{:value, {_command, from}}, queue} = :queue.out(queue)
-    queue = :queue.in_r({command, from}, queue)
-    command(command, %{s | queue: queue})
+    {{:value, command}, queue} = :queue.out(queue)
+    new_command = {:query, statement, params, []}
+    command = %{command | command: new_command}
+
+    queue = :queue.in_r(command, queue)
+    command(new_command, %{s | queue: queue})
   end
 
   @doc false
   def next(%{queue: queue} = s) do
     case :queue.out(queue) do
-      {{:value, {command, _from}}, _queue} ->
+      {{:value, %{command: command}}, _queue} ->
         command(command, s)
       {:empty, _queue} ->
         {:ok, s}
@@ -366,50 +371,39 @@ defmodule Postgrex.Connection do
   end
 
   defp command({:listen, channel, pid, _opts}, s) do
-    # Subscribe `pid` to listen to `channel` notifications.
+    ref = Process.monitor(pid)
+    s = update_in(s.listeners, &HashDict.put(&1, ref, {channel, pid}))
+    s = update_in(s.listener_channels[channel], fn set ->
+      (set || HashSet.new) |> HashSet.put(ref)
+    end)
 
-    channel_listeners = case HashDict.fetch(s.listeners, channel) do
-      {:ok, channel_listeners} ->
-        HashSet.put(channel_listeners, pid)
-      :error ->
-        HashSet.new |> HashSet.put(pid)
-    end
-
-    s = put_in(s.listeners[channel], channel_listeners)
-
-    # Don't monitor the process twice for the same channel.
-    unless HashDict.has_key?(s.listener_pids, {pid, channel}) do
-      monitor_ref = Process.monitor pid
-
-      s = put_in(s.listener_monitors[monitor_ref], {pid, channel})
-      s = put_in(s.listener_pids[{pid, channel}], monitor_ref)
-
+    if HashSet.size(s.listener_channels[channel]) == 1 do
+      s = add_reply_to_queue(ref, s)
       new_query("LISTEN #{channel}", [], s)
     else
-      reply(%Postgrex.Result{command: :listen}, s)
+      reply(ref, s)
       {:ok, s}
     end
   end
 
-  defp command({:unlisten, channel, pid, _opts}, s) do
-    # Unsubscribe `pid` to listen to `channel` notifications.
-    if monitor_ref = HashDict.get(s.listener_pids, {pid, channel}) do
-      Process.demonitor monitor_ref
+  defp command({:unlisten, ref, _opts}, s) do
+    case HashDict.fetch(s.listeners, ref) do
+      {:ok, {channel, _pid}} ->
+        s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+        s = update_in(s.listeners, &HashDict.delete(&1, ref))
 
-      s = update_in(s.listener_pids, &HashDict.delete(&1, {pid, channel}))
-      s = update_in(s.listener_monitors, &HashDict.delete(&1, monitor_ref))
-      s = update_in(s.listeners[channel], &HashSet.delete(&1, pid))
+        if HashSet.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
+          s = add_reply_to_queue(:ok, s)
+          new_query("UNLISTEN #{channel}", [], s)
+        else
+          reply(:ok, s)
+          {:ok, s}
+        end
 
-      if HashSet.size(s.listeners[channel]) == 0 do
-        s = update_in(s.listeners, &HashDict.delete(&1, channel))
-        new_query("UNLISTEN #{channel}", [], s)
-      else
-        reply(%Postgrex.Result{command: :unlisten}, s)
+      :error ->
+        reply(%ArgumentError{}, s)
         {:ok, s}
-      end
-    else
-      reply(%Postgrex.Result{command: :unlisten}, s)
-      {:ok, s}
     end
   end
 
@@ -430,5 +424,20 @@ defmodule Postgrex.Connection do
 
   defp new_data(data, %{tail: tail} = s) do
     {:ok, %{s | tail: tail <> data}}
+  end
+
+  defp add_dummy_command(s) do
+    command = new_command(:DUMMY, nil)
+    %{s | queue: :queue.in_r(command, s.queue)}
+  end
+
+  defp add_reply_to_queue(reply, %{queue: queue} = s) do
+    {{:value, command}, queue} = :queue.out(queue)
+    command = %{command | reply: {:reply, reply}}
+    %{s | queue: :queue.in_r(command, queue)}
+  end
+
+  defp new_command(command, from) do
+    %{command: command, from: from, reply: :no_reply}
   end
 end

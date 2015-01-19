@@ -174,14 +174,14 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | rows: [], bootstrap: false, types: types}}
   end
 
-  def message(:executing, msg_command_complete(tag: tag), %{statement: stat} = s) do
+  def message(:executing, msg_command_complete(tag: tag), s) do
     reply =
-      if is_nil(stat) do
+      if is_nil(s.statement) do
         create_result(tag)
       else
         try do
           result = decode_rows(s)
-          %{columns: cols} = stat
+          %{columns: cols} = s.statement
           create_result(tag, result, cols)
         catch
           {:postgrex_decode, msg} ->
@@ -220,13 +220,12 @@ defmodule Postgrex.Protocol do
     {:ok, s}
   end
 
-  def message(_, msg_notify() = notify, %{listeners: listeners} = s) do
-    channel_name = msg_notify(notify, :channel)
-    if channel_listeners = HashDict.get(listeners, channel_name) do
-      Enum.each(channel_listeners, fn pid ->
-        send(pid, {:notification, self(), notify})
-      end)
-    end
+  def message(_, msg_notify(channel: channel, payload: payload), s) do
+    refs = HashDict.get(s.listener_channels, channel) || []
+    Enum.each(refs, fn ref ->
+      {_channel, pid} = s.listeners[ref]
+      send(pid, {:notification, self(), ref, channel, payload})
+    end)
     {:ok, s}
   end
 
@@ -247,7 +246,7 @@ defmodule Postgrex.Protocol do
       end)
 
       row = Enum.reverse(row) |> List.to_tuple
-      [ row | acc ]
+      [row | acc]
     end)
   end
 
@@ -280,7 +279,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp encode_params(%{queue: queue, portal: param_oids, types: {oids, _}, opts: opts}) do
-    {{:query, _statement, params, _}, _from} = :queue.get(queue)
+    %{command: {:query, _statement, params, _opts}} = :queue.get(queue)
     zipped = Enum.zip(param_oids, params)
     extra = {oids, opts[:encoder], opts[:formatter]}
 

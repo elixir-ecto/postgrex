@@ -15,11 +15,16 @@ defmodule Postgrex.Utils do
 
   def reply(reply, %{queue: queue}) do
     case :queue.out(queue) do
-      {{:value, {_command, from}}, _queue} ->
-        GenServer.reply(from, reply)
-        true
       {:empty, _queue} ->
         false
+      {{:value, %{from: nil}}, _queue} ->
+        false
+      {{:value, %{reply: :no_reply, from: from}}, _queue} ->
+        GenServer.reply(from, reply)
+        true
+      {{:value, %{reply: {:reply, reply}, from: from}}, _queue} ->
+        GenServer.reply(from, reply)
+        true
     end
   end
 
