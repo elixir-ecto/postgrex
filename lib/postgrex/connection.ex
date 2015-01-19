@@ -27,7 +27,7 @@ defmodule Postgrex.Connection do
     * `:decoder` - Custom decoder function;
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
-    * `:connect_timeout` - Connect timeout in milliseconds (default: 5000);
+    * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
 
@@ -49,7 +49,7 @@ defmodule Postgrex.Connection do
       |> Enum.reject(fn {_k,v} -> is_nil(v) end)
     case GenServer.start_link(__MODULE__, []) do
       {:ok, pid} ->
-        timeout = opts[:connect_timeout] || @timeout
+        timeout = opts[:timeout] || @timeout
         case GenServer.call(pid, {:connect, opts}, timeout) do
           :ok -> {:ok, pid}
           err -> {:error, err}
@@ -229,10 +229,10 @@ defmodule Postgrex.Connection do
   end
 
   def handle_call({:connect, opts}, from, %{queue: queue} = s) do
-    host      = opts[:hostname] || System.get_env("PGHOST")
+    host      = Keyword.fetch!(opts, :hostname)
     host      = if is_binary(host), do: String.to_char_list(host), else: host
     port      = opts[:port] || 5432
-    timeout   = opts[:connect_timeout] || @timeout
+    timeout   = opts[:timeout] || @timeout
     sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
