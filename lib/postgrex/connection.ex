@@ -262,8 +262,12 @@ defmodule Postgrex.Connection do
 
     if state == :ready do
       case next(s) do
-        {:ok, s} -> {:noreply, s}
-        {:error, error, s} -> error(error, s)
+        {:ok, s} ->
+          {:noreply, s}
+        {:soft_error, error, s} ->
+          {:reply, error, s}
+        {:error, error, s} ->
+          error(error, s)
       end
     else
       {:noreply, s}

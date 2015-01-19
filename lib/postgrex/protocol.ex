@@ -351,7 +351,7 @@ defmodule Postgrex.Protocol do
 
     case result do
       {oids,  nil}    -> {:ok, oids}
-      {_oids, reason} -> {:error, %Postgrex.Error{message: reason}, s}
+      {_oids, reason} -> {:soft_error, %Postgrex.Error{message: reason}, s}
     end
   end
 
