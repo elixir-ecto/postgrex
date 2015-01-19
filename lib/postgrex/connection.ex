@@ -264,8 +264,6 @@ defmodule Postgrex.Connection do
       case next(s) do
         {:ok, s} ->
           {:noreply, s}
-        {:soft_error, error, s} ->
-          {:reply, error, s}
         {:error, error, s} ->
           error(error, s)
       end

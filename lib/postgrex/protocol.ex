@@ -59,11 +59,15 @@ defmodule Postgrex.Protocol do
               err ->
                 err
             end
-          err ->
-            err
+
+          {:error, error, s} ->
+            reply(error, s)
+            {:ok, s}
         end
-      err ->
-        err
+
+      {:error, error, s} ->
+        reply(error, s)
+        {:ok, s}
     end
   end
 
@@ -351,7 +355,7 @@ defmodule Postgrex.Protocol do
 
     case result do
       {oids,  nil}    -> {:ok, oids}
-      {_oids, reason} -> {:soft_error, %Postgrex.Error{message: reason}, s}
+      {_oids, reason} -> {:error, %Postgrex.Error{message: reason}, s}
     end
   end
 
