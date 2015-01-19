@@ -6,7 +6,9 @@ end
 
 version_exclusions = case System.get_env("PGVERSION") do
   v when is_binary(v) ->
-    Enum.filter(["8.4", "9.0", "9.1", "9.2", "9.3", "9.4"], fn x -> x > v end) |> Enum.map(&{:min_pg_version, &1})
+    ["8.4", "9.0", "9.1", "9.2", "9.3", "9.4"]
+    |> Enum.filter(fn x -> x > v end)
+    |> Enum.map(&{:min_pg_version, &1})
   _ ->
     []
 end
@@ -14,7 +16,6 @@ end
 ExUnit.configure exclude: version_exclusions ++ exclude
 
 ExUnit.start
-
 {:ok, _} = :application.ensure_all_started(:crypto)
 
 run_cmd = fn cmd ->
@@ -44,9 +45,9 @@ CREATE TABLE composite2 (a int, b int, c int);
 """
 
 cmds = [
-  ~s(psql -c "DROP DATABASE IF EXISTS postgrex_test;"),
-  ~s(psql -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
-  ~s(psql -d postgrex_test -c "#{sql}")
+  ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test;"),
+  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
+  ~s(psql -U postgres -d postgrex_test -c "#{sql}")
 ]
 
 Enum.each(cmds, fn cmd ->
@@ -54,14 +55,18 @@ Enum.each(cmds, fn cmd ->
 
   if status != 0 do
     IO.puts """
-    Test setup command error'd with:
+    Command:
+
+    #{cmd}
+
+    error'd with:
 
     #{output}
 
     Please verify the user "postgres" exists and it has permissions to
     create databases and users. If not, you can create a new user with:
 
-    $ createuser postgres --no-password -d
+    $ createuser postgres -d -r --no-password
     """
     System.halt(1)
   end
