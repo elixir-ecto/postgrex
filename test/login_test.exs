@@ -36,6 +36,7 @@ defmodule LoginTest do
     end
   end
 
+  @tag :ssl
   test "ssl" do
     opts = [ hostname: "localhost", username: "postgres",
              password: "postgres", database: "postgrex_test",
