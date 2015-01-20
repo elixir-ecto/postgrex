@@ -1,4 +1,4 @@
-# v0.6.1-dev
+# v0.7.0 (2015-01-20)
 
 * Enhancements
   * Add asynchronous notifications through `listen` and `unlisten`
