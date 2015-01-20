@@ -25,6 +25,7 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid2, "NOTIFY channel, 'hello'", [])
     pid = context.pid
+    ref = ref
     assert_receive {:notification, ^pid, ^ref, "channel", "hello"}, 1_000
   end
 
@@ -33,6 +34,7 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid2, "NOTIFY channel", [])
     pid = context.pid
+    ref = ref
     assert_receive {:notification, ^pid, ^ref, "channel", ""}, 1_000
   end
 
@@ -53,6 +55,7 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid2, "NOTIFY channel", [])
     pid = context.pid
+    ref1 = ref1
     assert_receive {:notification, ^pid, ^ref1, "channel", ""}, 1_000
   end
 
