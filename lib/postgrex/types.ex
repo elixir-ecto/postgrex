@@ -7,7 +7,7 @@ defmodule Postgrex.Types do
   require Decimal
   use Bitwise, only_operators: true
 
-  @types ~w(bool bpchar text varchar bytea int2 int4 int8 float4 float8 numeric
+  @types ~w(bool bpchar text varchar citext bytea int2 int4 int8 float4 float8 numeric
             uuid date time timetz timestamp timestamptz interval range)
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
@@ -136,6 +136,8 @@ defmodule Postgrex.Types do
     do: bin
   def decode_binary(%TypeInfo{sender: "varchar"}, _, bin),
     do: bin
+  def decode_binary(%TypeInfo{sender: "citext"}, _, bin),
+    do: bin
   def decode_binary(%TypeInfo{sender: "bytea"}, _, bin),
     do: bin
   def decode_binary(%TypeInfo{sender: "int2"}, _, <<n :: int16>>),
@@ -199,6 +201,8 @@ defmodule Postgrex.Types do
   def encode(%TypeInfo{sender: "text"}, _, bin) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{sender: "varchar"}, _, bin) when is_binary(bin),
+    do: bin
+  def encode(%TypeInfo{sender: "citext"}, _, bin) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{sender: "bytea"}, _, bin) when is_binary(bin),
     do: bin
