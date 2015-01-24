@@ -207,7 +207,7 @@ defmodule Postgrex.Messages do
                           params: params, result_formats: result_formats)) do
     pfs = for format <- param_formats,  into: "", do: <<format(format) :: int16>>
     rfs = for format <- result_formats, into: "", do: <<format(format) :: int16>>
-    ps  = for param  <- params,                   do: Utils.encode_param(param)
+    ps  = for param  <- params,                   do: param
 
     len_pfs = <<div(byte_size(pfs), 2) :: int16>>
     len_rfs = <<div(byte_size(rfs), 2) :: int16>>

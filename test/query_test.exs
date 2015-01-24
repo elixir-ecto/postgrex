@@ -247,9 +247,9 @@ defmodule QueryTest do
     assert [{42}] = query("SELECT 42", [])
   end
 
-  test "fallback to text for unknown type", context do
-    assert [{"123"}] = query("SELECT $1::oid", ["123"])
-  end
+  # test "fallback to text for unknown type", context do
+  #   assert [{"123"}] = query("SELECT $1::oid", ["123"])
+  # end
 
   test "non data statement", context do
     assert :ok = query("BEGIN", [])
@@ -269,9 +269,9 @@ defmodule QueryTest do
   end
 
   test "multi row result", context do
-    assert {:ok, res} = P.query(context[:pid], "SELECT typname FROM pg_type WHERE typname = 'int4' OR typname = 'int8' ORDER BY oid", [])
+    assert {:ok, res} = P.query(context[:pid], "VALUES (1, 2), (3, 4)", [])
     assert res.num_rows == 2
-    assert res.rows == [{"int8"}, {"int4"}]
+    assert res.rows == [{1, 2}, {3, 4}]
   end
 
   test "insert", context do
@@ -297,16 +297,5 @@ defmodule QueryTest do
      Enum.each(1..10, fn _ ->
       assert_receive [{:void}], 1000
     end)
-  end
-
-  test "hinted query", context do
-    assert [{2, "22", [3, 3]}] = query("SELECT $1 + $1, $2 || $2, $3 || $3",
-                                       [1, "2", [3]],
-                                       param_types: ["int8", "text", "_int8"],
-                                       result_types: ["int8", "text", "_int8"])
-
-    assert %Postgrex.Error{message: "no type of name: no_type"} =
-            query("SELECT $1", [1], param_types: ["no_type"],
-                  result_types: ["no_type"])
   end
 end

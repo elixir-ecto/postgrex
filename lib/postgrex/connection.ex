@@ -10,6 +10,7 @@ defmodule Postgrex.Connection do
   import Postgrex.Utils
 
   @timeout :infinity
+  @default_extensions [Postgrex.Extensions.Binary, Postgrex.Extensions.Text]
 
   ### PUBLIC API ###
 
@@ -23,9 +24,6 @@ defmodule Postgrex.Connection do
     * `:database` - Database (required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password (default PGPASSWORD);
-    * `:encoder` - Custom encoder function;
-    * `:decoder` - Custom decoder function;
-    * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
@@ -82,16 +80,9 @@ defmodule Postgrex.Connection do
   encodes and decodes elixir values by default. See `Postgrex.Result` for the
   result data.
 
-  A *type hinted* query is run if both the options `:param_types` and
-  `:result_types` are given. One client-server round trip can be saved by
-  providing the types to Postgrex because the server doesn't have to be queried
-  for the types of the parameters and the result.
-
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
-    * `:param_types` - A list of type names for the parameters
-    * `:result_types` - A list of type names for the result rows
 
   ## Examples
 
@@ -102,9 +93,6 @@ defmodule Postgrex.Connection do
       Postgrex.Connection.query(pid, "SELECT title FROM posts", [])
 
       Postgrex.Connection.query(pid, "SELECT id FROM posts WHERE title like $1", ["%my%"])
-
-      Postgrex.Connection.query(pid, "SELECT $1 || $2", ["4", "2"],
-                                param_types: ["text", "text"], result_types: ["text"])
 
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
@@ -215,7 +203,7 @@ defmodule Postgrex.Connection do
   def init([]) do
     {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
-            queue: :queue.new, opts: nil, listeners: HashDict.new,
+            queue: :queue.new, opts: nil, extensions: nil, listeners: HashDict.new,
             listener_channels: HashDict.new}}
   end
 
@@ -352,10 +340,11 @@ defmodule Postgrex.Connection do
     port      = opts[:port] || 5432
     timeout   = opts[:timeout] || @timeout
     sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
+    extensions  = (opts[:extensions] || []) ++ @default_extensions
 
     command = new_command({:connect, opts}, from)
     queue = :queue.in(command, queue)
-    s = %{s | opts: opts, queue: queue}
+    s = %{s | opts: opts, queue: queue, extensions: extensions}
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
@@ -372,15 +361,9 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp command({:query, statement, _params, opts}, s) do
-    param_types  = opts[:param_types]
-    result_types = opts[:result_types]
-
-    if param_types && result_types do
-      Protocol.send_hinted_query(statement, param_types, result_types, s)
-    else
-      Protocol.send_query(statement, s)
-    end
+  # TODO: Check if opts can be removed from all command tuples
+  defp command({:query, statement, _params, _opts}, s) do
+    Protocol.send_query(statement, s)
   end
 
   defp command({:listen, channel, pid, _opts}, s) do

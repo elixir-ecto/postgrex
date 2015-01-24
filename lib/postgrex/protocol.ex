@@ -40,37 +40,6 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  def send_hinted_query(statement, param_types, result_types,
-                        %{types: {oids, _}, opts: opts} = s) do
-    case types_to_oids(param_types, s) do
-      {:ok, param_oids} ->
-        case types_to_oids(result_types, s) do
-          {:ok, result_oids} ->
-            {info, rfs} = extract_row_info(result_oids, oids, opts[:decoder], opts[:formatter])
-
-            msgs = [
-              msg_parse(name: "", query: statement, type_oids: param_oids),
-              msg_describe(type: :statement, name: "") ]
-
-            case send_to_result(msgs, s) do
-              {:ok, s} ->
-                stat = %{columns: nil, row_info: List.to_tuple(info)}
-                send_params(%{s | statement: stat, portal: param_oids, state: :parsing}, rfs)
-              err ->
-                err
-            end
-
-          {:error, error, s} ->
-            reply(error, s)
-            {:ok, s}
-        end
-
-      {:error, error, s} ->
-        reply(error, s)
-        {:ok, s}
-    end
-  end
-
   # possible states: ssl, auth, init, parsing, describing, binding, executing,
   #                  ready
 
@@ -80,13 +49,13 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | state: :init}}
   end
 
-  def message(:auth, msg_auth(type: :cleartext), %{opts: opts} = s) do
-    msg = msg_password(pass: opts[:password])
+  def message(:auth, msg_auth(type: :cleartext), s) do
+    msg = msg_password(pass: s.opts[:password])
     send_to_result(msg, s)
   end
 
-  def message(:auth, msg_auth(type: :md5, data: salt), %{opts: opts} = s) do
-    digest = :crypto.hash(:md5, [opts[:password], opts[:username]])
+  def message(:auth, msg_auth(type: :md5, data: salt), s) do
+    digest = :crypto.hash(:md5, [s.opts[:password], s.opts[:username]])
              |> Base.encode16(case: :lower)
     digest = :crypto.hash(:md5, [digest, salt])
              |> Base.encode16(case: :lower)
@@ -104,10 +73,12 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | backend_key: {pid, key}}}
   end
 
-  def message(:init, msg_ready(), %{opts: opts} = s) do
-    opts = clean_opts(opts)
+  def message(:init, msg_ready(), s) do
+    opts = clean_opts(s.opts)
     s = %{s | opts: opts, bootstrap: true}
-    Connection.new_query(Types.bootstrap_query, [], s)
+    matchers = Types.extension_matchers(s.extensions)
+    query = Types.bootstrap_query(matchers)
+    Connection.new_query(query, [], s)
   end
 
   def message(:init, msg_error(fields: fields), s) do
@@ -134,22 +105,12 @@ defmodule Postgrex.Protocol do
     send_params(s, [])
   end
 
-  # If statement is nil we have not sent a hinted query
-  def message(:describing, msg_row_desc(fields: fields),
-               %{types: {oids, _}, statement: nil, opts: opts} = s) do
+  def message(:describing, msg_row_desc(fields: fields), s) do
     {col_oids, col_names} = columns(fields)
-    {info, rfs} = extract_row_info(col_oids, oids, opts[:decoder], opts[:formatter])
-    stat = %{columns: col_names, row_info: List.to_tuple(info)}
+    result_formats = result_formats(col_oids, s.types)
+    stat = %{columns: col_names, column_oids: col_oids}
 
-    send_params(%{s | statement: stat}, rfs)
-  end
-
-  def message(:describing, msg_row_desc(fields: fields),
-               %{statement: stat} = s) do
-    {_, col_names} = columns(fields)
-    stat = %{stat | columns: col_names}
-
-    {:ok, %{s | statement: stat, state: :binding}}
+    send_params(%{s | statement: stat}, result_formats)
   end
 
   def message(:describing, msg_ready(), s) do
@@ -164,13 +125,14 @@ defmodule Postgrex.Protocol do
 
   ### executing state ###
 
-  def message(:executing, msg_data_row(values: values), %{rows: rows} = s) do
-    {:ok, %{s | rows: [values|rows]}}
+  def message(:executing, msg_data_row(values: values), s) do
+    {:ok, %{s | rows: [values|s.rows]}}
   end
 
-  def message(:executing, msg_command_complete(), %{bootstrap: true, rows: rows} = s) do
+  def message(:executing, msg_command_complete(), %{bootstrap: true} = s) do
     reply(:ok, s)
-    types = Types.build_types(rows)
+    types = Types.build_types(s.rows)
+    types = Types.associate_extensions_with_types(s.extensions, types)
     {:ok, %{s | rows: [], bootstrap: false, types: types}}
   end
 
@@ -200,13 +162,13 @@ defmodule Postgrex.Protocol do
 
   ### asynchronous messages ###
 
-  def message(_, msg_ready(), %{queue: queue} = s) do
-    queue = :queue.drop(queue)
+  def message(_, msg_ready(), s) do
+    queue = :queue.drop(s.queue)
     Connection.next(%{s | queue: queue, state: :ready})
   end
 
-  def message(_, msg_parameter(name: name, value: value), %{parameters: params} = s) do
-    params = Map.put(params, name, value)
+  def message(_, msg_parameter(name: name, value: value), s) do
+    params = Map.put(s.parameters, name, value)
     {:ok, %{s | parameters: params}}
   end
 
@@ -231,19 +193,20 @@ defmodule Postgrex.Protocol do
 
   ### helpers ###
 
-  defp decode_rows(%{statement: %{row_info: info}, rows: rows, opts: opts}) do
-    decoder = opts[:decoder]
+  defp decode_rows(%{statement: %{column_oids: col_oids}, types: types} = s) do
+    col_oids = List.to_tuple(col_oids)
 
-    Enum.reduce(rows, [], fn values, acc ->
-      {_, row} = Enum.reduce(values, {0, []}, fn
-        nil, {count, list} ->
-          {count + 1, [nil|list]}
+    Enum.reduce(s.rows, [], fn values, acc ->
+      {_, row} =
+        Enum.reduce(values, {0, []}, fn
+          nil, {count, list} ->
+            {count + 1, [nil|list]}
 
-        bin, {count, list} ->
-          {info, format, default} = elem(info, count)
-          decoded = Types.decode_value(info, format, decoder, default, bin)
-          {count + 1, [decoded|list]}
-      end)
+          bin, {count, list} ->
+            oid = elem(col_oids, count)
+            decoded = Types.decode(oid, bin, types)
+            {count + 1, [decoded|list]}
+        end)
 
       row = Enum.reverse(row) |> List.to_tuple
       [row | acc]
@@ -278,15 +241,14 @@ defmodule Postgrex.Protocol do
     {[], []}
   end
 
-  defp encode_params(%{queue: queue, portal: param_oids, types: {oids, _}, opts: opts}) do
+  defp encode_params(%{queue: queue, portal: param_oids, types: types}) do
     %{command: {:query, _statement, params, _opts}} = :queue.get(queue)
     zipped = Enum.zip(param_oids, params)
-    extra = {oids, opts[:encoder], opts[:formatter]}
 
     Enum.map(zipped, fn {oid, param} ->
-      info = Dict.fetch!(oids, oid)
-      default = &Types.encode(info, extra, &1)
-      Types.encode_value(info, extra, default, param)
+      format = Types.format(oid, types)
+      binary = Types.encode(oid, param, types)
+      {format, binary}
     end) |> :lists.unzip
   end
 
@@ -296,20 +258,8 @@ defmodule Postgrex.Protocol do
     end) |> :lists.unzip
   end
 
-  defp extract_row_info(columns, oids, decoder, formatter) do
-    Enum.map(columns, fn oid ->
-      info = Dict.fetch!(oids, oid)
-      format = Types.format(oids, oid, formatter)
-      extra = {oids, decoder}
-
-      default =
-        case format do
-          :binary -> &Types.decode_binary(info, extra, &1)
-          :text   -> &Types.decode_text(info, extra, &1)
-        end
-
-      {{info, format, default}, format}
-    end) |> :lists.unzip
+  defp result_formats(columns, types) do
+    Enum.map(columns, &Types.format(&1, types))
   end
 
   defp create_result(tag) do
@@ -340,22 +290,6 @@ defmodule Postgrex.Protocol do
     {command, nums} = Enum.split_while(words, &is_binary(&1))
     command = Enum.join(command, "_") |> String.downcase |> String.to_atom
     {command, List.last(nums)}
-  end
-
-  defp types_to_oids(type_names, %{types: {_, types}} = s) do
-    result =
-      Enum.flat_map_reduce(type_names, nil, fn name, _acc ->
-        if type = types[name] do
-          {[type.oid], nil}
-        else
-          {:halt, "no type of name: #{name}"}
-        end
-      end)
-
-    case result do
-      {oids,  nil}    -> {:ok, oids}
-      {_oids, reason} -> {:error, %Postgrex.Error{message: reason}, s}
-    end
   end
 
   defp msg_send(msg, %{sock: sock}), do: msg_send(msg, sock)

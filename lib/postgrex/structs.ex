@@ -19,7 +19,6 @@ defmodule Postgrex.Result do
   defstruct [:command, :columns, :rows, :num_rows]
 end
 
-# TODO: Add "output" function name for easy text decoding?
 defmodule Postgrex.TypeInfo do
   @moduledoc """
   The information about a type that is provided to the custom encoder/decoder
@@ -37,10 +36,13 @@ defmodule Postgrex.TypeInfo do
 
   @type t :: %__MODULE__{
     oid:        pos_integer,
-    sender:     String.t,
     type:       String.t,
+    send:       String.t,
+    receive:    String.t,
+    output:     String.t,
+    input:      String.t,
     array_elem: pos_integer,
     comp_elems: [pos_integer]}
 
-  defstruct [:oid, :sender, :type, :array_elem, :comp_elems]
+  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem, :comp_elems]
 end
