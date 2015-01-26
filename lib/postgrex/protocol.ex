@@ -107,10 +107,15 @@ defmodule Postgrex.Protocol do
 
   def message(:describing, msg_row_desc(fields: fields), s) do
     {col_oids, col_names} = columns(fields)
-    result_formats = result_formats(col_oids, s.types)
-    stat = %{columns: col_names, column_oids: col_oids}
-
-    send_params(%{s | statement: stat}, result_formats)
+    try do
+      result_formats = result_formats(col_oids, s.types)
+      stat = %{columns: col_names, column_oids: col_oids}
+      send_params(%{s | statement: stat}, result_formats)
+    catch
+      kind, reason ->
+        reply({:error, kind, reason, System.stacktrace}, s)
+        send_to_result([msg_sync], s)
+    end
   end
 
   def message(:describing, msg_ready(), s) do
@@ -146,8 +151,8 @@ defmodule Postgrex.Protocol do
           %{columns: cols} = s.statement
           create_result(tag, result, cols)
         catch
-          {:postgrex_decode, msg} ->
-            %Postgrex.Error{message: msg}
+          kind, reason ->
+            {:error, kind, reason, System.stacktrace}
         end
       end
 
@@ -198,14 +203,10 @@ defmodule Postgrex.Protocol do
 
     Enum.reduce(s.rows, [], fn values, acc ->
       {_, row} =
-        Enum.reduce(values, {0, []}, fn
-          nil, {count, list} ->
-            {count + 1, [nil|list]}
-
-          bin, {count, list} ->
-            oid = elem(col_oids, count)
-            decoded = Types.decode(oid, bin, types)
-            {count + 1, [decoded|list]}
+        Enum.reduce(values, {0, []}, fn bin, {count, list} ->
+          oid = elem(col_oids, count)
+          decoded = Types.decode(oid, bin, types)
+          {count + 1, [decoded|list]}
         end)
 
       row = Enum.reverse(row) |> List.to_tuple
@@ -224,8 +225,8 @@ defmodule Postgrex.Protocol do
           msg_sync() ]
         {msgs, s}
       catch
-       {:postgrex_encode, reason} ->
-         reply(%Postgrex.Error{message: reason}, s)
+        kind, reason ->
+         reply({:error, kind, reason, System.stacktrace}, s)
          {[msg_sync], %{s | portal: nil}}
       end
 

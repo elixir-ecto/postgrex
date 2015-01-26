@@ -35,7 +35,14 @@ defmodule Postgrex.Types do
 
   def build_types(rows) do
     Enum.map(rows, fn row ->
-      [oid, type, send, receive, output, input, array_oid, comp_oids] = row
+      [<<_::int32, oid::binary>>,
+       <<_::int32, type::binary>>,
+       <<_::int32, send::binary>>,
+       <<_::int32, receive::binary>>,
+       <<_::int32, output::binary>>,
+       <<_::int32, input::binary>>,
+       <<_::int32, array_oid::binary>>,
+       <<_::int32, comp_oids::binary>>] = row
       oid = String.to_integer(oid)
       array_oid = String.to_integer(array_oid)
       comp_oids = parse_oids(comp_oids)
@@ -54,9 +61,9 @@ defmodule Postgrex.Types do
 
   def associate_extensions_with_types(extensions, types) do
     Enum.reduce(types, HashDict.new, fn type_info, dict ->
-      extensions = Enum.filter(extensions, &match_extension_against_type(&1, type_info))
-      if extensions != [] do
-        HashDict.put(dict, type_info.oid, {type_info, extensions})
+      extension = Enum.find(extensions, &match_extension_against_type(&1, type_info))
+      if extension do
+        HashDict.put(dict, type_info.oid, {type_info, extension})
       else
         dict
       end
@@ -98,60 +105,70 @@ defmodule Postgrex.Types do
   ### TYPE FORMAT ###
 
   def format(oid, types) do
-    case HashDict.fetch(types, oid) do
-      {:ok, {%TypeInfo{send: send, type: type, array_elem: array_oid, comp_elems: comp_oids}, [extension|_]}} ->
-        cond do
-          send == "array_send" and format(array_oid, types) == :binary ->
-            :binary
-          send == "record_send" and type != "record" and
-          Enum.all?(comp_oids, &(format(&1, types) == :binary)) ->
-            :binary
-          true ->
-            extension.format()
-        end
-
-      :error ->
-        # TODO: Handle this throw
-        # TODO: Or should we default to :text? If so, make sure to handle it in
-        #       encode and decode functions
-        throw {:postgrex_format, "unable to decide format, no extension found for oid `#{oid}`"}
+    {info, extension} = fetch!(types, oid)
+    cond do
+      info.send == "array_send" and format(info.array_elem, types) == :binary ->
+        :binary
+      info.send == "record_send" and info.type != "record" and
+      Enum.all?(info.comp_elems, &(format(&1, types) == :binary)) ->
+        :binary
+      true ->
+        extension.format()
     end
   end
 
   ### TYPE ENCODING ###
 
-  def encode(_oid, nil, _types) do
+  def encode(_extension, oid, nil, types) do
+    fetch!(types, oid)
+    <<-1 :: int32>>
+  end
+
+  def encode(extension, oid, value, types) do
+    {info, _extension} = fetch!(types, oid)
+    binary = extension.encode(info, value, types)
+    [<<IO.iodata_length(binary) :: int32>>, binary]
+  end
+
+  def encode(oid, nil, types) do
+    fetch!(types, oid)
     <<-1 :: int32>>
   end
 
   def encode(oid, value, types) do
-    case HashDict.fetch(types, oid) do
-      {:ok, {info, [extension|_]}} ->
-        # TODO: Fix this?
-        # types = HashDict.put(types, oid, {info, rest_extensions})
-        default = &encode(&1, &2, types)
-        extension.encode(info, value, default) |> encode_param
-      :error ->
-        # TODO: Handle this throw
-        throw {:postgrex_encode, "unable to encode value `#{inspect value}`, no extension found for oid `#{oid}`"}
-    end
+    {info, extension} = fetch!(types, oid)
+    binary = extension.encode(info, value, types)
+    [<<IO.iodata_length(binary) :: int32>>, binary]
   end
-
-  defp encode_param(<<-1 :: int32>>),
-    do: <<-1 :: int32>>
-  defp encode_param(param),
-    do: [<<IO.iodata_length(param) :: int32>>, param]
 
   ### TYPE DECODING ###
 
-  def decode(oid, binary, types) do
+  def decode(_extension, oid, <<-1 :: int32>>, types) do
+    fetch!(types, oid)
+    nil
+  end
+
+  def decode(extension, oid, <<size :: int32, binary :: binary(size)>>, types) do
+    {info, _extension} = fetch!(types, oid)
+    extension.decode(info, binary, types)
+  end
+
+  def decode(oid, <<-1 :: int32>>, types) do
+    fetch!(types, oid)
+    nil
+  end
+
+  def decode(oid, <<size :: int32, binary :: binary(size)>>, types) do
+    {info, extension} = fetch!(types, oid)
+    extension.decode(info, binary, types)
+  end
+
+  defp fetch!(types, oid) do
     case HashDict.fetch(types, oid) do
-      {:ok, {info, [extension|_]}} ->
-        default = &decode(&1, &2, types)
-        extension.decode(info, binary, default)
+      {:ok, value} ->
+        value
       :error ->
-        # TODO: Handle this throw
-        throw {:postgrex_decode, "unable to decode binary `#{inspect binary}`, no extension found for oid `#{oid}`"}
+        raise ArgumentError, message: "no extension found for oid `#{oid}`"
     end
   end
 end

@@ -1,7 +1,6 @@
 defmodule Postgrex.Messages do
   @moduledoc false
 
-  alias Postgrex.Utils
   import Postgrex.BinaryUtils
   import Record, only: [defrecord: 2]
 
@@ -277,11 +276,11 @@ defmodule Postgrex.Messages do
   defp decode_row_values("", 0), do: []
 
   defp decode_row_values(<<-1 :: int32, rest :: binary>>, count) do
-    [nil | decode_row_values(rest, count-1)]
+    [<<-1 :: int32>> | decode_row_values(rest, count-1)]
   end
 
   defp decode_row_values(<<length :: int32, value :: binary(length), rest :: binary>>, count) do
-    [value | decode_row_values(rest, count-1)]
+    [<<length :: int32, value :: binary>> | decode_row_values(rest, count-1)]
   end
 
   Enum.each(@auth_types, fn {type, value} ->

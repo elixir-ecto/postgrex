@@ -237,19 +237,21 @@ defmodule QueryTest do
   end
 
   test "fail on encode arrays", context do
-    assert %Postgrex.Error{} = query("SELECT $1::integer[]", [[[1], [1,2]]])
+    assert_raise ArgumentError, "nested lists must have lists with matching lengths", fn ->
+      query("SELECT $1::integer[]", [[[1], [1,2]]])
+    end
     assert [{42}] = query("SELECT 42", [])
   end
 
   test "fail on encode wrong value", context do
-    assert %Postgrex.Error{} = query("SELECT $1::integer", ["123"])
-    assert %Postgrex.Error{} = query("SELECT $1::text", [4.0])
+    assert_raise FunctionClauseError, fn ->
+      query("SELECT $1::integer", ["123"])
+    end
+    assert_raise FunctionClauseError, fn ->
+      query("SELECT $1::text", [4.0])
+    end
     assert [{42}] = query("SELECT 42", [])
   end
-
-  # test "fallback to text for unknown type", context do
-  #   assert [{"123"}] = query("SELECT $1::oid", ["123"])
-  # end
 
   test "non data statement", context do
     assert :ok = query("BEGIN", [])

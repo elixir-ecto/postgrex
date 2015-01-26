@@ -100,8 +100,12 @@ defmodule Postgrex.Connection do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{} = res -> {:ok, res}
-      %Postgrex.Error{} = err  -> {:error, err}
+      %Postgrex.Result{} = res ->
+        {:ok, res}
+      %Postgrex.Error{} = err ->
+        {:error, err}
+      {:error, kind, reason, stack} ->
+        :erlang.raise(kind, reason, stack)
     end
   end
 
@@ -114,8 +118,12 @@ defmodule Postgrex.Connection do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{} = res -> res
-      %Postgrex.Error{} = err  -> raise err
+      %Postgrex.Result{} = res ->
+        res
+      %Postgrex.Error{} = err ->
+        raise err
+      {:error, kind, reason, stack} ->
+        :erlang.raise(kind, reason, stack)
     end
   end
 

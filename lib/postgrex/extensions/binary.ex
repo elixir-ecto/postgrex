@@ -80,14 +80,12 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_timestamp(timestamp)
   def encode(%TypeInfo{send: "interval_send"}, interval, _),
     do: encode_interval(interval)
-  def encode(%TypeInfo{send: "array_send", array_elem: elem_oid}, list, encoder) when is_list(list),
-    do: encode_array(list, elem_oid, encoder)
-  def encode(%TypeInfo{send: "record_send", comp_elems: elem_oids}, tuple, encoder) when is_tuple(tuple),
-    do: encode_record(tuple, elem_oids, encoder)
+  def encode(%TypeInfo{send: "array_send", array_elem: elem_oid}, list, types) when is_list(list),
+    do: encode_array(list, elem_oid, types)
+  def encode(%TypeInfo{send: "record_send", comp_elems: elem_oids}, tuple, types) when is_tuple(tuple),
+    do: encode_record(tuple, elem_oids, types)
   def encode(%TypeInfo{send: "range_send", type: type}, tuple, _),
     do: encode_range(type, tuple)
-  def encode(%TypeInfo{type: type}, value, _),
-    do: throw {:postgrex_encode, "unable to encode value `#{inspect value}` for type `#{type}`"}
 
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
@@ -182,8 +180,8 @@ defmodule Postgrex.Extensions.Binary do
     <<microsecs :: int64, days :: int32, months :: int32>>
   end
 
-  defp encode_array(list, elem_oid, encoder) do
-    encoder = &encoder.(elem_oid, &1)
+  defp encode_array(list, elem_oid, types) do
+    encoder = &Postgrex.Types.encode(elem_oid, &1, types)
 
     {data, ndims, lengths} = encode_array(list, 0, [], encoder)
     lengths = for len <- Enum.reverse(lengths), do: <<len :: int32, 1 :: int32>>
@@ -203,7 +201,7 @@ defmodule Postgrex.Extensions.Binary do
     rest = Enum.reduce(tail, [], fn sublist, acc ->
       {data, _, [len|_]} = encode_array(sublist, ndims, lengths, encoder)
       if len != dimlength do
-        throw {:postgrex_encode, "nested lists must have lists with matching lengths"}
+        raise ArgumentError, message: "nested lists must have lists with matching lengths"
       end
       [acc|data]
     end)
@@ -219,12 +217,12 @@ defmodule Postgrex.Extensions.Binary do
     {data, ndims+1, [length|lengths]}
   end
 
-  defp encode_record(tuple, elem_oids, encoder) do
+  defp encode_record(tuple, elem_oids, types) do
     list = Tuple.to_list(tuple)
     zipped = :lists.zip(list, elem_oids)
 
     {data, count} = Enum.map_reduce(zipped, 0, fn {value, oid}, count ->
-      data = encoder.(oid, value)
+      data = Postgrex.Types.encode(oid, value, types)
       {[<<oid :: int32>>, data], count + 1}
     end)
 
@@ -341,10 +339,10 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_timestamp(n)
   def decode(%TypeInfo{send: "interval_send"}, <<s :: int64, d :: int32, m :: int32>>, _),
     do: decode_interval(s, d, m)
-  def decode(%TypeInfo{send: "array_send"}, bin, decoder),
-    do: decode_array(bin, decoder)
-  def decode(%TypeInfo{send: "record_send"}, bin, decoder),
-    do: decode_record(bin, decoder)
+  def decode(%TypeInfo{send: "array_send"}, bin, types),
+    do: decode_array(bin, types)
+  def decode(%TypeInfo{send: "record_send"}, bin, types),
+    do: decode_record(bin, types)
   def decode(%TypeInfo{send: "range_send", type: type}, <<flags, payload :: binary>>, _decoder),
     do: decode_range(type, flags, payload)
 
@@ -403,10 +401,10 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary>>,
-                    decoder) do
+                    types) do
     {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = for <<len :: int32, _lbound :: int32 <- dims>>, do: len
-    decoder = &decoder.(oid, &1)
+    decoder = &Postgrex.Types.decode(oid, &1, types)
 
     {array, ""} = decode_array(rest, lengths, decoder)
     array
@@ -436,11 +434,12 @@ defmodule Postgrex.Extensions.Binary do
 
   defp array_elements(<<length :: int32, elem :: binary(length), rest :: binary>>,
                        count, acc, decoder) do
-    value = decoder.(elem)
+    value = decoder.(<<length :: int32, elem :: binary(length)>>)
     array_elements(rest, count-1, [value|acc], decoder)
   end
 
-  defp decode_record(<<num :: int32, rest :: binary>>, decoder) do
+  defp decode_record(<<num :: int32, rest :: binary>>, types) do
+    decoder = &Postgrex.Types.decode(&1, &2, types)
     record_elements(num, rest, decoder) |> List.to_tuple
   end
 
@@ -454,7 +453,7 @@ defmodule Postgrex.Extensions.Binary do
 
   defp record_elements(num, <<oid :: int32, length :: int32, elem :: binary(length), rest :: binary>>,
                        decoder) do
-    value = decoder.(oid, elem)
+    value = decoder.(oid, <<length :: int32, elem :: binary(length)>>)
     [value | record_elements(num-1, rest, decoder)]
   end
 

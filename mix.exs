@@ -19,7 +19,7 @@ defmodule Postgrex.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    []
+    [applications: [:logger]]
   end
 
   defp deps do
