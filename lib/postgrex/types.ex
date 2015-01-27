@@ -1,11 +1,27 @@
 defmodule Postgrex.Types do
-  @moduledoc false
+  @moduledoc """
+  Encodes and decodes between Postgres' protocol and Elixir values.
+  """
 
   alias Postgrex.TypeInfo
+  alias Postgrex.Extension
   import Postgrex.BinaryUtils
+
+  @typedoc """
+  Postgres internal identifier that maps to a type. See
+  http://www.postgresql.org/docs/9.4/static/datatype-oid.html.
+  """
+  @type oid :: pos_integer
+
+  @typedoc """
+  Dictionary mapping oids to a `Postgrex.TypeInfo` `Postgrex.Extension` pair
+  where the extension is able to encode/decode the type.
+  """
+  @type types :: HashDict.t
 
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
+  @doc false
   def bootstrap_query(m) do
     """
     SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput, t.typelem, ARRAY (
@@ -24,6 +40,7 @@ defmodule Postgrex.Types do
     """
   end
 
+  @doc false
   def extension_matchers(extensions) do
     map = %{type: [], send: [], receive: [], output: [], input: []}
     Enum.reduce(extensions, map, fn extension, map ->
@@ -33,6 +50,7 @@ defmodule Postgrex.Types do
     end)
   end
 
+  @doc false
   def build_types(rows) do
     Enum.map(rows, fn row ->
       [<<_::int32, oid::binary>>,
@@ -59,6 +77,7 @@ defmodule Postgrex.Types do
     end)
   end
 
+  @doc false
   def associate_extensions_with_types(extensions, types) do
     Enum.reduce(types, HashDict.new, fn type_info, dict ->
       extension = Enum.find(extensions, &match_extension_against_type(&1, type_info))
@@ -104,6 +123,7 @@ defmodule Postgrex.Types do
 
   ### TYPE FORMAT ###
 
+  @doc false
   def format(oid, types) do
     {info, extension} = fetch!(types, oid)
     cond do
@@ -117,19 +137,12 @@ defmodule Postgrex.Types do
     end
   end
 
-  ### TYPE ENCODING ###
+  ### TYPE ENCODING / DECODING ###
 
-  def encode(_extension, oid, nil, types) do
-    fetch!(types, oid)
-    <<-1 :: int32>>
-  end
-
-  def encode(extension, oid, value, types) do
-    {info, _extension} = fetch!(types, oid)
-    binary = extension.encode(info, value, types)
-    [<<IO.iodata_length(binary) :: int32>>, binary]
-  end
-
+  @doc """
+  Encodes an Elixir term to a binary for the given type.
+  """
+  @spec encode(oid, term, types) :: binary
   def encode(oid, nil, types) do
     fetch!(types, oid)
     <<-1 :: int32>>
@@ -141,18 +154,25 @@ defmodule Postgrex.Types do
     [<<IO.iodata_length(binary) :: int32>>, binary]
   end
 
-  ### TYPE DECODING ###
-
-  def decode(_extension, oid, <<-1 :: int32>>, types) do
+  @doc """
+  Encodes an Elixir term with the extension for the given type.
+  """
+  @spec encode(Extension.t, oid, term, types) :: binary
+  def encode(_extension, oid, nil, types) do
     fetch!(types, oid)
-    nil
+    <<-1 :: int32>>
   end
 
-  def decode(extension, oid, <<size :: int32, binary :: binary(size)>>, types) do
+  def encode(extension, oid, value, types) do
     {info, _extension} = fetch!(types, oid)
-    extension.decode(info, binary, types)
+    binary = extension.encode(info, value, types)
+    [<<IO.iodata_length(binary) :: int32>>, binary]
   end
 
+  @doc """
+  Decodes a binary to an Elixir value for the given type.
+  """
+  @spec decode(oid, binary, types) :: term
   def decode(oid, <<-1 :: int32>>, types) do
     fetch!(types, oid)
     nil
@@ -160,6 +180,20 @@ defmodule Postgrex.Types do
 
   def decode(oid, <<size :: int32, binary :: binary(size)>>, types) do
     {info, extension} = fetch!(types, oid)
+    extension.decode(info, binary, types)
+  end
+
+  @doc """
+  Decodes a binary with the extension for the given type.
+  """
+  @spec decode(Extension.t, oid, binary, types) :: term
+  def decode(_extension, oid, <<-1 :: int32>>, types) do
+    fetch!(types, oid)
+    nil
+  end
+
+  def decode(extension, oid, <<size :: int32, binary :: binary(size)>>, types) do
+    {info, _extension} = fetch!(types, oid)
     extension.decode(info, binary, types)
   end
 

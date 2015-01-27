@@ -30,6 +30,8 @@ defmodule Postgrex.Connection do
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:async_connect` - Set to `true` if `start_link` should return before the
       connection is completed (default: `false`);
+    * `:extensions` - A list of modules implementing the `Postgrex.Extension`
+      behaviour;
 
   ## Function signatures
 
