@@ -1,7 +1,6 @@
 defmodule Postgrex.Messages do
   @moduledoc false
 
-  alias Postgrex.Utils
   import Postgrex.BinaryUtils
   import Record, only: [defrecord: 2]
 
@@ -207,7 +206,7 @@ defmodule Postgrex.Messages do
                           params: params, result_formats: result_formats)) do
     pfs = for format <- param_formats,  into: "", do: <<format(format) :: int16>>
     rfs = for format <- result_formats, into: "", do: <<format(format) :: int16>>
-    ps  = for param  <- params,                   do: Utils.encode_param(param)
+    ps  = for param  <- params,                   do: param
 
     len_pfs = <<div(byte_size(pfs), 2) :: int16>>
     len_rfs = <<div(byte_size(rfs), 2) :: int16>>
@@ -277,11 +276,11 @@ defmodule Postgrex.Messages do
   defp decode_row_values("", 0), do: []
 
   defp decode_row_values(<<-1 :: int32, rest :: binary>>, count) do
-    [nil | decode_row_values(rest, count-1)]
+    [<<-1 :: int32>> | decode_row_values(rest, count-1)]
   end
 
   defp decode_row_values(<<length :: int32, value :: binary(length), rest :: binary>>, count) do
-    [value | decode_row_values(rest, count-1)]
+    [<<length :: int32, value :: binary>> | decode_row_values(rest, count-1)]
   end
 
   Enum.each(@auth_types, fn {type, value} ->

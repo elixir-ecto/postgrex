@@ -1,4 +1,11 @@
-# v0.7.1-dev
+# v0.8.0-dev
+
+* Enhancements
+  * Add extensions
+
+* Backwards incompatible changes
+  * Remove the support for type-hinted queries
+  * Remove encoder, decoder and formatter functions, use extensions instead
 
 # v0.7.0 (2015-01-20)
 
