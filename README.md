@@ -21,21 +21,17 @@ After you are done, run `mix deps.get` in your shell to fetch and compile Postgr
 ```iex
 iex> {:ok, pid} = Postgrex.Connection.start_link([hostname: "localhost", username: "postgres", password: "postgres", database: "postgres"])
 {:ok, #PID<0.69.0>}
-iex> Postgrex.Connection.query(pid, "SELECT user_id, text FROM comments", [])
-{:ok,
- Postgrex.Result[command: :select, empty?: false, columns: ["user_id", "text"],
-  rows: [{3,"hey"},{4,"there"}], size: 2]}
-iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')", [])
-{:ok,
- Postgrex.Result[command: :insert, columns: nil, rows: nil, num_rows: 1]}
+iex> Postgrex.Connection.query!(pid, "SELECT user_id, text FROM comments", [])
+%Postgrex.Result{command: :select, empty?: false, columns: ["user_id", "text"], rows: [{3,"hey"},{4,"there"}], size: 2}}
+iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')", [])
+%Postgrex.Result{command: :insert, columns: nil, rows: nil, num_rows: 1}}
 
 ```
 
 ## Features
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
-  * User specified custom encoders and decoders
-  * Nested transactions
+  * User defined extensions for encoding and decoding any PostgresSQL type
   * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, and 9.4
 
 ## Data representation
@@ -69,39 +65,32 @@ iex> Postgrex.Connection.query(pid, "INSERT INTO comments (user_id, text) VALUES
 
 \*\*\* ranges expect and return the lower and upper bounds as inclusive (e.g., {1, 4} = 1, 2, 3, 4)
 
-## Custom encoder and decoder example
+## Extensions
 
-Encoding and decoding from and to JSON:
+Extensions are used to extend Postgrex' built-in type encoding/decoding.
+
+Below is an example of an extension that supports encoding/decoding Elixir maps
+to the Postgres' JSON type.
 
 ```elixir
-def decoder(%TypeInfo{sender: "json"}, _format, _default, binary) do
-  JSON.decode(binary)
-end
+defmodule Extensions.JSON do
+  alias Postgrex.TypeInfo
 
-def decoder(%TypeInfo{}, _format, default, binary) do
-  default.(binary)
-end
+  @behaviour Postgrex.Extension
 
-def encoder(%TypeInfo{sender: "json"}, _default, value) do
-  JSON.encode(value)
-end
+  def matching,
+    do: [type: "json"]
 
-def encoder(%TypeInfo{}, default, value) do
-  default.(value)
-end
+  def format,
+    do: :binary
 
-def formatter(%TypeInfo{sender: "json"}) do
-  :text
-end
+  def encode(%TypeInfo{type: "json"}, map, _types),
+    do: Poison.encode!(map)
 
-def formatter(%TypeInfo{}) do
-  nil
+  def decode(%TypeInfo{type: "json"}, json, _types),
+    do: Poison.decode!(json)
 end
 ```
-
-## TODO
-
-  * Callbacks for asynchronous events
 
 ## Contributing
 
