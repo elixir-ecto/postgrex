@@ -1,6 +1,7 @@
 defmodule Postgrex.Extensions.Text do
-  use Behaviour
   alias Postgrex.TypeInfo
+
+  @behaviour Postgrex.Extension
 
   def matching,
     do: [type: "void"]
