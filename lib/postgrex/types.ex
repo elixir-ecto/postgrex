@@ -158,15 +158,9 @@ defmodule Postgrex.Types do
   Encodes an Elixir term with the extension for the given type.
   """
   @spec encode(Extension.t, oid, term, types) :: binary
-  def encode(_extension, oid, nil, types) do
-    fetch!(types, oid)
-    <<-1 :: int32>>
-  end
-
   def encode(extension, oid, value, types) do
     {info, _extension} = fetch!(types, oid)
-    binary = extension.encode(info, value, types)
-    [<<IO.iodata_length(binary) :: int32>>, binary]
+    extension.encode(info, value, types)
   end
 
   @doc """
@@ -187,12 +181,7 @@ defmodule Postgrex.Types do
   Decodes a binary with the extension for the given type.
   """
   @spec decode(Extension.t, oid, binary, types) :: term
-  def decode(_extension, oid, <<-1 :: int32>>, types) do
-    fetch!(types, oid)
-    nil
-  end
-
-  def decode(extension, oid, <<size :: int32, binary :: binary(size)>>, types) do
+  def decode(extension, oid, binary, types) do
     {info, _extension} = fetch!(types, oid)
     extension.decode(info, binary, types)
   end
