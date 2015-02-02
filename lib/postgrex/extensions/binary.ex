@@ -20,71 +20,74 @@ defmodule Postgrex.Extensions.Binary do
               date_send time_send timetz_send timestamp_send timestamptz_send
               interval_send array_send record_send range_send unknownsend)
 
-  def matching,
+  def init(opts),
+    do: opts
+
+  def matching(_),
     do: unquote(Enum.map(@senders, &{:send, &1}))
 
-  def format,
+  def format(_),
     do: :binary
 
   ### ENCODING ###
 
-  def encode(%TypeInfo{send: "boolsend"}, true, _),
+  def encode(%TypeInfo{send: "boolsend"}, true, _, _),
     do: <<1>>
-  def encode(%TypeInfo{send: "boolsend"}, false, _),
+  def encode(%TypeInfo{send: "boolsend"}, false, _, _),
     do: <<0>>
-  def encode(%TypeInfo{send: "bpcharsend"}, bin, _) when is_binary(bin),
+  def encode(%TypeInfo{send: "bpcharsend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "textsend"}, bin, _) when is_binary(bin),
+  def encode(%TypeInfo{send: "textsend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "citextsend"}, bin, _) when is_binary(bin),
+  def encode(%TypeInfo{send: "citextsend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "varcharsend"}, bin, _) when is_binary(bin),
+  def encode(%TypeInfo{send: "varcharsend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "byteasend"}, bin, _) when is_binary(bin),
+  def encode(%TypeInfo{send: "byteasend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "unknownsend"}, bin, _) when is_binary(bin),
+  def encode(%TypeInfo{send: "unknownsend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "int2send"}, n, _) when is_integer(n),
+  def encode(%TypeInfo{send: "int2send"}, n, _, _) when is_integer(n),
     do: <<n :: int16>>
-  def encode(%TypeInfo{send: "int4send"}, n, _) when is_integer(n),
+  def encode(%TypeInfo{send: "int4send"}, n, _, _) when is_integer(n),
     do: <<n :: int32>>
-  def encode(%TypeInfo{send: "int8send"}, n, _) when is_integer(n),
+  def encode(%TypeInfo{send: "int8send"}, n, _, _) when is_integer(n),
     do: <<n :: int64>>
-  def encode(%TypeInfo{send: "float4send"}, :NaN, _),
+  def encode(%TypeInfo{send: "float4send"}, :NaN, _, _),
     do: <<127, 192, 0, 0>>
-  def encode(%TypeInfo{send: "float4send"}, :inf, _),
+  def encode(%TypeInfo{send: "float4send"}, :inf, _, _),
     do: <<127, 128, 0, 0>>
-  def encode(%TypeInfo{send: "float4send"}, :"-inf", _),
+  def encode(%TypeInfo{send: "float4send"}, :"-inf", _, _),
     do: <<255, 128, 0, 0>>
-  def encode(%TypeInfo{send: "float4send"}, n, _) when is_number(n),
+  def encode(%TypeInfo{send: "float4send"}, n, _, _) when is_number(n),
     do: <<n :: float32>>
-  def encode(%TypeInfo{send: "float8send"}, :NaN, _),
+  def encode(%TypeInfo{send: "float8send"}, :NaN, _, _),
     do: <<127, 248, 0, 0, 0, 0, 0, 0>>
-  def encode(%TypeInfo{send: "float8send"}, :inf, _),
+  def encode(%TypeInfo{send: "float8send"}, :inf, _, _),
     do: <<127, 240, 0, 0, 0, 0, 0, 0>>
-  def encode(%TypeInfo{send: "float8send"}, :"-inf", _),
+  def encode(%TypeInfo{send: "float8send"}, :"-inf", _, _),
     do: <<255, 240, 0, 0, 0, 0, 0, 0>>
-  def encode(%TypeInfo{send: "float8send"}, n, _) when is_number(n),
+  def encode(%TypeInfo{send: "float8send"}, n, _, _) when is_number(n),
     do: <<n :: float64>>
-  def encode(%TypeInfo{send: "numeric_send"}, n, _),
+  def encode(%TypeInfo{send: "numeric_send"}, n, _, _),
     do: encode_numeric(n)
-  def encode(%TypeInfo{send: "uuid_send"}, <<_ :: binary(16)>> = bin, _),
+  def encode(%TypeInfo{send: "uuid_send"}, <<_ :: binary(16)>> = bin, _, _),
     do: bin
-  def encode(%TypeInfo{send: "date_send"}, date, _),
+  def encode(%TypeInfo{send: "date_send"}, date, _, _),
     do: encode_date(date)
-  def encode(%TypeInfo{send: "time_send"}, time, _),
+  def encode(%TypeInfo{send: "time_send"}, time, _, _),
     do: encode_time(time)
-  def encode(%TypeInfo{send: "timestamp_send"}, timestamp, _),
+  def encode(%TypeInfo{send: "timestamp_send"}, timestamp, _, _),
     do: encode_timestamp(timestamp)
-  def encode(%TypeInfo{send: "timestamptz_send"}, timestamp, _),
+  def encode(%TypeInfo{send: "timestamptz_send"}, timestamp, _, _),
     do: encode_timestamp(timestamp)
-  def encode(%TypeInfo{send: "interval_send"}, interval, _),
+  def encode(%TypeInfo{send: "interval_send"}, interval, _, _),
     do: encode_interval(interval)
-  def encode(%TypeInfo{send: "array_send", array_elem: elem_oid}, list, types) when is_list(list),
+  def encode(%TypeInfo{send: "array_send", array_elem: elem_oid}, list, types, _) when is_list(list),
     do: encode_array(list, elem_oid, types)
-  def encode(%TypeInfo{send: "record_send", comp_elems: elem_oids}, tuple, types) when is_tuple(tuple),
+  def encode(%TypeInfo{send: "record_send", comp_elems: elem_oids}, tuple, types, _) when is_tuple(tuple),
     do: encode_record(tuple, elem_oids, types)
-  def encode(%TypeInfo{send: "range_send", type: type}, tuple, _),
+  def encode(%TypeInfo{send: "range_send", type: type}, tuple, _, _),
     do: encode_range(type, tuple)
 
   defp encode_numeric(dec) do
@@ -285,65 +288,65 @@ defmodule Postgrex.Extensions.Binary do
 
   ### DECODING ###
 
-  def decode(%TypeInfo{send: "boolsend"}, <<1 :: int8>>, _),
+  def decode(%TypeInfo{send: "boolsend"}, <<1 :: int8>>, _, _),
     do: true
-  def decode(%TypeInfo{send: "boolsend"}, <<0 :: int8>>, _),
+  def decode(%TypeInfo{send: "boolsend"}, <<0 :: int8>>, _, _),
     do: false
-  def decode(%TypeInfo{send: "bpcharsend"}, bin, _),
+  def decode(%TypeInfo{send: "bpcharsend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "textsend"}, bin, _),
+  def decode(%TypeInfo{send: "textsend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "citextsend"}, bin, _),
+  def decode(%TypeInfo{send: "citextsend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "varcharsend"}, bin, _),
+  def decode(%TypeInfo{send: "varcharsend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "byteasend"}, bin, _),
+  def decode(%TypeInfo{send: "byteasend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "unknownsend"}, bin, _),
+  def decode(%TypeInfo{send: "unknownsend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "int2send"}, <<n :: int16>>, _),
+  def decode(%TypeInfo{send: "int2send"}, <<n :: int16>>, _, _),
     do: n
-  def decode(%TypeInfo{send: "int4send"}, <<n :: int32>>, _),
+  def decode(%TypeInfo{send: "int4send"}, <<n :: int32>>, _, _),
     do: n
-  def decode(%TypeInfo{send: "int8send"}, <<n :: int64>>, _),
+  def decode(%TypeInfo{send: "int8send"}, <<n :: int64>>, _, _),
     do: n
-  def decode(%TypeInfo{send: "float4send"}, <<127, 192, 0, 0>>, _),
+  def decode(%TypeInfo{send: "float4send"}, <<127, 192, 0, 0>>, _, _),
     do: :NaN
-  def decode(%TypeInfo{send: "float4send"}, <<127, 128, 0, 0>>, _),
+  def decode(%TypeInfo{send: "float4send"}, <<127, 128, 0, 0>>, _, _),
     do: :inf
-  def decode(%TypeInfo{send: "float4send"}, <<255, 128, 0, 0>>, _),
+  def decode(%TypeInfo{send: "float4send"}, <<255, 128, 0, 0>>, _, _),
     do: :"-inf"
-  def decode(%TypeInfo{send: "float4send"}, <<n :: float32>>, _),
+  def decode(%TypeInfo{send: "float4send"}, <<n :: float32>>, _, _),
     do: n
-  def decode(%TypeInfo{send: "float8send"}, <<127, 248, 0, 0, 0, 0, 0, 0>>, _),
+  def decode(%TypeInfo{send: "float8send"}, <<127, 248, 0, 0, 0, 0, 0, 0>>, _, _),
     do: :NaN
-  def decode(%TypeInfo{send: "float8send"}, <<127, 240, 0, 0, 0, 0, 0, 0>>, _),
+  def decode(%TypeInfo{send: "float8send"}, <<127, 240, 0, 0, 0, 0, 0, 0>>, _, _),
     do: :inf
-  def decode(%TypeInfo{send: "float8send"}, <<255, 240, 0, 0, 0, 0, 0, 0>>, _),
+  def decode(%TypeInfo{send: "float8send"}, <<255, 240, 0, 0, 0, 0, 0, 0>>, _, _),
     do: :"-inf"
-  def decode(%TypeInfo{send: "float8send"}, <<n :: float64>>, _),
+  def decode(%TypeInfo{send: "float8send"}, <<n :: float64>>, _, _),
     do: n
-  def decode(%TypeInfo{send: "numeric_send"}, bin, _),
+  def decode(%TypeInfo{send: "numeric_send"}, bin, _, _),
     do: decode_numeric(bin)
-  def decode(%TypeInfo{send: "uuid_send"}, bin, _),
+  def decode(%TypeInfo{send: "uuid_send"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "date_send"}, <<n :: int32>>, _),
+  def decode(%TypeInfo{send: "date_send"}, <<n :: int32>>, _, _),
     do: decode_date(n)
-  def decode(%TypeInfo{send: "time_send"}, <<n :: int64>>, _),
+  def decode(%TypeInfo{send: "time_send"}, <<n :: int64>>, _, _),
     do: decode_time(n)
-  def decode(%TypeInfo{send: "timetz_send"}, <<n :: int64, _tz :: int32>>, _),
+  def decode(%TypeInfo{send: "timetz_send"}, <<n :: int64, _tz :: int32>>, _, _),
     do: decode_time(n)
-  def decode(%TypeInfo{send: "timestamp_send"}, <<n :: int64>>, _),
+  def decode(%TypeInfo{send: "timestamp_send"}, <<n :: int64>>, _, _),
     do: decode_timestamp(n)
-  def decode(%TypeInfo{send: "timestamptz_send"}, <<n :: int64>>, _),
+  def decode(%TypeInfo{send: "timestamptz_send"}, <<n :: int64>>, _, _),
     do: decode_timestamp(n)
-  def decode(%TypeInfo{send: "interval_send"}, <<s :: int64, d :: int32, m :: int32>>, _),
+  def decode(%TypeInfo{send: "interval_send"}, <<s :: int64, d :: int32, m :: int32>>, _, _),
     do: decode_interval(s, d, m)
-  def decode(%TypeInfo{send: "array_send"}, bin, types),
+  def decode(%TypeInfo{send: "array_send"}, bin, types, _),
     do: decode_array(bin, types)
-  def decode(%TypeInfo{send: "record_send"}, bin, types),
+  def decode(%TypeInfo{send: "record_send"}, bin, types, _),
     do: decode_record(bin, types)
-  def decode(%TypeInfo{send: "range_send", type: type}, <<flags, payload :: binary>>, _decoder),
+  def decode(%TypeInfo{send: "range_send", type: type}, <<flags, payload :: binary>>, _, _),
     do: decode_range(type, flags, payload)
 
   defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do

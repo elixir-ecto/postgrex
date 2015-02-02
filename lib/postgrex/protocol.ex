@@ -76,7 +76,11 @@ defmodule Postgrex.Protocol do
   def message(:init, msg_ready(), s) do
     opts = clean_opts(s.opts)
     s = %{s | opts: opts, bootstrap: true}
-    matchers = Types.extension_matchers(s.extensions)
+    extension_opts = Types.prepare_extensions(s.extensions)
+    extensions = Enum.map(s.extensions, &elem(&1, 0))
+    matchers = Types.extension_matchers(extensions, extension_opts)
+
+    s = %{s | extensions: {extensions, extension_opts}}
     query = Types.bootstrap_query(matchers)
     Connection.new_query(query, [], s)
   end
@@ -136,9 +140,11 @@ defmodule Postgrex.Protocol do
 
   def message(:executing, msg_command_complete(), %{bootstrap: true} = s) do
     reply(:ok, s)
+    {extensions, extension_opts} = s.extensions
     types = Types.build_types(s.rows)
-    types = Types.associate_extensions_with_types(s.extensions, types)
-    {:ok, %{s | rows: [], bootstrap: false, types: types}}
+    types = Types.associate_extensions_with_types(extensions, extension_opts, types)
+    types = {types, extension_opts}
+    {:ok, %{s | rows: [], bootstrap: false, extensions: nil, types: types}}
   end
 
   def message(:executing, msg_command_complete(tag: tag), s) do

@@ -10,7 +10,7 @@ defmodule Postgrex.Connection do
   import Postgrex.Utils
 
   @timeout :infinity
-  @default_extensions [Postgrex.Extensions.Binary, Postgrex.Extensions.Text]
+  @default_extensions [{Postgrex.Extensions.Binary, nil}, {Postgrex.Extensions.Text, nil}]
 
   ### PUBLIC API ###
 
@@ -30,17 +30,9 @@ defmodule Postgrex.Connection do
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:async_connect` - Set to `true` if `start_link` should return before the
       connection is completed (default: `false`);
-    * `:extensions` - A list of modules implementing the `Postgrex.Extension`
-      behaviour;
-
-  ## Function signatures
-
-      @spec encoder(info :: TypeInfo.t, default :: fun, param :: term) ::
-            binary
-      @spec decoder(info :: TypeInfo.t, default :: fun, bin :: binary) ::
-            term
-      @spec formatter(info :: TypeInfo.t) ::
-            :binary | :text | nil
+    * `:extensions` - A list of `{module, opts}` pairs where `module` is
+      implementing the `Postgrex.Extension` behaviour and `opts` are the
+      extension options;
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do

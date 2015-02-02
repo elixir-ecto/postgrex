@@ -14,10 +14,9 @@ defmodule Postgrex.Types do
   @type oid :: pos_integer
 
   @typedoc """
-  Dictionary mapping oids to a `Postgrex.TypeInfo` `Postgrex.Extension` pair
-  where the extension is able to encode/decode the type.
+  State used by the encoder/decoder functions
   """
-  @type types :: HashDict.t
+  @opaque state :: {HashDict.t, HashDict.t}
 
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
@@ -41,10 +40,18 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def extension_matchers(extensions) do
+  def prepare_extensions(extensions) do
+    Enum.into(extensions, HashDict.new, fn {extension, opts} ->
+      {extension, extension.init(opts)}
+    end)
+  end
+
+  @doc false
+  def extension_matchers(extensions, extension_opts) do
     map = %{type: [], send: [], receive: [], output: [], input: []}
     Enum.reduce(extensions, map, fn extension, map ->
-      Enum.reduce(extension.matching(), map, fn {key, value}, map ->
+      opts = HashDict.fetch!(extension_opts, extension)
+      Enum.reduce(extension.matching(opts), map, fn {key, value}, map ->
         Map.update!(map, key, &[value|&1])
       end)
     end)
@@ -78,9 +85,14 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def associate_extensions_with_types(extensions, types) do
+  def associate_extensions_with_types(extensions, extension_opts, types) do
     Enum.reduce(types, HashDict.new, fn type_info, dict ->
-      extension = Enum.find(extensions, &match_extension_against_type(&1, type_info))
+      extension =
+        Enum.find(extensions, fn extension ->
+          opts = HashDict.fetch!(extension_opts, extension)
+          match_extension_against_type(extension, opts, type_info)
+        end)
+
       if extension do
         HashDict.put(dict, type_info.oid, {type_info, extension})
       else
@@ -89,8 +101,8 @@ defmodule Postgrex.Types do
     end)
   end
 
-  defp match_extension_against_type(extension, type_info) do
-    matching = extension.matching()
+  defp match_extension_against_type(extension, opts, type_info) do
+    matching = extension.matching(opts)
     Enum.any?(matching, &match_type(&1, type_info))
   end
 
@@ -124,16 +136,17 @@ defmodule Postgrex.Types do
   ### TYPE FORMAT ###
 
   @doc false
-  def format(oid, types) do
-    {info, extension} = fetch!(types, oid)
+  def format(oid, state) do
+    {info, extension} = fetch!(state, oid)
     cond do
-      info.send == "array_send" and format(info.array_elem, types) == :binary ->
+      info.send == "array_send" and format(info.array_elem, state) == :binary ->
         :binary
       info.send == "record_send" and info.type != "record" and
-      Enum.all?(info.comp_elems, &(format(&1, types) == :binary)) ->
+      Enum.all?(info.comp_elems, &(format(&1, state) == :binary)) ->
         :binary
       true ->
-        extension.format()
+        opts = fetch_opts(state, extension)
+        extension.format(opts)
     end
   end
 
@@ -142,56 +155,64 @@ defmodule Postgrex.Types do
   @doc """
   Encodes an Elixir term to a binary for the given type.
   """
-  @spec encode(oid, term, types) :: binary
-  def encode(oid, nil, types) do
-    fetch!(types, oid)
+  @spec encode(oid, term, state) :: binary
+  def encode(oid, nil, state) do
+    fetch!(state, oid)
     <<-1 :: int32>>
   end
 
-  def encode(oid, value, types) do
-    {info, extension} = fetch!(types, oid)
-    binary = extension.encode(info, value, types)
+  def encode(oid, value, state) do
+    {info, extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    binary = extension.encode(info, value, state, opts)
     [<<IO.iodata_length(binary) :: int32>>, binary]
   end
 
   @doc """
   Encodes an Elixir term with the extension for the given type.
   """
-  @spec encode(Extension.t, oid, term, types) :: binary
-  def encode(extension, oid, value, types) do
-    {info, _extension} = fetch!(types, oid)
-    extension.encode(info, value, types)
+  @spec encode(Extension.t, oid, term, state) :: binary
+  def encode(extension, oid, value, state) do
+    {info, _extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    extension.encode(info, value, state, opts)
   end
 
   @doc """
   Decodes a binary to an Elixir value for the given type.
   """
-  @spec decode(oid, binary, types) :: term
-  def decode(oid, <<-1 :: int32>>, types) do
-    fetch!(types, oid)
+  @spec decode(oid, binary, state) :: term
+  def decode(oid, <<-1 :: int32>>, state) do
+    fetch!(state, oid)
     nil
   end
 
-  def decode(oid, <<size :: int32, binary :: binary(size)>>, types) do
-    {info, extension} = fetch!(types, oid)
-    extension.decode(info, binary, types)
+  def decode(oid, <<size :: int32, binary :: binary(size)>>, state) do
+    {info, extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    extension.decode(info, binary, state, opts)
   end
 
   @doc """
   Decodes a binary with the extension for the given type.
   """
-  @spec decode(Extension.t, oid, binary, types) :: term
-  def decode(extension, oid, binary, types) do
-    {info, _extension} = fetch!(types, oid)
-    extension.decode(info, binary, types)
+  @spec decode(Extension.t, oid, binary, state) :: term
+  def decode(extension, oid, binary, state) do
+    {info, _extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    extension.decode(info, binary, state, opts)
   end
 
-  defp fetch!(types, oid) do
+  defp fetch!({types, _extensions}, oid) do
     case HashDict.fetch(types, oid) do
       {:ok, value} ->
         value
       :error ->
         raise ArgumentError, message: "no extension found for oid `#{oid}`"
     end
+  end
+
+  defp fetch_opts({_types, extensions}, extension) do
+    HashDict.fetch!(extensions, extension)
   end
 end

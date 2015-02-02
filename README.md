@@ -19,7 +19,7 @@ end
 After you are done, run `mix deps.get` in your shell to fetch and compile Postgrex. Start an interactive Elixir shell with `iex -S mix`.
 
 ```iex
-iex> {:ok, pid} = Postgrex.Connection.start_link([hostname: "localhost", username: "postgres", password: "postgres", database: "postgres"])
+iex> {:ok, pid} = Postgrex.Connection.start_link(hostname: "localhost", username: "postgres", password: "postgres", database: "postgres")
 {:ok, #PID<0.69.0>}
 iex> Postgrex.Connection.query!(pid, "SELECT user_id, text FROM comments", [])
 %Postgrex.Result{command: :select, empty?: false, columns: ["user_id", "text"], rows: [{3,"hey"},{4,"there"}], size: 2}}
@@ -78,18 +78,23 @@ defmodule Extensions.JSON do
 
   @behaviour Postgrex.Extension
 
-  def matching,
+  def init(opts),
+    do: Keyword.fetch!(opts, :library)
+
+  def matching(_library),
     do: [type: "json"]
 
-  def format,
+  def format(_library),
     do: :binary
 
-  def encode(%TypeInfo{type: "json"}, map, _types),
-    do: Poison.encode!(map)
+  def encode(%TypeInfo{type: "json"}, map, _state, library),
+    do: library.encode!(map)
 
-  def decode(%TypeInfo{type: "json"}, json, _types),
-    do: Poison.decode!(json)
+  def decode(%TypeInfo{type: "json"}, json, _state, library),
+    do: library.decode!(json)
 end
+
+Postgrex.Connection.start_link(extensions: [{Extensions.JSON, library: Poison}], ...)
 ```
 
 ## Contributing
