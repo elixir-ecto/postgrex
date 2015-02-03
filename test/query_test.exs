@@ -163,6 +163,7 @@ defmodule QueryTest do
     assert [{{1,1,1}}] = query("SELECT $1::date", [{1,1,1}])
     assert [{{1,2,3}}] = query("SELECT $1::date", [{1,2,3}])
     assert [{{2013,9,23}}] = query("SELECT $1::date", [{2013,9,23}])
+    assert [{{1999,12,31}}] = query("SELECT $1::date", [{1999,12,31}])
   end
 
   test "encode time", context do
