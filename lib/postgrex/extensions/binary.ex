@@ -8,17 +8,12 @@ defmodule Postgrex.Extensions.Binary do
 
   @behaviour Postgrex.Extension
 
-  @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
-  @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
-  @days_in_month 30
-  @secs_in_day 24 * 60 * 60
   @numeric_base 10_000
   @default_flag 0x02 ||| 0x04
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend int2send
               int4send int8send float4send float8send numeric_send uuid_send
-              date_send time_send timetz_send timestamp_send timestamptz_send
-              interval_send array_send record_send range_send unknownsend)
+              array_send record_send range_send unknownsend)
 
   def init(opts),
     do: opts
@@ -76,16 +71,6 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_numeric(n)
   def encode(%TypeInfo{send: "uuid_send"}, <<_ :: binary(16)>> = bin, _, _),
     do: bin
-  def encode(%TypeInfo{send: "date_send"}, date, _, _),
-    do: encode_date(date)
-  def encode(%TypeInfo{send: "time_send"}, time, _, _),
-    do: encode_time(time)
-  def encode(%TypeInfo{send: "timestamp_send"}, timestamp, _, _),
-    do: encode_timestamp(timestamp)
-  def encode(%TypeInfo{send: "timestamptz_send"}, timestamp, _, _),
-    do: encode_timestamp(timestamp)
-  def encode(%TypeInfo{send: "interval_send"}, interval, _, _),
-    do: encode_interval(interval)
   def encode(%TypeInfo{send: "array_send", array_elem: elem_oid}, list, types, _) when is_list(list),
     do: encode_array(list, elem_oid, types)
   def encode(%TypeInfo{send: "record_send", comp_elems: elem_oids}, tuple, types, _) when is_tuple(tuple),
@@ -168,24 +153,6 @@ defmodule Postgrex.Extensions.Binary do
     end
   end
 
-  defp encode_date(date) do
-    <<:calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
-  end
-
-  defp encode_time(time) do
-    <<:calendar.time_to_seconds(time) * 1_000_000 :: int64>>
-  end
-
-  defp encode_timestamp(timestamp) do
-    secs = :calendar.datetime_to_gregorian_seconds(timestamp) - @gs_epoch
-    <<secs * 1_000_000 :: int64>>
-  end
-
-  defp encode_interval({months, days, secs}) do
-    microsecs = secs * 1_000_000
-    <<microsecs :: int64, days :: int32, months :: int32>>
-  end
-
   defp encode_array(list, elem_oid, types) do
     encoder = &Postgrex.Types.encode(elem_oid, &1, types)
 
@@ -250,14 +217,6 @@ defmodule Postgrex.Extensions.Binary do
     encode_range(tuple, fn n when n in -9223372036854775808..9223372036854775806 ->
       <<n :: int64>>
     end)
-  end
-
-  defp encode_range(type, tuple) when type in ["tsrange", "tstzrange"] do
-    encode_range(tuple, &encode_timestamp/1)
-  end
-
-  defp encode_range("daterange", tuple) do
-    encode_range(tuple, &encode_date/1)
   end
 
   defp encode_range("numrange", tuple) do
@@ -341,18 +300,6 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_numeric(bin)
   def decode(%TypeInfo{send: "uuid_send"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "date_send"}, <<n :: int32>>, _, _),
-    do: decode_date(n)
-  def decode(%TypeInfo{send: "time_send"}, <<n :: int64>>, _, _),
-    do: decode_time(n)
-  def decode(%TypeInfo{send: "timetz_send"}, <<n :: int64, _tz :: int32>>, _, _),
-    do: decode_time(n)
-  def decode(%TypeInfo{send: "timestamp_send"}, <<n :: int64>>, _, _),
-    do: decode_timestamp(n)
-  def decode(%TypeInfo{send: "timestamptz_send"}, <<n :: int64>>, _, _),
-    do: decode_timestamp(n)
-  def decode(%TypeInfo{send: "interval_send"}, <<s :: int64, d :: int32, m :: int32>>, _, _),
-    do: decode_interval(s, d, m)
   def decode(%TypeInfo{send: "array_send"}, bin, types, _),
     do: decode_array(bin, types)
   def decode(%TypeInfo{send: "record_send"}, bin, types, _),
@@ -394,24 +341,6 @@ defmodule Postgrex.Extensions.Binary do
   defp decode_numeric_int(<<digit :: int16, tail :: binary>>, weight, acc) do
     acc = (acc * @numeric_base) + digit
     decode_numeric_int(tail, weight - 1, acc)
-  end
-
-  defp decode_date(days) do
-    :calendar.gregorian_days_to_date(days + @gd_epoch)
-  end
-
-  defp decode_time(microsecs) do
-    secs = div(microsecs, 1_000_000)
-    :calendar.seconds_to_time(secs)
-  end
-
-  defp decode_timestamp(microsecs) do
-    secs = div(microsecs, 1_000_000)
-    :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
-  end
-
-  defp decode_interval(microsecs, days, months) do
-    {months, days, div(microsecs, 1_000_000)}
   end
 
   defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary>>,
@@ -485,34 +414,21 @@ defmodule Postgrex.Extensions.Binary do
     end
   end
 
-  defp decode_range(type, _flags, <<_ :: int32, lower_bound :: int32, _ :: int32, upper_bound :: int32>>) do
-    case type do
-      "int4range" ->
-        {lower_bound, upper_bound - 1}
-      "daterange" ->
-        {decode_date(lower_bound), decode_date(upper_bound - 1)}
-    end
+  defp decode_range("int4range", _flags, <<_ :: int32, lower_bound :: int32, _ :: int32, upper_bound :: int32>>) do
+    {lower_bound, upper_bound - 1}
   end
 
-  defp decode_range(type, flags, <<_ :: int32, single_value :: int32>>) do
-    case {type, check_infinite(flags)} do
-      {"int4range", :lower} ->
+  defp decode_range("int4range", flags, <<_ :: int32, single_value :: int32>>) do
+    case check_infinite(flags) do
+      :lower ->
         {:"-inf", single_value - 1}
-      {"daterange", :lower} ->
-        {:"-inf", decode_date(single_value - 1)}
-      {"int4range", :upper} ->
+      :upper ->
         {single_value, :inf}
-      {"daterange", :upper} ->
-        {decode_date(single_value), :inf}
     end
   end
 
   defp decode_range("int8range", _flags, <<_ :: int32, lower_bound :: int64, _ :: int32, upper_bound :: int64>>) do
      {lower_bound, upper_bound - 1}
-  end
-
-  defp decode_range(type, _flags, <<_ :: int32, lower_bound :: int64, _ :: int32, upper_bound :: int64>>) when type in ["tsrange", "tstzrange"] do
-    {decode_timestamp(lower_bound), decode_timestamp(upper_bound)}
   end
 
   defp decode_range("int8range", flags, <<_ :: int32, single_value :: int64>>) do
@@ -521,15 +437,6 @@ defmodule Postgrex.Extensions.Binary do
         {:"-inf", single_value - 1}
       :upper ->
         {single_value, :inf}
-    end
-  end
-
-  defp decode_range(type, flags, <<_ :: int32, single_value :: int64>>) when type in ["tsrange", "tstzrange"] do
-    case check_infinite(flags) do
-      :lower ->
-        {:"-inf", decode_timestamp(single_value)}
-      :upper ->
-        {decode_timestamp(single_value), :inf}
     end
   end
 
