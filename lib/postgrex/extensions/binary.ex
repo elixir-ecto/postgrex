@@ -15,7 +15,7 @@ defmodule Postgrex.Extensions.Binary do
   @numeric_base 10_000
   @default_flag 0x02 ||| 0x04
 
-  @senders ~w(boolsend bpcharsend textsend varcharsend byteasend int2send
+  @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend int2send
               int4send int8send float4send float8send numeric_send uuid_send
               date_send time_send timetz_send timestamp_send timestamptz_send
               interval_send array_send record_send range_send unknownsend)
