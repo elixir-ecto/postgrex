@@ -9,6 +9,12 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
+  test "rebootstrap", context do
+    assert [{42}] = query("SELECT $1::int", [42])
+    P.rebootstrap(context.pid)
+    assert [{42}] = query("SELECT $1::int", [42])
+  end
+
   test "iodata", context do
     assert [{123}] = query(["S", ?E, ["LEC"|"T"], " ", '123'], [])
   end

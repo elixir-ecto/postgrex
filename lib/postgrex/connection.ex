@@ -6,6 +6,7 @@ defmodule Postgrex.Connection do
   use GenServer
   alias Postgrex.Protocol
   alias Postgrex.Messages
+  alias Postgrex.Types
   import Postgrex.BinaryUtils
   import Postgrex.Utils
 
@@ -197,6 +198,10 @@ defmodule Postgrex.Connection do
   @spec parameters(pid, Keyword.t) :: map
   def parameters(pid, opts \\ []) do
     GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
+  end
+
+  def rebootstrap(pid, opts \\ []) do
+    GenServer.call(pid, {:rebootstrap, opts}, opts[:timeout] || @timeout)
   end
 
   ### GEN_SERVER CALLBACKS ###
@@ -403,6 +408,15 @@ defmodule Postgrex.Connection do
         reply(%ArgumentError{}, s)
         {:ok, s}
     end
+  end
+
+  defp command({:rebootstrap, _opts}, s) do
+    s = %{s | bootstrap: true}
+    {extensions, extension_opts} = s.extensions
+
+    matchers = Types.extension_matchers(extensions, extension_opts)
+    query = Types.bootstrap_query(matchers)
+    new_query(query, [], s)
   end
 
   defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do
