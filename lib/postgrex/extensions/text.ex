@@ -41,19 +41,23 @@ defmodule Postgrex.Extensions.Text do
   def encode(%TypeInfo{output: "interval_out"}, interval, _, _),
     do: encode_interval(interval)
 
-  defp encode_date({year, month, day}) do
+  defp encode_date(%Postgrex.Date{year: year, month: month, day: day}) do
     [int_pad(year, 4), ?-, int_pad(month, 2), ?-, int_pad(day, 2)]
   end
 
-  defp encode_time({hour, min, sec}) do
+  defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec}) do
     [int_pad(hour, 2), ?:, int_pad(min, 2), ?:, int_pad(sec, 2)]
   end
 
-  defp encode_timestamp({date, time}) do
+  defp encode_timestamp(datetime) do
+    date = datetime_to_date(datetime)
+    time = datetime_to_time(datetime)
     [encode_date(date), ?\s, encode_time(time)]
   end
 
-  defp encode_interval(map) do
+  defp encode_interval(%Postgrex.Interval{} = interval) do
+    map = rename_key(interval, :month, :mon)
+
     iodata =
       Enum.reduce(@interval_parts, "", fn {part, part_str}, acc ->
         if iodata = interval_part(map, part, part_str) do
@@ -63,10 +67,10 @@ defmodule Postgrex.Extensions.Text do
         end
       end)
 
-    time = {Map.fetch!(map, :hour), Map.fetch!(map, :min), Map.fetch!(map, :sec)}
+    time = struct(Postgrex.Time, Map.take(map, [:hour, :min, :sec]))
 
     cond do
-      time != {0, 0, 0} ->
+      not match?(%{hour: 0, min: 0, sec: 9}, time) ->
         [iodata|encode_time(time)]
       iodata == "" ->
         "0"
@@ -88,6 +92,12 @@ defmodule Postgrex.Extensions.Text do
 
     iodata
   end
+
+  defp datetime_to_date(%Postgrex.DateTime{year: year, month: month, day: day}),
+    do: %Postgrex.Date{year: year, month: month, day: day}
+
+  defp datetime_to_time(%Postgrex.DateTime{hour: hour, min: min, sec: sec}),
+    do: %Postgrex.Time{hour: hour, min: min, sec: sec}
 
   defp int_pad(integer, size) do
     :erlang.integer_to_binary(integer)
@@ -138,20 +148,20 @@ defmodule Postgrex.Extensions.Text do
   end
 
   defp decode_date(binary) do
-    [year, month, <<day::binary(2), rest::binary>>] = :binary.split(binary, "-", [:global])
+    [year, month, <<day::binary(2), rest::binary>>] = binary_split(binary, "-", 2)
+
+    date = %Postgrex.Date{
+      year: :erlang.binary_to_integer(year),
+      month: :erlang.binary_to_integer(month),
+      day: :erlang.binary_to_integer(day)}
 
     case rest do
       " BC" <> rest ->
         rest = rest
-        raise "TODO"
+        date = %{date | year: -date.year}
       rest ->
         rest = rest
     end
-
-    date =
-      {:erlang.binary_to_integer(year),
-       :erlang.binary_to_integer(month),
-       :erlang.binary_to_integer(day)}
 
     {date, rest}
   end
@@ -167,48 +177,48 @@ defmodule Postgrex.Extensions.Text do
         :ok
     end
 
-    time =
-      {:erlang.binary_to_integer(hour),
-       :erlang.binary_to_integer(min),
-       :erlang.binary_to_integer(sec)}
+    time = %Postgrex.Time{
+      hour: :erlang.binary_to_integer(hour),
+      min: :erlang.binary_to_integer(min),
+      sec: :erlang.binary_to_integer(sec)}
 
     {time, rest}
   end
 
   defp decode_timetz(binary) do
     {time, rest} = decode_time(binary)
-    timezone = :binary.split(rest, ":", [:global]) |> Enum.map(&:erlang.binary_to_integer/1)
-    destructure [_hour, _min, _sec], timezone
+    timezone = binary_split(rest, ":", 2) |> Enum.map(&:erlang.binary_to_integer/1)
+    destructure [hour, min, sec], timezone
 
-    time
-  end
-
-  defp decode_timestamp("infinity") do
-    raise "TODO"
-  end
-
-  defp decode_timestamp("-infinity") do
-    raise "TODO"
+    timezone = %Postgrex.TimeZone{hour: hour || 0, min: min || 0, sec: sec || 0}
+    %{time | timezone: timezone}
   end
 
   defp decode_timestamp(binary) do
-    {date, " " <> rest} = decode_date(binary)
-    {time, ""} = decode_time(rest)
-    {date, time}
-  end
+    {%{year: year, month: month, day: day}, " " <> rest} = decode_date(binary)
+    {%{hour: hour, min: min, sec: sec}, ""} = decode_time(rest)
 
-  defp decode_timestamptz("infinity") do
-    raise "TODO"
-  end
-
-  defp decode_timestamptz("-infinity") do
-    raise "TODO"
+    %Postgrex.DateTime{
+      year: year,
+      month: month,
+      day: day,
+      hour: hour,
+      min: min,
+      sec: sec}
   end
 
   defp decode_timestamptz(binary) do
-    {date, " " <> rest} = decode_date(binary)
-    time = decode_timetz(rest)
-    {date, time}
+    {%{year: year, month: month, day: day}, " " <> rest} = decode_date(binary)
+    %{hour: hour, min: min, sec: sec, timezone: timezone} = decode_timetz(rest)
+
+    %Postgrex.DateTime{
+      year: year,
+      month: month,
+      day: day,
+      hour: hour,
+      min: min,
+      sec: sec,
+      timezone: timezone}
   end
 
   defp decode_interval(binary) do
@@ -226,11 +236,12 @@ defmodule Postgrex.Extensions.Text do
       end)
 
     if rest != "" do
-      {hour, min, sec} = decode_time(rest) |> perfect_match
-      %{map | hour: hour, min: min, sec: sec}
-    else
-      map
+      %{hour: hour, min: min, sec: sec} = decode_time(rest) |> perfect_match
+      map = %{map | hour: hour, min: min, sec: sec}
     end
+
+    map = rename_key(map, :mon, :month)
+    struct(Postgrex.Interval, map)
   end
 
   defp interval_part(binary, part) do
@@ -243,6 +254,19 @@ defmodule Postgrex.Extensions.Text do
         {:ok, :erlang.binary_to_integer(int), rest}
       _ ->
         :error
+    end
+  end
+
+  defp binary_split(binary, _pattern, 0) do
+    [binary]
+  end
+
+  defp binary_split(binary, pattern, max) do
+    case :binary.split(binary, pattern) do
+      [match, rest] ->
+        [match|binary_split(rest, pattern, max-1)]
+      [binary] ->
+        [binary]
     end
   end
 
@@ -261,4 +285,9 @@ defmodule Postgrex.Extensions.Text do
   end
 
   defp perfect_match({term, ""}), do: term
+
+  defp rename_key(map, old_key, new_key) do
+    value = Map.fetch!(map, old_key)
+    map |> Map.delete(old_key) |> Map.put(new_key, value)
+  end
 end
