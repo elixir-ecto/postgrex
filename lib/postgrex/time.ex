@@ -10,7 +10,7 @@ defmodule Postgrex.Time do
   defstruct [:hour, :min, :sec, :timezone]
 end
 
-defmodule Postgrex.DateTime do
+defmodule Postgrex.Timestamp do
   defstruct [:year, :month, :day, :hour, :min, :sec, :timezone]
 end
 

@@ -49,9 +49,9 @@ defmodule Postgrex.Extensions.Text do
     [int_pad(hour, 2), ?:, int_pad(min, 2), ?:, int_pad(sec, 2)]
   end
 
-  defp encode_timestamp(datetime) do
-    date = datetime_to_date(datetime)
-    time = datetime_to_time(datetime)
+  defp encode_timestamp(timestamp) do
+    date = timestamp_to_date(timestamp)
+    time = timestamp_to_time(timestamp)
     [encode_date(date), ?\s, encode_time(time)]
   end
 
@@ -93,10 +93,10 @@ defmodule Postgrex.Extensions.Text do
     iodata
   end
 
-  defp datetime_to_date(%Postgrex.DateTime{year: year, month: month, day: day}),
+  defp timestamp_to_date(%Postgrex.Timestamp{year: year, month: month, day: day}),
     do: %Postgrex.Date{year: year, month: month, day: day}
 
-  defp datetime_to_time(%Postgrex.DateTime{hour: hour, min: min, sec: sec}),
+  defp timestamp_to_time(%Postgrex.Timestamp{hour: hour, min: min, sec: sec}),
     do: %Postgrex.Time{hour: hour, min: min, sec: sec}
 
   defp int_pad(integer, size) do
@@ -198,7 +198,7 @@ defmodule Postgrex.Extensions.Text do
     {%{year: year, month: month, day: day}, " " <> rest} = decode_date(binary)
     {%{hour: hour, min: min, sec: sec}, ""} = decode_time(rest)
 
-    %Postgrex.DateTime{
+    %Postgrex.Timestamp{
       year: year,
       month: month,
       day: day,
@@ -211,7 +211,7 @@ defmodule Postgrex.Extensions.Text do
     {%{year: year, month: month, day: day}, " " <> rest} = decode_date(binary)
     %{hour: hour, min: min, sec: sec, timezone: timezone} = decode_timetz(rest)
 
-    %Postgrex.DateTime{
+    %Postgrex.Timestamp{
       year: year,
       month: month,
       day: day,

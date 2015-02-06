@@ -110,28 +110,28 @@ defmodule QueryTest do
   end
 
   test "decode timestamp", context do
-    assert [{%Postgrex.DateTime{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: nil}}] =
+    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: nil}}] =
            query("SELECT timestamp '2001-01-01 00:00:00'", [])
-    assert [{%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
            query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
-    assert [{%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
            query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
 
     :ok = query("SET TIMEZONE = '0'", [])
-    assert [{%Postgrex.DateTime{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: %Postgrex.TimeZone{hour: 0, min: 0, sec: 0}}}] =
+    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: %Postgrex.TimeZone{hour: 0, min: 0, sec: 0}}}] =
            query("SELECT timestamptz '2001-01-01 00:00:00'", [])
 
     :ok = query("SET TIMEZONE = '5'", [])
-    assert [{%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: %Postgrex.TimeZone{hour: 5, min: 0, sec: 0}}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: %Postgrex.TimeZone{hour: 5, min: 0, sec: 0}}}] =
            query("SELECT timestamptz '2013-09-23 14:04:37.123'", [])
 
 
     :ok = query("SET TIMEZONE = '-01:02'", [])
-    assert [{%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: %Postgrex.TimeZone{hour: 1, min: 2, sec: 0}}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: %Postgrex.TimeZone{hour: 1, min: 2, sec: 0}}}] =
            query("SELECT timestamptz '2013-09-23 14:04:37'", [])
 
     :ok = query("SET TIMEZONE = '+01:02'", [])
-    assert [{%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: %Postgrex.TimeZone{hour: -1, min: 2, sec: 0}}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: %Postgrex.TimeZone{hour: -1, min: 2, sec: 0}}}] =
            query("SELECT timestamptz '2013-09-23 14:04:37.123'", [])
 
   end
@@ -272,10 +272,10 @@ defmodule QueryTest do
   end
 
   test "encode timestamp", context do
-    assert [{%Postgrex.DateTime{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: nil}}] =
-      query("SELECT $1::timestamp", [%Postgrex.DateTime{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}])
-    assert [{%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
-      query("SELECT $1::timestamp", [%Postgrex.DateTime{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}])
+    assert [{%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: nil}}] =
+      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}])
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
+      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}])
   end
 
   test "encode interval", context do
