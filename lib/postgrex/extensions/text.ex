@@ -43,8 +43,13 @@ defmodule Postgrex.Extensions.Text do
   def encode(%TypeInfo{output: "interval_out"}, interval, _, _),
     do: encode_interval(interval)
 
-  defp encode_date(%Postgrex.Date{year: year, month: month, day: day}) do
-    [int_pad(year, 4), ?-, int_pad(month, 2), ?-, int_pad(day, 2)]
+  defp encode_date(%Postgrex.Date{year: year, month: month, day: day, ad: ad}) do
+    date = [int_pad(year, 4), ?-, int_pad(month, 2), ?-, int_pad(day, 2)]
+    if ad do
+      date
+    else
+      [date|" BC"]
+    end
   end
 
   defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec}) do
@@ -95,8 +100,8 @@ defmodule Postgrex.Extensions.Text do
     iodata
   end
 
-  defp timestamp_to_date(%Postgrex.Timestamp{year: year, month: month, day: day}),
-    do: %Postgrex.Date{year: year, month: month, day: day}
+  defp timestamp_to_date(%Postgrex.Timestamp{year: year, month: month, day: day, ad: ad}),
+    do: %Postgrex.Date{year: year, month: month, day: day, ad: ad}
 
   defp timestamp_to_time(%Postgrex.Timestamp{hour: hour, min: min, sec: sec}),
     do: %Postgrex.Time{hour: hour, min: min, sec: sec}
@@ -140,15 +145,6 @@ defmodule Postgrex.Extensions.Text do
 
   def decode(%TypeInfo{output: "interval_out"}, interval, _, _),
     do: decode_interval(interval)
-
-  defp decode_date("infinity") do
-    raise "TODO"
-  end
-
-  defp decode_date("-infinity") do
-    raise "TODO"
-  end
-
   defp decode_date(binary) do
     [year, month, <<day::binary(2), rest::binary>>] = binary_split(binary, "-", 2)
 
@@ -160,8 +156,9 @@ defmodule Postgrex.Extensions.Text do
     case rest do
       " BC" <> rest ->
         rest = rest
-        date = %{date | year: -date.year}
+        date = %{date | ad: false}
       rest ->
+        date = %{date | ad: true}
         rest = rest
     end
 
@@ -198,7 +195,14 @@ defmodule Postgrex.Extensions.Text do
 
   defp decode_timestamp(binary) do
     {%{year: year, month: month, day: day}, " " <> rest} = decode_date(binary)
-    {%{hour: hour, min: min, sec: sec}, ""} = decode_time(rest)
+    {%{hour: hour, min: min, sec: sec}, rest} = decode_time(rest)
+
+    case rest do
+      " BC" ->
+        ad = false
+      "" ->
+        ad = true
+    end
 
     %Postgrex.Timestamp{
       year: year,
@@ -206,11 +210,12 @@ defmodule Postgrex.Extensions.Text do
       day: day,
       hour: hour,
       min: min,
-      sec: sec}
+      sec: sec,
+      ad: ad}
   end
 
   defp decode_timestamptz(binary) do
-    {%{year: year, month: month, day: day}, " " <> rest} = decode_date(binary)
+    {%{year: year, month: month, day: day, ad: ad}, " " <> rest} = decode_date(binary)
     %{hour: hour, min: min, sec: sec, timezone: timezone} = decode_timetz(rest)
 
     %Postgrex.Timestamp{
@@ -220,6 +225,7 @@ defmodule Postgrex.Extensions.Text do
       hour: hour,
       min: min,
       sec: sec,
+      ad: ad,
       timezone: timezone}
   end
 

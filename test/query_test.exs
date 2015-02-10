@@ -75,8 +75,6 @@ defmodule QueryTest do
     # query("SELECT time '00:00:00.123'", [])
     # query("SELECT time '00:00:00.123456'", [])
 
-    # TODO: :positive field or negative hour for timezone?
-
     assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, timezone: %Postgrex.TimeZone{hour: 0, min: 0, sec: 0}}}] =
            query("SELECT timetz '00:00:00 UTC'", [])
     assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3, timezone: %Postgrex.TimeZone{hour: 10, min: 0, sec: 0}}}] =
@@ -94,8 +92,6 @@ defmodule QueryTest do
   end
 
   test "decode date", context do
-    # TODO: :ad field or negative year?
-
     assert [{%Postgrex.Date{year: 1, month: 1, day: 1}}] =
            query("SELECT date '0001-01-01'", [])
     assert [{%Postgrex.Date{year: 1, month: 2, day: 3}}] =
@@ -103,15 +99,17 @@ defmodule QueryTest do
     assert [{%Postgrex.Date{year: 2013, month: 9, day: 23}}] =
            query("SELECT date '2013-09-23'", [])
 
-    assert [{%Postgrex.Date{year: -99, month: 1, day: 8}}] =
+    assert [{%Postgrex.Date{year: 99, month: 1, day: 8, ad: false}}] =
            query("SELECT date 'January 8, 99 BC'", [])
-    assert [{%Postgrex.Date{year: 10000, month: 1, day: 1}}] =
+    assert [{%Postgrex.Date{year: 10000, month: 1, day: 1, ad: true}}] =
            query("SELECT date '10000-1-1'", [])
   end
 
   test "decode timestamp", context do
-    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, timezone: nil}}] =
+    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, ad: true, timezone: nil}}] =
            query("SELECT timestamp '2001-01-01 00:00:00'", [])
+    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, ad: false, timezone: nil}}] =
+           query("SELECT timestamp '2001-01-01 00:00:00 BC'", [])
     assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
            query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
     assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, timezone: nil}}] =
@@ -137,8 +135,6 @@ defmodule QueryTest do
   end
 
   test "decode interval", context do
-    # TODO: negative interval
-
     assert [{%Postgrex.Interval{year: 0, month: 0, day: 0, hour: 0, min: 0, sec: 0}}] =
            query("SELECT interval '0'", [])
     assert [{%Postgrex.Interval{year: 0, month: 0, day: 100, hour: 0, min: 0, sec: 0}}] =
@@ -256,8 +252,10 @@ defmodule QueryTest do
            query("SELECT $1::date", [%Postgrex.Date{year: 1, month: 2, day: 3}])
     assert [{%Postgrex.Date{year: 2013, month: 9, day: 23}}] =
            query("SELECT $1::date", [%Postgrex.Date{year: 2013, month: 9, day: 23}])
-    assert [{%Postgrex.Date{year: 1999, month: 12, day: 31}}] =
+    assert [{%Postgrex.Date{year: 1999, month: 12, day: 31, ad: true}}] =
            query("SELECT $1::date", [%Postgrex.Date{year: 1999, month: 12, day: 31}])
+    assert [{%Postgrex.Date{year: 1999, month: 12, day: 31, ad: false}}] =
+           query("SELECT $1::date", [%Postgrex.Date{year: 1999, month: 12, day: 31, ad: false}])
   end
 
   test "encode time", context do
