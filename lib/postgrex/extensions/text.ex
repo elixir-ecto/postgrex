@@ -1,6 +1,7 @@
 defmodule Postgrex.Extensions.Text do
   alias Postgrex.TypeInfo
   import Postgrex.BinaryUtils
+  import Postgrex.Utils, only: [binary_split: 3]
 
   @behaviour Postgrex.Extension
 
@@ -12,6 +13,7 @@ defmodule Postgrex.Extensions.Text do
   @interval_parts ~w(year mon day)a
   @interval_parts Enum.map(@interval_parts, &{&1, Atom.to_string(&1)})
 
+  # TODO: array and record
 
   def init(opts),
     do: opts
@@ -254,19 +256,6 @@ defmodule Postgrex.Extensions.Text do
         {:ok, :erlang.binary_to_integer(int), rest}
       _ ->
         :error
-    end
-  end
-
-  defp binary_split(binary, _pattern, 0) do
-    [binary]
-  end
-
-  defp binary_split(binary, pattern, max) do
-    case :binary.split(binary, pattern) do
-      [match, rest] ->
-        [match|binary_split(rest, pattern, max-1)]
-      [binary] ->
-        [binary]
     end
   end
 

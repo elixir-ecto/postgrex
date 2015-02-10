@@ -21,15 +21,25 @@ defmodule Postgrex.Types do
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
   @doc false
-  def bootstrap_query(m) do
+  def bootstrap_query(m, version) do
+    if version >= 90_000 do
+      rngsubtype = "coalesce(r.rngsubtype, 0)"
+      join_range = "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid"
+    else
+      rngsubtype = "0"
+      join_range = ""
+    end
+
     """
-    SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput, t.typelem, ARRAY (
+    SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
+           t.typelem, #{rngsubtype}, ARRAY (
       SELECT a.atttypid
       FROM pg_attribute AS a
       WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
       ORDER BY a.attnum
     )
     FROM pg_type AS t
+    #{join_range}
     WHERE
       t.typname::text = ANY ((#{sql_array(m.type)})::text[]) OR
       t.typsend::text = ANY ((#{sql_array(m.send)})::text[]) OR
@@ -67,9 +77,11 @@ defmodule Postgrex.Types do
        <<_::int32, output::binary>>,
        <<_::int32, input::binary>>,
        <<_::int32, array_oid::binary>>,
+       <<_::int32, base_oid::binary>>,
        <<_::int32, comp_oids::binary>>] = row
       oid = String.to_integer(oid)
       array_oid = String.to_integer(array_oid)
+      base_oid = String.to_integer(base_oid)
       comp_oids = parse_oids(comp_oids)
 
       %TypeInfo{
@@ -80,6 +92,7 @@ defmodule Postgrex.Types do
         output: output,
         input: input,
         array_elem: array_oid,
+        base_type: base_oid,
         comp_elems: comp_oids}
     end)
   end
@@ -138,12 +151,26 @@ defmodule Postgrex.Types do
   @doc false
   def format(oid, state) do
     {info, extension} = fetch!(state, oid)
+
     cond do
-      info.send == "array_send" and format(info.array_elem, state) == :binary ->
-        :binary
-      info.send == "record_send" and info.type != "record" and
-      Enum.all?(info.comp_elems, &(format(&1, state) == :binary)) ->
-        :binary
+      info.send == "array_send" ->
+        format(info.array_elem, state)
+      info.send == "range_send" ->
+        format(info.base_type, state)
+      info.send == "record_send" and info.type != "record" ->
+        case info.comp_elems do
+          [] ->
+            :binary
+          [head|tail] ->
+            first = format(head, state)
+            # TODO: We can handle this case if we separate extensions by format
+            #       and have most extensions support both format
+            unless Enum.all?(tail, &(format(&1, state) == first)) do
+              raise ArgumentError, message: "all record elements for `#{oid}` " <>
+                                            "need to use the same format"
+            end
+            first
+        end
       true ->
         opts = fetch_opts(state, extension)
         extension.format(opts)

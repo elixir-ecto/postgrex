@@ -18,3 +18,6 @@ defmodule Postgrex.Interval do
   defstruct [:year, :month, :day, :hour, :min, :sec]
 end
 
+defmodule Postgrex.Range do
+  defstruct [:lower, :upper, :lower_inclusive, :upper_inclusive]
+end
