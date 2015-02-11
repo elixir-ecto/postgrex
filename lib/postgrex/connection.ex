@@ -92,7 +92,7 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
-    message = {:query, statement, params, opts}
+    message = {:query, statement, params}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res ->
@@ -110,7 +110,7 @@ defmodule Postgrex.Connection do
   """
   @spec query!(pid, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(pid, statement, params, opts \\ []) do
-    message = {:query, statement, params, opts}
+    message = {:query, statement, params}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res ->
@@ -133,7 +133,7 @@ defmodule Postgrex.Connection do
   """
   @spec listen(pid, String.t, Keyword.t) :: {:ok, reference} | {:error, Postgrex.Error.t}
   def listen(pid, channel, opts \\ []) do
-    message = {:listen, channel, self(), opts}
+    message = {:listen, channel, self()}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       ref when is_reference(ref)  -> {:ok, ref}
@@ -146,7 +146,7 @@ defmodule Postgrex.Connection do
   """
   @spec listen!(pid, String.t, Keyword.t) :: reference
   def listen!(pid, channel, opts \\ []) do
-    message = {:listen, channel, self(), opts}
+    message = {:listen, channel, self()}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       ref when is_reference(ref)  -> ref
@@ -164,7 +164,7 @@ defmodule Postgrex.Connection do
   """
   @spec unlisten(pid, reference, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def unlisten(pid, ref, opts \\ []) do
-    message = {:unlisten, ref, opts}
+    message = {:unlisten, ref}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       :ok -> :ok
@@ -179,7 +179,7 @@ defmodule Postgrex.Connection do
   """
   @spec unlisten!(pid, reference, Keyword.t) :: :ok
   def unlisten!(pid, ref, opts \\ []) do
-    message = {:unlisten, ref, opts}
+    message = {:unlisten, ref}
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       :ok -> :ok
@@ -201,7 +201,7 @@ defmodule Postgrex.Connection do
   end
 
   def rebootstrap(pid, opts \\ []) do
-    GenServer.call(pid, {:rebootstrap, opts}, opts[:timeout] || @timeout)
+    GenServer.call(pid, :rebootstrap, opts[:timeout] || @timeout)
   end
 
   ### GEN_SERVER CALLBACKS ###
@@ -322,7 +322,7 @@ defmodule Postgrex.Connection do
   @doc false
   def new_query(statement, params, %{queue: queue} = s) do
     {{:value, command}, queue} = :queue.out(queue)
-    new_command = {:query, statement, params, []}
+    new_command = {:query, statement, params}
     command = %{command | command: new_command}
 
     queue = :queue.in_r(command, queue)
@@ -368,12 +368,11 @@ defmodule Postgrex.Connection do
     end
   end
 
-  # TODO: Check if opts can be removed from all command tuples
-  defp command({:query, statement, _params, _opts}, s) do
+  defp command({:query, statement, _params}, s) do
     Protocol.send_query(statement, s)
   end
 
-  defp command({:listen, channel, pid, _opts}, s) do
+  defp command({:listen, channel, pid}, s) do
     ref = Process.monitor(pid)
     s = update_in(s.listeners, &HashDict.put(&1, ref, {channel, pid}))
     s = update_in(s.listener_channels[channel], fn set ->
@@ -389,7 +388,7 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp command({:unlisten, ref, _opts}, s) do
+  defp command({:unlisten, ref}, s) do
     case HashDict.fetch(s.listeners, ref) do
       {:ok, {channel, _pid}} ->
         s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
@@ -410,7 +409,7 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp command({:rebootstrap, _opts}, s) do
+  defp command(:rebootstrap, s) do
     s = %{s | bootstrap: true}
     {extensions, extension_opts} = s.extensions
 

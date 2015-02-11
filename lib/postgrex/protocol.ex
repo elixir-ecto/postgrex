@@ -249,7 +249,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp encode_params(%{queue: queue, portal: param_oids, types: types}) do
-    %{command: {:query, _statement, params, _opts}} = :queue.get(queue)
+    %{command: {:query, _statement, params}} = :queue.get(queue)
     zipped = Enum.zip(param_oids, params)
 
     Enum.map(zipped, fn {oid, param} ->
