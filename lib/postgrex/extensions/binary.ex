@@ -19,13 +19,16 @@ defmodule Postgrex.Extensions.Binary do
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
-              uuid_send unknownsend void_send)
+              uuid_send unknownsend)
 
-  def init(opts),
-    do: opts
+  def init(parameters, _opts),
+    do: parameters["server_version"] |> Postgrex.Utils.version_to_int
+
+  def matching(version) when version >= 90_100,
+    do: [send: "void_send"] ++ matching(0)
 
   def matching(_),
-    do: [type: "record"] ++ unquote(Enum.map(@senders, &{:send, &1}))
+    do: unquote(Enum.map(@senders, &{:send, &1}))
 
   def format(_),
     do: :binary

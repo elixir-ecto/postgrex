@@ -1,9 +1,9 @@
 language: erlang
 otp_release:
-  - 17.0
+  - 17.3
 before_install:
-  - wget http://s3.hex.pm/builds/elixir/master.zip
-  - unzip -d elixir master.zip
+  - wget http://s3.hex.pm/builds/elixir/$ELIXIRVERSION.zip
+  - unzip -d elixir $ELIXIRVERSION.zip
 install:
   - sudo service postgresql stop
   - sudo apt-get -y -qq --purge remove postgresql libpq-dev libpq5 postgresql-client-common postgresql-common
@@ -25,7 +25,8 @@ script:
   - mix test
 env:
   global:
-    -PGUSER=postgres
+    - PGUSER=postgres
+    - ELIXIRVERSION=v1.0.3
   matrix:
     - PGVERSION=8.4
     - PGVERSION=9.0

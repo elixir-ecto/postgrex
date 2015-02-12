@@ -13,18 +13,22 @@ defmodule Postgrex.Extensions.Text do
 
   # TODO: array and record
 
-  def init(opts),
-    do: opts
+  def init(parameters, _opts),
+    do: parameters["server_version"] |> Postgrex.Utils.version_to_int
 
-  def matching(_) do
-    unquote(Enum.map(@outputs, &{:output, &1}))
-  end
+  def matching(version) when version < 90_100,
+    do: [output: "void_out"] ++ matching(90_100)
+
+  def matching(_),
+    do: unquote(Enum.map(@outputs, &{:output, &1}))
 
   def format(_),
     do: :text
 
   ### ENCODING ###
 
+  def encode(%TypeInfo{output: "void_out"}, :void, _, _),
+    do: ""
   def encode(%TypeInfo{output: "date_out"}, date, _, _),
     do: encode_date(date)
   def encode(%TypeInfo{output: "time_out"}, time, _, _),
@@ -116,6 +120,8 @@ defmodule Postgrex.Extensions.Text do
 
   ### DECODING ###
 
+  def decode(%TypeInfo{output: "void_out"}, "", _, _),
+    do: :void
   def decode(%TypeInfo{output: "date_out"}, date, _, _),
     do: decode_date(date) |> perfect_match
   def decode(%TypeInfo{output: "time_out"}, time, _, _),

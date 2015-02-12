@@ -76,7 +76,7 @@ defmodule Postgrex.Protocol do
   def message(:init, msg_ready(), s) do
     opts = clean_opts(s.opts)
     s = %{s | opts: opts, bootstrap: true}
-    extension_opts = Types.prepare_extensions(s.extensions)
+    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
     extensions = Enum.map(s.extensions, &elem(&1, 0))
     matchers = Types.extension_matchers(extensions, extension_opts)
 
