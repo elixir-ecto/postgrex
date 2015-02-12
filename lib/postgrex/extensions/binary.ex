@@ -11,15 +11,15 @@ defmodule Postgrex.Extensions.Binary do
   @numeric_base 10_000
   @default_flag 0x02 ||| 0x04
 
-  @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend int2send
-              int4send int8send float4send float8send numeric_send uuid_send
-              array_send record_send range_send unknownsend)
+  @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
+              int2send int4send int8send float4send float8send numeric_send
+              uuid_send unknownsend)
 
   def init(opts),
     do: opts
 
   def matching(_),
-    do: unquote(Enum.map(@senders, &{:send, &1}))
+    do: [type: "record"] ++ unquote(Enum.map(@senders, &{:send, &1}))
 
   def format(_),
     do: :binary
