@@ -156,20 +156,24 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.2"
   test "decode range", context do
-    assert [{{2,4}}] = query("SELECT '(1,5)'::int4range", [])
-    assert [{{1,6}}] = query("SELECT '[1,6]'::int4range", [])
-    assert [{{:"-inf",4}}] = query("SELECT '(,5)'::int4range", [])
-    assert [{{1,:inf}}] = query("SELECT '[1,)'::int4range", [])
+    assert [{%Postgrex.Range{lower: 2, upper: 5, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '(1,5)'::int4range", [])
+    assert [{%Postgrex.Range{lower: 1, upper: 7, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '[1,6]'::int4range", [])
+    assert [{%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT '(,5)'::int4range", [])
+    assert [{%Postgrex.Range{lower: 1, upper: nil, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '[1,)'::int4range", [])
+    assert [{%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT '(,)'::int4range", [])
+    assert [{%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT '[,]'::int4range", [])
 
-    assert [{{3,7}}] = query("SELECT '(2,8)'::int8range", [])
-    assert [{{2,4}}] = query("SELECT '[2,4]'::int8range", [])
-    assert [{{:"-inf",3}}] = query("SELECT '(,4)'::int8range", [])
-    assert [{{7,:inf}}] = query("SELECT '(6,]'::int8range", [])
+    assert [{%Postgrex.Range{lower: 3, upper: 8, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '(2,8)'::int8range", [])
 
-    assert [{{Decimal.new("1.0"),Decimal.new("5.999")}}] == query("SELECT numrange(1.0,5.999)", [])
-    assert [{{Decimal.new("1.0"),Decimal.new("5.999")}}] == query("SELECT '[1.0,5.999]'::numrange", [])
-    assert [{{:"-inf",Decimal.new("1.0000000001")}}] == query("SELECT numrange(NULL,1.0000000001)", [])
-    assert [{{Decimal.new("99999999999.9"),:inf}}] == query("SELECT '[99999999999.9,]'::numrange", [])
+    assert [{%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: false, upper_inclusive: false}}] ==
+           query("SELECT '(1.2,3.4)'::numrange", [])
 
     # assert [{{{2014,1,1},{2014,12,30}}}] = query("SELECT '[1-1-2014,12-31-2014)'::daterange", [])
     # assert [{{{2014,1,2},{2014,12,31}}}] = query("SELECT '(1-1-2014,12-31-2014]'::daterange", [])
@@ -304,17 +308,20 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.2"
   test "encode range", context do
-    assert [{{1,3}}] = query("SELECT $1::int4range", [{1,3}])
-    assert [{{:"-inf",5}}] = query("SELECT $1::int4range", [{:"-inf",5}])
-    assert [{{3,:inf}}] = query("SELECT $1::int4range", [{3,:inf}])
+    assert [{%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
+    assert [{%Postgrex.Range{lower: nil, upper: 6, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: true}])
+    assert [{%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [{%Postgrex.Range{lower: 4, upper: 5, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: 5, lower_inclusive: false, upper_inclusive: false}])
 
-    assert [{{2,9}}] = query("SELECT $1::int8range", [{2,9}])
-    assert [{{:"-inf",3}}] = query("SELECT $1::int8range", [{:"-inf",3}])
-    assert [{{6,:inf}}] = query("SELECT $1::int8range", [{6,:inf}])
+    assert [{%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int8range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
 
-    assert [{{Decimal.new("0.1"),Decimal.new("9.9")}}] == query("SELECT $1::numrange", [{Decimal.new("0.1"),Decimal.new("9.9")}])
-    assert [{{:"-inf",Decimal.new("99999.99999")}}] == query("SELECT $1::numrange", [{:"-inf",Decimal.new("99999.99999")}])
-    assert [{{Decimal.new("0.000000001"),:inf}}] == query("SELECT $1::numrange", [{Decimal.new("0.000000001"),:inf}])
+    assert [{%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}}] ==
+           query("SELECT $1::numrange", [%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}])
 
     # assert [{{{2014,1,1},{2014,12,31}}}] = query("SELECT $1::daterange", [{{2014,1,1},{2014,12,31}}])
     # assert [{{:"-inf",{2014,12,31}}}] = query("SELECT $1::daterange", [{:"-inf",{2014,12,31}}])
@@ -331,19 +338,17 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.2"
   test "encode enforces bounds on integer ranges", context do
-    # int4's range is -2147483648 to +2147483647,
-    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
-    assert [{{-2147483648, 0}}] = query("SELECT $1::int4range", [{-2147483648, 0}])
-    assert [{{0, 2147483646}}] = query("SELECT $1::int4range", [{0, 2147483646}])
-    assert :function_clause = catch_error(query("SELECT $1::int4range", [{-2147483648 - 1, 0}]))
-    assert :function_clause = catch_error(query("SELECT $1::int4range", [{0, 2147483646 + 1}]))
+    # int4's range is -2147483648 to +2147483647
+    assert [{%Postgrex.Range{lower: -2147483648}}] = query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483648}])
+    assert [{%Postgrex.Range{upper: 2147483647}}] = query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483647, upper_inclusive: false}])
+    assert :function_clause = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
+    assert :function_clause = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
 
-    # int8's range is -9223372036854775808 to 9223372036854775807,
-    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
-    assert [{{-9223372036854775807, 0}}] = query("SELECT $1::int8range", [{-9223372036854775807, 0}])
-    assert [{{0, 9223372036854775806}}] = query("SELECT $1::int8range", [{0, 9223372036854775806}])
-    assert :function_clause = catch_error(query("SELECT $1::int8range", [{-9223372036854775808 - 1, 0}]))
-    assert :function_clause = catch_error(query("SELECT $1::int8range", [{0, 9223372036854775806 + 1}]))
+    # int8's range is -9223372036854775808 to 9223372036854775807
+    assert [{%Postgrex.Range{lower: -9223372036854775807}}] = query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775807}])
+    assert [{%Postgrex.Range{upper: 9223372036854775806}}] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
+    assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
+    assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
   end
 
   test "fail on encode arrays", context do
