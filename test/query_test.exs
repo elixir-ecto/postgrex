@@ -160,6 +160,26 @@ defmodule QueryTest do
     end)
   end
 
+  test "encode enforces bounds on integers", context do
+    # int2's range is -32768 to +32767
+    assert [{-32768}] = query("SELECT $1::int2", [-32768])
+    assert [{32767}] = query("SELECT $1::int2", [32767])
+    assert :function_clause = catch_error(query("SELECT $1::int2", [32767 + 1]))
+    assert :function_clause = catch_error(query("SELECT $1::int2", [-32768 - 1]))
+
+    # int4's range is -2147483648 to +2147483647
+    assert [{-2147483648}] = query("SELECT $1::int4", [-2147483648])
+    assert [{2147483647}] = query("SELECT $1::int4", [2147483647])
+    assert :function_clause = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
+    assert :function_clause = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
+
+    # int8's range is  -9223372036854775808 to 9223372036854775807
+    assert [{-9223372036854775808}] = query("SELECT $1::int8", [-9223372036854775808])
+    assert [{9223372036854775807}] = query("SELECT $1::int8", [9223372036854775807])
+    assert :function_clause = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
+    assert :function_clause = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
+  end
+
   test "encode uuid", context do
     uuid = <<0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15>>
     assert [{^uuid}] = query("SELECT $1::uuid", [uuid])
@@ -241,6 +261,23 @@ defmodule QueryTest do
     assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
     assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
     assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},:inf}])
+  end
+
+  @tag min_pg_version: "9.2"
+  test "encode enforces bounds on integer ranges", context do
+    # int4's range is -2147483648 to +2147483647,
+    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
+    assert [{{-2147483648, 0}}] = query("SELECT $1::int4range", [{-2147483648, 0}])
+    assert [{{0, 2147483646}}] = query("SELECT $1::int4range", [{0, 2147483646}])
+    assert :function_clause = catch_error(query("SELECT $1::int4range", [{-2147483648 - 1, 0}]))
+    assert :function_clause = catch_error(query("SELECT $1::int4range", [{0, 2147483646 + 1}]))
+
+    # int8's range is -9223372036854775808 to 9223372036854775807,
+    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
+    assert [{{-9223372036854775807, 0}}] = query("SELECT $1::int8range", [{-9223372036854775807, 0}])
+    assert [{{0, 9223372036854775806}}] = query("SELECT $1::int8range", [{0, 9223372036854775806}])
+    assert :function_clause = catch_error(query("SELECT $1::int8range", [{-9223372036854775808 - 1, 0}]))
+    assert :function_clause = catch_error(query("SELECT $1::int8range", [{0, 9223372036854775806 + 1}]))
   end
 
   test "fail on encode arrays", context do
