@@ -20,7 +20,8 @@ defmodule LoginTest do
              password: "wrong_password", database: "postgres" ]
 
     capture_log fn ->
-      assert {:error, %Postgrex.Error{postgres: %{code: "28P01"}}} = P.start_link(opts)
+      assert {:error, %Postgrex.Error{postgres: %{code: code}}} = P.start_link(opts)
+      assert code in ["28000", "28P01"]
     end
   end
 
@@ -36,7 +37,8 @@ defmodule LoginTest do
              password: "wrong_password", database: "postgres" ]
 
     capture_log fn ->
-      assert {:error, %Postgrex.Error{postgres: %{code: "28P01"}}} = P.start_link(opts)
+      assert {:error, %Postgrex.Error{postgres: %{code: code}}} = P.start_link(opts)
+      assert code in ["28000", "28P01"]
     end
   end
 
