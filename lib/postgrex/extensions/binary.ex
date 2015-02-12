@@ -47,11 +47,14 @@ defmodule Postgrex.Extensions.Binary do
     do: bin
   def encode(%TypeInfo{send: "unknownsend"}, bin, _, _) when is_binary(bin),
     do: bin
-  def encode(%TypeInfo{send: "int2send"}, n, _, _) when is_integer(n),
+  def encode(%TypeInfo{send: "int2send"}, n, _, _)
+    when is_integer(n) and n in -32768..32767,
     do: <<n :: int16>>
-  def encode(%TypeInfo{send: "int4send"}, n, _, _) when is_integer(n),
+  def encode(%TypeInfo{send: "int4send"}, n, _, _)
+    when is_integer(n) and n in -2147483648..2147483647,
     do: <<n :: int32>>
-  def encode(%TypeInfo{send: "int8send"}, n, _, _) when is_integer(n),
+  def encode(%TypeInfo{send: "int8send"}, n, _, _)
+    when is_integer(n) and n in -9223372036854775808..9223372036854775807,
     do: <<n :: int64>>
   def encode(%TypeInfo{send: "float4send"}, :NaN, _, _),
     do: <<127, 192, 0, 0>>
@@ -234,11 +237,19 @@ defmodule Postgrex.Extensions.Binary do
 
   # TODO: Encode ranges generically with typbasetype
   defp encode_range("int4range", tuple) do
-    encode_range(tuple, &(<<&1 :: int32>>))
+    # int4's range is -2147483648 to +2147483647,
+    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
+    encode_range(tuple, fn n when (is_integer(n) and n in -2147483648..2147483646) ->
+      <<n :: int32>>
+    end)
   end
 
   defp encode_range("int8range", tuple) do
-    encode_range(tuple, &(<<&1 :: int64>>))
+    # int8's range is -9223372036854775808 to 9223372036854775807,
+    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
+    encode_range(tuple, fn n when n in -9223372036854775808..9223372036854775806 ->
+      <<n :: int64>>
+    end)
   end
 
   defp encode_range(type, tuple) when type in ["tsrange", "tstzrange"] do
