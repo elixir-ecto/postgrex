@@ -19,7 +19,7 @@ defmodule Postgrex.Extensions.Binary do
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
-              uuid_send unknownsend)
+              uuid_send unknownsend void_send)
 
   def init(opts),
     do: opts
@@ -32,6 +32,8 @@ defmodule Postgrex.Extensions.Binary do
 
   ### ENCODING ###
 
+  def encode(%TypeInfo{send: "void_send"}, :void, _, _),
+    do: ""
   def encode(%TypeInfo{send: "boolsend"}, true, _, _),
     do: <<1>>
   def encode(%TypeInfo{send: "boolsend"}, false, _, _),
@@ -241,6 +243,9 @@ defmodule Postgrex.Extensions.Binary do
 
   ### DECODING ###
 
+
+  def decode(%TypeInfo{send: "void_send"}, "", _, _),
+    do: :void
   def decode(%TypeInfo{send: "boolsend"}, <<1 :: int8>>, _, _),
     do: true
   def decode(%TypeInfo{send: "boolsend"}, <<0 :: int8>>, _, _),

@@ -5,10 +5,8 @@ defmodule Postgrex.Extensions.Text do
 
   @behaviour Postgrex.Extension
 
-  @senders ~w(date_out time_out timetz_out timestamp_out timestamptz_out
+  @outputs ~w(date_out time_out timetz_out timestamp_out timestamptz_out
               interval_out)
-
-  @types ~w(void)
 
   @interval_parts ~w(year mon day)a
   @interval_parts Enum.map(@interval_parts, &{&1, Atom.to_string(&1)})
@@ -19,8 +17,7 @@ defmodule Postgrex.Extensions.Text do
     do: opts
 
   def matching(_) do
-    unquote(Enum.map(@senders, &{:output, &1}) ++
-            Enum.map(@types, &{:type, &1}))
+    unquote(Enum.map(@outputs, &{:output, &1}))
   end
 
   def format(_),
@@ -28,18 +25,12 @@ defmodule Postgrex.Extensions.Text do
 
   ### ENCODING ###
 
-  def encode(%TypeInfo{type: "void"}, :void, _, _),
-    do: ""
-
   def encode(%TypeInfo{output: "date_out"}, date, _, _),
     do: encode_date(date)
-
   def encode(%TypeInfo{output: "time_out"}, time, _, _),
     do: encode_time(time)
-
   def encode(%TypeInfo{output: "timestamp_out"}, timestamp, _, _),
     do: encode_timestamp(timestamp)
-
   def encode(%TypeInfo{output: "interval_out"}, interval, _, _),
     do: encode_interval(interval)
 
@@ -125,26 +116,19 @@ defmodule Postgrex.Extensions.Text do
 
   ### DECODING ###
 
-  def decode(%TypeInfo{type: "void"}, "", _, _),
-    do: :void
-
   def decode(%TypeInfo{output: "date_out"}, date, _, _),
     do: decode_date(date) |> perfect_match
-
   def decode(%TypeInfo{output: "time_out"}, time, _, _),
     do: decode_time(time) |> perfect_match
-
   def decode(%TypeInfo{output: "timetz_out"}, time, _, _),
     do: decode_timetz(time)
-
   def decode(%TypeInfo{output: "timestamp_out"}, timestamp, _, _),
     do: decode_timestamp(timestamp)
-
   def decode(%TypeInfo{output: "timestamptz_out"}, timestamptz, _, _),
     do: decode_timestamptz(timestamptz)
-
   def decode(%TypeInfo{output: "interval_out"}, interval, _, _),
     do: decode_interval(interval)
+
   defp decode_date(binary) do
     [year, month, <<day::binary(2), rest::binary>>] = binary_split(binary, "-", 2)
 
