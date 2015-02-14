@@ -255,7 +255,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_cast(opts, s) do
+  def handle_cast({:connect, opts}, s) do
     connect(opts, nil, s)
   end
 
@@ -414,7 +414,8 @@ defmodule Postgrex.Connection do
     {extensions, extension_opts} = s.extensions
 
     matchers = Types.extension_matchers(extensions, extension_opts)
-    query = Types.bootstrap_query(matchers)
+    version = s.parameters["server_version"] |> version_to_int
+    query = Types.bootstrap_query(matchers, version)
     new_query(query, [], s)
   end
 

@@ -14,8 +14,9 @@ defmodule Postgrex.TypeInfo do
       to convert the type to its text format);
     * `input` - The name of the "input" function (the function postgres uses
       to convert the type from its text format);
-    * `array_elem` - If the type is an array, the array elements' oid;
-    * `comp_elems` - If the type is a composite type (record), the tuple
+    * `array_elem` - If this is an array, the array elements' oid;
+    * `base_type` - If this is a domain type, the base type's oid;
+    * `comp_elems` - If this is a composite type (record), the tuple
       elements' oid;
   """
 
@@ -29,7 +30,9 @@ defmodule Postgrex.TypeInfo do
     output:     String.t,
     input:      String.t,
     array_elem: Types.oid,
+    base_type:  Types.oid,
     comp_elems: [Types.oid]}
 
-  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem, :comp_elems]
+  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem,
+             :base_type, :comp_elems]
 end

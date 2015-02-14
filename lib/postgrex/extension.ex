@@ -12,10 +12,12 @@ defmodule Postgrex.Extension do
   @type opts :: term
 
   @doc """
-  Should perform any initialization of the extension. The options returned from
-  this function will be passed to all other callbacks.
+  Should perform any initialization of the extension. The function receives the
+  server parameters (http://www.postgresql.org/docs/9.4/static/runtime-config.html)
+  and user options. The options returned from this function will be passed to
+  all other callbacks.
   """
-  defcallback init(term) :: opts
+  defcallback init(Map.t, term) :: opts
 
   @doc """
   Specifies the types the extension matches, see `Postgrex.TypeInfo` for

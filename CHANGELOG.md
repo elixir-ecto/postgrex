@@ -2,10 +2,13 @@
 
 * Enhancements
   * Add extensions
+  * Encode/decode ranges generically
+  * Add bounds when encoding integer types to error instead of overflowing the integer
 
 * Backwards incompatible changes
   * Remove the support for type-hinted queries
   * Remove encoder, decoder and formatter functions, use extensions instead
+  * Add structs dates, times, timestamps, interval and ranges
 
 # v0.7.0 (2015-01-20)
 

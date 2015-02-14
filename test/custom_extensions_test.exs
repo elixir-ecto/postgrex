@@ -7,7 +7,7 @@ defmodule CustomExtensions do
   defmodule BinaryExtension do
     @behaviour Postgrex.Extension
 
-    def init({}),
+    def init(%{}, {}),
       do: []
 
     def matching([]),
@@ -26,7 +26,7 @@ defmodule CustomExtensions do
   defmodule TextExtension do
     @behaviour Postgrex.Extension
 
-    def init([]),
+    def init(%{}, []),
       do: {}
 
     def matching({}),

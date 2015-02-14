@@ -63,30 +63,55 @@ defmodule QueryTest do
   end
 
   test "decode time", context do
-    assert [{{0,0,0}}] = query("SELECT time '00:00:00'", [])
-    assert [{{1,2,3}}] = query("SELECT time '01:02:03'", [])
-    assert [{{23,59,59}}] = query("SELECT time '23:59:59'", [])
-    assert [{{4,5,6}}] = query("SELECT time '04:05:06 PST'", [])
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, msec: 0}}] =
+           query("SELECT time '00:00:00'", [])
+    assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3, msec: 0}}] =
+           query("SELECT time '01:02:03'", [])
+    assert [{%Postgrex.Time{hour: 23, min: 59, sec: 59, msec: 0}}] =
+           query("SELECT time '23:59:59'", [])
+    assert [{%Postgrex.Time{hour: 4, min: 5, sec: 6, msec: 0}}] =
+           query("SELECT time '04:05:06 PST'", [])
+
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, msec: 123000}}] =
+           query("SELECT time '00:00:00.123'", [])
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, msec: 123456}}] =
+           query("SELECT time '00:00:00.123456'", [])
+    assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3, msec: 123456}}] =
+           query("SELECT time '01:02:03.123456'", [])
   end
 
   test "decode date", context do
-    assert [{{1,1,1}}] = query("SELECT date '0001-01-01'", [])
-    assert [{{1,2,3}}] = query("SELECT date '0001-02-03'", [])
-    assert [{{2013,9,23}}] = query("SELECT date '2013-09-23'", [])
+    assert [{%Postgrex.Date{year: 1, month: 1, day: 1}}] =
+           query("SELECT date '0001-01-01'", [])
+    assert [{%Postgrex.Date{year: 1, month: 2, day: 3}}] =
+           query("SELECT date '0001-02-03'", [])
+    assert [{%Postgrex.Date{year: 2013, month: 9, day: 23}}] =
+           query("SELECT date '2013-09-23'", [])
   end
 
   test "decode timestamp", context do
-    assert [{{{1,1,1},{0,0,0}}}] = query("SELECT timestamp '0001-01-01 00:00:00'", [])
-    assert [{{{2013,9,23},{14,4,37}}}] = query("SELECT timestamp '2013-09-23 14:04:37'", [])
-    assert [{{{2013,9,23},{14,4,37}}}] = query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
+    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 0}}] =
+           query("SELECT timestamp '2001-01-01 00:00:00'", [])
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, msec: 123000}}] =
+           query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, msec: 0}}] =
+           query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
+    assert [{%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 123456}}] =
+           query("SELECT timestamp '0001-01-01 00:00:00.123456'", [])
+
   end
 
   test "decode interval", context do
-    assert [{{0,0,0}}] = query("SELECT interval '0'", [])
-    assert [{{0,100,0}}] = query("SELECT interval '100 days'", [])
-    assert [{{0,0,180000}}] = query("SELECT interval '50 hours'", [])
-    assert [{{0,0,1}}] = query("SELECT interval '1 second'", [])
-    assert [{{14,40,10920}}] = query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'", [])
+    assert [{%Postgrex.Interval{months: 0, days: 0, secs: 0}}] =
+           query("SELECT interval '0'", [])
+    assert [{%Postgrex.Interval{months: 100, days: 0, secs: 0}}] =
+           query("SELECT interval '100 months'", [])
+    assert [{%Postgrex.Interval{months: 0, days: 100, secs: 0}}] =
+           query("SELECT interval '100 days'", [])
+    assert [{%Postgrex.Interval{months: 0, days: 0, secs: 100}}] =
+           query("SELECT interval '100 secs'", [])
+    assert [{%Postgrex.Interval{months: 14, days: 40, secs: 10920}}] =
+           query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'", [])
   end
 
   test "decode record", context do
@@ -96,34 +121,31 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.2"
   test "decode range", context do
-    assert [{{2,4}}] = query("SELECT '(1,5)'::int4range", [])
-    assert [{{1,6}}] = query("SELECT '[1,6]'::int4range", [])
-    assert [{{:"-inf",4}}] = query("SELECT '(,5)'::int4range", [])
-    assert [{{1,:inf}}] = query("SELECT '[1,)'::int4range", [])
+    assert [{%Postgrex.Range{lower: 2, upper: 5, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '(1,5)'::int4range", [])
+    assert [{%Postgrex.Range{lower: 1, upper: 7, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '[1,6]'::int4range", [])
+    assert [{%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT '(,5)'::int4range", [])
+    assert [{%Postgrex.Range{lower: 1, upper: nil, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '[1,)'::int4range", [])
+    assert [{%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT '(,)'::int4range", [])
+    assert [{%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT '[,]'::int4range", [])
 
-    assert [{{3,7}}] = query("SELECT '(2,8)'::int8range", [])
-    assert [{{2,4}}] = query("SELECT '[2,4]'::int8range", [])
-    assert [{{:"-inf",3}}] = query("SELECT '(,4)'::int8range", [])
-    assert [{{7,:inf}}] = query("SELECT '(6,]'::int8range", [])
+    assert [{%Postgrex.Range{lower: 3, upper: 8, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT '(2,8)'::int8range", [])
 
-    assert [{{Decimal.new("1.0"),Decimal.new("5.999")}}] == query("SELECT numrange(1.0,5.999)", [])
-    assert [{{Decimal.new("1.0"),Decimal.new("5.999")}}] == query("SELECT '[1.0,5.999]'::numrange", [])
-    assert [{{:"-inf",Decimal.new("1.0000000001")}}] == query("SELECT numrange(NULL,1.0000000001)", [])
-    assert [{{Decimal.new("99999999999.9"),:inf}}] == query("SELECT '[99999999999.9,]'::numrange", [])
+    assert [{%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: false, upper_inclusive: false}}] ==
+           query("SELECT '(1.2,3.4)'::numrange", [])
 
-    assert [{{{2014,1,1},{2014,12,30}}}] = query("SELECT '[1-1-2014,12-31-2014)'::daterange", [])
-    assert [{{{2014,1,2},{2014,12,31}}}] = query("SELECT '(1-1-2014,12-31-2014]'::daterange", [])
-    assert [{{:"-inf",{2014,12,30}}}] = query("SELECT '(,12-31-2014)'::daterange", [])
-    assert [{{{2014,1,2},:inf}}] = query("SELECT '(1-1-2014,]'::daterange", [])
-
-    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT '[1-1-2014 12:00:00, 12-31-2014 12:00:00)'::tsrange", [])
-    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT '(1-1-2014 12:00:00, 12-31-2014 12:00:00]'::tsrange", [])
-    assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT '[,12-31-2014 12:00:00)'::tsrange", [])
-    assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT '[1-1-2014 12:00:00,)'::tsrange", [])
-
-    assert [{{{{2014,1,1},{20,0,0}},{{2014,12,31},{20,0,0}}}}] = query("SELECT '[1-1-2014 12:00:00-800, 12-31-2014 12:00:00-800)'::tstzrange", [])
-    assert [{{:"-inf",{{2014,12,31},{8,0,0}}}}] = query("SELECT '[,12-31-2014 12:00:00+400]'::tstzrange", [])
-    assert [{{{{2014,1,1},{16,0,0}},:inf}}] = query("SELECT '(1-1-2014 12:00:00-4:00:00,]'::tstzrange", [])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}}] =
+           query("SELECT '[2014-1-1,2014-12-31)'::daterange", [])
+    assert [{%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}}] =
+           query("SELECT '(,2014-12-31)'::daterange", [])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 2}, upper: nil}}] =
+           query("SELECT '(2014-1-1,]'::daterange", [])
   end
 
   test "encode basic types", context do
@@ -186,39 +208,49 @@ defmodule QueryTest do
   end
 
   test "encode date", context do
-    assert [{{1,1,1}}] = query("SELECT $1::date", [{1,1,1}])
-    assert [{{1,2,3}}] = query("SELECT $1::date", [{1,2,3}])
-    assert [{{2013,9,23}}] = query("SELECT $1::date", [{2013,9,23}])
-    assert [{{1999,12,31}}] = query("SELECT $1::date", [{1999,12,31}])
+    assert [{%Postgrex.Date{year: 1, month: 1, day: 1}}] =
+           query("SELECT $1::date", [%Postgrex.Date{year: 1, month: 1, day: 1}])
+    assert [{%Postgrex.Date{year: 1, month: 2, day: 3}}] =
+           query("SELECT $1::date", [%Postgrex.Date{year: 1, month: 2, day: 3}])
+    assert [{%Postgrex.Date{year: 2013, month: 9, day: 23}}] =
+           query("SELECT $1::date", [%Postgrex.Date{year: 2013, month: 9, day: 23}])
+    assert [{%Postgrex.Date{year: 1999, month: 12, day: 31}}] =
+           query("SELECT $1::date", [%Postgrex.Date{year: 1999, month: 12, day: 31}])
+    assert [{%Postgrex.Date{year: 1999, month: 12, day: 31}}] =
+           query("SELECT $1::date", [%Postgrex.Date{year: 1999, month: 12, day: 31}])
   end
 
   test "encode time", context do
-    assert [{{0,0,0}}] = query("SELECT $1::time", [{0,0,0}])
-    assert [{{1,2,3}}] = query("SELECT $1::time", [{1,2,3}])
-    assert [{{23,59,59}}] = query("SELECT $1::time", [{23,59,59}])
-    assert [{{4,5,6}}] = query("SELECT $1::time", [{4,5,6}])
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0}}] =
+           query("SELECT $1::time", [%Postgrex.Time{hour: 0, min: 0, sec: 0}])
+    assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3}}] =
+           query("SELECT $1::time", [%Postgrex.Time{hour: 1, min: 2, sec: 3}])
+    assert [{%Postgrex.Time{hour: 23, min: 59, sec: 59}}] =
+           query("SELECT $1::time", [%Postgrex.Time{hour: 23, min: 59, sec: 59}])
+    assert [{%Postgrex.Time{hour: 4, min: 5, sec: 6, msec: 123456}}] =
+           query("SELECT $1::time", [%Postgrex.Time{hour: 4, min: 5, sec: 6, msec: 123456}])
   end
 
   test "encode timestamp", context do
-    assert [{{{1,1,1},{0,0,0}}}] =
-      query("SELECT $1::timestamp", [{{1,1,1},{0,0,0}}])
-    assert [{{{2013,9,23},{14,4,37}}}] =
-      query("SELECT $1::timestamp", [{{2013,9,23},{14,4,37}}])
-    assert [{{{2013,9,23},{14,4,37}}}] =
-      query("SELECT $1::timestamp", [{{2013,9,23},{14,4,37}}])
+    assert [{%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}}] =
+      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}])
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}}] =
+      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}])
+    assert [{%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 123456}}] =
+      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 123456}])
   end
 
   test "encode interval", context do
-    assert [{{0,0,0}}] =
-      query("SELECT $1::interval", [{0,0,0}])
-    assert [{{0,100,0}}] =
-      query("SELECT $1::interval", [{0,100,0}])
-    assert [{{0,0,180000}}] =
-      query("SELECT $1::interval", [{0,0,180000}])
-    assert [{{0,0,1}}] =
-      query("SELECT $1::interval", [{0,0,1}])
-    assert [{{14,40,10920}}] =
-      query("SELECT $1::interval", [{14,40,10920}])
+    assert [{%Postgrex.Interval{months: 0, days: 0, secs: 0}}] =
+           query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 0, secs: 0}])
+    assert [{%Postgrex.Interval{months: 100, days: 0, secs: 0}}] =
+           query("SELECT $1::interval", [%Postgrex.Interval{months: 100, days: 0, secs: 0}])
+    assert [{%Postgrex.Interval{months: 0, days: 100, secs: 0}}] =
+           query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 100, secs: 0}])
+    assert [{%Postgrex.Interval{months: 0, days: 0, secs: 100}}] =
+           query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 0, secs: 100}])
+    assert [{%Postgrex.Interval{months: 14, days: 40, secs: 10920}}] =
+           query("SELECT $1::interval", [%Postgrex.Interval{months: 14, days: 40, secs: 10920}])
   end
 
   test "encode arrays", context do
@@ -238,46 +270,42 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.2"
   test "encode range", context do
-    assert [{{1,3}}] = query("SELECT $1::int4range", [{1,3}])
-    assert [{{:"-inf",5}}] = query("SELECT $1::int4range", [{:"-inf",5}])
-    assert [{{3,:inf}}] = query("SELECT $1::int4range", [{3,:inf}])
+    assert [{%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
+    assert [{%Postgrex.Range{lower: nil, upper: 6, lower_inclusive: false, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: true}])
+    assert [{%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [{%Postgrex.Range{lower: 4, upper: 5, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: 5, lower_inclusive: false, upper_inclusive: false}])
 
-    assert [{{2,9}}] = query("SELECT $1::int8range", [{2,9}])
-    assert [{{:"-inf",3}}] = query("SELECT $1::int8range", [{:"-inf",3}])
-    assert [{{6,:inf}}] = query("SELECT $1::int8range", [{6,:inf}])
+    assert [{%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}}] =
+           query("SELECT $1::int8range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
 
-    assert [{{Decimal.new("0.1"),Decimal.new("9.9")}}] == query("SELECT $1::numrange", [{Decimal.new("0.1"),Decimal.new("9.9")}])
-    assert [{{:"-inf",Decimal.new("99999.99999")}}] == query("SELECT $1::numrange", [{:"-inf",Decimal.new("99999.99999")}])
-    assert [{{Decimal.new("0.000000001"),:inf}}] == query("SELECT $1::numrange", [{Decimal.new("0.000000001"),:inf}])
+    assert [{%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}}] ==
+           query("SELECT $1::numrange", [%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}])
 
-    assert [{{{2014,1,1},{2014,12,31}}}] = query("SELECT $1::daterange", [{{2014,1,1},{2014,12,31}}])
-    assert [{{:"-inf",{2014,12,31}}}] = query("SELECT $1::daterange", [{:"-inf",{2014,12,31}}])
-    assert [{{{2014,1,1},:inf}}] = query("SELECT $1::daterange", [{{2014,1,1},:inf}])
-
-    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tsrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
-    assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tsrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
-    assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tsrange", [{{{2014,1,1},{12,0,0}},:inf}])
-
-    assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
-    assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
-    assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},:inf}])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2015, month: 1, day: 1}}}] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
+    assert [{%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2015, month: 1, day: 1}}}] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}}] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}])
   end
 
   @tag min_pg_version: "9.2"
   test "encode enforces bounds on integer ranges", context do
-    # int4's range is -2147483648 to +2147483647,
-    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
-    assert [{{-2147483648, 0}}] = query("SELECT $1::int4range", [{-2147483648, 0}])
-    assert [{{0, 2147483646}}] = query("SELECT $1::int4range", [{0, 2147483646}])
-    assert :function_clause = catch_error(query("SELECT $1::int4range", [{-2147483648 - 1, 0}]))
-    assert :function_clause = catch_error(query("SELECT $1::int4range", [{0, 2147483646 + 1}]))
+    # int4's range is -2147483648 to +2147483647
+    assert [{%Postgrex.Range{lower: -2147483648}}] = query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483648}])
+    assert [{%Postgrex.Range{upper: 2147483647}}] = query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483647, upper_inclusive: false}])
+    assert :function_clause = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
+    assert :function_clause = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
 
-    # int8's range is -9223372036854775808 to 9223372036854775807,
-    # but Postgres' ranges are lower bound inclusive, upper bound exclusive
-    assert [{{-9223372036854775807, 0}}] = query("SELECT $1::int8range", [{-9223372036854775807, 0}])
-    assert [{{0, 9223372036854775806}}] = query("SELECT $1::int8range", [{0, 9223372036854775806}])
-    assert :function_clause = catch_error(query("SELECT $1::int8range", [{-9223372036854775808 - 1, 0}]))
-    assert :function_clause = catch_error(query("SELECT $1::int8range", [{0, 9223372036854775806 + 1}]))
+    # int8's range is -9223372036854775808 to 9223372036854775807
+    assert [{%Postgrex.Range{lower: -9223372036854775807}}] = query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775807}])
+    assert [{%Postgrex.Range{upper: 9223372036854775806}}] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
+    assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
+    assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
   end
 
   test "fail on encode arrays", context do
