@@ -9,6 +9,14 @@ defmodule Postgrex.Extensions.Binary do
 
   @behaviour Postgrex.Extension
 
+  @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
+  @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
+  @days_in_month 30
+  @secs_in_day 24 * 60 * 60
+
+  @date_max_year 5874897
+  @timestamp_max_year 294276
+
   @numeric_base 10_000
 
   @range_empty   0x01
@@ -19,7 +27,8 @@ defmodule Postgrex.Extensions.Binary do
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
-              uuid_send unknownsend)
+              uuid_send date_send time_send timetz_send timestamp_send
+              timestamptz_send interval_send unknownsend)
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -82,6 +91,16 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_numeric(n)
   def encode(%TypeInfo{send: "uuid_send"}, <<_ :: binary(16)>> = bin, _, _),
     do: bin
+  def encode(%TypeInfo{send: "date_send"}, date, _, _),
+    do: encode_date(date)
+  def encode(%TypeInfo{send: "time_send"}, time, _, _),
+    do: encode_time(time)
+  def encode(%TypeInfo{send: "timestamp_send"}, timestamp, _, _),
+    do: encode_timestamp(timestamp)
+  def encode(%TypeInfo{send: "timestamptz_send"}, timestamp, _, _),
+    do: encode_timestamp(timestamp)
+  def encode(%TypeInfo{send: "interval_send"}, interval, _, _),
+    do: encode_interval(interval)
   def encode(%TypeInfo{send: "array_send", array_elem: elem_oid}, list, types, _) when is_list(list),
     do: encode_array(list, elem_oid, types)
   def encode(%TypeInfo{send: "record_send", comp_elems: elem_oids}, tuple, types, _) when is_tuple(tuple),
@@ -162,6 +181,29 @@ defmodule Postgrex.Extensions.Binary do
     else
       pad_float(num10)
     end
+  end
+
+  defp encode_date(%Postgrex.Date{year: year, month: month, day: day}) when year <= @date_max_year do
+    date = {year, month, day}
+    <<:calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
+  end
+
+  defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec})
+    when hour in 0..24 and min in 0..60 and sec in 0..60 do
+    time = {hour, min, sec}
+    <<:calendar.time_to_seconds(time) * 1_000_000 :: int64>>
+  end
+
+  defp encode_timestamp(%Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec})
+    when year <= @timestamp_max_year and hour in 0..24 and min in 0..60 and sec in 0..60 do
+    datetime = {{year, month, day}, {hour, min, sec}}
+    secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
+    <<secs * 1_000_000 :: int64>>
+  end
+
+  defp encode_interval(%Postgrex.Interval{months: months, days: days, secs: secs}) do
+    microsecs = secs * 1_000_000
+    <<microsecs :: int64, days :: int32, months :: int32>>
   end
 
   defp encode_array(list, elem_oid, types) do
@@ -291,6 +333,18 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_numeric(bin)
   def decode(%TypeInfo{send: "uuid_send"}, bin, _, _),
     do: bin
+  def decode(%TypeInfo{send: "date_send"}, <<n :: int32>>, _, _),
+    do: decode_date(n)
+  def decode(%TypeInfo{send: "time_send"}, <<n :: int64>>, _, _),
+    do: decode_time(n)
+  def decode(%TypeInfo{send: "timetz_send"}, <<n :: int64, _tz :: int32>>, _, _),
+    do: decode_time(n)
+  def decode(%TypeInfo{send: "timestamp_send"}, <<n :: int64>>, _, _),
+    do: decode_timestamp(n)
+  def decode(%TypeInfo{send: "timestamptz_send"}, <<n :: int64>>, _, _),
+    do: decode_timestamp(n)
+  def decode(%TypeInfo{send: "interval_send"}, <<s :: int64, d :: int32, m :: int32>>, _, _),
+    do: decode_interval(s, d, m)
   def decode(%TypeInfo{send: "array_send"}, bin, types, _),
     do: decode_array(bin, types)
   def decode(%TypeInfo{send: "record_send"}, bin, types, _),
@@ -332,6 +386,28 @@ defmodule Postgrex.Extensions.Binary do
   defp decode_numeric_int(<<digit :: int16, tail :: binary>>, weight, acc) do
     acc = (acc * @numeric_base) + digit
     decode_numeric_int(tail, weight - 1, acc)
+  end
+
+  defp decode_date(days) do
+    {year, month, day} = :calendar.gregorian_days_to_date(days + @gd_epoch)
+    %Postgrex.Date{year: year, month: month, day: day}
+  end
+
+  defp decode_time(microsecs) do
+    secs = div(microsecs, 1_000_000)
+    {hour, min, sec} = :calendar.seconds_to_time(secs)
+    %Postgrex.Time{hour: hour, min: min, sec: sec}
+  end
+
+  defp decode_timestamp(microsecs) do
+    secs = div(microsecs, 1_000_000)
+    {{year, month, day}, {hour, min, sec}} = :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
+    %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec}
+  end
+
+  defp decode_interval(microsecs, days, months) do
+    secs = div(microsecs, 1_000_000)
+    %Postgrex.Interval{months: months, days: days, secs: secs}
   end
 
   defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary>>,
