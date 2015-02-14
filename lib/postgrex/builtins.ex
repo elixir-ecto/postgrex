@@ -9,7 +9,8 @@ defmodule Postgrex.Time do
   defstruct [
     hour: 0,
     min: 0,
-    sec: 0]
+    sec: 0,
+    msec: 0]
 end
 
 defmodule Postgrex.Timestamp do
@@ -19,7 +20,8 @@ defmodule Postgrex.Timestamp do
     day: 1,
     hour: 0,
     min: 0,
-    sec: 0]
+    sec: 0,
+    msec: 0]
 end
 
 defmodule Postgrex.Interval do

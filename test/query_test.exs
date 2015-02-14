@@ -63,17 +63,21 @@ defmodule QueryTest do
   end
 
   test "decode time", context do
-    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0}}] =
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, msec: 0}}] =
            query("SELECT time '00:00:00'", [])
-    assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3}}] =
+    assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3, msec: 0}}] =
            query("SELECT time '01:02:03'", [])
-    assert [{%Postgrex.Time{hour: 23, min: 59, sec: 59}}] =
+    assert [{%Postgrex.Time{hour: 23, min: 59, sec: 59, msec: 0}}] =
            query("SELECT time '23:59:59'", [])
-    assert [{%Postgrex.Time{hour: 4, min: 5, sec: 6}}] =
+    assert [{%Postgrex.Time{hour: 4, min: 5, sec: 6, msec: 0}}] =
            query("SELECT time '04:05:06 PST'", [])
 
-    # query("SELECT time '00:00:00.123'", [])
-    # query("SELECT time '00:00:00.123456'", [])
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, msec: 123000}}] =
+           query("SELECT time '00:00:00.123'", [])
+    assert [{%Postgrex.Time{hour: 0, min: 0, sec: 0, msec: 123456}}] =
+           query("SELECT time '00:00:00.123456'", [])
+    assert [{%Postgrex.Time{hour: 1, min: 2, sec: 3, msec: 123456}}] =
+           query("SELECT time '01:02:03.123456'", [])
   end
 
   test "decode date", context do
@@ -86,12 +90,14 @@ defmodule QueryTest do
   end
 
   test "decode timestamp", context do
-    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0}}] =
+    assert [{%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 0}}] =
            query("SELECT timestamp '2001-01-01 00:00:00'", [])
-    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, msec: 123000}}] =
            query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
-    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}}] =
+    assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, msec: 0}}] =
            query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
+    assert [{%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 123456}}] =
+           query("SELECT timestamp '0001-01-01 00:00:00.123456'", [])
 
   end
 
@@ -221,8 +227,8 @@ defmodule QueryTest do
            query("SELECT $1::time", [%Postgrex.Time{hour: 1, min: 2, sec: 3}])
     assert [{%Postgrex.Time{hour: 23, min: 59, sec: 59}}] =
            query("SELECT $1::time", [%Postgrex.Time{hour: 23, min: 59, sec: 59}])
-    assert [{%Postgrex.Time{hour: 4, min: 5, sec: 6}}] =
-           query("SELECT $1::time", [%Postgrex.Time{hour: 4, min: 5, sec: 6}])
+    assert [{%Postgrex.Time{hour: 4, min: 5, sec: 6, msec: 123456}}] =
+           query("SELECT $1::time", [%Postgrex.Time{hour: 4, min: 5, sec: 6, msec: 123456}])
   end
 
   test "encode timestamp", context do
@@ -230,6 +236,8 @@ defmodule QueryTest do
       query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}])
     assert [{%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}}] =
       query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}])
+    assert [{%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 123456}}] =
+      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, msec: 123456}])
   end
 
   test "encode interval", context do

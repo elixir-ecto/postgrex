@@ -188,17 +188,17 @@ defmodule Postgrex.Extensions.Binary do
     <<:calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
   end
 
-  defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec})
-    when hour in 0..24 and min in 0..60 and sec in 0..60 do
+  defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec, msec: msec})
+    when hour in 0..24 and min in 0..60 and sec in 0..60 and msec in 0..1_000_000  do
     time = {hour, min, sec}
-    <<:calendar.time_to_seconds(time) * 1_000_000 :: int64>>
+    <<:calendar.time_to_seconds(time) * 1_000_000 + msec :: int64>>
   end
 
-  defp encode_timestamp(%Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec})
-    when year <= @timestamp_max_year and hour in 0..24 and min in 0..60 and sec in 0..60 do
+  defp encode_timestamp(%Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, msec: msec})
+    when year <= @timestamp_max_year and hour in 0..24 and min in 0..60 and sec in 0..60 and msec in 0..1_000_000 do
     datetime = {{year, month, day}, {hour, min, sec}}
     secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
-    <<secs * 1_000_000 :: int64>>
+    <<secs * 1_000_000 + msec :: int64>>
   end
 
   defp encode_interval(%Postgrex.Interval{months: months, days: days, secs: secs}) do
@@ -395,14 +395,22 @@ defmodule Postgrex.Extensions.Binary do
 
   defp decode_time(microsecs) do
     secs = div(microsecs, 1_000_000)
+    msec = rem(microsecs, 1_000_000)
     {hour, min, sec} = :calendar.seconds_to_time(secs)
-    %Postgrex.Time{hour: hour, min: min, sec: sec}
+    %Postgrex.Time{hour: hour, min: min, sec: sec, msec: msec}
   end
 
   defp decode_timestamp(microsecs) do
     secs = div(microsecs, 1_000_000)
+    msec = rem(microsecs, 1_000_000)
     {{year, month, day}, {hour, min, sec}} = :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
-    %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec}
+
+    if year < 2000 and msec != 0 do
+      sec = sec - 1
+      msec = 1_000_000 + msec
+    end
+
+    %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, msec: msec}
   end
 
   defp decode_interval(microsecs, days, months) do
