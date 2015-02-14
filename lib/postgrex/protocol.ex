@@ -64,7 +64,7 @@ defmodule Postgrex.Protocol do
   end
 
   def message(:auth, msg_error(fields: fields), s) do
-    {:error, %Postgrex.Error{postgres: Enum.into(fields, %{})}, s}
+    {:error, Postgrex.Error.exception(postgres: fields), s}
   end
 
   ### init state ###
@@ -86,7 +86,7 @@ defmodule Postgrex.Protocol do
   end
 
   def message(:init, msg_error(fields: fields), s) do
-    {:error, %Postgrex.Error{postgres: Enum.into(fields, %{})}, s}
+    {:error, Postgrex.Error.exception(postgres: fields), s}
   end
 
   ### parsing state ###
@@ -184,7 +184,7 @@ defmodule Postgrex.Protocol do
   end
 
   def message(_, msg_error(fields: fields), s) do
-    reply(%Postgrex.Error{postgres: Enum.into(fields, %{})}, s)
+    reply(Postgrex.Error.exception(postgres: fields), s)
     {:ok, s}
   end
 
