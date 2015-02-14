@@ -134,19 +134,12 @@ defmodule QueryTest do
     assert [{%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: false, upper_inclusive: false}}] ==
            query("SELECT '(1.2,3.4)'::numrange", [])
 
-    # assert [{{{2014,1,1},{2014,12,30}}}] = query("SELECT '[1-1-2014,12-31-2014)'::daterange", [])
-    # assert [{{{2014,1,2},{2014,12,31}}}] = query("SELECT '(1-1-2014,12-31-2014]'::daterange", [])
-    # assert [{{:"-inf",{2014,12,30}}}] = query("SELECT '(,12-31-2014)'::daterange", [])
-    # assert [{{{2014,1,2},:inf}}] = query("SELECT '(1-1-2014,]'::daterange", [])
-
-    # assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT '[1-1-2014 12:00:00, 12-31-2014 12:00:00)'::tsrange", [])
-    # assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT '(1-1-2014 12:00:00, 12-31-2014 12:00:00]'::tsrange", [])
-    # assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT '[,12-31-2014 12:00:00)'::tsrange", [])
-    # assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT '[1-1-2014 12:00:00,)'::tsrange", [])
-
-    # assert [{{{{2014,1,1},{20,0,0}},{{2014,12,31},{20,0,0}}}}] = query("SELECT '[1-1-2014 12:00:00-800, 12-31-2014 12:00:00-800)'::tstzrange", [])
-    # assert [{{:"-inf",{{2014,12,31},{8,0,0}}}}] = query("SELECT '[,12-31-2014 12:00:00+400]'::tstzrange", [])
-    # assert [{{{{2014,1,1},{16,0,0}},:inf}}] = query("SELECT '(1-1-2014 12:00:00-4:00:00,]'::tstzrange", [])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}}] =
+           query("SELECT '[2014-1-1,2014-12-31)'::daterange", [])
+    assert [{%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}}] =
+           query("SELECT '(,2014-12-31)'::daterange", [])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 2}, upper: nil}}] =
+           query("SELECT '(2014-1-1,]'::daterange", [])
   end
 
   test "encode basic types", context do
@@ -284,17 +277,12 @@ defmodule QueryTest do
     assert [{%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}}] ==
            query("SELECT $1::numrange", [%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}])
 
-    # assert [{{{2014,1,1},{2014,12,31}}}] = query("SELECT $1::daterange", [{{2014,1,1},{2014,12,31}}])
-    # assert [{{:"-inf",{2014,12,31}}}] = query("SELECT $1::daterange", [{:"-inf",{2014,12,31}}])
-    # assert [{{{2014,1,1},:inf}}] = query("SELECT $1::daterange", [{{2014,1,1},:inf}])
-
-    # assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tsrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
-    # assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tsrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
-    # assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tsrange", [{{{2014,1,1},{12,0,0}},:inf}])
-
-    # assert [{{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},{{2014,12,31},{12,0,0}}}])
-    # assert [{{:"-inf",{{2014,12,31},{12,0,0}}}}] = query("SELECT $1::tstzrange", [{:"-inf",{{2014,12,31},{12,0,0}}}])
-    # assert [{{{{2014,1,1},{12,0,0}},:inf}}] = query("SELECT $1::tstzrange", [{{{2014,1,1},{12,0,0}},:inf}])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2015, month: 1, day: 1}}}] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
+    assert [{%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2015, month: 1, day: 1}}}] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
+    assert [{%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}}] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}])
   end
 
   @tag min_pg_version: "9.2"
