@@ -25,6 +25,10 @@ defmodule Postgrex.Extensions.Binary do
   @range_lb_inf  0x08
   @range_ub_inf  0x10
 
+  @int2_range -32768..32767
+  @int4_range -2147483648..2147483647
+  @int8_range -9223372036854775808..9223372036854775807
+
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
@@ -63,13 +67,13 @@ defmodule Postgrex.Extensions.Binary do
   def encode(%TypeInfo{send: "unknownsend"}, bin, _, _) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{send: "int2send"}, n, _, _)
-    when is_integer(n) and n in -32768..32767,
+    when is_integer(n) and n in @int2_range,
     do: <<n :: int16>>
   def encode(%TypeInfo{send: "int4send"}, n, _, _)
-    when is_integer(n) and n in -2147483648..2147483647,
+    when is_integer(n) and n in @int4_range,
     do: <<n :: int32>>
   def encode(%TypeInfo{send: "int8send"}, n, _, _)
-    when is_integer(n) and n in -9223372036854775808..9223372036854775807,
+    when is_integer(n) and n in @int8_range,
     do: <<n :: int64>>
   def encode(%TypeInfo{send: "float4send"}, :NaN, _, _),
     do: <<127, 192, 0, 0>>
