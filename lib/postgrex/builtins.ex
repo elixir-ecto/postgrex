@@ -8,7 +8,7 @@ defmodule Postgrex.Date do
     * `day`
   """
 
-  @type %__MODULE__{year: 0..10000, month: 1..12, day: 1..12}
+  @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..12}
 
   defstruct [
     year: 0,
@@ -27,7 +27,7 @@ defmodule Postgrex.Time do
     * `msec` - micro seconds
   """
 
-  @type %__MODULE__{hour: 0..24, min: 0..60, sec: 0..60, msec: 0..1000000}
+  @type t :: %__MODULE__{hour: 0..24, min: 0..60, sec: 0..60, msec: 0..1000000}
 
   defstruct [
     hour: 0,
@@ -50,8 +50,8 @@ defmodule Postgrex.Timestamp do
     * `msec` - micro seconds
   """
 
-  @type %__MODULE__{year: 0..10000, month: 1..12, day: 1..12,
-                    hour: 0..24, min: 0..60, sec: 0..60, msec: 0..1000000}
+  @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..12,
+                         hour: 0..24, min: 0..60, sec: 0..60, msec: 0..1000000}
 
   defstruct [
     year: 0,
@@ -73,7 +73,7 @@ defmodule Postgrex.Interval do
     * `secs`
   """
 
-  @type %__MODULE__{months: integer, days: integer, secs: integer}
+  @type t :: %__MODULE__{months: integer, days: integer, secs: integer}
 
   defstruct [
     months: 0,
@@ -92,8 +92,8 @@ defmodule Postgrex.Range do
     * `upper_inclusive`
   """
 
-  @type %__MODULE__{lower: term, upper: term, lower_inclusive: boolean,
-                    upper_inclusive: boolean}
+  @type t :: %__MODULE__{lower: term, upper: term, lower_inclusive: boolean,
+                         upper_inclusive: boolean}
 
   defstruct [
     lower: nil,
