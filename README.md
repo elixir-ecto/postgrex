@@ -46,24 +46,16 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
     text            "eric"
     bytea           <<42>>
     numeric         #Decimal<42.0> *
-    date            {2013, 10, 12}
-    time            {0, 37, 14}
-    timestamp(tz)   {{2013, 10, 12}, {0, 37, 14}}
-    interval        {14, 40, 10920} **
+    date            %Postgrex.Date{year: 2013, month: 10, day: 12}
+    time            %Postgrex.Time{hour: 0, min: 37, sec: 14, msec: 0}
+    timestamp(tz)   %Postgrex.Timestamp{year: 2013 month: 10, day: 12, hour: 0, min: 37, sec: 14, msec: 0}
+    interval        %Postgrex.Interval{months: 14, days: 40, secs: 10920}
     array           [1, 2, 3]
     composite type  {42, "title", "content"}
-    int4range       {1, 5} ***
-    int8range
-    daterange       {{2014, 1, 1}, {2014, 12, 31}}
-    tsrange         {{{2014, 1, 1}, {0, 37, 14}}, {{2014, 12, 31}, {0, 37, 14}}}
-    tstzrange
+    range           %Postgrex.Range{lower: 1, upper: 5}
     uuid            <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
 
 \* [Decimal](http://github.com/ericmj/decimal)
-
-\*\* interval is encoded as `{months, days, seconds}`.
-
-\*\*\* ranges expect and return the lower and upper bounds as inclusive (e.g., {1, 4} = 1, 2, 3, 4)
 
 ## Extensions
 
@@ -78,7 +70,7 @@ defmodule Extensions.JSON do
 
   @behaviour Postgrex.Extension
 
-  def init(opts),
+  def init(_parameters, opts),
     do: Keyword.fetch!(opts, :library)
 
   def matching(_library),
