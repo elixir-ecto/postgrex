@@ -8,7 +8,7 @@
 * Backwards incompatible changes
   * Remove the support for type-hinted queries
   * Remove encoder, decoder and formatter functions, use extensions instead
-  * Add structs dates, times, timestamps, interval and ranges
+  * Use structs for dates, times, timestamps, interval and ranges
 
 # v0.7.0 (2015-01-20)
 
