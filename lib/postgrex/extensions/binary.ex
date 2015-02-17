@@ -32,7 +32,7 @@ defmodule Postgrex.Extensions.Binary do
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send unknownsend)
+              timestamptz_send interval_send enum_send unknownsend)
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -63,6 +63,8 @@ defmodule Postgrex.Extensions.Binary do
   def encode(%TypeInfo{send: "varcharsend"}, bin, _, _) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{send: "byteasend"}, bin, _, _) when is_binary(bin),
+    do: bin
+  def encode(%TypeInfo{send: "enum_send"}, bin, _, _) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{send: "unknownsend"}, bin, _, _) when is_binary(bin),
     do: bin
@@ -308,6 +310,8 @@ defmodule Postgrex.Extensions.Binary do
   def decode(%TypeInfo{send: "varcharsend"}, bin, _, _),
     do: bin
   def decode(%TypeInfo{send: "byteasend"}, bin, _, _),
+    do: bin
+  def decode(%TypeInfo{send: "enum_send"}, bin, _, _),
     do: bin
   def decode(%TypeInfo{send: "unknownsend"}, bin, _, _),
     do: bin

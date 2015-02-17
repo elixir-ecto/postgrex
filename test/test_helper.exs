@@ -42,6 +42,9 @@ CREATE TABLE composite1 (a int, b text);
 
 DROP TABLE IF EXISTS composite2;
 CREATE TABLE composite2 (a int, b int, c int);
+
+DROP TYPE IF EXISTS enum1;
+CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 """
 
 cmds = [

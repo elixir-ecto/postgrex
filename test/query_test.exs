@@ -119,6 +119,10 @@ defmodule QueryTest do
     assert [{[{1, "2"}]}] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
+  test "decode enum", context do
+    assert [{"elixir"}] = query("SELECT 'elixir'::enum1", [])
+  end
+
   @tag min_pg_version: "9.2"
   test "decode range", context do
     assert [{%Postgrex.Range{lower: 2, upper: 5, lower_inclusive: true, upper_inclusive: false}}] =
@@ -266,6 +270,10 @@ defmodule QueryTest do
     assert [{{1, "2"}}] = query("SELECT $1::composite1", [{1, "2"}])
     assert [{[{1, "2"}]}] = query("SELECT $1::composite1[]", [[{1, "2"}]])
     assert [{{1, nil, 3}}] = query("SELECT $1::composite2", [{1, nil, 3}])
+  end
+
+  test "encode enum", context do
+    assert [{"elixir"}] = query("SELECT $1::enum1", ["elixir"])
   end
 
   @tag min_pg_version: "9.2"
