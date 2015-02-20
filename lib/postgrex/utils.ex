@@ -26,22 +26,14 @@ defmodule Postgrex.Utils do
     true
   end
 
+  @doc """
+  Converts pg major.minor.patch (http://www.postgresql.org/support/versioning) version to an integer
+  """
   def version_to_int(version) do
-    parts = binary_split(version, ".", 2)
-    [major, minor, patch] = Enum.map(parts, &:erlang.binary_to_integer/1)
-    major*10_000 + minor*100 + patch
-  end
-
-  def binary_split(binary, _pattern, 0) do
-    [binary]
-  end
-
-  def binary_split(binary, pattern, max) do
-    case :binary.split(binary, pattern) do
-      [match, rest] ->
-        [match|binary_split(rest, pattern, max-1)]
-      [binary] ->
-        [binary]
+    case version |> String.split(".") |> Enum.map(fn (part) -> elem(Integer.parse(part),0) end) do
+      [major, minor, patch] -> major*10_000 + minor*100 + patch
+      [major, minor] -> major*10_000 + minor*100
+      [major] -> major*10_000 
     end
   end
 end
