@@ -18,7 +18,9 @@ defmodule Postgrex.Protocol do
 
   def startup(%{sock: sock, opts: opts} = s) do
     params = opts[:parameters] || []
-    msg = msg_startup(params: [user: opts[:username], database: opts[:database]] ++ params)
+    user = Keyword.fetch!(opts, :username)
+    database = Keyword.fetch!(opts, :database)
+    msg = msg_startup(params: [user: user, database: database] ++ params)
     case msg_send(msg, sock) do
       :ok ->
         {:noreply, %{s | state: :auth}}
@@ -51,12 +53,16 @@ defmodule Postgrex.Protocol do
   end
 
   def message(:auth, msg_auth(type: :cleartext), s) do
-    msg = msg_password(pass: s.opts[:password])
+    pass = Keyword.fetch!(s.opts, :password)
+    msg = msg_password(pass: pass)
     send_to_result(msg, s)
   end
 
   def message(:auth, msg_auth(type: :md5, data: salt), s) do
-    digest = :crypto.hash(:md5, [s.opts[:password], s.opts[:username]])
+    user = Keyword.fetch!(s.opts, :username)
+    pass = Keyword.fetch!(s.opts, :password)
+
+    digest = :crypto.hash(:md5, [pass, user])
              |> Base.encode16(case: :lower)
     digest = :crypto.hash(:md5, [digest, salt])
              |> Base.encode16(case: :lower)
