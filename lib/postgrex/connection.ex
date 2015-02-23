@@ -10,7 +10,7 @@ defmodule Postgrex.Connection do
   import Postgrex.BinaryUtils
   import Postgrex.Utils
 
-  @timeout :infinity
+  @timeout 5000
   @default_extensions [{Postgrex.Extensions.Binary, nil}, {Postgrex.Extensions.Text, nil}]
 
   ### PUBLIC API ###
