@@ -5,6 +5,7 @@ defmodule Postgrex.Protocol do
   alias Postgrex.Types
   import Postgrex.Messages
   import Postgrex.Utils
+  require Logger
 
   def startup_ssl(%{sock: sock} = s) do
     case msg_send(msg_ssl_request(), sock) do
@@ -185,7 +186,12 @@ defmodule Postgrex.Protocol do
   end
 
   def message(_, msg_error(fields: fields), s) do
-    reply(%Postgrex.Error{postgres: Enum.into(fields, %{})}, s)
+    error = %Postgrex.Error{postgres: Enum.into(fields, %{})}
+    unless reply(error, s) do
+      Logger.warn(fn ->
+        ["Unhandled Postgres error: ", Postgrex.Error.message(error)]
+      end)
+    end
     {:ok, s}
   end
 
