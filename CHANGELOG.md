@@ -1,4 +1,4 @@
-# v0.8.0-dev
+# v0.8.0 (2015-02-26)
 
 * Enhancements
   * Add extensions
