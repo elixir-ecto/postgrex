@@ -1,6 +1,7 @@
 language: erlang
 otp_release:
   - 17.3
+cache: apt
 before_install:
   - wget http://s3.hex.pm/builds/elixir/$ELIXIRVERSION.zip
   - unzip -d elixir $ELIXIRVERSION.zip
