@@ -163,11 +163,13 @@ defmodule Postgrex.Protocol do
       else
         try do
           result = decode_rows(s)
-          %{columns: cols} = s.statement
-          create_result(tag, result, cols)
         catch
           kind, reason ->
             {:error, kind, reason, System.stacktrace}
+        else
+          result ->
+            %{columns: cols} = s.statement
+            create_result(tag, result, cols)
         end
       end
 
@@ -233,24 +235,25 @@ defmodule Postgrex.Protocol do
         end)
 
       row = Enum.reverse(row) |> List.to_tuple
-      [row | acc]
+      [row|acc]
     end)
   end
 
   defp send_params(s, rfs) do
     {msgs, s} =
       try do
-        {pfs, params} = encode_params(s)
-
-        msgs = [
-          msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
-          msg_execute(name_port: "", max_rows: 0),
-          msg_sync() ]
-        {msgs, s}
+        encode_params(s)
       catch
         kind, reason ->
-         reply({:error, kind, reason, System.stacktrace}, s)
-         {[msg_sync], %{s | portal: nil}}
+          reply({:error, kind, reason, System.stacktrace}, s)
+          {[msg_sync], %{s | portal: nil}}
+      else
+        {pfs, params} ->
+          msgs = [
+            msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
+            msg_execute(name_port: "", max_rows: 0),
+            msg_sync() ]
+          {msgs, s}
       end
 
     case send_to_result(msgs, s) do
