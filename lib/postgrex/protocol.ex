@@ -5,6 +5,7 @@ defmodule Postgrex.Protocol do
   alias Postgrex.Types
   import Postgrex.Messages
   import Postgrex.Utils
+  import Postgrex.BinaryUtils
   require Logger
 
   def startup_ssl(%{sock: sock} = s) do
@@ -222,10 +223,13 @@ defmodule Postgrex.Protocol do
 
     Enum.reduce(s.rows, [], fn values, acc ->
       {_, row} =
-        Enum.reduce(values, {0, []}, fn bin, {count, list} ->
-          oid = elem(col_oids, count)
-          decoded = Types.decode(oid, bin, types)
-          {count + 1, [decoded|list]}
+        Enum.reduce(values, {0, []}, fn
+          <<-1::int32>>, {count, list} ->
+            {count + 1, [nil|list]}
+          <<size::int32, bin::binary(size)>>, {count, list} ->
+            oid = elem(col_oids, count)
+            decoded = Types.decode(oid, bin, types)
+            {count + 1, [decoded|list]}
         end)
 
       row = Enum.reverse(row) |> List.to_tuple
@@ -265,11 +269,15 @@ defmodule Postgrex.Protocol do
     %{command: {:query, _statement, params}} = :queue.get(queue)
     zipped = Enum.zip(param_oids, params)
 
-    Enum.map(zipped, fn {oid, param} ->
-      format = Types.format(oid, types)
-      binary = Types.encode(oid, param, types)
-      {format, binary}
-    end) |> :lists.unzip
+    Enum.map(zipped, fn
+      {_oid, nil} ->
+        {:binary, <<-1::int32>>}
+      {oid, param} ->
+        format = Types.format(oid, types)
+        binary = Types.encode(oid, param, types)
+        {format, [<<IO.iodata_length(binary)::int32>>, binary]}
+    end)
+    |> :lists.unzip
   end
 
   defp columns(fields) do

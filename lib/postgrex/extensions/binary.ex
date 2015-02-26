@@ -242,10 +242,15 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   defp encode_array(list, ndims, lengths, encoder) do
-    {data, length} = Enum.map_reduce(list, 0, fn elem, length ->
-      data = encoder.(elem)
-      {data, length + 1}
-    end)
+    {data, length} =
+      Enum.map_reduce(list, 0, fn
+        nil, length ->
+          {<<-1::int32>>, length + 1}
+        elem, length ->
+          data = encoder.(elem)
+          data = [<<IO.iodata_length(data)::int32>>, data]
+          {data, length + 1}
+      end)
     {data, ndims+1, [length|lengths]}
   end
 
@@ -253,10 +258,15 @@ defmodule Postgrex.Extensions.Binary do
     list = Tuple.to_list(tuple)
     zipped = :lists.zip(list, elem_oids)
 
-    {data, count} = Enum.map_reduce(zipped, 0, fn {value, oid}, count ->
-      data = Types.encode(oid, value, types)
-      {[<<oid :: int32>>, data], count + 1}
-    end)
+    {data, count} =
+      Enum.map_reduce(zipped, 0, fn
+        {nil, oid}, count ->
+          {<<oid::int32, -1::int32>>, count + 1}
+        {value, oid}, count ->
+          data = Types.encode(oid, value, types)
+          data = [<<oid::int32>>, <<IO.iodata_length(data)::int32>>, data]
+          {data, count + 1}
+      end)
 
     [<<count :: int32>>, data]
   end
@@ -272,13 +282,15 @@ defmodule Postgrex.Extensions.Binary do
       flags = flags ||| @range_lb_inf
       bin = ""
     else
-      bin = Types.encode(oid, range.lower, types)
+      data = Types.encode(oid, range.lower, types)
+      bin = [<<IO.iodata_length(data)::int32>>, data]
     end
 
     if range.upper == nil do
       flags = flags ||| @range_ub_inf
     else
-      bin = [bin|Types.encode(oid, range.upper, types)]
+      data = Types.encode(oid, range.upper, types)
+      bin = [bin, <<IO.iodata_length(data)::int32>>, data]
     end
 
     if range.lower_inclusive do
@@ -458,9 +470,9 @@ defmodule Postgrex.Extensions.Binary do
     array_elements(rest, count-1, [nil|acc], decoder)
   end
 
-  defp array_elements(<<length :: int32, elem :: binary(length), rest :: binary>>,
+  defp array_elements(<<size :: int32, elem :: binary(size), rest :: binary>>,
                        count, acc, decoder) do
-    value = decoder.(<<length :: int32, elem :: binary(length)>>)
+    value = decoder.(elem)
     array_elements(rest, count-1, [value|acc], decoder)
   end
 
@@ -477,9 +489,9 @@ defmodule Postgrex.Extensions.Binary do
     [nil | record_elements(num-1, rest, decoder)]
   end
 
-  defp record_elements(num, <<oid :: int32, length :: int32, elem :: binary(length), rest :: binary>>,
+  defp record_elements(num, <<oid :: int32, size :: int32, elem :: binary(size), rest :: binary>>,
                        decoder) do
-    value = decoder.(oid, <<length :: int32, elem :: binary(length)>>)
+    value = decoder.(oid, elem)
     [value | record_elements(num-1, rest, decoder)]
   end
 
@@ -492,14 +504,14 @@ defmodule Postgrex.Extensions.Binary do
       lower = nil
     else
       <<size::int32, lower::binary(size), rest::binary>> = rest
-      lower = Postgrex.Types.decode(oid, <<size::int32, lower::binary>>, types)
+      lower = Postgrex.Types.decode(oid, lower, types)
     end
 
     if (flags &&& @range_ub_inf) != 0 do
       upper = nil
     else
       <<size::int32, upper::binary(size), rest::binary>> = rest
-      upper = Postgrex.Types.decode(oid, <<size::int32, upper::binary>>, types)
+      upper = Postgrex.Types.decode(oid, upper, types)
     end
 
     "" = rest
