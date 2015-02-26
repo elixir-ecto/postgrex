@@ -4,11 +4,18 @@
   * Add extensions
   * Encode/decode ranges generically
   * Add bounds when encoding integer types to error instead of overflowing the integer
+  * Show Postgres error codes as their names instead
+  * Log unhandled Postgres errors (when it cant be replied to anyone)
+  * Add support for enum types
+  * Add support for citext type
+  * Add microseconds to times and timestamps
+  * Add the ability to rebootstrap types for an open connection
 
 * Backwards incompatible changes
   * Remove the support for type-hinted queries
   * Remove encoder, decoder and formatter functions, use extensions instead
   * Use structs for dates, times, timestamps, interval and ranges
+  * Change the default timeout for all operations to 5000ms
 
 # v0.7.0 (2015-01-20)
 
