@@ -42,7 +42,7 @@ defmodule Postgrex.ErrorCode do
   Most error names have only a single code, but there are exceptions.
 
   Examples:
-      name_to_codes(:prohibited_sql_statement_attempted)
+      iex> name_to_code(:prohibited_sql_statement_attempted)
       "2F003"
   """
   @spec name_to_code(atom) :: [String.t] | no_return
