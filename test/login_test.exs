@@ -21,7 +21,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:error, %Postgrex.Error{postgres: %{code: code}}} = P.start_link(opts)
-      assert code in ["28000", "28P01"]
+      assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
 
@@ -38,7 +38,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:error, %Postgrex.Error{postgres: %{code: code}}} = P.start_link(opts)
-      assert code in ["28000", "28P01"]
+      assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
 

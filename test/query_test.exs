@@ -363,6 +363,10 @@ defmodule QueryTest do
     [{42, "fortytwo"}] = query("SELECT * FROM test", [])
   end
 
+  test "error codes are translated", context  do
+    assert %Postgrex.Error{postgres: %{code: :syntax_error}} = query("wat", [])
+  end
+
   test "connection works after failure", context do
     assert %Postgrex.Error{} = query("wat", [])
     assert [{42}] = query("SELECT 42", [])
