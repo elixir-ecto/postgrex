@@ -69,7 +69,6 @@ defmodule Postgrex.Types do
           Map.update!(map, key, &[value|&1])
         end)
       end)
-
     Map.update!(map, :send, &(@higher_types ++ &1))
   end
 
