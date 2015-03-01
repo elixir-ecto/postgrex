@@ -561,11 +561,11 @@ defmodule Postgrex.Extensions.Binary do
   # in the case of a NULL value, there won't be a length
   defp decode_hstore_payload(<<key_length::int32, key::size(key_length)-binary,
                              -1::int32, rest::binary>>, acc) do
-    decode_hstore_payload(rest, Dict.put(acc, key, nil))
+    decode_hstore_payload(rest, Map.put(acc, key, nil))
   end
 
   defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
                         value_length::int32, value::binary(value_length), rest::binary>>, acc) do
-    decode_hstore_payload(rest, Dict.put(acc, key, value))
+    decode_hstore_payload(rest, Map.put(acc, key, value))
   end
 end
