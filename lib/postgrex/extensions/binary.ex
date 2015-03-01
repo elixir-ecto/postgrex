@@ -32,7 +32,7 @@ defmodule Postgrex.Extensions.Binary do
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send enum_send unknownsend)
+              timestamptz_send interval_send enum_send unknownsend hstore_send)
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -113,6 +113,8 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_record(tuple, elem_oids, types)
   def encode(%TypeInfo{send: "range_send", base_type: oid}, %Postgrex.Range{} = range, types, _),
     do: encode_range(range, oid, types)
+  def encode(%TypeInfo{send: "hstore_send"}, map, _, _),
+    do: encode_hstore(map)
 
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
@@ -304,6 +306,31 @@ defmodule Postgrex.Extensions.Binary do
     [flags|bin]
   end
 
+  defp encode_hstore(bin) do
+    keys_and_values = Enum.reduce bin, "", fn ({key, value}, acc) ->
+        acc <> encode_hstore_key(key) <> encode_hstore_value(value)
+    end
+    <<Map.size(bin)::int32>> <> keys_and_values
+  end
+
+  defp encode_hstore_key(key) when is_nil(key) do
+    raise ArgumentError, message: "Hstore keys cannot be nil!"
+  end
+
+  defp encode_hstore_key(key) do
+    encode_hstore_value key
+  end
+
+  defp encode_hstore_value(nil) do
+    <<-1::int32>>
+  end
+
+  defp encode_hstore_value(value) do
+    string_value = to_string(value)
+    string_length = String.length(string_value)
+    <<string_length::int32>> <> string_value
+  end
+
   ### DECODING ###
 
 
@@ -371,6 +398,8 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_record(bin, types)
   def decode(%TypeInfo{send: "range_send", base_type: oid}, bin, types, _),
     do: decode_range(bin, oid, types)
+  def decode(%TypeInfo{send: "hstore_send"}, bin, _, _),
+    do: decode_hstore(bin)
 
   defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
     decode_numeric(ndigits, weight, sign, scale, tail)
@@ -519,5 +548,24 @@ defmodule Postgrex.Extensions.Binary do
     upper_inclusive = (flags &&& @range_ub_inc) != 0
     %Postgrex.Range{lower: lower, upper: upper, lower_inclusive: lower_inclusive,
                     upper_inclusive: upper_inclusive}
+  end
+
+  def decode_hstore(<<_length::int32, pairs::binary>>) do
+    decode_hstore_payload(pairs, %{})
+  end
+
+  defp decode_hstore_payload(<<>>, acc) do
+    acc
+  end
+
+  # in the case of a NULL value, there won't be a length
+  defp decode_hstore_payload(<<key_length::int32, key::size(key_length)-binary,
+                             -1::int32, rest::binary>>, acc) do
+    decode_hstore_payload(rest, Dict.put(acc, key, nil))
+  end
+
+  defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
+                        value_length::int32, value::binary(value_length), rest::binary>>, acc) do
+    decode_hstore_payload(rest, Dict.put(acc, key, value))
   end
 end
