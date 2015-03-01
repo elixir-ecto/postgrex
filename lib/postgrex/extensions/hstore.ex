@@ -25,6 +25,6 @@ defmodule Postgrex.Extensions.Hstore do
     Encoder.encode term
   end
 
-  def format(_opts), do: :text
+  def format(_opts), do: :binary
 
 end

@@ -1,19 +1,10 @@
 defmodule Postgrex.Extensions.Hstore.Encoder do
-  # Punctuation
-  @single_quote "'"
-  @e_single_quote "E'"
-  @double_quote ~s(")
-  @hashrocket "=>"
-  @comma ","
-  @slash "\\"
 
   def encode(source) when is_map(source) do
-    mapped = Enum.map source, fn ({key, value}) ->
-        encode_key(key) <>
-        @hashrocket <>
-        encode_value(value)
+    keys_and_values = Enum.reduce source, "", fn ({key, value}, acc) ->
+        acc <> encode_key(key) <> encode_value(value)
     end
-    Enum.join(mapped, @comma)
+    <<Map.size(source)::size(32)>> <> keys_and_values
   end
 
   defp encode_key(key) when is_nil(key) do
@@ -21,26 +12,30 @@ defmodule Postgrex.Extensions.Hstore.Encoder do
   end
 
   defp encode_key(key) do
-    double_quote(key)
+    encode_value key
   end
 
   defp encode_value(nil) do
-    "NULL"
+    <<255, 255, 255, 255>>
   end
 
+  defp encode_value(true),
+    do: encode_value("true")
+
+  defp encode_value(false),
+    do: encode_value("false")
+
   defp encode_value(value) when is_integer(value) do
-    double_quote(to_string(value))
+    encode_value to_string(value)
   end
 
   defp encode_value(value) when is_float(value) do
-    double_quote(to_string(value))
+    encode_value to_string(value)
   end
 
   defp encode_value(value) do
-    double_quote(to_string(value))
-  end
-
-  defp double_quote(str) do
-    @double_quote <> str <> @double_quote
+    string_value = to_string(value)
+    string_length = String.length(string_value)
+    <<string_length::size(32)>> <> string_value
   end
 end
