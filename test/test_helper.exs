@@ -30,15 +30,7 @@ run_cmd = fn cmd ->
   {status, output}
 end
 
-pg_version = System.get_env("PGVERSION")
-extension_sql = if !pg_version || String.to_float(pg_version) >= 9.1 do
-  ~s(CREATE EXTENSION IF NOT EXISTS "hstore";)
-else
-  ""
-end
-
 sql = """
-#{extension_sql}
 DROP ROLE IF EXISTS postgrex_cleartext_pw;
 DROP ROLE IF EXISTS postgrex_md5_pw;
 
@@ -60,6 +52,13 @@ cmds = [
   ~s(psql -U postgres -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
   ~s(psql -U postgres -d postgrex_test -c "#{sql}")
 ]
+
+pg_version = System.get_env("PGVERSION")
+extension_sql = if !pg_version || String.to_float(pg_version) >= 9.1 do
+  cmds = cmds ++ [~s(psql -U postgres -d postgrex_test -c "CREATE EXTENSION IF NOT EXISTS \"hstore\";")]
+else
+  cmds = cmds ++ [~s(psql -U postgres -d postgrex_test -f "/usr/share/postgresql/$PGVERSION/contrib/hstore.sql")]
+end
 
 Enum.each(cmds, fn cmd ->
   {status, output} = run_cmd.(cmd)
