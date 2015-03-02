@@ -30,8 +30,15 @@ run_cmd = fn cmd ->
   {status, output}
 end
 
+pg_version = System.get_env("PGVERSION")
+extension_sql = if !pg_version || String.to_float(pg_version) >= 9 do
+  ~s(CREATE EXTENSION IF NOT EXISTS "hstore";)
+else
+  ""
+end
+
 sql = """
-CREATE EXTENSION IF NOT EXISTS "hstore";
+#{extension_sql}
 DROP ROLE IF EXISTS postgrex_cleartext_pw;
 DROP ROLE IF EXISTS postgrex_md5_pw;
 
