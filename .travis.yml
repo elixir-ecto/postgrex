@@ -12,7 +12,7 @@ install:
   - sudo sh -c "echo deb http://apt.postgresql.org/pub/repos/apt/ precise-pgdg main $PGVERSION >> /etc/apt/sources.list.d/pgdg.list"
   - wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -
   - sudo apt-get update -qq
-  - sudo apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::="--force-confnew" install postgresql-$PGVERSION postgresql-contrib
+  - sudo apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::="--force-confnew" install postgresql-$PGVERSION postgresql-contrib-$PGVERSION
 before_script:
   - export PATH=`pwd`/elixir/bin:$PATH
   - mix local.hex --force
