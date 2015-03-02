@@ -1,12 +1,14 @@
 # v0.8.1-dev
 
+* Enhancements
+  * Keep the postgres error code in `:pg_code`
+
 # v0.8.0 (2015-02-26)
 
 * Enhancements
   * Add extensions
   * Encode/decode ranges generically
   * Add bounds when encoding integer types to error instead of overflowing the integer
-  * Show Postgres error codes as their names instead
   * Log unhandled Postgres errors (when it cant be replied to anyone)
   * Add support for enum types
   * Add support for citext type
@@ -18,6 +20,7 @@
   * Remove encoder, decoder and formatter functions, use extensions instead
   * Use structs for dates, times, timestamps, interval and ranges
   * Change the default timeout for all operations to 5000ms
+  * Show Postgres error codes as their names instead
 
 # v0.7.0 (2015-01-20)
 

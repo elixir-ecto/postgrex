@@ -10,8 +10,11 @@ defmodule Postgrex.Error do
   end
 
   def exception([postgres: fields]) do
-    fields = Keyword.update!(fields, :code, &Postgrex.ErrorCode.code_to_name/1)
-    %Postgrex.Error{postgres: Enum.into(fields, %{})}
+    fields = Enum.into(fields, %{})
+             |> Map.put(:pg_code, fields[:code])
+             |> Map.update!(:code, &Postgrex.ErrorCode.code_to_name/1)
+
+    %Postgrex.Error{postgres: fields}
   end
 
   def exception(arg) do
