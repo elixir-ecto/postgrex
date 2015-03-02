@@ -214,6 +214,7 @@ defmodule QueryTest do
     assert message =~ "See https://github.com/ericmj/postgrex#oid-type-encoding"
   end
 
+  @tag min_pg_version: "9.1"
   test "decode hstore", context do
     assert [{%{}}] = query(~s{SELECT ''::hstore}, [])
     assert [{%{"Bubbles" => "7", "Name" => "Frank"}}] = query(~s{SELECT '"Name" => "Frank", "Bubbles" => "7"'::hstore}, [])
@@ -388,6 +389,7 @@ defmodule QueryTest do
     assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
   end
 
+  @tag min_pg_version: "9.1"
   test "encode hstore", context do
     assert [{%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}}] =
             query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => 7, "limit" => nil, "chillin"=> true, "fratty"=> false, "atom" => :bomb}]
