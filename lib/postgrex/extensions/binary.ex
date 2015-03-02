@@ -335,26 +335,26 @@ defmodule Postgrex.Extensions.Binary do
     [flags|bin]
   end
 
-  defp encode_hstore(bin) do
-    keys_and_values = Enum.reduce bin, "", fn ({key, value}, acc) ->
+  defp encode_hstore(hstore_map) when is_map(hstore_map) do
+    keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
         [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end
-    :erlang.iolist_to_binary([<<Map.size(bin)::int32>> | keys_and_values])
+    :erlang.iolist_to_binary([<<Map.size(hstore_map)::int32>> | keys_and_values])
   end
 
-  defp encode_hstore_key(key) when not is_nil(key) do
+  defp encode_hstore_key(key) when is_binary(key) do
     encode_hstore_value key
   end
 
-  defp encode_hstore_key(_key)  do
-    raise ArgumentError, message: "Hstore keys cannot be nil!"
+  defp encode_hstore_key(key) when is_nil(key) do
+    raise ArgumentError, message: "hstore keys cannot be nil!"
   end
 
   defp encode_hstore_value(nil) do
     <<-1::int32>>
   end
 
-  defp encode_hstore_value(value) do
+  defp encode_hstore_value(value) when is_binary(value) do
     value_byte_size = byte_size(value)
     <<value_byte_size::int32>> <> value
   end
