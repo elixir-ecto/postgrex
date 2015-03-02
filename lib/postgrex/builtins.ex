@@ -24,16 +24,16 @@ defmodule Postgrex.Time do
     * `hour`
     * `min`
     * `sec`
-    * `msec` - micro seconds
+    * `usec`
   """
 
-  @type t :: %__MODULE__{hour: 0..24, min: 0..60, sec: 0..60, msec: 0..1000000}
+  @type t :: %__MODULE__{hour: 0..23, min: 0..59, sec: 0..59, usec: 0..999_999}
 
   defstruct [
     hour: 0,
     min: 0,
     sec: 0,
-    msec: 0]
+    usec: 0]
 end
 
 defmodule Postgrex.Timestamp do
@@ -47,11 +47,11 @@ defmodule Postgrex.Timestamp do
     * `hour`
     * `min`
     * `sec`
-    * `msec` - micro seconds
+    * `músec`
   """
 
   @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..12,
-                         hour: 0..24, min: 0..60, sec: 0..60, msec: 0..1000000}
+                         hour: 0..23, min: 0..59, sec: 0..59, usec: 0..999_999}
 
   defstruct [
     year: 0,
@@ -60,7 +60,7 @@ defmodule Postgrex.Timestamp do
     hour: 0,
     min: 0,
     sec: 0,
-    msec: 0]
+    usec: 0]
 end
 
 defmodule Postgrex.Interval do

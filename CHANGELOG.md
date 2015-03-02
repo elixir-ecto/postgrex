@@ -3,6 +3,9 @@
 * Enhancements
   * Keep the postgres error code in `:pg_code`
 
+* Backwards incompatible changes
+  * Rename `:msec` field to `:usec` on `Postgrex.Time` and `Postgrex.Timestamp`
+
 # v0.8.0 (2015-02-26)
 
 * Enhancements

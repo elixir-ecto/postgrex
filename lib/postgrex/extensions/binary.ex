@@ -194,17 +194,17 @@ defmodule Postgrex.Extensions.Binary do
     <<:calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
   end
 
-  defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec, msec: msec})
-    when hour in 0..23 and min in 0..59 and sec in 0..59 and msec in 0..999_999  do
+  defp encode_time(%Postgrex.Time{hour: hour, min: min, sec: sec, usec: usec})
+    when hour in 0..23 and min in 0..59 and sec in 0..59 and usec in 0..999_999  do
     time = {hour, min, sec}
-    <<:calendar.time_to_seconds(time) * 1_000_000 + msec :: int64>>
+    <<:calendar.time_to_seconds(time) * 1_000_000 + usec :: int64>>
   end
 
-  defp encode_timestamp(%Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, msec: msec})
-    when year <= @timestamp_max_year and hour in 0..23 and min in 0..59 and sec in 0..59 and msec in 0..999_999 do
+  defp encode_timestamp(%Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec})
+    when year <= @timestamp_max_year and hour in 0..23 and min in 0..59 and sec in 0..59 and usec in 0..999_999 do
     datetime = {{year, month, day}, {hour, min, sec}}
     secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
-    <<secs * 1_000_000 + msec :: int64>>
+    <<secs * 1_000_000 + usec :: int64>>
   end
 
   defp encode_interval(%Postgrex.Interval{months: months, days: days, secs: secs}) do
@@ -415,22 +415,22 @@ defmodule Postgrex.Extensions.Binary do
 
   defp decode_time(microsecs) do
     secs = div(microsecs, 1_000_000)
-    msec = rem(microsecs, 1_000_000)
+    usec = rem(microsecs, 1_000_000)
     {hour, min, sec} = :calendar.seconds_to_time(secs)
-    %Postgrex.Time{hour: hour, min: min, sec: sec, msec: msec}
+    %Postgrex.Time{hour: hour, min: min, sec: sec, usec: usec}
   end
 
   defp decode_timestamp(microsecs) do
     secs = div(microsecs, 1_000_000)
-    msec = rem(microsecs, 1_000_000)
+    usec = rem(microsecs, 1_000_000)
     {{year, month, day}, {hour, min, sec}} = :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
 
-    if year < 2000 and msec != 0 do
+    if year < 2000 and usec != 0 do
       sec = sec - 1
-      msec = 1_000_000 + msec
+      usec = 1_000_000 + usec
     end
 
-    %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, msec: msec}
+    %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec}
   end
 
   defp decode_interval(microsecs, days, months) do
