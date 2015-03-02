@@ -325,8 +325,8 @@ defmodule QueryTest do
   end
 
   test "encode hstore", context do
-    assert [{%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false"}}] =
-            query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => 7, "limit" => nil, "chillin"=> true, "fratty"=> false}]
+    assert [{%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}}] =
+            query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => 7, "limit" => nil, "chillin"=> true, "fratty"=> false, "atom" => :bomb}]
   end
 
   test "fail on encode arrays", context do
