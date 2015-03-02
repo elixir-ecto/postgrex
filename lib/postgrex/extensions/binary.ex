@@ -337,17 +337,17 @@ defmodule Postgrex.Extensions.Binary do
 
   defp encode_hstore(bin) do
     keys_and_values = Enum.reduce bin, "", fn ({key, value}, acc) ->
-        acc <> encode_hstore_key(key) <> encode_hstore_value(value)
+        [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end
-    <<Map.size(bin)::int32>> <> keys_and_values
+    :erlang.iolist_to_binary([<<Map.size(bin)::int32>> | keys_and_values])
   end
 
-  defp encode_hstore_key(key) when is_nil(key) do
-    raise ArgumentError, message: "Hstore keys cannot be nil!"
-  end
-
-  defp encode_hstore_key(key) do
+  defp encode_hstore_key(key) when not is_nil(key) do
     encode_hstore_value key
+  end
+
+  defp encode_hstore_key(_key)  do
+    raise ArgumentError, message: "Hstore keys cannot be nil!"
   end
 
   defp encode_hstore_value(nil) do
@@ -356,8 +356,8 @@ defmodule Postgrex.Extensions.Binary do
 
   defp encode_hstore_value(value) do
     string_value = to_string(value)
-    string_length = String.length(string_value)
-    <<string_length::int32>> <> string_value
+    value_byte_size = byte_size(string_value)
+    <<value_byte_size::int32>> <> string_value
   end
 
   defp raise_oid_encoding_error(sender) do
@@ -603,7 +603,7 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   # in the case of a NULL value, there won't be a length
-  defp decode_hstore_payload(<<key_length::int32, key::size(key_length)-binary,
+  defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
                              -1::int32, rest::binary>>, acc) do
     decode_hstore_payload(rest, Map.put(acc, key, nil))
   end
