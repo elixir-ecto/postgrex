@@ -31,7 +31,7 @@ run_cmd = fn cmd ->
 end
 
 pg_version = System.get_env("PGVERSION")
-extension_sql = if !pg_version || String.to_float(pg_version) >= 9 do
+extension_sql = if !pg_version || String.to_float(pg_version) >= 9.1 do
   ~s(CREATE EXTENSION IF NOT EXISTS "hstore";)
 else
   ""
