@@ -326,9 +326,8 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   defp encode_hstore_value(value) do
-    string_value = to_string(value)
-    value_byte_size = byte_size(string_value)
-    <<value_byte_size::int32>> <> string_value
+    value_byte_size = byte_size(value)
+    <<value_byte_size::int32>> <> value
   end
 
   ### DECODING ###
