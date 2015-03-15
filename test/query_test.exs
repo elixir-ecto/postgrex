@@ -152,6 +152,14 @@ defmodule QueryTest do
            query("SELECT '(2014-1-1,]'::daterange", [])
   end
 
+  test "decode hstore", context do
+    assert [{%{}}] = query(~s{SELECT ''::hstore}, [])
+    assert [{%{"Bubbles" => "7", "Name" => "Frank"}}] = query(~s{SELECT '"Name" => "Frank", "Bubbles" => "7"'::hstore}, [])
+    assert [{%{"non_existant" => nil, "present" => "&accounted_for"}}] = query(~s{SELECT '"non_existant" => NULL, "present" => "&accounted_for"'::hstore}, [])
+    assert [{%{"spaces in the key" => "are easy!", "floats too" => "66.6"}}] = query(~s{SELECT '"spaces in the key" => "are easy!", "floats too" => "66.6"'::hstore}, [])
+    assert [{%{"this is true" => "true", "though not this" => "false"}}] = query(~s{SELECT '"this is true" => "true", "though not this" => "false"'::hstore}, [])
+  end
+
   test "encode basic types", context do
     assert [{nil, nil}] = query("SELECT $1::text, $2::int", [nil, nil])
     assert [{true, false}] = query("SELECT $1::bool, $2::bool", [true, false])
@@ -314,6 +322,11 @@ defmodule QueryTest do
     assert [{%Postgrex.Range{upper: 9223372036854775806}}] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
     assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
     assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
+  end
+
+  test "encode hstore", context do
+    assert [{%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}}] =
+           query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}]
   end
 
   test "fail on encode arrays", context do

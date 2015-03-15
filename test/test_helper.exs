@@ -53,6 +53,13 @@ cmds = [
   ~s(psql -U postgres -d postgrex_test -c "#{sql}")
 ]
 
+pg_version = System.get_env("PGVERSION")
+extension_sql = if !pg_version || String.to_float(pg_version) >= 9.1 do
+  cmds = cmds ++ [~s(psql -U postgres -d postgrex_test -c "CREATE EXTENSION IF NOT EXISTS \"hstore\";")]
+else
+  cmds = cmds ++ [~s(psql -U postgres -d postgrex_test -f "/usr/share/postgresql/$PGVERSION/contrib/hstore.sql")]
+end
+
 Enum.each(cmds, fn cmd ->
   {status, output} = run_cmd.(cmd)
 
