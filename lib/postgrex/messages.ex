@@ -182,7 +182,7 @@ defmodule Postgrex.Messages do
 
   # parse
   defp encode(msg_parse(name: name, query: query, type_oids: oids)) do
-    oids = for oid <- oids, into: "", do: <<oid :: int32>>
+    oids = for oid <- oids, into: "", do: <<oid :: uint32>>
     len = <<div(byte_size(oids), 4) :: int16>>
     {?P, [name, 0, query, 0, len, oids]}
   end
@@ -265,7 +265,7 @@ defmodule Postgrex.Messages do
 
   defp decode_row_field(rest) do
     {name, rest} = decode_string(rest)
-    <<table_oid :: int32, column :: int16, type_oid :: int32,
+    <<table_oid :: uint32, column :: int16, type_oid :: uint32,
        type_size :: int16, type_mod :: int32, format :: int16,
        rest :: binary>> = rest
     field = row_field(name: name, table_oid: table_oid, column: column, type_oid: type_oid,

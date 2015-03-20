@@ -217,7 +217,7 @@ defmodule Postgrex.Extensions.Binary do
 
     {data, ndims, lengths} = encode_array(list, 0, [], encoder)
     lengths = for len <- Enum.reverse(lengths), do: <<len :: int32, 1 :: int32>>
-    [<<ndims :: int32, 0 :: int32, elem_oid :: int32>>, lengths, data]
+    [<<ndims :: int32, 0 :: int32, elem_oid :: uint32>>, lengths, data]
   end
 
   defp encode_array([], ndims, lengths, _encoder) do
@@ -261,10 +261,10 @@ defmodule Postgrex.Extensions.Binary do
     {data, count} =
       Enum.map_reduce(zipped, 0, fn
         {nil, oid}, count ->
-          {<<oid::int32, -1::int32>>, count + 1}
+          {<<oid::uint32, -1::int32>>, count + 1}
         {value, oid}, count ->
           data = Types.encode(oid, value, types)
-          data = [<<oid::int32>>, <<IO.iodata_length(data)::int32>>, data]
+          data = [<<oid::uint32>>, <<IO.iodata_length(data)::int32>>, data]
           {data, count + 1}
       end)
 
@@ -438,7 +438,7 @@ defmodule Postgrex.Extensions.Binary do
     %Postgrex.Interval{months: months, days: days, secs: secs}
   end
 
-  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary>>,
+  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: uint32, rest :: binary>>,
                     types) do
     {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = for <<len :: int32, _lbound :: int32 <- dims>>, do: len
@@ -485,11 +485,11 @@ defmodule Postgrex.Extensions.Binary do
     []
   end
 
-  defp record_elements(num, <<_oid :: int32, -1 :: int32, rest :: binary>>, decoder) do
+  defp record_elements(num, <<_oid :: uint32, -1 :: int32, rest :: binary>>, decoder) do
     [nil | record_elements(num-1, rest, decoder)]
   end
 
-  defp record_elements(num, <<oid :: int32, size :: int32, elem :: binary(size), rest :: binary>>,
+  defp record_elements(num, <<oid :: uint32, size :: int32, elem :: binary(size), rest :: binary>>,
                        decoder) do
     value = decoder.(oid, elem)
     [value | record_elements(num-1, rest, decoder)]
