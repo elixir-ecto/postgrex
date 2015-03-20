@@ -28,11 +28,13 @@ defmodule Postgrex.Extensions.Binary do
   @int2_range -32768..32767
   @int4_range -2147483648..2147483647
   @int8_range -9223372036854775808..9223372036854775807
+  @oid_range 0..4294967295
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send enum_send unknownsend)
+              timestamptz_send interval_send enum_send oidsend unknownsend
+              regprocsend regproceduresend regopersend regoperatorsend regclasssend regtypesend)
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -113,6 +115,20 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_record(tuple, elem_oids, types)
   def encode(%TypeInfo{send: "range_send", base_type: oid}, %Postgrex.Range{} = range, types, _),
     do: encode_range(range, oid, types)
+  def encode(%TypeInfo{send: "oidsend"}, n, _, _)when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
+  def encode(%TypeInfo{send: "regprocsend"}, n, _, _) when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
+  def encode(%TypeInfo{send: "regproceduresend"}, n, _, _) when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
+  def encode(%TypeInfo{send: "regopersend"}, n, _, _) when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
+  def encode(%TypeInfo{send: "regoperatorsend"}, n, _, _) when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
+  def encode(%TypeInfo{send: "regclasssend"}, n, _, _) when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
+  def encode(%TypeInfo{send: "regtypesend"}, n, _, _) when is_integer(n) and n in @oid_range,
+    do: <<n :: uint32>>
 
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
@@ -371,6 +387,20 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_record(bin, types)
   def decode(%TypeInfo{send: "range_send", base_type: oid}, bin, types, _),
     do: decode_range(bin, oid, types)
+  def decode(%TypeInfo{send: "oidsend"}, <<n :: uint32>>, _, _),
+    do: n
+  def decode(%TypeInfo{send: "regprocsend"}, <<n :: uint32>>, _, _),
+    do: n
+  def decode(%TypeInfo{send: "regproceduresend"}, <<n :: uint32>>, _, _),
+    do: n
+  def decode(%TypeInfo{send: "regopersend"}, <<n :: uint32>>, _, _),
+    do: n
+  def decode(%TypeInfo{send: "regoperatorsend"}, <<n :: uint32>>, _, _),
+    do: n
+  def decode(%TypeInfo{send: "regclasssend"}, <<n :: uint32>>, _, _),
+    do: n
+  def decode(%TypeInfo{send: "regtypesend"}, <<n :: uint32>>, _, _),
+    do: n
 
   defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
     decode_numeric(ndigits, weight, sign, scale, tail)

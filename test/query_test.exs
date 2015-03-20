@@ -152,6 +152,49 @@ defmodule QueryTest do
            query("SELECT '(2014-1-1,]'::daterange", [])
   end
 
+  test "decode oid and its aliases", context do
+    assert [{4294967295}] = query("select 4294967295::oid;", [])
+
+    assert [{"-"}] = query("select '-'::regproc::text;", [])
+    assert [{"sum(integer)"}] = query("select 'sum(int4)'::regprocedure::text;", [])
+    assert [{"||/"}] = query("select 'pg_catalog.||/'::regoper::text;", [])
+    assert [{"+(integer,integer)"}] = query("select '+(integer,integer)'::regoperator::text;", [])
+    assert [{"pg_type"}] = query("select 'pg_type'::regclass::text;", [])
+    assert [{"integer"}] = query("select 'int4'::regtype::text;", [])
+
+    assert [{0}] = query("select '-'::regproc;", [])
+    assert [{44}] = query("select 'regprocin'::regproc;", [])
+    assert [{2108}] = query("select 'sum(int4)'::regprocedure;", [])
+    assert [{597}] = query("select 'pg_catalog.||/'::regoper;", [])
+    assert [{551}] = query("select '+(integer,integer)'::regoperator;", [])
+    assert [{1247}] = query("select 'pg_type'::regclass;", [])
+    assert [{23}] = query("select 'int4'::regtype;", [])
+  end
+
+  test "encode oid and its aliases", context do
+    # oid's range is 0 to 4294967295
+    assert [{0}] = query("select $1::oid;", [0])
+    assert [{4294967295}] = query("select $1::oid;", [4294967295])
+    assert :function_clause = catch_error(query("SELECT $1::oid", [0 - 1]))
+    assert :function_clause = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
+
+    assert [{"-"}] = query("select $1::regproc::text;", [0])
+    assert [{"regprocin"}] = query("select $1::regproc::text;", [44])
+    assert [{"sum(integer)"}] = query("select $1::regprocedure::text;", [2108])
+    assert [{"||/"}] = query("select $1::regoper::text;", [597])
+    assert [{"+(integer,integer)"}] = query("select $1::regoperator::text;", [551])
+    assert [{"pg_type"}] = query("select $1::regclass::text;", [1247])
+    assert [{"integer"}] = query("select $1::regtype::text;", [23])
+
+    assert [{0}] = query("select $1::text::regproc;", ["-"])
+    assert [{44}] = query("select $1::text::regproc;", ["regprocin"])
+    assert [{2108}] = query("select $1::text::regprocedure;", ["sum(int4)"])
+    assert [{597}] = query("select $1::text::regoper;", ["pg_catalog.||/"])
+    assert [{551}] = query("select $1::text::regoperator;", ["+(integer,integer)"])
+    assert [{1247}] = query("select $1::text::regclass;", ["pg_type"])
+    assert [{23}] = query("select $1::text::regtype;", ["int4"])
+  end
+
   test "encode basic types", context do
     assert [{nil, nil}] = query("SELECT $1::text, $2::int", [nil, nil])
     assert [{true, false}] = query("SELECT $1::bool, $2::bool", [true, false])
