@@ -95,11 +95,12 @@ Postgrex.Connection.start_link(extensions: [{Extensions.JSON, library: Poison}],
 
 ## OID type encoding
 
-Unlike most Postgres client libraries Postgrex uses the binary protocol to talk to Postgres. This
-allows for efficient encoding of types (e.g. 4-byte integers are encoded as 4 bytes, not as a string
-of digits) and automatic support for arrays and composite types.
+PostgreSQL's wire protocol supports encoding types either as text or as binary. Unlike most
+client libraries Postgrex uses the binary protocol, not the text protocol. This allows for efficient
+encoding of types (e.g. 4-byte integers are encoded as 4 bytes, not as a string of digits) and
+automatic support for arrays and composite types.
 
-Unfortunately the Postgres binary protocol transports [OID types](http://www.postgresql.org/docs/current/static/datatype-oid.html#DATATYPE-OID-TABLE)
+Unfortunately the PostgreSQL binary protocol transports [OID types](http://www.postgresql.org/docs/current/static/datatype-oid.html#DATATYPE-OID-TABLE)
 as integers while the text protocol transports them as string of their name, if one exists, and otherwise as integer.
 
 This means you either need to supply oid types as integers or perform an explicit cast (which would
@@ -114,7 +115,7 @@ query("select nextval($1)", ["some_sequence"])
 query("select nextval($1::text::regclass)", ["some_sequence"])
 
 # Determine the oid once and store it for later usage. This is the most efficient way, since
-# Postgres only has to perform the lookup once. Client libraries using the text protocol do not
+# PostgreSQL only has to perform the lookup once. Client libraries using the text protocol do not
 # support this.
 %{rows: [{sequence_oid}]} = query("select $1::text::regclass", ["some_sequence"])
 query("select nextval($1)", [sequence_oid])
