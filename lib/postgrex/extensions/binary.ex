@@ -30,11 +30,13 @@ defmodule Postgrex.Extensions.Binary do
   @int8_range -9223372036854775808..9223372036854775807
   @oid_range 0..4294967295
 
+  @oid_senders ~w(oidsend regprocsend regproceduresend regopersend
+                  regoperatorsend regclasssend regtypesend)
+
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send enum_send oidsend unknownsend
-              regprocsend regproceduresend regopersend regoperatorsend regclasssend regtypesend)
+              timestamptz_send interval_send enum_send unknownsend) ++ @oid_senders
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -115,20 +117,17 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_record(tuple, elem_oids, types)
   def encode(%TypeInfo{send: "range_send", base_type: oid}, %Postgrex.Range{} = range, types, _),
     do: encode_range(range, oid, types)
-  def encode(%TypeInfo{send: "oidsend"}, n, _, _)when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
-  def encode(%TypeInfo{send: "regprocsend"}, n, _, _) when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
-  def encode(%TypeInfo{send: "regproceduresend"}, n, _, _) when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
-  def encode(%TypeInfo{send: "regopersend"}, n, _, _) when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
-  def encode(%TypeInfo{send: "regoperatorsend"}, n, _, _) when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
-  def encode(%TypeInfo{send: "regclasssend"}, n, _, _) when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
-  def encode(%TypeInfo{send: "regtypesend"}, n, _, _) when is_integer(n) and n in @oid_range,
-    do: <<n :: uint32>>
+
+  # Define encodings for all oid types
+  for sender <- @oid_senders do
+    def encode(%TypeInfo{send: unquote(sender)}, n, _, _) when is_integer(n) and n in @oid_range,
+      do: <<n :: uint32>>
+
+    # Catch cases where users want to send binaries as reg types (which is what
+    # the text protocol supports) and error with a helpful message.
+    def encode(%TypeInfo{send: unquote(sender)}, value, _, _) when is_binary(value),
+      do: raise_oid_encoding_error(unquote(sender))
+  end
 
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
@@ -318,6 +317,13 @@ defmodule Postgrex.Extensions.Binary do
     end
 
     [flags|bin]
+  end
+
+  defp raise_oid_encoding_error(sender) do
+    raise Postgrex.Error, message: """
+    You tried to use a binary instead for an oid type (#{sender}) when an
+    integer was expected. See https://github.com/ericmj/postgrex#oid-type-encoding
+    """
   end
 
   ### DECODING ###

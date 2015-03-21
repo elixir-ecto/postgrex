@@ -195,6 +195,11 @@ defmodule QueryTest do
     assert [{23}] = query("select $1::text::regtype;", ["int4"])
   end
 
+  test "encoding oids as binary fails with a helpful error message", context do
+    assert %Postgrex.Error{message: message} = catch_error(query("select $1::regclass;", ["pg_type"]))
+    assert message =~ "See https://github.com/ericmj/postgrex#oid-type-encoding"
+  end
+
   test "encode basic types", context do
     assert [{nil, nil}] = query("SELECT $1::text, $2::int", [nil, nil])
     assert [{true, false}] = query("SELECT $1::bool, $2::bool", [true, false])
