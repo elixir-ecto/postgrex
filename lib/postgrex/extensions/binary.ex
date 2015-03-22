@@ -31,12 +31,12 @@ defmodule Postgrex.Extensions.Binary do
   @oid_range 0..4294967295
 
   @oid_senders ~w(oidsend regprocsend regproceduresend regopersend
-                  regoperatorsend regclasssend regtypesend)
+                  regoperatorsend regclasssend regtypesend xidsend cidsend)
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send enum_send unknownsend) ++ @oid_senders
+              timestamptz_send interval_send enum_send tidsend unknownsend) ++ @oid_senders
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -117,6 +117,8 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_record(tuple, elem_oids, types)
   def encode(%TypeInfo{send: "range_send", base_type: oid}, %Postgrex.Range{} = range, types, _),
     do: encode_range(range, oid, types)
+  def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
+    do: <<block :: uint32, tuple :: uint16>>
 
   # Define encodings for all oid types
   for sender <- @oid_senders do
@@ -393,20 +395,14 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_record(bin, types)
   def decode(%TypeInfo{send: "range_send", base_type: oid}, bin, types, _),
     do: decode_range(bin, oid, types)
-  def decode(%TypeInfo{send: "oidsend"}, <<n :: uint32>>, _, _),
-    do: n
-  def decode(%TypeInfo{send: "regprocsend"}, <<n :: uint32>>, _, _),
-    do: n
-  def decode(%TypeInfo{send: "regproceduresend"}, <<n :: uint32>>, _, _),
-    do: n
-  def decode(%TypeInfo{send: "regopersend"}, <<n :: uint32>>, _, _),
-    do: n
-  def decode(%TypeInfo{send: "regoperatorsend"}, <<n :: uint32>>, _, _),
-    do: n
-  def decode(%TypeInfo{send: "regclasssend"}, <<n :: uint32>>, _, _),
-    do: n
-  def decode(%TypeInfo{send: "regtypesend"}, <<n :: uint32>>, _, _),
-    do: n
+  def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
+    do: {block, tuple}
+
+  # Define decodings for all oid types
+  for sender <- @oid_senders do
+    def decode(%TypeInfo{send: unquote(sender)}, <<n :: uint32>>, _, _),
+      do: n
+  end
 
   defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
     decode_numeric(ndigits, weight, sign, scale, tail)

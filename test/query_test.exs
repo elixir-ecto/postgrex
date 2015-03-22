@@ -169,6 +169,14 @@ defmodule QueryTest do
     assert [{551}] = query("select '+(integer,integer)'::regoperator;", [])
     assert [{1247}] = query("select 'pg_type'::regclass;", [])
     assert [{23}] = query("select 'int4'::regtype;", [])
+
+    # xid type
+    assert [{xmin, xmax}] = query("select xmin, xmax from pg_type limit 1;", [])
+    assert is_number(xmin) and is_number(xmax)
+
+    # cid type
+    assert [{cmin, cmax}] = query("select cmin, cmax from pg_type limit 1;", [])
+    assert is_number(cmin) and is_number(cmax)
   end
 
   test "encode oid and its aliases", context do
@@ -193,6 +201,11 @@ defmodule QueryTest do
     assert [{551}] = query("select $1::text::regoperator;", ["+(integer,integer)"])
     assert [{1247}] = query("select $1::text::regclass;", ["pg_type"])
     assert [{23}] = query("select $1::text::regtype;", ["int4"])
+  end
+
+  test "tuple ids", context do
+    assert [{tid}] = query("select ctid from pg_type limit 1;", [])
+    assert [{{5, 10}}] = query("select $1::tid;", [{5, 10}])
   end
 
   test "encoding oids as binary fails with a helpful error message", context do
