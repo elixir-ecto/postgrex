@@ -28,11 +28,15 @@ defmodule Postgrex.Extensions.Binary do
   @int2_range -32768..32767
   @int4_range -2147483648..2147483647
   @int8_range -9223372036854775808..9223372036854775807
+  @oid_range 0..4294967295
+
+  @oid_senders ~w(oidsend regprocsend regproceduresend regopersend
+                  regoperatorsend regclasssend regtypesend xidsend cidsend)
 
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send enum_send unknownsend)
+              timestamptz_send interval_send enum_send tidsend unknownsend) ++ @oid_senders
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -113,6 +117,19 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_record(tuple, elem_oids, types)
   def encode(%TypeInfo{send: "range_send", base_type: oid}, %Postgrex.Range{} = range, types, _),
     do: encode_range(range, oid, types)
+  def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
+    do: <<block :: uint32, tuple :: uint16>>
+
+  # Define encodings for all oid types
+  for sender <- @oid_senders do
+    def encode(%TypeInfo{send: unquote(sender)}, n, _, _) when is_integer(n) and n in @oid_range,
+      do: <<n :: uint32>>
+
+    # Catch cases where users want to send binaries as reg types (which is what
+    # the text protocol supports) and error with a helpful message.
+    def encode(%TypeInfo{send: unquote(sender)}, value, _, _) when is_binary(value),
+      do: raise_oid_encoding_error(unquote(sender))
+  end
 
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
@@ -217,7 +234,7 @@ defmodule Postgrex.Extensions.Binary do
 
     {data, ndims, lengths} = encode_array(list, 0, [], encoder)
     lengths = for len <- Enum.reverse(lengths), do: <<len :: int32, 1 :: int32>>
-    [<<ndims :: int32, 0 :: int32, elem_oid :: int32>>, lengths, data]
+    [<<ndims :: int32, 0 :: int32, elem_oid :: uint32>>, lengths, data]
   end
 
   defp encode_array([], ndims, lengths, _encoder) do
@@ -261,10 +278,10 @@ defmodule Postgrex.Extensions.Binary do
     {data, count} =
       Enum.map_reduce(zipped, 0, fn
         {nil, oid}, count ->
-          {<<oid::int32, -1::int32>>, count + 1}
+          {<<oid::uint32, -1::int32>>, count + 1}
         {value, oid}, count ->
           data = Types.encode(oid, value, types)
-          data = [<<oid::int32>>, <<IO.iodata_length(data)::int32>>, data]
+          data = [<<oid::uint32>>, <<IO.iodata_length(data)::int32>>, data]
           {data, count + 1}
       end)
 
@@ -302,6 +319,13 @@ defmodule Postgrex.Extensions.Binary do
     end
 
     [flags|bin]
+  end
+
+  defp raise_oid_encoding_error(sender) do
+    raise Postgrex.Error, message: """
+    You tried to use a binary instead for an oid type (#{sender}) when an
+    integer was expected. See https://github.com/ericmj/postgrex#oid-type-encoding
+    """
   end
 
   ### DECODING ###
@@ -371,6 +395,14 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_record(bin, types)
   def decode(%TypeInfo{send: "range_send", base_type: oid}, bin, types, _),
     do: decode_range(bin, oid, types)
+  def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
+    do: {block, tuple}
+
+  # Define decodings for all oid types
+  for sender <- @oid_senders do
+    def decode(%TypeInfo{send: unquote(sender)}, <<n :: uint32>>, _, _),
+      do: n
+  end
 
   defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
     decode_numeric(ndigits, weight, sign, scale, tail)
@@ -438,7 +470,7 @@ defmodule Postgrex.Extensions.Binary do
     %Postgrex.Interval{months: months, days: days, secs: secs}
   end
 
-  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: int32, rest :: binary>>,
+  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: uint32, rest :: binary>>,
                     types) do
     {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
     lengths = for <<len :: int32, _lbound :: int32 <- dims>>, do: len
@@ -485,11 +517,11 @@ defmodule Postgrex.Extensions.Binary do
     []
   end
 
-  defp record_elements(num, <<_oid :: int32, -1 :: int32, rest :: binary>>, decoder) do
+  defp record_elements(num, <<_oid :: uint32, -1 :: int32, rest :: binary>>, decoder) do
     [nil | record_elements(num-1, rest, decoder)]
   end
 
-  defp record_elements(num, <<oid :: int32, size :: int32, elem :: binary(size), rest :: binary>>,
+  defp record_elements(num, <<oid :: uint32, size :: int32, elem :: binary(size), rest :: binary>>,
                        decoder) do
     value = decoder.(oid, elem)
     [value | record_elements(num-1, rest, decoder)]

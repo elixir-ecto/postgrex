@@ -2,6 +2,7 @@
 
 * Enhancements
   * Keep the postgres error code in `:pg_code`
+  * Support oid types and all its aliases (regclass etc)
 
 * Backwards incompatible changes
   * Rename `:msec` field to `:usec` on `Postgrex.Time` and `Postgrex.Timestamp`
