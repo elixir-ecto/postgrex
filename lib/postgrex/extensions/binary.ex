@@ -105,6 +105,8 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_date(date)
   def encode(%TypeInfo{send: "time_send"}, time, _, _),
     do: encode_time(time)
+  def encode(%TypeInfo{send: "timetz_send"}, time, _, _),
+    do: encode_time(time)
   def encode(%TypeInfo{send: "timestamp_send"}, timestamp, _, _),
     do: encode_timestamp(timestamp)
   def encode(%TypeInfo{send: "timestamptz_send"}, timestamp, _, _),
