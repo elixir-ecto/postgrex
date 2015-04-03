@@ -37,6 +37,7 @@ defmodule QueryTest do
   test "decode numeric", context do
     assert [{Decimal.new("42")}] == query("SELECT 42::numeric", [])
     assert [{Decimal.new("42.0000000000")}] == query("SELECT 42.0::numeric(100, 10)", [])
+    assert [{Decimal.new("1.001")}] == query("SELECT 1.001", [])
     assert [{Decimal.new("0.4242")}] == query("SELECT 0.4242", [])
     assert [{Decimal.new("42.4242")}] == query("SELECT 42.4242", [])
     assert [{Decimal.new("12345.12345")}] == query("SELECT 12345.12345", [])
@@ -231,6 +232,7 @@ defmodule QueryTest do
       "42",
       "0.4242",
       "42.4242",
+      "1.001",
       "0.00012345",
       "1000000000",
       "1000000000.0",
