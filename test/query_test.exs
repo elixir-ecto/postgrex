@@ -229,6 +229,9 @@ defmodule QueryTest do
 
   test "encode numeric", context do
     nums = [
+      "42",
+      "0.4242",
+      "42.4242",
       "1.001",
       "0.01",
       "0.00012345",
