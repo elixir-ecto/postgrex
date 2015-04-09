@@ -18,6 +18,7 @@ defmodule Postgrex.Extensions.Binary do
   @timestamp_max_year 294276
 
   @numeric_base 10_000
+  @numeric_float_pad String.length(Integer.to_string(@numeric_base))
 
   @range_empty   0x01
   @range_lb_inc  0x02
@@ -152,7 +153,7 @@ defmodule Postgrex.Extensions.Binary do
       if float != [] do
         [_|float] = float
         scale = length(float)
-        float_digits = encode_numeric_float(float, [])
+        float_digits = pad_to_numeric_base(float, scale) |> encode_numeric_float([])
       else
         scale = 0
         float_digits = []
@@ -162,7 +163,15 @@ defmodule Postgrex.Extensions.Binary do
       bin = for digit <- digits, into: "", do: <<digit :: uint16>>
       ndigits = div(byte_size(bin), 2)
 
-      [<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16>>, bin]
+      [<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16>> | bin]
+    end
+  end
+
+  defp pad_to_numeric_base(float, scale) do
+    if scale < @numeric_float_pad do
+      float ++ List.duplicate(?0, @numeric_float_pad - scale)
+    else
+      float
     end
   end
 
