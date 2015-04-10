@@ -1,4 +1,4 @@
-# v0.8.1-dev
+# v0.8.1 (2015-04-09)
 
 * Enhancements
   * Keep the postgres error code in `:pg_code`
