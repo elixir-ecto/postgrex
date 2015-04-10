@@ -7,6 +7,11 @@
 * Backwards incompatible changes
   * Rename `:msec` field to `:usec` on `Postgrex.Time` and `Postgrex.Timestamp`
 
+* Bug fixes
+  * Fix numeric encoding for fractional numbers with less digits than the numeric base
+  * Support encoding `timetz` type
+  * Fix time and timestamp off-by-one bounds
+
 # v0.8.0 (2015-02-26)
 
 * Enhancements
