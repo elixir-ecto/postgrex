@@ -214,7 +214,6 @@ defmodule QueryTest do
     assert message =~ "See https://github.com/ericmj/postgrex#oid-type-encoding"
   end
 
-  @tag min_pg_version: "9.1"
   test "decode hstore", context do
     assert [{%{}}] = query(~s{SELECT ''::hstore}, [])
     assert [{%{"Bubbles" => "7", "Name" => "Frank"}}] = query(~s{SELECT '"Name" => "Frank", "Bubbles" => "7"'::hstore}, [])
