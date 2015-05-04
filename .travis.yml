@@ -1,6 +1,6 @@
 language: erlang
 otp_release:
-  - 17.3
+  - 17.4
 cache: apt
 before_install:
   - wget http://s3.hex.pm/builds/elixir/$ELIXIRVERSION.zip
@@ -27,7 +27,8 @@ script:
 env:
   global:
     - PGUSER=postgres
-    - ELIXIRVERSION=v1.0.3
+    - PGPATH=/usr/share/postgresql/$PGVERSION/
+    - ELIXIRVERSION=v1.0.4
   matrix:
     - PGVERSION=8.4
     - PGVERSION=9.0
