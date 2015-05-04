@@ -32,7 +32,7 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
   * User defined extensions for encoding and decoding any PostgresSQL type
-  * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, and 9.4
+  * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, and 9.4 (hstore is not supported on 8.4)
 
 ## Data representation
 
@@ -54,6 +54,8 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
     composite type  {42, "title", "content"}
     range           %Postgrex.Range{lower: 1, upper: 5}
     uuid            <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
+    hstore          %{"foo" => "bar"}
+    oid types       42
 
 \* [Decimal](http://github.com/ericmj/decimal)
 
@@ -139,6 +141,14 @@ host    all             postgrex_cleartext_pw   127.0.0.1/32    password
 ```
 
 The server needs to be restarted for the changes to take effect. Additionally you need to setup a Postgres user with the same username as the local user and give it trust or ident in your hba file. Or you can export $PGUSER and $PGPASS before running tests.
+
+### Testing hstore on 9.0
+
+Postgres versions 9.0 does not have the `CREATE EXTENSION` commands. This means we have to locate the postgres installation and run the `hstore.sql` in `contrib` to install `hstore`. Below is an example command to test 9.0 on OS X with homebrew installed postgres:
+
+```
+$ PGVERSION=9.0 PGPATH=/usr/local/share/postgresql9/ mix test
+```
 
 ## License
 

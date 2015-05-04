@@ -37,7 +37,8 @@ defmodule Postgrex.Extensions.Binary do
   @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
-              timestamptz_send interval_send enum_send tidsend unknownsend) ++ @oid_senders
+              timestamptz_send interval_send enum_send tidsend unknownsend
+              hstore_send) ++ @oid_senders
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.version_to_int
@@ -122,6 +123,8 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_range(range, oid, types)
   def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
     do: <<block :: uint32, tuple :: uint16>>
+  def encode(%TypeInfo{send: "hstore_send"}, map, _, _),
+    do: encode_hstore(map)
 
   # Define encodings for all oid types
   for sender <- @oid_senders do
@@ -332,6 +335,30 @@ defmodule Postgrex.Extensions.Binary do
     [flags|bin]
   end
 
+  defp encode_hstore(hstore_map) when is_map(hstore_map) do
+    keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
+        [acc, encode_hstore_key(key), encode_hstore_value(value)]
+    end
+    :erlang.iolist_to_binary([<<Map.size(hstore_map)::int32>> | keys_and_values])
+  end
+
+  defp encode_hstore_key(key) when is_binary(key) do
+    encode_hstore_value key
+  end
+
+  defp encode_hstore_key(key) when is_nil(key) do
+    raise ArgumentError, message: "hstore keys cannot be nil!"
+  end
+
+  defp encode_hstore_value(nil) do
+    <<-1::int32>>
+  end
+
+  defp encode_hstore_value(value) when is_binary(value) do
+    value_byte_size = byte_size(value)
+    <<value_byte_size::int32>> <> value
+  end
+
   defp raise_oid_encoding_error(sender) do
     raise Postgrex.Error, message: """
     You tried to use a binary instead for an oid type (#{sender}) when an
@@ -408,6 +435,8 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_range(bin, oid, types)
   def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
     do: {block, tuple}
+  def decode(%TypeInfo{send: "hstore_send"}, bin, _, _),
+    do: decode_hstore(bin)
 
   # Define decodings for all oid types
   for sender <- @oid_senders do
@@ -562,5 +591,24 @@ defmodule Postgrex.Extensions.Binary do
     upper_inclusive = (flags &&& @range_ub_inc) != 0
     %Postgrex.Range{lower: lower, upper: upper, lower_inclusive: lower_inclusive,
                     upper_inclusive: upper_inclusive}
+  end
+
+  def decode_hstore(<<_length::int32, pairs::binary>>) do
+    decode_hstore_payload(pairs, %{})
+  end
+
+  defp decode_hstore_payload(<<>>, acc) do
+    acc
+  end
+
+  # in the case of a NULL value, there won't be a length
+  defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
+                             -1::int32, rest::binary>>, acc) do
+    decode_hstore_payload(rest, Map.put(acc, key, nil))
+  end
+
+  defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
+                        value_length::int32, value::binary(value_length), rest::binary>>, acc) do
+    decode_hstore_payload(rest, Map.put(acc, key, value))
   end
 end

@@ -205,13 +205,22 @@ defmodule QueryTest do
   end
 
   test "tuple ids", context do
-    assert [{tid}] = query("select ctid from pg_type limit 1;", [])
+    assert [{_tid}] = query("select ctid from pg_type limit 1;", [])
     assert [{{5, 10}}] = query("select $1::tid;", [{5, 10}])
   end
 
   test "encoding oids as binary fails with a helpful error message", context do
     assert %Postgrex.Error{message: message} = catch_error(query("select $1::regclass;", ["pg_type"]))
     assert message =~ "See https://github.com/ericmj/postgrex#oid-type-encoding"
+  end
+
+  @tag min_pg_version: "9.0"
+  test "decode hstore", context do
+    assert [{%{}}] = query(~s{SELECT ''::hstore}, [])
+    assert [{%{"Bubbles" => "7", "Name" => "Frank"}}] = query(~s{SELECT '"Name" => "Frank", "Bubbles" => "7"'::hstore}, [])
+    assert [{%{"non_existant" => nil, "present" => "&accounted_for"}}] = query(~s{SELECT '"non_existant" => NULL, "present" => "&accounted_for"'::hstore}, [])
+    assert [{%{"spaces in the key" => "are easy!", "floats too" => "66.6"}}] = query(~s{SELECT '"spaces in the key" => "are easy!", "floats too" => "66.6"'::hstore}, [])
+    assert [{%{"this is true" => "true", "though not this" => "false"}}] = query(~s{SELECT '"this is true" => "true", "though not this" => "false"'::hstore}, [])
   end
 
   test "encode basic types", context do
@@ -378,6 +387,12 @@ defmodule QueryTest do
     assert [{%Postgrex.Range{upper: 9223372036854775806}}] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
     assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
     assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
+  end
+
+  @tag min_pg_version: "9.0"
+  test "encode hstore", context do
+    assert [{%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}}] =
+           query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}]
   end
 
   test "fail on encode arrays", context do
