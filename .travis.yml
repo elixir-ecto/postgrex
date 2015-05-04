@@ -27,11 +27,10 @@ script:
 env:
   global:
     - PGUSER=postgres
-    - PGPATH=/usr/share/postgresql/$PGVERSION/
     - ELIXIRVERSION=v1.0.4
   matrix:
     - PGVERSION=8.4
-    - PGVERSION=9.0
+    - PGVERSION=9.0 PGPATH=/usr/share/postgresql/9.0/
     - PGVERSION=9.1
     - PGVERSION=9.2
     - PGVERSION=9.3
