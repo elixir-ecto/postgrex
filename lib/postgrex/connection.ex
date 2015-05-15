@@ -110,15 +110,9 @@ defmodule Postgrex.Connection do
   """
   @spec query!(pid, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(pid, statement, params, opts \\ []) do
-    message = {:query, statement, params}
-    timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
-      %Postgrex.Result{} = res ->
-        res
-      %Postgrex.Error{} = err ->
-        raise err
-      {:error, kind, reason, stack} ->
-        :erlang.raise(kind, reason, stack)
+    case query(pid, statement, params, opts) do
+      {:ok, res}    -> res
+      {:error, err} -> raise err
     end
   end
 
@@ -179,12 +173,9 @@ defmodule Postgrex.Connection do
   """
   @spec unlisten!(pid, reference, Keyword.t) :: :ok
   def unlisten!(pid, ref, opts \\ []) do
-    message = {:unlisten, ref}
-    timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
-      :ok -> :ok
-      %ArgumentError{} = err -> raise err
-      %Postgrex.Error{} = err -> raise err
+    case unlisten(pid, ref, opts) do
+      :ok           -> :ok
+      {:error, err} -> raise err
     end
   end
 
