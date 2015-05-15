@@ -140,11 +140,9 @@ defmodule Postgrex.Connection do
   """
   @spec listen!(pid, String.t, Keyword.t) :: reference
   def listen!(pid, channel, opts \\ []) do
-    message = {:listen, channel, self()}
-    timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
-      ref when is_reference(ref)  -> ref
-      %Postgrex.Error{} = err     -> raise err
+    case listen(pid, channel, opts) do
+      {:ok, ref}    -> ref
+      {:error, err} -> raise err
     end
   end
 
