@@ -510,9 +510,8 @@ defmodule Postgrex.Extensions.Binary do
     %Postgrex.Interval{months: months, days: days, secs: secs}
   end
 
-  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: uint32, rest :: binary>>,
-                    types) do
-    {dims, rest} = :erlang.split_binary(rest, ndims * 2 * 4)
+  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: uint32,
+                      dims :: size(ndims)-binary-unit(64), rest :: binary>>, types) do
     lengths = for <<len :: int32, _lbound :: int32 <- dims>>, do: len
     decoder = &Types.decode(oid, &1, types)
 
@@ -550,21 +549,21 @@ defmodule Postgrex.Extensions.Binary do
 
   defp decode_record(<<num :: int32, rest :: binary>>, types) do
     decoder = &Types.decode(&1, &2, types)
-    record_elements(num, rest, decoder) |> List.to_tuple
+    record_elements(rest, num, decoder) |> List.to_tuple
   end
 
-  defp record_elements(0, <<>>, _decoder) do
+  defp record_elements(<<>>, 0, _decoder) do
     []
   end
 
-  defp record_elements(num, <<_oid :: uint32, -1 :: int32, rest :: binary>>, decoder) do
-    [nil | record_elements(num-1, rest, decoder)]
+  defp record_elements(<<_oid :: uint32, -1 :: int32, rest :: binary>>, num, decoder) do
+    [nil | record_elements(rest, num-1, decoder)]
   end
 
-  defp record_elements(num, <<oid :: uint32, size :: int32, elem :: binary(size), rest :: binary>>,
-                       decoder) do
+  defp record_elements(<<oid :: uint32, size :: int32, elem :: binary(size), rest :: binary>>,
+                       num, decoder) do
     value = decoder.(oid, elem)
-    [value | record_elements(num-1, rest, decoder)]
+    [value | record_elements(rest, num-1, decoder)]
   end
 
   defp decode_range(<<flags>>, _oid, _types) when (flags &&& @range_empty) != 0 do

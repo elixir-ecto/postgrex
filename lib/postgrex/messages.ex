@@ -49,7 +49,7 @@ defmodule Postgrex.Messages do
   ### decoders ###
 
   # auth
-  def parse(?R, size, <<type :: int32, rest :: binary>>) do
+  def parse(<<type :: int32, rest :: binary>>, ?R, size) do
     type = decode_auth_type(type)
     case type do
       :md5 ->
@@ -63,32 +63,13 @@ defmodule Postgrex.Messages do
     msg_auth(type: type, data: data)
   end
 
-  # error
-  def parse(?E, _size, rest) do
-    fields = decode_fields(rest)
-    msg_error(fields: fields)
-  end
-
-  # notice
-  def parse(?N, _size, rest) do
-    fields = decode_fields(rest)
-    msg_notice(fields: fields)
-  end
-
-  # parameter
-  def parse(?S, _size, rest) do
-    {name, rest} = decode_string(rest)
-    {value, ""} = decode_string(rest)
-    msg_parameter(name: name, value: value)
-  end
-
   # backend_key
-  def parse(?K, _size, <<pid :: int32, key :: int32>>) do
+  def parse(<<pid :: int32, key :: int32>>, ?K, _size) do
     msg_backend_key(pid: pid, key: key)
   end
 
   # ready
-  def parse(?Z, _size, <<status :: int8>>) do
+  def parse(<<status :: int8>>, ?Z, _size) do
     status = case status do
       ?I -> :idle
       ?T -> :transaction
@@ -97,59 +78,78 @@ defmodule Postgrex.Messages do
     msg_ready(status: status)
   end
 
-  # parse_complete
-  def parse(?1, _size, _rest) do
-    msg_parse_complete()
-  end
-
   # parameter_desc
-  def parse(?t, _size, <<len :: int16, rest :: binary(len, 32)>>) do
+  def parse(<<len :: int16, rest :: binary(len, 32)>>, ?t, _size) do
     oids = for <<oid :: size(32) <- rest>>, do: oid
     msg_parameter_desc(type_oids: oids)
   end
 
   # row_desc
-  def parse(?T, _size, <<len :: int16, rest :: binary>>) do
+  def parse(<<len :: int16, rest :: binary>>, ?T, _size) do
     fields = decode_row_fields(rest, len)
     msg_row_desc(fields: fields)
   end
 
-  # no_data
-  def parse(?n, _size, _rest) do
-    msg_no_data()
-  end
-
-  # bind_complete
-  def parse(?2, _size, _rest) do
-    msg_bind_complete()
-  end
-
-  # portal_suspended
-  def parse(?s, _size, _rest) do
-    msg_portal_suspend()
-  end
-
   # data_row
-  def parse(?D, _size, <<count :: int16, rest :: binary>> ) do
+  def parse(<<count :: int16, rest :: binary>>, ?D, _size) do
     values = decode_row_values(rest, count)
     msg_data_row(values: values)
   end
 
-  # command_complete
-  def parse(?C, _size, rest) do
-    {tag, ""} = decode_string(rest)
-    msg_command_complete(tag: tag)
-  end
-
   # notify
-  def parse(?A, _size, <<pg_pid :: int32, rest :: binary>>) do
+  def parse(<<pg_pid :: int32, rest :: binary>>, ?A, _size) do
     {channel, rest} = decode_string(rest)
     {payload, ""} = decode_string(rest)
     msg_notify(pg_pid: pg_pid, channel: channel, payload: payload)
   end
 
+  # error
+  def parse(rest, ?E, _size) do
+    fields = decode_fields(rest)
+    msg_error(fields: fields)
+  end
+
+  # notice
+  def parse(rest, ?N, _size) do
+    fields = decode_fields(rest)
+    msg_notice(fields: fields)
+  end
+
+  # parameter
+  def parse(rest, ?S, _size) do
+    {name, rest} = decode_string(rest)
+    {value, ""} = decode_string(rest)
+    msg_parameter(name: name, value: value)
+  end
+
+  # parse_complete
+  def parse(_rest, ?1, _size) do
+    msg_parse_complete()
+  end
+
+  # no_data
+  def parse(_rest, ?n, _size) do
+    msg_no_data()
+  end
+
+  # bind_complete
+  def parse(_rest, ?2, _size) do
+    msg_bind_complete()
+  end
+
+  # portal_suspended
+  def parse(_rest, ?s, _size) do
+    msg_portal_suspend()
+  end
+
+  # command_complete
+  def parse(rest, ?C, _size) do
+    {tag, ""} = decode_string(rest)
+    msg_command_complete(tag: tag)
+  end
+
   # empty_query
-  def parse(?I, _size, _rest) do
+  def parse(_rest, ?I, _size) do
     msg_empty_query()
   end
 

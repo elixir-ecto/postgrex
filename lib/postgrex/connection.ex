@@ -413,7 +413,7 @@ defmodule Postgrex.Connection do
 
     case data do
       <<data :: binary(size), tail :: binary>> ->
-        msg = Messages.parse(type, size, data)
+        msg = Messages.parse(data, type, size)
         case Protocol.message(state, msg, s) do
           {:ok, s} -> new_data(tail, s)
           {:error, _, _} = err -> err
