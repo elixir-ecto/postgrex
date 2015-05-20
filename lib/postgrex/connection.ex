@@ -31,6 +31,7 @@ defmodule Postgrex.Connection do
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:async_connect` - Set to `true` if `start_link` should return before the
       connection is completed (default: `false`);
+    * `:socket_options` - Options to be given to the underlying socket;
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
       implementing the `Postgrex.Extension` behaviour and `opts` are the
       extension options;
@@ -331,12 +332,12 @@ defmodule Postgrex.Connection do
   ### PRIVATE FUNCTIONS ###
 
   defp connect(opts, from, %{queue: queue} = s) do
-    host      = Keyword.fetch!(opts, :hostname)
-    host      = if is_binary(host), do: String.to_char_list(host), else: host
-    port      = opts[:port] || 5432
-    timeout   = opts[:timeout] || @timeout
-    sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
-    extensions  = (opts[:extensions] || []) ++ @default_extensions
+    host       = Keyword.fetch!(opts, :hostname)
+    host       = if is_binary(host), do: String.to_char_list(host), else: host
+    port       = opts[:port] || 5432
+    timeout    = opts[:timeout] || @timeout
+    sock_opts  = [{:active, :once}, {:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
+    extensions = (opts[:extensions] || []) ++ @default_extensions
 
     command = new_command({:connect, opts}, from)
     queue = :queue.in(command, queue)
