@@ -162,7 +162,7 @@ defmodule Postgrex.Protocol do
         create_result(tag)
       else
         try do
-          result = decode_rows(s)
+          decode_rows(s)
         catch
           kind, reason ->
             {:error, kind, reason, System.stacktrace}
