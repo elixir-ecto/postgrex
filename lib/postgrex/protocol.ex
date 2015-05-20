@@ -226,9 +226,9 @@ defmodule Postgrex.Protocol do
     Enum.reduce(s.rows, [], fn values, acc ->
       {_, row} =
         Enum.reduce(values, {0, []}, fn
-          <<-1::int32>>, {count, list} ->
+          nil, {count, list} ->
             {count + 1, [nil|list]}
-          <<size::int32, bin::binary(size)>>, {count, list} ->
+          bin, {count, list} ->
             oid = elem(col_oids, count)
             decoded = Types.decode(oid, bin, types)
             {count + 1, [decoded|list]}

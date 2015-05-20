@@ -5,7 +5,6 @@ defmodule Postgrex.Types do
 
   alias Postgrex.TypeInfo
   alias Postgrex.Extension
-  import Postgrex.BinaryUtils
 
   @typedoc """
   Postgres internal identifier that maps to a type. See
@@ -75,15 +74,15 @@ defmodule Postgrex.Types do
   @doc false
   def build_types(rows) do
     Enum.map(rows, fn row ->
-      [<<_::int32, oid::binary>>,
-       <<_::int32, type::binary>>,
-       <<_::int32, send::binary>>,
-       <<_::int32, receive::binary>>,
-       <<_::int32, output::binary>>,
-       <<_::int32, input::binary>>,
-       <<_::int32, array_oid::binary>>,
-       <<_::int32, base_oid::binary>>,
-       <<_::int32, comp_oids::binary>>] = row
+      [oid,
+       type,
+       send,
+       receive,
+       output,
+       input,
+       array_oid,
+       base_oid,
+       comp_oids] = row
       oid = String.to_integer(oid)
       array_oid = String.to_integer(array_oid)
       base_oid = String.to_integer(base_oid)

@@ -276,11 +276,11 @@ defmodule Postgrex.Messages do
   defp decode_row_values("", 0), do: []
 
   defp decode_row_values(<<-1 :: int32, rest :: binary>>, count) do
-    [<<-1 :: int32>> | decode_row_values(rest, count-1)]
+    [nil | decode_row_values(rest, count-1)]
   end
 
   defp decode_row_values(<<length :: int32, value :: binary(length), rest :: binary>>, count) do
-    [<<length :: int32, value :: binary>> | decode_row_values(rest, count-1)]
+    [value | decode_row_values(rest, count-1)]
   end
 
   Enum.each(@auth_types, fn {type, value} ->
