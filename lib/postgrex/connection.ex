@@ -29,8 +29,6 @@ defmodule Postgrex.Connection do
     * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
-    * `:async_connect` - Set to `true` if `start_link` should return before the
-      connection is completed (default: `false`);
     * `:socket_options` - Options to be given to the underlying socket;
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
       implementing the `Postgrex.Extension` behaviour and `opts` are the
@@ -43,17 +41,8 @@ defmodule Postgrex.Connection do
       |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
       |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
       |> Enum.reject(fn {_k,v} -> is_nil(v) end)
-    case GenServer.start_link(__MODULE__, []) do
-      {:ok, pid} ->
-        timeout = opts[:timeout] || @timeout
-        func = if opts[:async_connect], do: :cast, else: :call
 
-        case apply(GenServer, func, [pid, {:connect, opts}, timeout]) do
-          :ok -> {:ok, pid}
-          err -> {:error, err}
-        end
-      err -> err
-    end
+    GenServer.start_link(__MODULE__, opts)
   end
 
   @doc """
@@ -197,10 +186,12 @@ defmodule Postgrex.Connection do
   ### GEN_SERVER CALLBACKS ###
 
   @doc false
-  def init([]) do
+  def init(opts) do
+    GenServer.cast(self, :connect)
+
     {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
-            queue: :queue.new, opts: nil, extensions: nil, listeners: HashDict.new,
+            queue: :queue.new, opts: opts, extensions: nil, listeners: HashDict.new,
             listener_channels: HashDict.new}}
   end
 
@@ -218,10 +209,6 @@ defmodule Postgrex.Connection do
   def handle_call(:stop, from, s) do
     reply(:ok, from)
     {:stop, :normal, s}
-  end
-
-  def handle_call({:connect, opts}, from, s) do
-    connect(opts, from, s)
   end
 
   def handle_call(:parameters, _from, %{parameters: params} = s) do
@@ -245,8 +232,31 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_cast({:connect, opts}, s) do
-    connect(opts, nil, s)
+  def handle_cast(:connect, %{queue: queue, opts: opts} = s) do
+    host       = Keyword.fetch!(opts, :hostname)
+    host       = if is_binary(host), do: String.to_char_list(host), else: host
+    port       = opts[:port] || 5432
+    timeout    = opts[:timeout] || @timeout
+    sock_opts  = [{:active, :once}, {:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
+    extensions = (opts[:extensions] || []) ++ @default_extensions
+
+    command = new_command({:connect, opts}, nil)
+    queue = :queue.in(command, queue)
+    s = %{s | queue: queue, extensions: extensions}
+
+    case :gen_tcp.connect(host, port, sock_opts, timeout) do
+      {:ok, sock} ->
+        s = put_in(s.sock, {:gen_tcp, sock})
+
+        if opts[:ssl] do
+          Protocol.startup_ssl(s)
+        else
+          Protocol.startup(s)
+        end
+
+      {:error, reason} ->
+        error(%Postgrex.Error{message: "tcp connect: #{reason}"}, s)
+    end
   end
 
   def handle_info({:DOWN, ref, :process, _, _}, s) do
@@ -330,33 +340,6 @@ defmodule Postgrex.Connection do
   end
 
   ### PRIVATE FUNCTIONS ###
-
-  defp connect(opts, from, %{queue: queue} = s) do
-    host       = Keyword.fetch!(opts, :hostname)
-    host       = if is_binary(host), do: String.to_char_list(host), else: host
-    port       = opts[:port] || 5432
-    timeout    = opts[:timeout] || @timeout
-    sock_opts  = [{:active, :once}, {:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
-    extensions = (opts[:extensions] || []) ++ @default_extensions
-
-    command = new_command({:connect, opts}, from)
-    queue = :queue.in(command, queue)
-    s = %{s | opts: opts, queue: queue, extensions: extensions}
-
-    case :gen_tcp.connect(host, port, sock_opts, timeout) do
-      {:ok, sock} ->
-        s = put_in(s.sock, {:gen_tcp, sock})
-
-        if opts[:ssl] do
-          Protocol.startup_ssl(s)
-        else
-          Protocol.startup(s)
-        end
-
-      {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp connect: #{reason}"}, s)
-    end
-  end
 
   defp command({:query, statement, _params}, s) do
     Protocol.send_query(statement, s)
