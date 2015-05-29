@@ -233,8 +233,7 @@ defmodule Postgrex.Connection do
 
   @doc false
   def handle_cast(:connect, %{queue: queue, opts: opts} = s) do
-    host       = Keyword.fetch!(opts, :hostname)
-    host       = if is_binary(host), do: String.to_char_list(host), else: host
+    host       = Keyword.fetch!(opts, :hostname) |> to_char_list
     port       = opts[:port] || 5432
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [{:active, :once}, {:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
