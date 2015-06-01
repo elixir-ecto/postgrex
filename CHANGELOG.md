@@ -1,4 +1,12 @@
-# v0.8.2-dev
+# v0.8.2 (2015-06-01)
+
+* Enhancements
+  * Add `:socket_options` option to `Connection.start_link/1`
+  * Improved performance regarding binary handling
+  * Add hstore support
+
+* Backwards incompatible changes
+  * Remove `:async_connect` option and make it the default
 
 # v0.8.1 (2015-04-09)
 
