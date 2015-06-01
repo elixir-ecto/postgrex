@@ -99,4 +99,10 @@ defmodule Postgrex.TestHelper do
       end
     end
   end
+
+  def capture_log(fun) do
+    Logger.remove_backend(:console)
+    fun.()
+    Logger.add_backend(:console, flush: true)
+  end
 end

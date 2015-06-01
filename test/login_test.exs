@@ -1,12 +1,7 @@
 defmodule LoginTest do
   use ExUnit.Case
   alias Postgrex.Connection, as: P
-
-  defp capture_log(fun) do
-    Logger.remove_backend(:console)
-    fun.()
-    Logger.add_backend(:console, flush: true)
-  end
+  import Postgrex.TestHelper
 
   test "login cleartext password" do
     Process.flag(:trap_exit, true)
