@@ -26,6 +26,7 @@ defmodule Postgrex.Connection do
     * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password (default PGPASSWORD);
     * `:parameters` - Keyword list of connection parameters;
+    * `:search_path` - Set the search_path on connection (optional);
     * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
@@ -238,9 +239,14 @@ defmodule Postgrex.Connection do
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [{:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
     extensions = (opts[:extensions] || []) ++ @default_extensions
+    search_path = opts[:search_path]
 
     command = new_command({:connect, opts}, nil)
     queue = :queue.in(command, queue)
+    if search_path do
+      command = new_command({:query, "SET search_path TO #{search_path}", []}, nil)
+      queue = :queue.in(command, queue)
+    end
     s = %{s | queue: queue, extensions: extensions}
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
