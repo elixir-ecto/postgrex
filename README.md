@@ -63,62 +63,33 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
 
 Extensions are used to extend Postgrex' built-in type encoding/decoding.
 
-Below is an example of an extension that supports encoding/decoding Elixir maps
-to the Postgres' JSON type.
+Here is a [JSON extension](https://github.com/ericmj/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the Postgres' JSON type.
+
+To use the extension pass it to the connection as seen below:
 
 ```elixir
-defmodule Extensions.JSON do
-  alias Postgrex.TypeInfo
-
-  @behaviour Postgrex.Extension
-
-  def init(_parameters, opts),
-    do: Keyword.fetch!(opts, :library)
-
-  def matching(_library),
-    do: [type: "json", type: "jsonb"]
-
-  def format(_library),
-    do: :binary
-
-  def encode(%TypeInfo{type: "json"}, map, _state, library),
-    do: library.encode!(map)
-  def encode(%TypeInfo{type: "jsonb"}, map, _state, library),
-    do: <<1, library.encode!(map)::binary>>
-
-  def decode(%TypeInfo{type: "json"}, json, _state, library),
-    do: library.decode!(json)
-  def decode(%TypeInfo{type: "jsonb"}, <<1, json::binary>>, _state, library),
-    do: library.decode!(json)
-end
-
-Postgrex.Connection.start_link(extensions: [{Extensions.JSON, library: Poison}], ...)
+Postgrex.Connection.start_link(extensions: [{Postgrex.Extensions.JSON, library: Poison}], ...)
 ```
 
 ## OID type encoding
 
-PostgreSQL's wire protocol supports encoding types either as text or as binary. Unlike most
-client libraries Postgrex uses the binary protocol, not the text protocol. This allows for efficient
-encoding of types (e.g. 4-byte integers are encoded as 4 bytes, not as a string of digits) and
-automatic support for arrays and composite types.
+PostgreSQL's wire protocol supports encoding types either as text or as binary. Unlike most client libraries Postgrex uses the binary protocol, not the text protocol. This allows for efficient encoding of types (e.g. 4-byte integers are encoded as 4 bytes, not as a string of digits) and automatic support for arrays and composite types.
 
-Unfortunately the PostgreSQL binary protocol transports [OID types](http://www.postgresql.org/docs/current/static/datatype-oid.html#DATATYPE-OID-TABLE)
-as integers while the text protocol transports them as string of their name, if one exists, and otherwise as integer.
+Unfortunately the PostgreSQL binary protocol transports [OID types](http://www.postgresql.org/docs/current/static/datatype-oid.html#DATATYPE-OID-TABLE) as integers while the text protocol transports them as string of their name, if one exists, and otherwise as integer.
 
-This means you either need to supply oid types as integers or perform an explicit cast (which would
-be automatic when using the text protocol) in the query.
+This means you either need to supply oid types as integers or perform an explicit cast (which would be automatic when using the text protocol) in the query.
 
 ```elixir
 # Fails since $1 is regclass not text.
 query("select nextval($1)", ["some_sequence"])
 
-# Perform an explicit cast, this would happen automatically when using a client library that uses
-# the text protocol.
+# Perform an explicit cast, this would happen automatically when using a
+# client library that uses the text protocol.
 query("select nextval($1::text::regclass)", ["some_sequence"])
 
-# Determine the oid once and store it for later usage. This is the most efficient way, since
-# PostgreSQL only has to perform the lookup once. Client libraries using the text protocol do not
-# support this.
+# Determine the oid once and store it for later usage. This is the most
+# efficient way, since PostgreSQL only has to perform the lookup once. Client
+# libraries using the text protocol do not support this.
 %{rows: [{sequence_oid}]} = query("select $1::text::regclass", ["some_sequence"])
 query("select nextval($1)", [sequence_oid])
 ```
@@ -152,16 +123,16 @@ $ PGVERSION=9.0 PGPATH=/usr/local/share/postgresql9/ mix test
 
 ## License
 
-   Copyright 2013 Eric Meadows-Jönsson
+Copyright 2013 Eric Meadows-Jönsson
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
