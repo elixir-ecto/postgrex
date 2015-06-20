@@ -1,6 +1,6 @@
 defmodule Postgrex.Extension do
   @moduledoc """
-  Am extension knows how to encode and decode Postgres types to and from Elixir
+  An extension knows how to encode and decode Postgres types to and from Elixir
   values.
   """
 
