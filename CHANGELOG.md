@@ -1,4 +1,8 @@
-# v0.8.3-dev
+# v0.8.3 (2015-06-22)
+
+* Enhancements
+  * Add `Postgrex.Extensions.JSON` extension for `json` and `jsonb` types
+  * Set suitable TCP buffer size automatically
 
 # v0.8.2 (2015-06-01)
 
