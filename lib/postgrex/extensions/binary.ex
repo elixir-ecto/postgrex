@@ -41,9 +41,9 @@ defmodule Postgrex.Extensions.Binary do
               hstore_send) ++ @oid_senders
 
   def init(parameters, _opts),
-    do: parameters["server_version"] |> Postgrex.Utils.version_to_int
+    do: parameters["server_version"] |> Postgrex.Utils.parse_version
 
-  def matching(version) when version >= 90_100,
+  def matching(version) when version >= {9, 1, 0},
     do: [send: "void_send"] ++ matching(0)
 
   def matching(_),

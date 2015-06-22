@@ -89,7 +89,7 @@ defmodule Postgrex.Protocol do
     matchers = Types.extension_matchers(extensions, extension_opts)
 
     s = %{s | extensions: {extensions, extension_opts}}
-    version = s.parameters["server_version"] |> version_to_int
+    version = s.parameters["server_version"] |> parse_version
     query = Types.bootstrap_query(matchers, version)
     Connection.new_query(query, [], s)
   end

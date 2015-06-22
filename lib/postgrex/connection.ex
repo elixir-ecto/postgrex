@@ -394,7 +394,7 @@ defmodule Postgrex.Connection do
     {extensions, extension_opts} = s.extensions
 
     matchers = Types.extension_matchers(extensions, extension_opts)
-    version = s.parameters["server_version"] |> version_to_int
+    version = s.parameters["server_version"] |> parse_version
     query = Types.bootstrap_query(matchers, version)
     new_query(query, [], s)
   end
@@ -415,6 +415,9 @@ defmodule Postgrex.Connection do
   end
 
   defp new_data(data, %{tail: tail} = s) do
+    # NOTE: This can be optimized by building an iolist and only concat to
+    #       a binary when we know we have enough data according to the
+    #       message header.
     {:ok, %{s | tail: tail <> data}}
   end
 

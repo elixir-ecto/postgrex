@@ -6,9 +6,9 @@ defmodule Postgrex.Extensions.Text do
   # TODO: array and record
 
   def init(parameters, _opts),
-    do: parameters["server_version"] |> Postgrex.Utils.version_to_int
+    do: parameters["server_version"] |> Postgrex.Utils.parse_version
 
-  def matching(version) when version < 90_100,
+  def matching(version) when version < {9, 1, 0},
     do: [output: "void_out"]
 
   def matching(_),
