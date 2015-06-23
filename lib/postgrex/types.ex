@@ -52,7 +52,6 @@ defmodule Postgrex.Types do
 
   @doc false
   def prepare_extensions(extensions, parameters) do
-    parameters = Map.put(parameters, "server_version", "8.4.0")
     Enum.into(extensions, HashDict.new, fn {extension, opts} ->
       {extension, extension.init(parameters, opts)}
     end)
