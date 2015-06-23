@@ -1,4 +1,7 @@
-# v0.8.4-dev
+# v0.8.4 (2015-06-24)
+
+* Bug fixes
+  * Fix version detection
 
 # v0.8.3 (2015-06-22)
 
