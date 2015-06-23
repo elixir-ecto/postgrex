@@ -23,7 +23,7 @@ defmodule Postgrex.Types do
 
   @doc false
   def bootstrap_query(m, version) do
-    if version >= 90_200 do
+    if version >= {9, 2, 0} do
       rngsubtype = "coalesce(r.rngsubtype, 0)"
       join_range = "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid"
     else
