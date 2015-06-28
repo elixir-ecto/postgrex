@@ -38,7 +38,7 @@ defmodule Postgrex.Extensions.Binary do
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
               timestamptz_send interval_send enum_send tidsend unknownsend
-              hstore_send) ++ @oid_senders
+              ) ++ @oid_senders
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.parse_version
@@ -47,7 +47,7 @@ defmodule Postgrex.Extensions.Binary do
     do: [send: "void_send"] ++ matching(0)
 
   def matching(_),
-    do: unquote(Enum.map(@senders, &{:send, &1}))
+    do: unquote([type: "hstore"] ++ Enum.map(@senders, &{:send, &1}))
 
   def format(_),
     do: :binary
@@ -123,7 +123,7 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_range(range, oid, types)
   def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
     do: <<block :: uint32, tuple :: uint16>>
-  def encode(%TypeInfo{send: "hstore_send"}, map, _, _),
+  def encode(%TypeInfo{type: "hstore"}, map, _, _),
     do: encode_hstore(map)
 
   # Define encodings for all oid types
@@ -435,7 +435,7 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_range(bin, oid, types)
   def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
     do: {block, tuple}
-  def decode(%TypeInfo{send: "hstore_send"}, bin, _, _),
+  def decode(%TypeInfo{type: "hstore"}, bin, _, _),
     do: decode_hstore(bin)
 
   # Define decodings for all oid types
