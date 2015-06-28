@@ -123,7 +123,7 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_range(range, oid, types)
   def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
     do: <<block :: uint32, tuple :: uint16>>
-  def encode(%TypeInfo{send: "hstore_send"}, map, _, _),
+  def encode(%TypeInfo{type: "hstore"}, map, _, _),
     do: encode_hstore(map)
 
   # Define encodings for all oid types
@@ -435,7 +435,7 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_range(bin, oid, types)
   def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
     do: {block, tuple}
-  def decode(%TypeInfo{send: "hstore_send"}, bin, _, _),
+  def decode(%TypeInfo{type: "hstore"}, bin, _, _),
     do: decode_hstore(bin)
 
   # Define decodings for all oid types
