@@ -1,11 +1,9 @@
-language: erlang
+language: elixir
+elixir: 1.0.4
 otp_release:
   - 17.4
 cache: apt
 before_install:
-  - wget http://s3.hex.pm/builds/elixir/$ELIXIRVERSION.zip
-  - unzip -d elixir $ELIXIRVERSION.zip
-install:
   - sudo service postgresql stop
   - sudo apt-get -y -qq --purge remove postgresql libpq-dev libpq5 postgresql-client-common postgresql-common
   - sudo rm -rf /var/lib/postgresql
@@ -14,20 +12,14 @@ install:
   - sudo apt-get update -qq
   - sudo apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::="--force-confnew" install postgresql-$PGVERSION postgresql-contrib-$PGVERSION
 before_script:
-  - export PATH=`pwd`/elixir/bin:$PATH
-  - mix local.hex --force
-  - mix deps.get
   - echo "local all postgres trust" | sudo tee /etc/postgresql/$PGVERSION/main/pg_hba.conf
   - echo "host all postgres 127.0.0.1/32 trust" | sudo tee -a /etc/postgresql/$PGVERSION/main/pg_hba.conf
   - echo "host all postgrex_md5_pw 127.0.0.1/32 md5" | sudo tee -a /etc/postgresql/$PGVERSION/main/pg_hba.conf
   - echo "host all postgrex_cleartext_pw 127.0.0.1/32 password" | sudo tee -a /etc/postgresql/$PGVERSION/main/pg_hba.conf
   - sudo service postgresql restart
-script:
-  - mix test
 env:
   global:
     - PGUSER=postgres
-    - ELIXIRVERSION=v1.0.4
   matrix:
     - PGVERSION=8.4
     - PGVERSION=9.0 PGPATH=/usr/share/postgresql/9.0/
