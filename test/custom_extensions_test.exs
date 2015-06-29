@@ -1,4 +1,4 @@
-defmodule CustomExtensions do
+defmodule CustomExtensionsTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P

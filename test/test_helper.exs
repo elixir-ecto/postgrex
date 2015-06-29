@@ -47,10 +47,18 @@ DROP TYPE IF EXISTS enum1;
 CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 """
 
+sql_with_schemas = """
+DROP SCHEMA IF EXISTS test;
+CREATE SCHEMA test;
+"""
+
 cmds = [
   ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test;"),
+  ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"),
   ~s(psql -U postgres -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
-  ~s(psql -U postgres -d postgrex_test -c "#{sql}")
+  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
+  ~s(psql -U postgres -d postgrex_test -c "#{sql}"),
+  ~s(psql -U postgres -d postgrex_test_with_schemas -c "#{sql_with_schemas}")
 ]
 
 pg_version = System.get_env("PGVERSION")
@@ -59,7 +67,8 @@ pg_path = System.get_env("PGPATH")
 cmds =
   cond do
     !pg_version || String.to_float(pg_version) >= 9.1 ->
-      cmds ++ [~s(psql -U postgres -d postgrex_test -c "CREATE EXTENSION IF NOT EXISTS hstore;")]
+      cmds ++ [~s(psql -U postgres -d postgrex_test_with_schemas -c "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"),
+               ~s(psql -U postgres -d postgrex_test -c "CREATE EXTENSION IF NOT EXISTS hstore;")]
     String.to_float(pg_version) == 9.0 ->
       cmds ++ [~s(psql -U postgres -d postgrex_test -f "#{pg_path}/contrib/hstore.sql")]
     true ->
