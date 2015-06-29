@@ -34,11 +34,13 @@ defmodule Postgrex.Extensions.Binary do
   @oid_senders ~w(oidsend regprocsend regproceduresend regopersend
                   regoperatorsend regclasssend regtypesend xidsend cidsend)
 
-  @senders ~w(boolsend bpcharsend textsend citextsend varcharsend byteasend
+  @senders ~w(boolsend bpcharsend textsend varcharsend byteasend
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
               timestamptz_send interval_send enum_send tidsend unknownsend
               ) ++ @oid_senders
+
+  @pg_extensions ~w(hstore citext)
 
   def init(parameters, _opts),
     do: parameters["server_version"] |> Postgrex.Utils.parse_version
@@ -47,7 +49,7 @@ defmodule Postgrex.Extensions.Binary do
     do: [send: "void_send"] ++ matching(0)
 
   def matching(_),
-    do: unquote([type: "hstore"] ++ Enum.map(@senders, &{:send, &1}))
+    do: unquote(Enum.map(@pg_extensions, &{:type, &1}) ++ Enum.map(@senders, &{:send, &1}))
 
   def format(_),
     do: :binary
@@ -63,8 +65,6 @@ defmodule Postgrex.Extensions.Binary do
   def encode(%TypeInfo{send: "bpcharsend"}, bin, _, _) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{send: "textsend"}, bin, _, _) when is_binary(bin),
-    do: bin
-  def encode(%TypeInfo{send: "citextsend"}, bin, _, _) when is_binary(bin),
     do: bin
   def encode(%TypeInfo{send: "varcharsend"}, bin, _, _) when is_binary(bin),
     do: bin
@@ -123,6 +123,11 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_range(range, oid, types)
   def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
     do: <<block :: uint32, tuple :: uint16>>
+
+  # Define encodings for PG extensions. They could be defined inside a schema,
+  # so only :type field could be matched exactly, b/c other fields may have schema prefix
+  def encode(%TypeInfo{type: "citext"}, bin, _, _) when is_binary(bin),
+    do: bin
   def encode(%TypeInfo{type: "hstore"}, map, _, _),
     do: encode_hstore(map)
 
@@ -379,8 +384,6 @@ defmodule Postgrex.Extensions.Binary do
     do: bin
   def decode(%TypeInfo{send: "textsend"}, bin, _, _),
     do: bin
-  def decode(%TypeInfo{send: "citextsend"}, bin, _, _),
-    do: bin
   def decode(%TypeInfo{send: "varcharsend"}, bin, _, _),
     do: bin
   def decode(%TypeInfo{send: "byteasend"}, bin, _, _),
@@ -435,6 +438,11 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_range(bin, oid, types)
   def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
     do: {block, tuple}
+
+  # Define decodings for PG extensions. They could be defined inside a schema,
+  # so only :type field could be matched exactly, b/c other fields may have schema prefix
+  def decode(%TypeInfo{type: "citext"}, bin, _, _),
+    do: bin
   def decode(%TypeInfo{type: "hstore"}, bin, _, _),
     do: decode_hstore(bin)
 
