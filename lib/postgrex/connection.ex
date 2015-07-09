@@ -179,6 +179,13 @@ defmodule Postgrex.Connection do
     GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
   end
 
+  @doc """
+  Force the connection to reload all type information.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+  """
   def rebootstrap(pid, opts \\ []) do
     GenServer.call(pid, :rebootstrap, opts[:timeout] || @timeout)
   end
@@ -390,13 +397,7 @@ defmodule Postgrex.Connection do
   end
 
   defp command(:rebootstrap, s) do
-    s = %{s | bootstrap: true}
-    {extensions, extension_opts} = s.extensions
-
-    matchers = Types.extension_matchers(extensions, extension_opts)
-    version = s.parameters["server_version"] |> parse_version
-    query = Types.bootstrap_query(matchers, version)
-    new_query(query, [], s)
+    Protocol.bootstrap(s)
   end
 
   defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do

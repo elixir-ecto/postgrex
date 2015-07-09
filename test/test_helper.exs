@@ -91,7 +91,7 @@ Enum.each(cmds, fn cmd ->
     Please verify the user "postgres" exists and it has permissions to
     create databases and users. If not, you can create a new user with:
 
-    $ createuser postgres -d -r --no-password
+    $ createuser postgres -s --no-password
     """
     System.halt(1)
   end

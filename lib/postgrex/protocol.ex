@@ -30,6 +30,16 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  def bootstrap(s) do
+    s = %{s | bootstrap: true}
+    {extensions, extension_opts} = s.extensions
+
+    matchers = Types.extension_matchers(extensions, extension_opts)
+    version = s.parameters["server_version"] |> parse_version
+    query = Types.bootstrap_query(matchers, version)
+    Connection.new_query(query, [], s)
+  end
+
   def send_query(statement, s) do
     msgs = [
       msg_parse(name: "", query: statement, type_oids: []),
@@ -83,15 +93,9 @@ defmodule Postgrex.Protocol do
 
   def message(:init, msg_ready(), s) do
     opts = clean_opts(s.opts)
-    s = %{s | opts: opts, bootstrap: true}
-    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
     extensions = Enum.map(s.extensions, &elem(&1, 0))
-    matchers = Types.extension_matchers(extensions, extension_opts)
-
-    s = %{s | extensions: {extensions, extension_opts}}
-    version = s.parameters["server_version"] |> parse_version
-    query = Types.bootstrap_query(matchers, version)
-    Connection.new_query(query, [], s)
+    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
+    bootstrap(%{s | opts: opts, extensions: {extensions, extension_opts}})
   end
 
   def message(:init, msg_error(fields: fields), s) do
