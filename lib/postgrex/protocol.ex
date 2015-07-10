@@ -31,12 +31,15 @@ defmodule Postgrex.Protocol do
   end
 
   def bootstrap(s) do
-    s = %{s | bootstrap: true}
-    {extensions, extension_opts} = s.extensions
+    table = :ets.new(:temporary, [:set, read_concurrency: true])
 
+    extensions = Enum.map(s.extensions, &elem(&1, 0))
+    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
     matchers = Types.extension_matchers(extensions, extension_opts)
     version = s.parameters["server_version"] |> parse_version
     query = Types.bootstrap_query(matchers, version)
+
+    s = %{s | bootstrap: {make_ref, table, extensions, extension_opts}}
     Connection.new_query(query, [], s)
   end
 
@@ -93,9 +96,7 @@ defmodule Postgrex.Protocol do
 
   def message(:init, msg_ready(), s) do
     opts = clean_opts(s.opts)
-    extensions = Enum.map(s.extensions, &elem(&1, 0))
-    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
-    bootstrap(%{s | opts: opts, extensions: {extensions, extension_opts}})
+    bootstrap(%{s | opts: opts})
   end
 
   def message(:init, msg_error(fields: fields), s) do
@@ -118,7 +119,7 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | portal: oids}}
   end
 
-  def message(:describing, msg_row_desc(), %{bootstrap: true} = s) do
+  def message(:describing, msg_row_desc(), %{bootstrap: {_, _, _, _}} = s) do
     send_params(s, [])
   end
 
@@ -151,13 +152,12 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | rows: [values|s.rows]}}
   end
 
-  def message(:executing, msg_command_complete(), %{bootstrap: true} = s) do
+  def message(:executing, msg_command_complete(),
+              %{bootstrap: {_ref, table, extensions, extension_opts}} = s) do
     reply(:ok, s)
-    {extensions, extension_opts} = s.extensions
     types = Types.build_types(s.rows)
-    types = Types.associate_extensions_with_types(extensions, extension_opts, types)
-    types = {types, extension_opts}
-    {:ok, %{s | rows: [], bootstrap: false, types: types}}
+    Types.associate_extensions_with_types(table, extensions, extension_opts, types)
+    {:ok, %{s | rows: [], bootstrap: false, types: table}}
   end
 
   def message(:executing, msg_command_complete(tag: tag), s) do
@@ -268,7 +268,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp encode_params(%{bootstrap: true}) do
+  defp encode_params(%{bootstrap: {_, _, _, _}}) do
     {[], []}
   end
 

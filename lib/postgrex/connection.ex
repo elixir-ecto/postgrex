@@ -6,7 +6,6 @@ defmodule Postgrex.Connection do
   use GenServer
   alias Postgrex.Protocol
   alias Postgrex.Messages
-  alias Postgrex.Types
   import Postgrex.BinaryUtils
   import Postgrex.Utils
 

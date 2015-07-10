@@ -101,18 +101,16 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def associate_extensions_with_types(extensions, extension_opts, types) do
+  def associate_extensions_with_types(table, extensions, extension_opts, types) do
     oid_types = Enum.into(types, HashDict.new, &{&1.oid, &1})
 
-    Enum.reduce(types, HashDict.new, fn type_info, dict ->
-      extension = find_extension(type_info, extensions, extension_opts, oid_types)
+    for type_info <- types,
+        extension = find_extension(type_info, extensions, extension_opts, oid_types) do
+      :ets.insert(table, {type_info.oid, type_info, extension})
+      :ets.insert(table, {extension, extension_opts[extension]})
+    end
 
-      if extension do
-        HashDict.put(dict, type_info.oid, {type_info, extension})
-      else
-        dict
-      end
-    end)
+    :ok
   end
 
   defp find_extension(nil, _extensions, _extension_opts, _types) do
@@ -212,7 +210,7 @@ defmodule Postgrex.Types do
 
   @doc false
   def format(oid, state) do
-    {info, extension} = fetch!(state, oid)
+    {_oid, info, extension} = fetch!(state, oid)
 
     case info.send do
       "array_send" ->
@@ -239,7 +237,7 @@ defmodule Postgrex.Types do
   """
   @spec encode(oid, term, state) :: binary
   def encode(oid, value, state) do
-    {info, extension} = fetch!(state, oid)
+    {_oid, info, extension} = fetch!(state, oid)
     opts = fetch_opts(state, extension)
     extension.encode(info, value, state, opts)
   end
@@ -249,7 +247,7 @@ defmodule Postgrex.Types do
   """
   @spec encode(Extension.t, oid, term, state) :: binary
   def encode(extension, oid, value, state) do
-    {info, _extension} = fetch!(state, oid)
+    {_oid, info, _extension} = fetch!(state, oid)
     opts = fetch_opts(state, extension)
     extension.encode(info, value, state, opts)
   end
@@ -259,7 +257,7 @@ defmodule Postgrex.Types do
   """
   @spec decode(oid, binary, state) :: term
   def decode(oid, binary, state) do
-    {info, extension} = fetch!(state, oid)
+    {_oid, info, extension} = fetch!(state, oid)
     opts = fetch_opts(state, extension)
     extension.decode(info, binary, state, opts)
   end
@@ -269,21 +267,21 @@ defmodule Postgrex.Types do
   """
   @spec decode(Extension.t, oid, binary, state) :: term
   def decode(extension, oid, binary, state) do
-    {info, _extension} = fetch!(state, oid)
+    {_oid, info, _extension} = fetch!(state, oid)
     opts = fetch_opts(state, extension)
     extension.decode(info, binary, state, opts)
   end
 
-  defp fetch!({types, _extensions}, oid) do
-    case HashDict.fetch(types, oid) do
-      {:ok, value} ->
+  defp fetch!(table, oid) do
+    case :ets.lookup(table, oid) do
+      [value] ->
         value
-      :error ->
+      [] ->
         raise ArgumentError, message: "no extension found for oid `#{oid}`"
     end
   end
 
-  defp fetch_opts({_types, extensions}, extension) do
-    HashDict.fetch!(extensions, extension)
+  defp fetch_opts(table, extension) do
+    :ets.lookup_element(table, extension, 2)
   end
 end
