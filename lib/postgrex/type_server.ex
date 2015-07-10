@@ -23,7 +23,7 @@ defmodule Postgrex.TypeServer do
   crashes.
   """
   @spec fetch(key :: term) :: {:ok, table} | {:lock, reference, table}
-  def fetch(key, timeout \\ :infinity) do
+  def fetch(key) do
     GenServer.call(@name, {:fetch, key}, :infinity)
   end
 
