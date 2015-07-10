@@ -15,7 +15,7 @@ defmodule Postgrex.Types do
   @typedoc """
   State used by the encoder/decoder functions
   """
-  @opaque state :: {HashDict.t, HashDict.t}
+  @opaque state :: :ets.tab
 
   @higher_types ["array_send", "range_send", "record_send"]
 

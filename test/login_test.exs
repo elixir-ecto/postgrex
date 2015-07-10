@@ -78,6 +78,11 @@ defmodule LoginTest do
     opts = [ database: "postgrex_test" ]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+
+
     assert :ok = P.stop(pid)
   end
 end

@@ -178,17 +178,6 @@ defmodule Postgrex.Connection do
     GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
   end
 
-  @doc """
-  Force the connection to reload all type information.
-
-  ## Options
-
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
-  """
-  def rebootstrap(pid, opts \\ []) do
-    GenServer.call(pid, :rebootstrap, opts[:timeout] || @timeout)
-  end
-
   ### GEN_SERVER CALLBACKS ###
 
   @doc false
@@ -198,7 +187,7 @@ defmodule Postgrex.Connection do
     {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
             queue: :queue.new, opts: opts, extensions: nil, listeners: HashDict.new,
-            listener_channels: HashDict.new}}
+            listener_channels: HashDict.new, types_key: nil}}
   end
 
   @doc false
@@ -243,11 +232,13 @@ defmodule Postgrex.Connection do
     port       = opts[:port] || 5432
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [{:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
-    extensions = (opts[:extensions] || []) ++ @default_extensions
+    custom     = opts[:extensions] || []
+    extensions = custom ++ @default_extensions
 
     command = new_command({:connect, opts}, nil)
     queue = :queue.in(command, queue)
-    s = %{s | queue: queue, extensions: extensions}
+    types_key = {host, port, Keyword.fetch!(opts, :database), custom}
+    s = %{s | queue: queue, extensions: extensions, types_key: types_key}
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
@@ -393,10 +384,6 @@ defmodule Postgrex.Connection do
         reply(%ArgumentError{}, s)
         {:ok, s}
     end
-  end
-
-  defp command(:rebootstrap, s) do
-    Protocol.bootstrap(s)
   end
 
   defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do

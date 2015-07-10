@@ -31,16 +31,20 @@ defmodule Postgrex.Protocol do
   end
 
   def bootstrap(s) do
-    table = :ets.new(:temporary, [:set, read_concurrency: true])
+    case Postgrex.TypeServer.fetch(self(), s.types_key) do
+      {:ok, table} ->
+        queue = :queue.drop(s.queue)
+        Connection.next(%{s | queue: queue, state: :ready, types: table})
+      {:lock, ref, table} ->
+        extensions = Enum.map(s.extensions, &elem(&1, 0))
+        extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
+        matchers = Types.extension_matchers(extensions, extension_opts)
+        version = s.parameters["server_version"] |> parse_version
+        query = Types.bootstrap_query(matchers, version)
 
-    extensions = Enum.map(s.extensions, &elem(&1, 0))
-    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
-    matchers = Types.extension_matchers(extensions, extension_opts)
-    version = s.parameters["server_version"] |> parse_version
-    query = Types.bootstrap_query(matchers, version)
-
-    s = %{s | bootstrap: {make_ref, table, extensions, extension_opts}}
-    Connection.new_query(query, [], s)
+        s = %{s | bootstrap: {ref, table, extensions, extension_opts}}
+        Connection.new_query(query, [], s)
+    end
   end
 
   def send_query(statement, s) do
@@ -153,10 +157,11 @@ defmodule Postgrex.Protocol do
   end
 
   def message(:executing, msg_command_complete(),
-              %{bootstrap: {_ref, table, extensions, extension_opts}} = s) do
+              %{bootstrap: {ref, table, extensions, extension_opts}} = s) do
     reply(:ok, s)
     types = Types.build_types(s.rows)
     Types.associate_extensions_with_types(table, extensions, extension_opts, types)
+    Postgrex.TypeServer.unlock(ref)
     {:ok, %{s | rows: [], bootstrap: false, types: table}}
   end
 
