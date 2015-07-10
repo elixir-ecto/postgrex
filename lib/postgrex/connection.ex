@@ -67,6 +67,8 @@ defmodule Postgrex.Connection do
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:decode` - If the result set decoding should be done automatically
+      (`:auto`) or manually (`:manual`) via `decode/2`. Defaults to `:auto`.
 
   ## Examples
 
@@ -85,7 +87,10 @@ defmodule Postgrex.Connection do
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res ->
-        {:ok, decode(res)}
+        case Keyword.get(opts, :decode, :auto) do
+          :auto   -> {:ok, decode(res)}
+          :manual -> {:ok, res}
+        end
       %Postgrex.Error{} = err ->
         {:error, err}
       {:error, kind, reason, stack} ->
@@ -182,12 +187,17 @@ defmodule Postgrex.Connection do
   Decodes a result set.
 
   It is a no-op if the result was already decoded.
+
+  A mapper function can be given to further process
+  each row, in no specific order.
   """
-  def decode(%Postgrex.Result{decoder: :done} = result) do
+  def decode(result_set, mapper \\ fn x -> x end)
+
+  def decode(%Postgrex.Result{decoder: :done} = result, _mapper) do
     result
   end
 
-  def decode(%Postgrex.Result{} = result) do
+  def decode(%Postgrex.Result{} = result, mapper) do
     %{rows: rows, decoder: {col_oids, types}} = result
     col_oids = List.to_tuple(col_oids)
 
@@ -202,7 +212,7 @@ defmodule Postgrex.Connection do
               decoded = Postgrex.Types.decode(oid, bin, types)
               {count + 1, [decoded|list]}
           end)
-        [Enum.reverse(row)|acc]
+        [mapper.(Enum.reverse(row))|acc]
       end)
 
     %{result | decoder: :done, rows: rows}
