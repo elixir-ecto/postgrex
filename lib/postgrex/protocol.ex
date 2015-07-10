@@ -30,6 +30,23 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  def bootstrap(s) do
+    case Postgrex.TypeServer.fetch(s.types_key) do
+      {:ok, table} ->
+        queue = :queue.drop(s.queue)
+        Connection.next(%{s | queue: queue, state: :ready, types: table})
+      {:lock, ref, table} ->
+        extensions = Enum.map(s.extensions, &elem(&1, 0))
+        extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
+        matchers = Types.extension_matchers(extensions, extension_opts)
+        version = s.parameters["server_version"] |> parse_version
+        query = Types.bootstrap_query(matchers, version)
+
+        s = %{s | bootstrap: {ref, table, extensions, extension_opts}}
+        Connection.new_query(query, [], s)
+    end
+  end
+
   def send_query(statement, s) do
     msgs = [
       msg_parse(name: "", query: statement, type_oids: []),
@@ -83,15 +100,7 @@ defmodule Postgrex.Protocol do
 
   def message(:init, msg_ready(), s) do
     opts = clean_opts(s.opts)
-    s = %{s | opts: opts, bootstrap: true}
-    extension_opts = Types.prepare_extensions(s.extensions, s.parameters)
-    extensions = Enum.map(s.extensions, &elem(&1, 0))
-    matchers = Types.extension_matchers(extensions, extension_opts)
-
-    s = %{s | extensions: {extensions, extension_opts}}
-    version = s.parameters["server_version"] |> parse_version
-    query = Types.bootstrap_query(matchers, version)
-    Connection.new_query(query, [], s)
+    bootstrap(%{s | opts: opts})
   end
 
   def message(:init, msg_error(fields: fields), s) do
@@ -114,7 +123,7 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | portal: oids}}
   end
 
-  def message(:describing, msg_row_desc(), %{bootstrap: true} = s) do
+  def message(:describing, msg_row_desc(), %{bootstrap: {_, _, _, _}} = s) do
     send_params(s, [])
   end
 
@@ -147,30 +156,32 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | rows: [values|s.rows]}}
   end
 
-  def message(:executing, msg_command_complete(), %{bootstrap: true} = s) do
+  def message(:executing, msg_command_complete(),
+              %{bootstrap: {ref, table, extensions, extension_opts}} = s) do
     reply(:ok, s)
-    {extensions, extension_opts} = s.extensions
     types = Types.build_types(s.rows)
-    types = Types.associate_extensions_with_types(extensions, extension_opts, types)
-    types = {types, extension_opts}
-    {:ok, %{s | rows: [], bootstrap: false, types: types}}
+    Types.associate_extensions_with_types(table, extensions, extension_opts, types)
+    Postgrex.TypeServer.unlock(ref)
+    {:ok, %{s | rows: [], bootstrap: false, types: table}}
   end
 
   def message(:executing, msg_command_complete(tag: tag), s) do
+    {command, nrows} = decode_tag(tag)
+
     reply =
       if is_nil(s.statement) do
-        create_result(tag)
+        %Postgrex.Result{command: command, num_rows: nrows || 0, decoder: :done}
       else
-        try do
-          decode_rows(s)
-        catch
-          kind, reason ->
-            {:error, kind, reason, System.stacktrace}
-        else
-          result ->
-            %{columns: cols} = s.statement
-            create_result(tag, result, cols)
+        %{statement: %{column_oids: col_oids, columns: cols},
+          types: types, rows: rows} = s
+
+        # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
+        if is_nil(nrows) and command == :select do
+          nrows = length(rows)
         end
+
+        %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
+                         columns: cols, decoder: {col_oids, types}}
       end
 
     reply(reply, s)
@@ -220,25 +231,6 @@ defmodule Postgrex.Protocol do
 
   ### helpers ###
 
-  defp decode_rows(%{statement: %{column_oids: col_oids}, types: types} = s) do
-    col_oids = List.to_tuple(col_oids)
-
-    Enum.reduce(s.rows, [], fn values, acc ->
-      {_, row} =
-        Enum.reduce(values, {0, []}, fn
-          nil, {count, list} ->
-            {count + 1, [nil|list]}
-          bin, {count, list} ->
-            oid = elem(col_oids, count)
-            decoded = Types.decode(oid, bin, types)
-            {count + 1, [decoded|list]}
-        end)
-
-      row = Enum.reverse(row) |> List.to_tuple
-      [row|acc]
-    end)
-  end
-
   defp send_params(s, rfs) do
     {msgs, s} =
       try do
@@ -264,7 +256,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp encode_params(%{bootstrap: true}) do
+  defp encode_params(%{bootstrap: {_, _, _, _}}) do
     {[], []}
   end
 
@@ -291,22 +283,6 @@ defmodule Postgrex.Protocol do
 
   defp result_formats(columns, types) do
     Enum.map(columns, &Types.format(&1, types))
-  end
-
-  defp create_result(tag) do
-    create_result(tag, nil, nil)
-  end
-
-  defp create_result(tag, rows, cols) do
-    {command, nrows} = decode_tag(tag)
-
-    # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
-    if is_nil(nrows) and command == :select do
-      nrows = length(rows)
-    end
-
-    %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
-                     columns: cols}
   end
 
   defp decode_tag(tag) do

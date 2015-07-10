@@ -6,7 +6,6 @@ defmodule Postgrex.Connection do
   use GenServer
   alias Postgrex.Protocol
   alias Postgrex.Messages
-  alias Postgrex.Types
   import Postgrex.BinaryUtils
   import Postgrex.Utils
 
@@ -68,6 +67,8 @@ defmodule Postgrex.Connection do
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:decode` - If the result set decoding should be done automatically
+      (`:auto`) or manually (`:manual`) via `decode/2`. Defaults to `:auto`.
 
   ## Examples
 
@@ -86,7 +87,10 @@ defmodule Postgrex.Connection do
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res ->
-        {:ok, res}
+        case Keyword.get(opts, :decode, :auto) do
+          :auto   -> {:ok, decode(res)}
+          :manual -> {:ok, res}
+        end
       %Postgrex.Error{} = err ->
         {:error, err}
       {:error, kind, reason, stack} ->
@@ -179,8 +183,39 @@ defmodule Postgrex.Connection do
     GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
   end
 
-  def rebootstrap(pid, opts \\ []) do
-    GenServer.call(pid, :rebootstrap, opts[:timeout] || @timeout)
+  @doc """
+  Decodes a result set.
+
+  It is a no-op if the result was already decoded.
+
+  A mapper function can be given to further process
+  each row, in no specific order.
+  """
+  def decode(result_set, mapper \\ fn x -> x end)
+
+  def decode(%Postgrex.Result{decoder: :done} = result, _mapper) do
+    result
+  end
+
+  def decode(%Postgrex.Result{} = result, mapper) do
+    %{rows: rows, decoder: {col_oids, types}} = result
+    col_oids = List.to_tuple(col_oids)
+
+    rows =
+      Enum.reduce(rows, [], fn values, acc ->
+        {_, row} =
+          Enum.reduce(values, {0, []}, fn
+            nil, {count, list} ->
+              {count + 1, [nil|list]}
+            bin, {count, list} ->
+              oid = elem(col_oids, count)
+              decoded = Postgrex.Types.decode(oid, bin, types)
+              {count + 1, [decoded|list]}
+          end)
+        [mapper.(Enum.reverse(row))|acc]
+      end)
+
+    %{result | decoder: :done, rows: rows}
   end
 
   ### GEN_SERVER CALLBACKS ###
@@ -192,7 +227,7 @@ defmodule Postgrex.Connection do
     {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
             queue: :queue.new, opts: opts, extensions: nil, listeners: HashDict.new,
-            listener_channels: HashDict.new}}
+            listener_channels: HashDict.new, types_key: nil}}
   end
 
   @doc false
@@ -237,11 +272,13 @@ defmodule Postgrex.Connection do
     port       = opts[:port] || 5432
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [{:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
-    extensions = (opts[:extensions] || []) ++ @default_extensions
+    custom     = opts[:extensions] || []
+    extensions = custom ++ @default_extensions
 
     command = new_command({:connect, opts}, nil)
     queue = :queue.in(command, queue)
-    s = %{s | queue: queue, extensions: extensions}
+    types_key = {host, port, Keyword.fetch!(opts, :database), custom}
+    s = %{s | queue: queue, extensions: extensions, types_key: types_key}
 
     case :gen_tcp.connect(host, port, sock_opts, timeout) do
       {:ok, sock} ->
@@ -387,16 +424,6 @@ defmodule Postgrex.Connection do
         reply(%ArgumentError{}, s)
         {:ok, s}
     end
-  end
-
-  defp command(:rebootstrap, s) do
-    s = %{s | bootstrap: true}
-    {extensions, extension_opts} = s.extensions
-
-    matchers = Types.extension_matchers(extensions, extension_opts)
-    version = s.parameters["server_version"] |> parse_version
-    query = Types.bootstrap_query(matchers, version)
-    new_query(query, [], s)
   end
 
   defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do

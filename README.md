@@ -22,7 +22,7 @@ After you are done, run `mix deps.get` in your shell to fetch and compile Postgr
 iex> {:ok, pid} = Postgrex.Connection.start_link(hostname: "localhost", username: "postgres", password: "postgres", database: "postgres")
 {:ok, #PID<0.69.0>}
 iex> Postgrex.Connection.query!(pid, "SELECT user_id, text FROM comments", [])
-%Postgrex.Result{command: :select, empty?: false, columns: ["user_id", "text"], rows: [{3,"hey"},{4,"there"}], size: 2}}
+%Postgrex.Result{command: :select, empty?: false, columns: ["user_id", "text"], rows: [[3,"hey"],[4,"there"]], size: 2}}
 iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')", [])
 %Postgrex.Result{command: :insert, columns: nil, rows: nil, num_rows: 1}}
 

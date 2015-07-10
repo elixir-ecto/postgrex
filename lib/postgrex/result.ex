@@ -8,13 +8,15 @@ defmodule Postgrex.Result do
     * `rows` - The result set. A list of tuples, each tuple corresponding to a
                row, each element in the tuple corresponds to a column;
     * `num_rows` - The number of fetched or affected rows;
+    * `decoder` - Terms used to decode the query in the client;
   """
 
   @type t :: %__MODULE__{
     command:  atom,
     columns:  [String.t] | nil,
     rows:     [tuple] | nil,
-    num_rows: integer}
+    num_rows: integer,
+    decoder:  {term, term} | :done}
 
-  defstruct [:command, :columns, :rows, :num_rows]
+  defstruct [:command, :columns, :rows, :num_rows, :decoder]
 end
