@@ -3,9 +3,8 @@ defmodule Postgrex.TypeServer do
 
   use GenServer
 
-  @name  __MODULE__
-  @table :postgrex_type_server
-  @type  table :: :ets.tab
+  @name __MODULE__
+  @type table :: :ets.tab
 
   @doc """
   Starts the type server.
@@ -25,10 +24,7 @@ defmodule Postgrex.TypeServer do
   """
   @spec fetch(pid, key :: term) :: {:ok, table} | {:lock, reference, table}
   def fetch(pid, key) do
-    case :ets.lookup(@table, pid) do
-      [table] -> {:ok, table}
-      []      -> GenServer.call(@name, {:fetch, pid, key}, :infinity)
-    end
+    GenServer.call(@name, {:fetch, pid, key}, :infinity)
   end
 
   @doc """
@@ -42,63 +38,57 @@ defmodule Postgrex.TypeServer do
   ## Callbacks
 
   def init([]) do
-    :ets.new(@table, [:set, :named_table, :protected, read_concurrency: true])
     {:ok, {%{}, HashDict.new}}
   end
 
   def handle_call({:fetch, pid, key}, from, {tables, conns}) do
+    {ref, conns} = add_connection(pid, key, conns)
+
     case Map.get(tables, key, :missing) do
-      {:ready, refs, table} ->
-        {ref, conns} = add_connection(pid, key, table, conns)
-        tables = Map.put(tables, key, {:ready, [ref|refs], table})
+      {:ready, counter, timer, table} ->
+        cancel_timer(timer)
+        tables = Map.put(tables, key, {:ready, counter + 1, nil, table})
         {:reply, {:ok, table}, {tables, conns}}
 
       {:waiting, owner_ref, waiting, table} ->
-        {ref, conns} = add_connection(pid, key, table, conns)
         tables = Map.put(tables, key, {:waiting, owner_ref, [{ref, from}|waiting], table})
         {:noreply, {tables, conns}}
 
       :missing ->
-        table = :ets.new(:postgrex_type_conn, [:set, :public, read_concurrency: true])
-        {ref, conns} = add_connection(pid, key, table, conns)
+        table = :ets.new(:postgrex_type_server, [:set, :public, read_concurrency: true])
         tables = Map.put(tables, key, {:waiting, ref, [], table})
         {:reply, {:lock, ref, table}, {tables, conns}}
     end
   end
 
   def handle_call({:unlock, ref}, _from, {tables, conns}) do
-    case HashDict.get(conns, ref, :missing) do
-      {_pid, key} ->
+    case HashDict.fetch(conns, ref) do
+      {:ok, key} ->
         {:waiting, ^ref, waiting, table} = Map.fetch!(tables, key)
-
-        refs =
-          for {waiting_ref, from} <- waiting do
-            GenServer.reply(from, {:ok, table})
-            waiting_ref
-          end
-
-        tables = Map.put(tables, key, {:ready, [ref|refs], table})
+        for {_ref, from} <- waiting, do: GenServer.reply(from, {:ok, table})
+        tables = Map.put(tables, key, {:ready, 1 + length(waiting), nil, table})
         {:reply, :ok, {tables, conns}}
 
-      :missing ->
+      :error ->
         {:reply, :error, {tables, conns}}
     end
   end
 
   def handle_info({:DOWN, ref, _, _, _}, {tables, conns}) do
-    {{pid, key}, conns} = HashDict.pop(conns, ref)
-    :ets.delete(@table, pid)
+    {key, conns} = HashDict.pop(conns, ref)
 
     tables =
       case Map.fetch!(tables, key) do
         # There will be no one left using the table
-        {:ready, [^ref], table} ->
-          :ets.delete(table)
-          Map.delete(tables, key)
+        {:ready, 1, nil, table} ->
+          ref     = make_ref()
+          timeout = Application.get_env(:postgrex, :type_server_reap_after)
+          timer   = Process.send_after(self(), {:drop, ref, key}, timeout)
+          Map.put(tables, key, {:ready, 0, {ref, timer}, table})
 
         # Others are using the table
-        {:ready, refs, table} ->
-          Map.put(tables, key, {:ready, List.delete(refs, ref), table})
+        {:ready, counter, nil, table} ->
+          Map.put(tables, key, {:ready, counter - 1, nil, table})
 
         # The process responsible for creating the table crashed
         # and no one else is interested on it
@@ -121,14 +111,29 @@ defmodule Postgrex.TypeServer do
     {:noreply, {tables, conns}}
   end
 
+  def handle_info({:drop, ref, key}, {tables, conns}) do
+    tables =
+      case Map.fetch!(tables, key) do
+        {:ready, 0, {^ref, _timer}, table} ->
+          :ets.delete(table)
+          Map.delete(tables, key)
+        _ ->
+          tables
+      end
+
+    {:noreply, {tables, conns}}
+  end
+
   def handle_info(_other, state) do
     {:noreply, state}
   end
 
-  defp add_connection(pid, key, table, conns) do
+  defp add_connection(pid, key, conns) do
     ref   = Process.monitor(pid)
-    conns = HashDict.put(conns, ref, {pid, key})
-    :ets.insert(@table, {pid, table})
+    conns = HashDict.put(conns, ref, key)
     {ref, conns}
   end
+
+  defp cancel_timer(nil), do: :ok
+  defp cancel_timer({_, timer}), do: :erlang.cancel_timer(timer)
 end
