@@ -202,9 +202,7 @@ defmodule Postgrex.Connection do
               decoded = Postgrex.Types.decode(oid, bin, types)
               {count + 1, [decoded|list]}
           end)
-
-        row = Enum.reverse(row) |> List.to_tuple
-        [row|acc]
+        [Enum.reverse(row)|acc]
       end)
 
     %{result | decoder: :done, rows: rows}

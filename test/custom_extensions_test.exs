@@ -50,16 +50,16 @@ defmodule CustomExtensionsTest do
   end
 
   test "encode and decode", context do
-    assert [{44}] = query("SELECT $1::int4", [42])
-    assert [{[44]}] = query("SELECT $1::int4[]", [[42]])
+    assert [[44]] = query("SELECT $1::int4", [42])
+    assert [[[44]]] = query("SELECT $1::int4[]", [[42]])
   end
 
   test "encode and decode unknown type", context do
-    assert [{"23"}] =
+    assert [["23"]] =
            query("SELECT $1::oid", ["23"])
   end
 
   test "dont decode text format", context do
-    assert [{"123.45"}] = query("SELECT 123.45::float8", [])
+    assert [["123.45"]] = query("SELECT 123.45::float8", [])
   end
 end
