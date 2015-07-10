@@ -22,9 +22,9 @@ defmodule Postgrex.TypeServer do
   we wait until the entries are available or the other process
   crashes.
   """
-  @spec fetch(pid, key :: term) :: {:ok, table} | {:lock, reference, table}
-  def fetch(pid, key) do
-    GenServer.call(@name, {:fetch, pid, key}, :infinity)
+  @spec fetch(key :: term) :: {:ok, table} | {:lock, reference, table}
+  def fetch(key, timeout \\ :infinity) do
+    GenServer.call(@name, {:fetch, key}, :infinity)
   end
 
   @doc """
@@ -41,7 +41,7 @@ defmodule Postgrex.TypeServer do
     {:ok, {%{}, HashDict.new}}
   end
 
-  def handle_call({:fetch, pid, key}, from, {tables, conns}) do
+  def handle_call({:fetch, key}, {pid, _} = from, {tables, conns}) do
     {ref, conns} = add_connection(pid, key, conns)
 
     case Map.get(tables, key, :missing) do
@@ -104,7 +104,7 @@ defmodule Postgrex.TypeServer do
 
         # One process in the waiting list crashed
         {:waiting, owner_ref, waiting, table} ->
-          waiting = Keyword.delete(waiting, ref)
+          waiting = List.keydelete(waiting, ref, 0)
           Map.put(tables, key, {:waiting, owner_ref, waiting, table})
       end
 
