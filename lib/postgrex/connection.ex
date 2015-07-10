@@ -85,7 +85,7 @@ defmodule Postgrex.Connection do
     timeout = opts[:timeout] || @timeout
     case GenServer.call(pid, message, timeout) do
       %Postgrex.Result{} = res ->
-        {:ok, res}
+        {:ok, decode(res)}
       %Postgrex.Error{} = err ->
         {:error, err}
       {:error, kind, reason, stack} ->
@@ -176,6 +176,38 @@ defmodule Postgrex.Connection do
   @spec parameters(pid, Keyword.t) :: map
   def parameters(pid, opts \\ []) do
     GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
+  end
+
+  @doc """
+  Decodes a result set.
+
+  It is a no-op if the result was already decoded.
+  """
+  def decode(%Postgrex.Result{decoder: :done} = result) do
+    result
+  end
+
+  def decode(%Postgrex.Result{} = result) do
+    %{rows: rows, decoder: {col_oids, types}} = result
+    col_oids = List.to_tuple(col_oids)
+
+    rows =
+      Enum.reduce(rows, [], fn values, acc ->
+        {_, row} =
+          Enum.reduce(values, {0, []}, fn
+            nil, {count, list} ->
+              {count + 1, [nil|list]}
+            bin, {count, list} ->
+              oid = elem(col_oids, count)
+              decoded = Postgrex.Types.decode(oid, bin, types)
+              {count + 1, [decoded|list]}
+          end)
+
+        row = Enum.reverse(row) |> List.to_tuple
+        [row|acc]
+      end)
+
+    %{result | decoder: :done, rows: rows}
   end
 
   ### GEN_SERVER CALLBACKS ###

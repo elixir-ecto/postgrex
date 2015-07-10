@@ -166,20 +166,22 @@ defmodule Postgrex.Protocol do
   end
 
   def message(:executing, msg_command_complete(tag: tag), s) do
+    {command, nrows} = decode_tag(tag)
+
     reply =
       if is_nil(s.statement) do
-        create_result(tag)
+        %Postgrex.Result{command: command, num_rows: nrows || 0, decoder: :done}
       else
-        try do
-          decode_rows(s)
-        catch
-          kind, reason ->
-            {:error, kind, reason, System.stacktrace}
-        else
-          result ->
-            %{columns: cols} = s.statement
-            create_result(tag, result, cols)
+        %{statement: %{column_oids: col_oids, columns: cols},
+          types: types, rows: rows} = s
+
+        # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
+        if is_nil(nrows) and command == :select do
+          nrows = length(rows)
         end
+
+        %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
+                         columns: cols, decoder: {col_oids, types}}
       end
 
     reply(reply, s)
@@ -228,25 +230,6 @@ defmodule Postgrex.Protocol do
   end
 
   ### helpers ###
-
-  defp decode_rows(%{statement: %{column_oids: col_oids}, types: types} = s) do
-    col_oids = List.to_tuple(col_oids)
-
-    Enum.reduce(s.rows, [], fn values, acc ->
-      {_, row} =
-        Enum.reduce(values, {0, []}, fn
-          nil, {count, list} ->
-            {count + 1, [nil|list]}
-          bin, {count, list} ->
-            oid = elem(col_oids, count)
-            decoded = Types.decode(oid, bin, types)
-            {count + 1, [decoded|list]}
-        end)
-
-      row = Enum.reverse(row) |> List.to_tuple
-      [row|acc]
-    end)
-  end
 
   defp send_params(s, rfs) do
     {msgs, s} =
@@ -300,22 +283,6 @@ defmodule Postgrex.Protocol do
 
   defp result_formats(columns, types) do
     Enum.map(columns, &Types.format(&1, types))
-  end
-
-  defp create_result(tag) do
-    create_result(tag, nil, nil)
-  end
-
-  defp create_result(tag, rows, cols) do
-    {command, nrows} = decode_tag(tag)
-
-    # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
-    if is_nil(nrows) and command == :select do
-      nrows = length(rows)
-    end
-
-    %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
-                     columns: cols}
   end
 
   defp decode_tag(tag) do
