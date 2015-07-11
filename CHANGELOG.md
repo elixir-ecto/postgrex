@@ -1,4 +1,16 @@
-# v0.8.5-dev
+# v0.9.0-dev
+
+* Enhancements
+  * Cached type bootstrapping for less memory usage and faster connection set up
+  * The result set is now decoded in the calling process to reduce time spent in the connection process
+  * Add a `decode: :manual` option to `Postgrex.Connection.query/4` and the function `Postgrex.decode/2` for manually decoding the result
+  * Add `:sync_connect` option to `Postgrex.Connection.start_link/1`
+
+* Bug fixes
+  * Correctly handle extension types created inside schemas
+
+* Backwards incompatible changes
+  * Each row in `Postgrex.Result.rows` is now a list of columns instead of a tuple
 
 # v0.8.4 (2015-06-24)
 
@@ -14,7 +26,7 @@
 # v0.8.2 (2015-06-01)
 
 * Enhancements
-  * Add `:socket_options` option to `Connection.start_link/1`
+  * Add `:socket_options` option to `Postgrex.Connection.start_link/1`
   * Improved performance regarding binary handling
   * Add hstore support
 

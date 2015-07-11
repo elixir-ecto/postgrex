@@ -14,7 +14,7 @@ defmodule Postgrex.Result do
   @type t :: %__MODULE__{
     command:  atom,
     columns:  [String.t] | nil,
-    rows:     [tuple] | nil,
+    rows:     [[term]] | nil,
     num_rows: integer,
     decoder:  {term, term} | :done}
 
