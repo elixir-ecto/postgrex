@@ -33,6 +33,7 @@ defmodule Postgrex.Protocol do
   def bootstrap(s) do
     case Postgrex.TypeServer.fetch(s.types_key) do
       {:ok, table} ->
+        reply(:ok, s)
         queue = :queue.drop(s.queue)
         Connection.next(%{s | queue: queue, state: :ready, types: table})
       {:lock, ref, table} ->

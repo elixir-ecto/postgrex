@@ -80,4 +80,11 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
     assert :ok = P.stop(pid)
   end
+
+  test "sync connect" do
+    opts = [ database: "postgres", sync_connect: true ]
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+    assert :ok = P.stop(pid)
+  end
 end
