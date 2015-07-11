@@ -24,7 +24,7 @@ defmodule Postgrex.TypeServer do
   """
   @spec fetch(key :: term) :: {:ok, table} | {:lock, reference, table}
   def fetch(key) do
-    GenServer.call(@name, {:fetch, key}, :infinity)
+    GenServer.call(@name, {:fetch, key}, 60_000)
   end
 
   @doc """
