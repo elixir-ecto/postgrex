@@ -1,4 +1,6 @@
-# v0.9.0
+# v0.9.1-dev
+
+# v0.9.0 (2015-07-12)
 
 * Enhancements
   * Cached type bootstrapping for less memory usage and faster connection set up
