@@ -45,6 +45,8 @@ CREATE TABLE composite2 (a int, b int, c int);
 
 DROP TYPE IF EXISTS enum1;
 CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
+
+CREATE TABLE uniques (a int UNIQUE);
 """
 
 sql_with_schemas = """
