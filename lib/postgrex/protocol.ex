@@ -52,7 +52,7 @@ defmodule Postgrex.Protocol do
     msgs = [
       msg_parse(name: "", query: statement, type_oids: []),
       msg_describe(type: :statement, name: ""),
-      msg_sync() ]
+      msg_flush() ]
 
     case send_to_result(msgs, s) do
       {:ok, s} ->
@@ -141,10 +141,6 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  def message(:describing, msg_ready(), s) do
-    {:ok, %{s | state: :binding}}
-  end
-
   ### binding state ###
 
   def message(:binding, msg_bind_complete(), s) do
@@ -206,14 +202,19 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | parameters: params}}
   end
 
-  def message(_, msg_error(fields: fields), s) do
+  def message(state, msg_error(fields: fields), s) do
     error = Postgrex.Error.exception(postgres: fields)
     unless reply(error, s) do
       Logger.warn(fn ->
         ["Unhandled Postgres error: ", Postgrex.Error.message(error)]
       end)
     end
-    {:ok, s}
+    if state in [:parsing, :describing] do
+      # Issue a Sync to get back into valid state when error happened before bind/execute/sync.
+      send_to_result([msg_sync], s)
+    else
+      {:ok, s}
+    end
   end
 
   def message(_, msg_notice(), s) do
@@ -246,7 +247,7 @@ defmodule Postgrex.Protocol do
             msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
             msg_execute(name_port: "", max_rows: 0),
             msg_sync() ]
-          {msgs, s}
+          {msgs, %{s | state: :binding}}
       end
 
     case send_to_result(msgs, s) do

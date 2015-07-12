@@ -454,8 +454,14 @@ defmodule QueryTest do
     assert %Postgrex.Error{postgres: %{code: :syntax_error}} = query("wat", [])
   end
 
-  test "connection works after failure", context do
+  test "connection works after failure in parsing state", context do
     assert %Postgrex.Error{} = query("wat", [])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "connection works after failure in executing state", context do
+    assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
+      query("insert into uniques values (1), (1);", [])
     assert [[42]] = query("SELECT 42", [])
   end
 
