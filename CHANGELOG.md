@@ -1,4 +1,4 @@
-# v0.9.0-dev
+# v0.9.0
 
 * Enhancements
   * Cached type bootstrapping for less memory usage and faster connection set up
