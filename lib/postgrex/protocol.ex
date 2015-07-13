@@ -167,7 +167,7 @@ defmodule Postgrex.Protocol do
 
     reply =
       if is_nil(s.statement) do
-        %Postgrex.Result{command: command, num_rows: nrows || 0, decoder: :done}
+        %Postgrex.Result{command: command, num_rows: nrows || 0}
       else
         %{statement: %{column_oids: col_oids, columns: cols},
           types: types, rows: rows} = s
@@ -177,8 +177,8 @@ defmodule Postgrex.Protocol do
           nrows = length(rows)
         end
 
-        %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
-                         columns: cols, decoder: {col_oids, types}}
+        %Postgrex.Result{command: command, num_rows: nrows || 0,
+                         rows: decode_rows(rows, col_oids, types), columns: cols}
       end
 
     reply(reply, s)
@@ -232,6 +232,23 @@ defmodule Postgrex.Protocol do
   end
 
   ### helpers ###
+
+  defp decode_rows(rows, col_oids, types) do
+    col_oids = List.to_tuple(col_oids)
+
+    Enum.reduce(rows, [], fn values, acc ->
+      {_, row} =
+        Enum.reduce(values, {0, []}, fn
+          nil, {count, list} ->
+            {count + 1, [nil|list]}
+          bin, {count, list} ->
+            oid = elem(col_oids, count)
+            decoded = Postgrex.Types.decode(oid, bin, types)
+            {count + 1, [decoded|list]}
+        end)
+      [Enum.reverse(row)|acc]
+    end)
+  end
 
   defp send_params(s, rfs) do
     {msgs, s} =

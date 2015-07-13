@@ -1,5 +1,8 @@
 # v0.9.1-dev
 
+* Enhancements
+  * Revert client side decoding as affects performance negatively (around 15% slower)
+
 # v0.9.0 (2015-07-12)
 
 * Enhancements
