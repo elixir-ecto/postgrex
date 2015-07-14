@@ -177,8 +177,16 @@ defmodule Postgrex.Protocol do
           nrows = length(rows)
         end
 
-        %Postgrex.Result{command: command, num_rows: nrows || 0,
-                         rows: decode_rows(rows, col_oids, types), columns: cols}
+        try do
+          decode_rows(rows, col_oids, types)
+        catch
+          kind, reason ->
+            {:error, kind, reason, System.stacktrace}
+        else
+          decoded ->
+            %Postgrex.Result{command: command, num_rows: nrows || 0,
+                             rows: decoded, columns: cols}
+        end
       end
 
     reply(reply, s)
