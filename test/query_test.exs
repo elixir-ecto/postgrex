@@ -253,6 +253,14 @@ defmodule QueryTest do
     end)
   end
 
+  test "encode integers and floats as numeric", context do
+    dec = Decimal.new(1)
+    assert [[dec]] == query("SELECT $1::numeric", [1])
+
+    dec = Decimal.new(1.0)
+    assert [[dec]] == query("SELECT $1::numeric", [1.0])
+  end
+
   test "encode enforces bounds on integers", context do
     # int2's range is -32768 to +32767
     assert [[-32768]] = query("SELECT $1::int2", [-32768])

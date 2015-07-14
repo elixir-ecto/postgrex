@@ -99,6 +99,8 @@ defmodule Postgrex.Extensions.Binary do
     do: <<255, 240, 0, 0, 0, 0, 0, 0>>
   def encode(%TypeInfo{send: "float8send"}, n, _, _) when is_number(n),
     do: <<n :: float64>>
+  def encode(%TypeInfo{send: "numeric_send"}, n, _, _) when is_number(n),
+    do: encode_numeric(Decimal.new(n))
   def encode(%TypeInfo{send: "numeric_send"}, %Decimal{} = n, _, _),
     do: encode_numeric(n)
   def encode(%TypeInfo{send: "uuid_send"}, <<_ :: binary(16)>> = bin, _, _),
