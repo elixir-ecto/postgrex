@@ -1,7 +1,8 @@
-# v0.9.1-dev
+# v0.9.1 (2015-07-14)
 
 * Enhancements
   * Revert client side decoding as affects performance negatively (around 15% slower)
+  * Cast floats and integers to decimal if a decimal is requested
 
 # v0.9.0 (2015-07-12)
 
