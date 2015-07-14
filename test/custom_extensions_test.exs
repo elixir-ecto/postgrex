@@ -42,10 +42,29 @@ defmodule CustomExtensionsTest do
       do: binary
   end
 
+  defmodule BadExtension do
+    @behaviour Postgrex.Extension
+
+    def init(%{}, []),
+      do: []
+
+    def matching([]),
+      do: [send: "boolsend"]
+
+    def format([]),
+      do: :binary
+
+    def encode(%TypeInfo{send: "boolsend"}, _value, _types, []),
+      do: raise "encode"
+
+    def decode(%TypeInfo{send: "boolsend"}, _binary, _types, []),
+      do: raise "decode"
+  end
+
   setup do
     {:ok, pid} = P.start_link(
       database: "postgrex_test",
-      extensions: [{BinaryExtension, {}}, {TextExtension, []}])
+      extensions: [{BinaryExtension, {}}, {TextExtension, []}, {BadExtension, []}])
     {:ok, [pid: pid]}
   end
 
@@ -57,6 +76,20 @@ defmodule CustomExtensionsTest do
   test "encode and decode unknown type", context do
     assert [["23"]] =
            query("SELECT $1::oid", ["23"])
+  end
+
+  test "encode and decode pushes error to client", context do
+    assert_raise RuntimeError, "encode", fn ->
+      query("SELECT $1::boolean", [true])
+    end
+
+    assert Process.alive? context[:pid]
+
+    assert_raise RuntimeError, "decode", fn ->
+      query("SELECT true", [])
+    end
+
+    assert Process.alive? context[:pid]
   end
 
   test "dont decode text format", context do
