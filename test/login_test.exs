@@ -87,4 +87,22 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
     assert :ok = P.stop(pid)
   end
+
+  test "non existant database" do
+    Process.flag(:trap_exit, true)
+
+    capture_log fn ->
+      opts = [ database: "doesntexist", sync_connect: true ]
+      assert {:error, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}} =
+             P.start_link(opts)
+
+      assert_receive {:EXIT, _, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}}
+    end
+
+    capture_log fn ->
+      opts = [ database: "doesntexist" ]
+      {:ok, pid} = P.start_link(opts)
+      assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}}
+    end
+  end
 end

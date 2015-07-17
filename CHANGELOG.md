@@ -1,5 +1,8 @@
 # v0.9.2-dev
 
+* Bug fixes
+  * Correctly handle errors in connection initialization with `sync_connect: true`
+
 # v0.9.1 (2015-07-14)
 
 * Enhancements

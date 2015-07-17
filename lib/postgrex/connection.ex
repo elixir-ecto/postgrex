@@ -48,8 +48,8 @@ defmodule Postgrex.Connection do
       {:ok, pid} ->
         if opts[:sync_connect] do
           case GenServer.call(pid, :connect, timeout) do
-            :ok                 -> {:ok, pid}
-            {:error, _} = error -> error
+            :ok                     -> {:ok, pid}
+            %Postgrex.Error{} = err -> {:error, err}
           end
         else
           GenServer.cast(pid, :connect)
