@@ -178,8 +178,8 @@ defmodule QueryTest do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])
     assert [[4294967295]] = query("select $1::oid;", [4294967295])
-    assert :function_clause = catch_error(query("SELECT $1::oid", [0 - 1]))
-    assert :function_clause = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::oid", [0 - 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
 
     assert [["-"]] = query("select $1::regproc::text;", [0])
     assert [["regprocin"]] = query("select $1::regproc::text;", [44])
@@ -206,6 +206,11 @@ defmodule QueryTest do
   test "encoding oids as binary fails with a helpful error message", context do
     assert %Postgrex.Error{message: message} = catch_error(query("select $1::regclass;", ["pg_type"]))
     assert message =~ "See https://github.com/ericmj/postgrex#oid-type-encoding"
+  end
+
+  test "fail on encoding wrong value", context do
+    assert %ArgumentError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
+    assert message =~ "Postgrex expected a term that can be encoded/cast to type \"int4\""
   end
 
   @tag min_pg_version: "9.0"
@@ -265,20 +270,20 @@ defmodule QueryTest do
     # int2's range is -32768 to +32767
     assert [[-32768]] = query("SELECT $1::int2", [-32768])
     assert [[32767]] = query("SELECT $1::int2", [32767])
-    assert :function_clause = catch_error(query("SELECT $1::int2", [32767 + 1]))
-    assert :function_clause = catch_error(query("SELECT $1::int2", [-32768 - 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int2", [32767 + 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int2", [-32768 - 1]))
 
     # int4's range is -2147483648 to +2147483647
     assert [[-2147483648]] = query("SELECT $1::int4", [-2147483648])
     assert [[2147483647]] = query("SELECT $1::int4", [2147483647])
-    assert :function_clause = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
-    assert :function_clause = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
 
     # int8's range is  -9223372036854775808 to 9223372036854775807
     assert [[-9223372036854775808]] = query("SELECT $1::int8", [-9223372036854775808])
     assert [[9223372036854775807]] = query("SELECT $1::int8", [9223372036854775807])
-    assert :function_clause = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
-    assert :function_clause = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
   end
 
   test "encode uuid", context do
@@ -381,14 +386,14 @@ defmodule QueryTest do
     # int4's range is -2147483648 to +2147483647
     assert [[%Postgrex.Range{lower: -2147483648}]] = query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483648}])
     assert [[%Postgrex.Range{upper: 2147483647}]] = query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483647, upper_inclusive: false}])
-    assert :function_clause = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
-    assert :function_clause = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
 
     # int8's range is -9223372036854775808 to 9223372036854775807
     assert [[%Postgrex.Range{lower: -9223372036854775807}]] = query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775807}])
     assert [[%Postgrex.Range{upper: 9223372036854775806}]] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
-    assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
-    assert :function_clause = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
   end
 
   @tag min_pg_version: "9.0"
@@ -400,16 +405,6 @@ defmodule QueryTest do
   test "fail on encode arrays", context do
     assert_raise ArgumentError, "nested lists must have lists with matching lengths", fn ->
       query("SELECT $1::integer[]", [[[1], [1,2]]])
-    end
-    assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "fail on encode wrong value", context do
-    assert_raise FunctionClauseError, fn ->
-      query("SELECT $1::integer", ["123"])
-    end
-    assert_raise FunctionClauseError, fn ->
-      query("SELECT $1::text", [4.0])
     end
     assert [[42]] = query("SELECT 42", [])
   end

@@ -144,6 +144,13 @@ defmodule Postgrex.Extensions.Binary do
       do: raise_oid_encoding_error(unquote(sender))
   end
 
+  def encode(%TypeInfo{type: type}, value, _, _) do
+    raise ArgumentError,
+      "Postgrex expected a term that can be encoded/cast to type #{inspect type} but " <>
+      "got #{inspect value}. Please make sure the value you are passing matches the " <>
+      "definition in your table or in your query or convert the value accordingly."
+  end
+
   defp encode_numeric(dec) do
     if Decimal.nan?(dec) do
       <<0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16>>
@@ -271,7 +278,7 @@ defmodule Postgrex.Extensions.Binary do
     rest = Enum.reduce(tail, [], fn sublist, acc ->
       {data, _, [len|_]} = encode_array(sublist, ndims, lengths, encoder)
       if len != dimlength do
-        raise ArgumentError, message: "nested lists must have lists with matching lengths"
+        raise ArgumentError, "nested lists must have lists with matching lengths"
       end
       [acc|data]
     end)
@@ -354,7 +361,7 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   defp encode_hstore_key(key) when is_nil(key) do
-    raise ArgumentError, message: "hstore keys cannot be nil!"
+    raise ArgumentError, "hstore keys cannot be nil!"
   end
 
   defp encode_hstore_value(nil) do
@@ -368,7 +375,7 @@ defmodule Postgrex.Extensions.Binary do
 
   defp raise_oid_encoding_error(sender) do
     raise Postgrex.Error, message: """
-    You tried to use a binary instead for an oid type (#{sender}) when an
+    you tried to use a binary instead for an oid type (#{sender}) when an
     integer was expected. See https://github.com/ericmj/postgrex#oid-type-encoding
     """
   end
