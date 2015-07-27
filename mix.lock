@@ -1,3 +1,4 @@
-%{"decimal": {:hex, :decimal, "1.1.0"},
+%{"connection": {:hex, :connection, "1.0.0-rc.1"},
+  "decimal": {:hex, :decimal, "1.1.0"},
   "earmark": {:hex, :earmark, "0.1.17"},
   "ex_doc": {:hex, :ex_doc, "0.7.3"}}

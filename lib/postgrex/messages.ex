@@ -23,6 +23,7 @@ defmodule Postgrex.Messages do
   defrecord :msg_backend_key, [:pid, :key]
   defrecord :msg_ready, [:status]
   defrecord :msg_notice, [:fields]
+  defrecord :msg_query, [:query]
   defrecord :msg_parse, [:name, :query, :type_oids]
   defrecord :msg_describe, [:type, :name]
   defrecord :msg_flush, []
@@ -178,6 +179,11 @@ defmodule Postgrex.Messages do
   # password
   defp encode(msg_password(pass: pass)) do
     {?p, [pass, 0]}
+  end
+
+  # query
+  defp encode(msg_query(query: query)) do
+    {?Q, [query, 0]}
   end
 
   # parse
