@@ -3,14 +3,13 @@ defmodule Postgrex.Connection do
   Main API for Postgrex. This module handles the connection to postgres.
   """
 
-  use GenServer
+  use Connection
   alias Postgrex.Protocol
   alias Postgrex.Messages
   import Postgrex.BinaryUtils
   import Postgrex.Utils
 
   @timeout 5000
-  @default_extensions [{Postgrex.Extensions.Binary, nil}, {Postgrex.Extensions.Text, nil}]
 
   ### PUBLIC API ###
 
@@ -42,22 +41,7 @@ defmodule Postgrex.Connection do
       |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
       |> Enum.reject(fn {_k,v} -> is_nil(v) end)
 
-    timeout = opts[:timeout] || @timeout
-
-    case GenServer.start_link(__MODULE__, opts) do
-      {:ok, pid} ->
-        if opts[:sync_connect] do
-          case GenServer.call(pid, :connect, timeout) do
-            :ok                     -> {:ok, pid}
-            %Postgrex.Error{} = err -> {:error, err}
-          end
-        else
-          GenServer.cast(pid, :connect)
-          {:ok, pid}
-        end
-      {:error, _} = error ->
-        error
-    end
+    Connection.start_link(__MODULE__, opts)
   end
 
   @doc """
@@ -69,7 +53,7 @@ defmodule Postgrex.Connection do
   """
   @spec stop(pid, Keyword.t) :: :ok
   def stop(pid, opts \\ []) do
-    GenServer.call(pid, :stop, opts[:timeout] || @timeout)
+    Connection.call(pid, :stop, opts[:timeout] || @timeout)
   end
 
   @doc """
@@ -99,7 +83,7 @@ defmodule Postgrex.Connection do
   def query(pid, statement, params, opts \\ []) do
     message = {:query, statement, params}
     timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
+    case Connection.call(pid, message, timeout) do
       %Postgrex.Result{} = res ->
         {:ok, res}
       %Postgrex.Error{} = err ->
@@ -134,7 +118,7 @@ defmodule Postgrex.Connection do
   def listen(pid, channel, opts \\ []) do
     message = {:listen, channel, self()}
     timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
+    case Connection.call(pid, message, timeout) do
       ref when is_reference(ref)  -> {:ok, ref}
       %Postgrex.Error{} = err     -> {:error, err}
     end
@@ -163,7 +147,7 @@ defmodule Postgrex.Connection do
   def unlisten(pid, ref, opts \\ []) do
     message = {:unlisten, ref}
     timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
+    case Connection.call(pid, message, timeout) do
       :ok -> :ok
       %ArgumentError{} = err -> raise err
       %Postgrex.Error{} = err -> {:error, err}
@@ -191,20 +175,32 @@ defmodule Postgrex.Connection do
   """
   @spec parameters(pid, Keyword.t) :: map
   def parameters(pid, opts \\ []) do
-    GenServer.call(pid, :parameters, opts[:timeout] || @timeout)
+    Connection.call(pid, :parameters, opts[:timeout] || @timeout)
   end
 
-  ### GEN_SERVER CALLBACKS ###
+  ### CONNECTION CALLBACKS ###
 
   @doc false
   def init(opts) do
-    {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
-            rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
-            queue: :queue.new, opts: opts, extensions: nil, listeners: HashDict.new,
-            listener_channels: HashDict.new, types_key: nil}}
+    if opts[:sync_connect] do
+      sync_connect(opts)
+    else
+      {:connect, :init, opts}
+    end
   end
 
   @doc false
+  def connect(_, opts) do
+    case Protocol.init(opts) do
+      {:ok, _} = ok   -> ok
+      {:stop, reason} -> {:stop, reason, opts}
+    end
+  end
+
+  @doc false
+  def format_status(:terminate, [_pdict, opts]) when is_list(opts) do
+    Keyword.put(opts, :password, :REDACTED)
+  end
   def format_status(opt, [_pdict, s]) do
     s = %{s | types: :types_removed}
     if opt == :normal do
@@ -215,10 +211,6 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_call(:connect, from, s) do
-    connect(from, s)
-  end
-
   def handle_call(:stop, from, s) do
     reply(:ok, from)
     {:stop, :normal, s}
@@ -245,10 +237,6 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_cast(:connect, s) do
-    connect(nil, s)
-  end
-
   def handle_info({:DOWN, ref, :process, _, _}, s) do
     s =
       case HashDict.fetch(s.listeners, ref) do
@@ -269,22 +257,6 @@ defmodule Postgrex.Connection do
       end
 
     {:noreply, s}
-  end
-
-  def handle_info({:tcp, _, data}, %{sock: {:gen_tcp, sock}, opts: opts, state: :ssl} = s) do
-    case data do
-      <<?S>> ->
-        case :ssl.connect(sock, opts[:ssl_opts] || []) do
-          {:ok, ssl_sock} ->
-            :ssl.setopts(ssl_sock, active: :once)
-            Protocol.startup(%{s | sock: {:ssl, ssl_sock}})
-          {:error, reason} ->
-            error(%Postgrex.Error{message: "ssl negotiation failed: #{reason}"}, s)
-        end
-
-      <<?N>> ->
-        error(%Postgrex.Error{message: "ssl not available"}, s)
-    end
   end
 
   def handle_info({tag, _, data}, %{sock: {mod, sock}, tail: tail} = s)
@@ -331,39 +303,10 @@ defmodule Postgrex.Connection do
 
   ### PRIVATE FUNCTIONS ###
 
-  defp connect(from, %{queue: queue, opts: opts} = s) do
-    host       = Keyword.fetch!(opts, :hostname) |> to_char_list
-    port       = opts[:port] || 5432
-    timeout    = opts[:timeout] || @timeout
-    sock_opts  = [{:packet, :raw}, :binary] ++ (opts[:socket_options] || [])
-    custom     = opts[:extensions] || []
-    extensions = custom ++ @default_extensions
-
-    command = new_command({:connect, opts}, from)
-    queue = :queue.in(command, queue)
-    types_key = {host, port, Keyword.fetch!(opts, :database), custom}
-    s = %{s | queue: queue, extensions: extensions, types_key: types_key}
-
-    case :gen_tcp.connect(host, port, sock_opts, timeout) do
-      {:ok, sock} ->
-        s = put_in(s.sock, {:gen_tcp, sock})
-        # A suitable :buffer is only set if :recbuf is included in
-        # :socket_options.
-        {:ok, [sndbuf: sndbuf, recbuf: recbuf, buffer: buffer]} =
-          :inet.getopts(sock, [:sndbuf, :recbuf, :buffer])
-        buffer = buffer
-          |> max(sndbuf)
-          |> max(recbuf)
-        :ok = :inet.setopts(sock, [buffer: buffer, active: :once])
-
-        if opts[:ssl] do
-          Protocol.startup_ssl(s)
-        else
-          Protocol.startup(s)
-        end
-
-      {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp connect: #{reason}"}, s)
+  defp sync_connect(opts) do
+    case connect(:init, opts) do
+      {:ok, _} = ok      -> ok
+      {:stop, reason, _} -> {:stop, reason}
     end
   end
 
