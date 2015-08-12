@@ -147,6 +147,20 @@ defmodule QueryTest do
            query("SELECT '(2014-1-1,]'::daterange", [])
   end
 
+  @tag min_pg_version: "9.0"
+  test "decode network types", context do
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}}]] =
+           query("SELECT '127.0.0.1'::inet", [])
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}}]] =
+           query("SELECT '2001:abcd::'::inet", [])
+    assert [[%Postgrex.CIDR{address: {127, 0, 0, 1}, netmask: 32}]] =
+           query("SELECT '127.0.0.1/32'::cidr", [])
+    assert [[%Postgrex.CIDR{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
+           query("SELECT '2001:abcd::/128'::cidr", [])
+    assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
+           query("SELECT '08:01:2b:05:07:09'::macaddr", [])
+  end
+
   test "decode oid and its aliases", context do
     assert [[4294967295]] = query("select 4294967295::oid;", [])
 
@@ -400,6 +414,20 @@ defmodule QueryTest do
   test "encode hstore", context do
     assert [[%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}]] =
            query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}]
+  end
+
+  @tag min_pg_version: "9.2"
+  test "encode network types", context do
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}}]] =
+           query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}}])
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}}]] =
+           query("SELECT $1::inet", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}}])
+    assert [[%Postgrex.CIDR{address: {127, 0, 0, 1}, netmask: 32}]] =
+           query("SELECT $1::cidr", [%Postgrex.CIDR{address: {127, 0, 0, 1}, netmask: 32}])
+    assert [[%Postgrex.CIDR{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
+           query("SELECT $1::cidr", [%Postgrex.CIDR{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}])
+    assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
+           query("SELECT $1::macaddr", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
   end
 
   test "fail on encode arrays", context do
