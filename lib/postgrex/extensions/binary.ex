@@ -46,7 +46,10 @@ defmodule Postgrex.Extensions.Binary do
     do: parameters["server_version"] |> Postgrex.Utils.parse_version
 
   def matching(version) when version >= {9, 1, 0},
-    do: [send: "void_send"] ++ matching(0)
+    do: [send: "void_send"] ++ matching({9, 0, 0})
+
+  def matching(version) when version >= {9, 0, 0},
+    do: [type: "inet", type: "cidr", type: "macaddr"] ++ matching(0)
 
   def matching(_),
     do: unquote(Enum.map(@pg_extensions, &{:type, &1}) ++ Enum.map(@senders, &{:send, &1}))
