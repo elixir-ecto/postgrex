@@ -125,6 +125,12 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_range(range, oid, types)
   def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
     do: <<block :: uint32, tuple :: uint16>>
+  def encode(%TypeInfo{type: "inet"}, tuple, _, _),
+    do: encode_network(tuple)
+  def encode(%TypeInfo{type: "cidr"}, tuple, _, _),
+    do: encode_network(tuple)
+  def encode(%TypeInfo{type: "macaddr"}, tuple, _, _),
+    do: encode_network(tuple)
 
   # Define encodings for PG extensions. They could be defined inside a schema,
   # so only :type field could be matched exactly, b/c other fields may have schema prefix
@@ -373,6 +379,23 @@ defmodule Postgrex.Extensions.Binary do
     <<value_byte_size::int32>> <> value
   end
 
+  defp encode_network(%Postgrex.INET{address: {_, _, _, _} = addr}),
+    do: <<2, 32, 0, 4>> <> tuple_to_binary(addr)
+  defp encode_network(%Postgrex.CIDR{address: {_, _, _, _} = addr, netmask: n}),
+    do: <<2, n, 1, 4>> <> tuple_to_binary(addr)
+  defp encode_network(%Postgrex.INET{address: {_, _, _, _, _, _, _, _} = addr}),
+    do: <<3, 128, 0, 16>> <> tuple_to_binary(addr)
+  defp encode_network(%Postgrex.CIDR{address: {_, _, _, _, _, _, _, _} = addr, netmask: n}),
+    do: <<3, n, 1, 16>> <> tuple_to_binary(addr)
+  defp encode_network(%Postgrex.MACADDR{address: {a, b, c, d, e, f}}),
+    do: <<a, b, c, d, e, f>>
+
+  defp tuple_to_binary({a, b, c, d}),
+    do: <<a::8, b::8, c::8, d::8>>
+  defp tuple_to_binary({a, b, c, d, e, f, g, h}) do
+    <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
+  end
+
   defp raise_oid_encoding_error(sender) do
     raise Postgrex.Error, message: """
     you tried to use a binary instead for an oid type (#{sender}) when an
@@ -447,6 +470,13 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_range(bin, oid, types)
   def decode(%TypeInfo{send: "tidsend"}, <<block :: uint32, tuple :: uint16>>, _, _),
     do: {block, tuple}
+  def decode(%TypeInfo{type: "inet"}, binary, _, _),
+    do: decode_network(binary)
+  def decode(%TypeInfo{type: "cidr"}, binary, _, _),
+    do: decode_network(binary)
+  def decode(%TypeInfo{type: "macaddr"}, binary, _, _),
+    do: decode_network(binary)
+
 
   # Define decodings for PG extensions. They could be defined inside a schema,
   # so only :type field could be matched exactly, b/c other fields may have schema prefix
@@ -627,4 +657,21 @@ defmodule Postgrex.Extensions.Binary do
                         value_length::int32, value::binary(value_length), rest::binary>>, acc) do
     decode_hstore_payload(rest, Map.put(acc, key, value))
   end
+
+  defp decode_network(<<2, 32, 0, 4, addr::binary>>),
+    do: %Postgrex.INET{address: binary_to_tuple(addr)}
+  defp decode_network(<<2, netmask::8, 1, 4, addr::binary>>),
+    do: %Postgrex.CIDR{address: binary_to_tuple(addr), netmask: netmask}
+  defp decode_network(<<3, 128, 0, 16, addr::binary>>),
+    do: %Postgrex.INET{address: binary_to_tuple(addr)}
+  defp decode_network(<<3, netmask::8, 1, 16, addr::binary>>),
+    do: %Postgrex.CIDR{address: binary_to_tuple(addr), netmask: netmask}
+  defp decode_network(<<a::8, b::8, c::8, d::8, e::8, f::8>>),
+    do: %Postgrex.MACADDR{address: {a, b, c, d, e, f}}
+
+  defp binary_to_tuple(<<a::8, b::8, c::8, d::8>>),
+    do: {a, b, c, d}
+  defp binary_to_tuple(<<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>),
+    do: {a, b, c, d, e, f, g, h}
+
 end

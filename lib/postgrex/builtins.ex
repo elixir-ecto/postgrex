@@ -101,3 +101,48 @@ defmodule Postgrex.Range do
     lower_inclusive: true,
     upper_inclusive: true]
 end
+
+defmodule Postgrex.INET do
+  @moduledoc """
+  Struct for Postgres inet.
+
+  ## Fields
+    * `address`
+  """
+
+  @type t :: %__MODULE__{address: :inet.ip_address}
+
+  defstruct [address: nil]
+end
+
+defmodule Postgrex.CIDR do
+  @moduledoc """
+  Struct for Postgres cidr.
+
+  ## Fields
+    * `address`
+    * `netmask`
+  """
+
+  @type t :: %__MODULE__{address: :inet.ip_address,
+                         netmask: 0..128}
+
+  defstruct [
+    address: nil,
+    netmask: nil]
+end
+
+defmodule Postgrex.MACADDR do
+  @moduledoc """
+  Struct for Postgres macaddr.
+
+  ## Fields
+    * `address`
+  """
+
+  @type macaddr :: {0..255, 0..255, 0..255, 0..255, 0..255, 0..255}
+
+  @type t :: %__MODULE__{address: macaddr }
+
+  defstruct [address: nil]
+end
