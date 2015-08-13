@@ -126,12 +126,12 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_range(range, oid, types)
   def encode(%TypeInfo{send: "tidsend"}, {block, tuple}, _, _),
     do: <<block :: uint32, tuple :: uint16>>
-  def encode(%TypeInfo{type: "inet"}, tuple, _, _),
-    do: encode_network(tuple)
-  def encode(%TypeInfo{type: "cidr"}, tuple, _, _),
-    do: encode_network(tuple)
-  def encode(%TypeInfo{type: "macaddr"}, tuple, _, _),
-    do: encode_network(tuple)
+  def encode(%TypeInfo{type: "inet"}, %Postgrex.INET{} = inet, _, _),
+    do: encode_network(inet)
+  def encode(%TypeInfo{type: "cidr"}, %Postgrex.CIDR{} = cidr, _, _),
+    do: encode_network(cidr)
+  def encode(%TypeInfo{type: "macaddr"}, %Postgrex.MACADDR{} = macaddr, _, _),
+    do: encode_network(macaddr)
 
   # Define encodings for PG extensions. They could be defined inside a schema,
   # so only :type field could be matched exactly, b/c other fields may have schema prefix
