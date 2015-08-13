@@ -38,6 +38,7 @@ defmodule Postgrex.Extensions.Binary do
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
               timestamptz_send interval_send enum_send tidsend unknownsend
+              inet_send cidr_send macaddr_send
               ) ++ @oid_senders
 
   @pg_extensions ~w(hstore citext)
@@ -46,10 +47,7 @@ defmodule Postgrex.Extensions.Binary do
     do: parameters["server_version"] |> Postgrex.Utils.parse_version
 
   def matching(version) when version >= {9, 1, 0},
-    do: [send: "void_send"] ++ matching({9, 0, 0})
-
-  def matching(version) when version >= {9, 0, 0},
-    do: [type: "inet", type: "cidr", type: "macaddr"] ++ matching(0)
+    do: [send: "void_send"] ++ matching(0)
 
   def matching(_),
     do: unquote(Enum.map(@pg_extensions, &{:type, &1}) ++ Enum.map(@senders, &{:send, &1}))
