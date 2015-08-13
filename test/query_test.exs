@@ -416,7 +416,7 @@ defmodule QueryTest do
            query ~s(SELECT $1::hstore), [%{"name" => "Frank", "bubbles" => "7", "limit" => nil, "chillin"=> "true", "fratty"=> "false", "atom" => "bomb"}]
   end
 
-  @tag min_pg_version: "9.2"
+  @tag min_pg_version: "9.0"
   test "encode network types", context do
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}}]] =
            query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}}])
