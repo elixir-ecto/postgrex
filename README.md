@@ -16,6 +16,14 @@ def deps do
 end
 ```
 
+and update your applications list to include it:
+
+```elixir
+def application do
+  [applications: [:postgrex]]
+end
+```
+
 After you are done, run `mix deps.get` in your shell to fetch and compile Postgrex. Start an interactive Elixir shell with `iex -S mix`.
 
 ```iex
