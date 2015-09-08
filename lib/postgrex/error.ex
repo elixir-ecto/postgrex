@@ -20,4 +20,9 @@ defmodule Postgrex.Error do
   def exception(arg) do
     super(arg)
   end
+
+  def exception(tcp_action, reason) do
+    reason = :inet.format_error(reason)
+    %Postgrex.Error{message: "#{tcp_action}: #{reason}"}
+  end
 end

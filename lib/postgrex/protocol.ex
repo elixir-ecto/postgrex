@@ -184,7 +184,7 @@ defmodule Postgrex.Protocol do
         {:ok, %{s | sock: {:gen_tcp, sock}}}
 
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp connect: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp connect", reason), s)
     end
   end
 
@@ -193,7 +193,7 @@ defmodule Postgrex.Protocol do
   defp ssl(%{sock: sock} = s, opts) do
     case msg_send(msg_ssl_request(), sock) do
       :ok              -> ssl_recv(s, opts)
-      {:error, reason} -> error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
+      {:error, reason} -> error(Postgrex.Error.exception("tcp send", reason), s)
     end
   end
 
@@ -204,7 +204,7 @@ defmodule Postgrex.Protocol do
       {:ok, <<?N>>} ->
         error(%Postgrex.Error{message: "ssl not available"}, s)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp recv", reason), s)
     end
   end
 
@@ -228,7 +228,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         auth_recv(s, opts, <<>>)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp send", reason), s)
     end
   end
 
@@ -245,7 +245,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_error(fields: fields), _} ->
         error(Postgrex.Error.exception(postgres: fields), s)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp recv", reason), s)
     end
   end
 
@@ -270,7 +270,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         auth_recv(s, opts, buffer)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp send", reason), s)
     end
   end
 
@@ -288,7 +288,7 @@ defmodule Postgrex.Protocol do
         {:ok, s} = message(:init, msg, s)
         init_recv(s, buffer)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp recv", reason), s)
     end
   end
 
@@ -321,7 +321,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         bootstrap_recv(s, ref, {extension_keys, extension_opts}, buffer)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp send: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp send", reason), s)
     end
   end
 
@@ -336,7 +336,7 @@ defmodule Postgrex.Protocol do
         {:ok, s} = message(:init, msg, s)
         bootstrap_recv(s, ref, extension_info, buffer)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp recv", reason), s)
     end
   end
 
@@ -353,7 +353,7 @@ defmodule Postgrex.Protocol do
         {:ok, s} = message(:init, msg, s)
         bootstrap_recv(s, ref, extension_info, rows, buffer)
       {:error, reason} ->
-        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp recv", reason), s)
     end
   end
 
@@ -375,7 +375,7 @@ defmodule Postgrex.Protocol do
         {:ok, s} = message(:init, msg, s)
         bootstrap_await(s, buffer)
       {:error, reason}  ->
-        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+        error(Postgrex.Error.exception("tcp recv", reason), s)
     end
   end
 
@@ -506,7 +506,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         {:ok, s}
       {:error, reason} ->
-        {:error, %Postgrex.Error{message: "tcp send: #{reason}"} , s}
+        {:error, Postgrex.Error.exception("tcp send", reason) , s}
     end
   end
 end

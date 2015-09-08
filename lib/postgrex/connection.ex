@@ -278,7 +278,7 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(%Postgrex.Error{message: "tcp error: #{reason}"}, s)
+    error(Postgrex.Error.exception("tcp error", reason), s)
   end
 
   @doc false
