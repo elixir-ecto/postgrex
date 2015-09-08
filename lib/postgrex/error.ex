@@ -21,8 +21,13 @@ defmodule Postgrex.Error do
     super(arg)
   end
 
-  def exception(tcp_action, reason) do
+  def exception(:ssl, message, reason) do
+    reason = :ssl.format_error(reason)
+    %Postgrex.Error{message: "ssl #{message}: #{reason}"}
+  end
+
+  def exception(:tcp, message, reason) do
     reason = :inet.format_error(reason)
-    %Postgrex.Error{message: "#{tcp_action}: #{reason}"}
+    %Postgrex.Error{message: "tcp #{message}: #{reason}"}
   end
 end
