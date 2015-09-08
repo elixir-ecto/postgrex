@@ -175,13 +175,21 @@ defmodule Postgrex.Protocol do
       {:ok, sock} ->
         # A suitable :buffer is only set if :recbuf is included in
         # :socket_options.
-        {:ok, [sndbuf: sndbuf, recbuf: recbuf, buffer: buffer]} =
-          :inet.getopts(sock, [:sndbuf, :recbuf, :buffer])
-        buffer = buffer
-          |> max(sndbuf)
-          |> max(recbuf)
-        :ok = :inet.setopts(sock, [buffer: buffer])
-        {:ok, %{s | sock: {:gen_tcp, sock}}}
+        case :inet.getopts(sock, [:sndbuf, :recbuf, :buffer]) do
+          {:ok, [sndbuf: sndbuf, recbuf: recbuf, buffer: buffer]} ->
+            buffer = buffer
+              |> max(sndbuf)
+              |> max(recbuf)
+
+            case :inet.setopts(sock, [buffer: buffer]) do
+              :ok ->
+                {:ok, %{s | sock: {:gen_tcp, sock}}}
+              {:error, reason} ->
+                error(Postgrex.Error.exception(:tcp, "connect", reason), s)
+            end
+          {:error, reason} ->
+            error(Postgrex.Error.exception(:tcp, "connect", reason), s)
+        end
 
       {:error, reason} ->
         error(Postgrex.Error.exception(:tcp, "connect", reason), s)

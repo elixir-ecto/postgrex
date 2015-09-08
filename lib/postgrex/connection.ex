@@ -263,11 +263,7 @@ defmodule Postgrex.Connection do
       when tag in [:tcp, :ssl] do
     case new_data(tail <> data, %{s | tail: ""}) do
       {:ok, s} ->
-        case mod do
-          :gen_tcp -> :inet.setopts(sock, active: :once)
-          :ssl     -> :ssl.setopts(sock, active: :once)
-        end
-        {:noreply, s}
+        socket_setopts(mod, s, sock, active: :once)
       {:error, error, s} ->
         error(error, s)
     end
@@ -278,7 +274,7 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(Postgrex.Error.exception("tcp error", reason), s)
+    error(Postgrex.Error.exception(:tcp, "error", reason), s)
   end
 
   @doc false
@@ -302,6 +298,24 @@ defmodule Postgrex.Connection do
   end
 
   ### PRIVATE FUNCTIONS ###
+
+  defp socket_setopts(:gen_tcp, s, sock, opts) do
+    case :inet.setopts(sock, opts) do
+      :ok ->
+        {:noreply, s}
+      {:error, reason} ->
+        error(Postgrex.Error.exception(:tcp, "setopts", reason), s)
+    end
+  end
+
+  defp socket_setopts(:ssl, s, sock, opts) do
+    case :ssl.setopts(sock, active: :once) do
+      :ok ->
+        {:noreply, s}
+      {:error, reason} ->
+        error(Postgrex.Error.exception(:ssl, "setopts", reason), s)
+    end
+  end
 
   defp sync_connect(opts) do
     case connect(:init, opts) do
