@@ -6,7 +6,6 @@ defmodule Postgrex.Mixfile do
      version: "0.9.2-dev",
      elixir: "~> 1.0",
      deps: deps,
-     build_per_environment: false,
      name: "Postgrex",
      source_url: "https://github.com/ericmj/postgrex",
      docs: fn ->
