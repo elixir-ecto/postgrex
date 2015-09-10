@@ -175,21 +175,13 @@ defmodule Postgrex.Protocol do
       {:ok, sock} ->
         # A suitable :buffer is only set if :recbuf is included in
         # :socket_options.
-        case :inet.getopts(sock, [:sndbuf, :recbuf, :buffer]) do
-          {:ok, [sndbuf: sndbuf, recbuf: recbuf, buffer: buffer]} ->
-            buffer = buffer
-              |> max(sndbuf)
-              |> max(recbuf)
-
-            case :inet.setopts(sock, [buffer: buffer]) do
-              :ok ->
-                {:ok, %{s | sock: {:gen_tcp, sock}}}
-              {:error, reason} ->
-                error(Postgrex.Error.exception(:tcp, "connect", reason), s)
-            end
-          {:error, reason} ->
-            error(Postgrex.Error.exception(:tcp, "connect", reason), s)
-        end
+        {:ok, [sndbuf: sndbuf, recbuf: recbuf, buffer: buffer]} =
+          :inet.getopts(sock, [:sndbuf, :recbuf, :buffer])
+        buffer = buffer
+          |> max(sndbuf)
+          |> max(recbuf)
+        :ok = :inet.setopts(sock, [buffer: buffer])
+        {:ok, %{s | sock: {:gen_tcp, sock}}}
 
       {:error, reason} ->
         error(Postgrex.Error.exception(:tcp, "connect", reason), s)
@@ -201,7 +193,7 @@ defmodule Postgrex.Protocol do
   defp ssl(%{sock: sock} = s, opts) do
     case msg_send(msg_ssl_request(), sock) do
       :ok              -> ssl_recv(s, opts)
-      {:error, reason} -> error(Postgrex.Error.exception(:tcp, "send", reason), s)
+      {:error, exception} -> error(exception, s)
     end
   end
 
@@ -209,8 +201,8 @@ defmodule Postgrex.Protocol do
     case :gen_tcp.recv(sock, 1, timeout) do
       {:ok, <<?S>>} ->
         ssl_connect(s, opts)
-      {:ok, reason} ->
-        error(Postgrex.Error.exception(:ssl, "not available", reason), s)
+      {:ok, <<?N>>} ->
+        error(%Postgrex.Error{message: "ssl not available"}, s)
       {:error, reason} ->
         error(Postgrex.Error.exception(:tcp, "recv", reason), s)
     end
@@ -235,8 +227,8 @@ defmodule Postgrex.Protocol do
     case msg_send(msg, sock) do
       :ok ->
         auth_recv(s, opts, <<>>)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "send", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -252,8 +244,8 @@ defmodule Postgrex.Protocol do
         auth_md5(s, opts, salt, buffer)
       {:ok, msg_error(fields: fields), _} ->
         error(Postgrex.Error.exception(postgres: fields), s)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "recv", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -277,8 +269,8 @@ defmodule Postgrex.Protocol do
     case msg_send(msg, sock) do
       :ok ->
         auth_recv(s, opts, buffer)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "send", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -295,8 +287,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg, buffer} ->
         {:ok, s} = message(:init, msg, s)
         init_recv(s, buffer)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "recv", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -312,8 +304,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_ready(%{sock: {mod, sock}} = s, buffer) do
-    tag = if mod == :gen_tcp, do: :tcp, else: :ssl
-    send(self(), {tag, sock, buffer})
+    send(self(), {tag(mod), sock, buffer})
     {:ok, %{s | state: :ready}}
   end
 
@@ -328,8 +319,8 @@ defmodule Postgrex.Protocol do
     case msg_send(msg, sock) do
       :ok ->
         bootstrap_recv(s, ref, {extension_keys, extension_opts}, buffer)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "send", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -343,8 +334,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg, buffer} ->
         {:ok, s} = message(:init, msg, s)
         bootstrap_recv(s, ref, extension_info, buffer)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "recv", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -360,8 +351,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg, buffer} ->
         {:ok, s} = message(:init, msg, s)
         bootstrap_recv(s, ref, extension_info, rows, buffer)
-      {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "recv", reason), s)
+      {:error, exception} ->
+        error(exception, s)
     end
   end
 
@@ -382,8 +373,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg, buffer} ->
         {:ok, s} = message(:init, msg, s)
         bootstrap_await(s, buffer)
-      {:error, reason}  ->
-        error(Postgrex.Error.exception(:tcp, "recv", reason), s)
+      {:error, exception}  ->
+        error(exception, s)
     end
   end
 
@@ -456,6 +447,9 @@ defmodule Postgrex.Protocol do
     Enum.map(columns, &Types.format(&1, types))
   end
 
+  defp tag(:gen_tcp), do: :tcp
+  defp tag(:ssl), do: :ssl
+
   defp decode_tag(tag) do
     words = :binary.split(tag, " ", [:global])
     words = Enum.map(words, fn word ->
@@ -479,8 +473,10 @@ defmodule Postgrex.Protocol do
 
   defp msg_recv({mod, sock} = sock_info, buffer, more, timeout) do
     case mod.recv(sock, more, timeout) do
-      {:ok, data}         -> msg_recv(sock_info, buffer <> data, timeout)
-      {:error, _} = error -> error
+      {:ok, data} ->
+        msg_recv(sock_info, buffer <> data, timeout)
+      {:error, reason} ->
+        {:error, Postgrex.Error.exception(tag(mod), "recv", reason)}
     end
   end
 
@@ -506,15 +502,20 @@ defmodule Postgrex.Protocol do
 
   defp msg_send(msg, {mod, sock}) do
     data = encode_msg(msg)
-    mod.send(sock, data)
+    case mod.send(sock, data) do
+      :ok ->
+        :ok
+      {:error, reason} ->
+        {:error, Postgrex.Error.exception(tag(mod), "send", reason)}
+    end
   end
 
   defp send_to_result(msg, s) do
     case msg_send(msg, s) do
       :ok ->
         {:ok, s}
-      {:error, reason} ->
-        {:error, Postgrex.Error.exception(:tcp, "send", reason) , s}
+      {:error, exception} ->
+        {:error, exception , s}
     end
   end
 end
