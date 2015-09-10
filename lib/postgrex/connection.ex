@@ -274,7 +274,7 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(Postgrex.Error.exception(:tcp, "async recv", reason), s)
+    error(Postgrex.Error.exception(tag: :tcp, action: "async recv", reason: reason), s)
   end
 
   @doc false
@@ -304,7 +304,7 @@ defmodule Postgrex.Connection do
       :ok ->
         {:noreply, s}
       {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "setopts", reason), s)
+        error(Postgrex.Error.exception(tag: :tcp, action: "setopts", reason: reason), s)
     end
   end
 
@@ -313,7 +313,7 @@ defmodule Postgrex.Connection do
       :ok ->
         {:noreply, s}
       {:error, reason} ->
-        error(Postgrex.Error.exception(:ssl, "setopts", reason), s)
+        error(Postgrex.Error.exception(tag: :ssl, action: "setopts", reason: reason), s)
     end
   end
 

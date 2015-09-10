@@ -184,7 +184,7 @@ defmodule Postgrex.Protocol do
         {:ok, %{s | sock: {:gen_tcp, sock}}}
 
       {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "connect", reason), s)
+        error(Postgrex.Error.exception(tag: :tcp, action: "connect", reason: reason),s)
     end
   end
 
@@ -204,7 +204,7 @@ defmodule Postgrex.Protocol do
       {:ok, <<?N>>} ->
         error(%Postgrex.Error{message: "ssl not available"}, s)
       {:error, reason} ->
-        error(Postgrex.Error.exception(:tcp, "recv", reason), s)
+        error(Postgrex.Error.exception(tag: :tcp, action: "recv", reason: reason),s)
     end
   end
 
@@ -213,7 +213,7 @@ defmodule Postgrex.Protocol do
       {:ok, ssl_sock} ->
         startup(%{s | sock: {:ssl, ssl_sock}}, opts)
       {:error, reason} ->
-        error(Postgrex.Error.exception(:ssl, "negotation failed", reason), s)
+        error(Postgrex.Error.exception(tag: :ssl, action: "negotiation failed", reason: reason),s)
     end
   end
 
@@ -476,7 +476,7 @@ defmodule Postgrex.Protocol do
       {:ok, data} ->
         msg_recv(sock_info, buffer <> data, timeout)
       {:error, reason} ->
-        {:error, Postgrex.Error.exception(tag(mod), "recv", reason)}
+        {:error, Postgrex.Error.exception(tag: tag(mod), action: "recv", reason: reason)}
     end
   end
 
@@ -506,7 +506,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         :ok
       {:error, reason} ->
-        {:error, Postgrex.Error.exception(tag(mod), "send", reason)}
+        {:error, Postgrex.Error.exception(tag: tag(mod), action: "send", reason: reason)}
     end
   end
 

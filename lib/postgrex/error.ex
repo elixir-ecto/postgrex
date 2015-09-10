@@ -17,17 +17,17 @@ defmodule Postgrex.Error do
     %Postgrex.Error{postgres: fields}
   end
 
+  def exception([tag: :ssl, action: action, reason: reason]) do
+    reason = :ssl.format_error(reason)
+    %Postgrex.Error{message: "ssl #{action}: #{reason}"}
+  end
+
+  def exception([tag: :tcp, action: action, reason: reason]) do
+    reason = :inet.format_error(reason)
+    %Postgrex.Error{message: "tcp #{action}: #{reason}"}
+  end
+
   def exception(arg) do
     super(arg)
-  end
-
-  def exception(:ssl, message, reason) do
-    reason = :ssl.format_error(reason)
-    %Postgrex.Error{message: "ssl #{message}: #{reason}"}
-  end
-
-  def exception(:tcp, message, reason) do
-    reason = :inet.format_error(reason)
-    %Postgrex.Error{message: "tcp #{message}: #{reason}"}
   end
 end
