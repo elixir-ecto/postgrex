@@ -39,6 +39,7 @@ defmodule Postgrex.Connection do
       |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
       |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
       |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
+      |> Keyword.put_new(:port, System.get_env("PGPORT"))
       |> Enum.reject(fn {_k,v} -> is_nil(v) end)
 
     Connection.start_link(__MODULE__, opts)
