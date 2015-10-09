@@ -47,7 +47,7 @@ defmodule Postgrex.Timestamp do
     * `hour`
     * `min`
     * `sec`
-    * `músec`
+    * `usec`
   """
 
   @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..31,
