@@ -8,7 +8,7 @@ defmodule Postgrex.Date do
     * `day`
   """
 
-  @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..12}
+  @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..31}
 
   defstruct [
     year: 0,
@@ -50,7 +50,7 @@ defmodule Postgrex.Timestamp do
     * `músec`
   """
 
-  @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..12,
+  @type t :: %__MODULE__{year: 0..10000, month: 1..12, day: 1..31,
                          hour: 0..23, min: 0..59, sec: 0..59, usec: 0..999_999}
 
   defstruct [
