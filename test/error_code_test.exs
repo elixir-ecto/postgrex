@@ -8,7 +8,7 @@ defmodule ErrorCodeTest do
     assert code_to_name("23505") == :unique_violation
     assert code_to_name("2F003") == :prohibited_sql_statement_attempted
     assert code_to_name("38003") == :prohibited_sql_statement_attempted
-    assert catch_error(code_to_name("nope"))
+    assert code_to_name("nope") == nil
   end
 
   test "name to codes" do
