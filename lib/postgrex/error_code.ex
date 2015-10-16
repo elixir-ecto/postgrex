@@ -36,7 +36,7 @@ defmodule Postgrex.ErrorCode do
     [{^code, name}] = errcodes
     def code_to_name(unquote(code)), do: unquote(name)
   end
-  def code_to_name(code), do: code
+  def code_to_name(_), do: nil
 
   @doc ~S"""
   Translates a Postgres error name into a list of possible codes.
