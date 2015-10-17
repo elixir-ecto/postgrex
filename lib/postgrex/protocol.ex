@@ -96,7 +96,8 @@ defmodule Postgrex.Protocol do
 
     reply =
       if is_nil(s.statement) do
-        %Postgrex.Result{command: command, num_rows: nrows || 0}
+        result = %Postgrex.Result{command: command, num_rows: nrows || 0}
+        {:ok, result}
       else
         %{statement: %{column_oids: col_oids, columns: cols},
           types: types, rows: rows} = s
@@ -113,8 +114,9 @@ defmodule Postgrex.Protocol do
             exit_reply(kind, reason, System.stacktrace)
         else
           decoded ->
-            %Postgrex.Result{command: command, num_rows: nrows || 0,
-                             rows: decoded, columns: cols}
+            result = %Postgrex.Result{command: command, num_rows: nrows || 0,
+                                      rows: decoded, columns: cols}
+            {:ok, result}
         end
       end
 
@@ -123,7 +125,7 @@ defmodule Postgrex.Protocol do
   end
 
   def message(:executing, msg_empty_query(), s) do
-    reply(%Postgrex.Result{}, s)
+    reply({:ok, %Postgrex.Result{}}, s)
     {:ok, s}
   end
 
@@ -140,7 +142,7 @@ defmodule Postgrex.Protocol do
   end
 
   def message(state, msg_error(fields: fields), s) do
-    error = Postgrex.Error.exception(postgres: fields)
+    error = {:error, Postgrex.Error.exception(postgres: fields)}
     unless reply(error, s) do
       Logger.warn(fn ->
         ["Unhandled Postgres error: ", Postgrex.Error.message(error)]

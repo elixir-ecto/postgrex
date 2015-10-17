@@ -515,10 +515,10 @@ defmodule QueryTest do
     task1 = async_query("SELECT true, false", [])
     task2 = async_query("SELECT 42", [])
 
-    %{rows: rows} = Task.await(task1)
+    {:ok, %Postgrex.Result{rows: rows}} = Task.await(task1)
     assert [[true, false]] = rows
 
-    %{rows: rows} = Task.await(task2)
+    {:ok, %Postgrex.Result{rows: rows}} = Task.await(task2)
     assert [[42]] = rows
 
     context = Map.put(context, :pid, nil)

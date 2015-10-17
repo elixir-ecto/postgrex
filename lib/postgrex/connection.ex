@@ -85,12 +85,10 @@ defmodule Postgrex.Connection do
     message = {:query, statement, params}
     timeout = opts[:timeout] || @timeout
     case Connection.call(pid, message, timeout) do
-      %Postgrex.Result{} = res ->
-        {:ok, res}
-      %Postgrex.Error{} = err ->
-        {:error, err}
       {:exit, reason} ->
         exit({reason, {__MODULE__, :query, [pid, statement, params, opts]}})
+      result ->
+        result
     end
   end
 
@@ -260,7 +258,7 @@ defmodule Postgrex.Connection do
     end
   end
 
-  def handle_cast({{:query, _, _} = command, {_, monitor} = from}, s) do
+  def handle_cast({{:query, _, _} = command, {_, _} = from}, s) do
     handle_call(command, from, s)
   end
 
