@@ -510,4 +510,20 @@ defmodule QueryTest do
       assert_receive [[:void]], 1000
     end)
   end
+
+  test "async query", context do
+    task1 = async_query("SELECT true, false", [])
+    task2 = async_query("SELECT 42", [])
+
+    %{rows: rows} = Task.await(task1)
+    assert [[true, false]] = rows
+
+    %{rows: rows} = Task.await(task2)
+    assert [[42]] = rows
+
+    context = Map.put(context, :pid, nil)
+    assert_raise ArgumentError, "No process is associated with nil", fn ->
+      async_query("SELECT 42", [])
+    end
+  end
 end

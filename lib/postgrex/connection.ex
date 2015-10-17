@@ -108,7 +108,8 @@ defmodule Postgrex.Connection do
   """
   def async_query(pid, statement, params) do
     message = {:query, statement, params}
-    process = GenServer.whereis(pid) || raise "No process is associated with #{inspect pid}"
+    process = GenServer.whereis(pid) ||
+      raise ArgumentError, "No process is associated with #{inspect pid}"
     monitor = Process.monitor(process)
     from = {self(), monitor}
 
