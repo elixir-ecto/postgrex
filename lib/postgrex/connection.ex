@@ -89,8 +89,8 @@ defmodule Postgrex.Connection do
         {:ok, res}
       %Postgrex.Error{} = err ->
         {:error, err}
-      {:error, kind, reason, stack} ->
-        :erlang.raise(kind, reason, stack)
+      {:exit, reason} ->
+        exit({reason, {__MODULE__, :query, [pid, statement, params, opts]}})
     end
   end
 
