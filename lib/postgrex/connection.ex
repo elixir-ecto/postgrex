@@ -95,6 +95,28 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
+  Works like `query/3` and `query/4` but is asynchronous. This returns a `%Task{}`
+  and is useful for starting multiple async queries and then waiting on the result
+  later on.
+
+  When server name passed has no process associated, it will raise an error.
+
+  ## Examples
+
+      task = %Task{} = Postgrex.Connection.async_query(pid, "SELECT title FROM posts", [])
+      Task.await(task)
+  """
+  def async_query(pid, statement, params) do
+    message = {:query, statement, params}
+    process = GenServer.whereis(pid) || raise "No process is associated with #{inspect pid}"
+    monitor = Process.monitor(process)
+    from = {self(), monitor}
+
+    :ok = Connection.cast(pid, {message, from})
+    %Task{ref: monitor}
+  end
+
+  @doc """
   Runs an (extended) query and returns the result or raises `Postgrex.Error` if
   there was an error. See `query/3`.
   """
@@ -235,6 +257,10 @@ defmodule Postgrex.Connection do
     else
       {:noreply, s}
     end
+  end
+
+  def handle_cast({{:query, _, _} = command, {_, monitor} = from}, s) do
+    handle_call(command, from, s)
   end
 
   @doc false
