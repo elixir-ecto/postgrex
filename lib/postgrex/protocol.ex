@@ -74,7 +74,7 @@ defmodule Postgrex.Protocol do
       send_params(%{s | statement: stat}, result_formats)
     catch
       kind, reason ->
-        reply({:error, kind, reason, System.stacktrace}, s)
+        reply(exit_reply(kind, reason, System.stacktrace), s)
         send_to_result([msg_sync], s)
     end
   end
@@ -110,7 +110,7 @@ defmodule Postgrex.Protocol do
           decode_rows(rows, col_oids, types)
         catch
           kind, reason ->
-            {:error, kind, reason, System.stacktrace}
+            exit_reply(kind, reason, System.stacktrace)
         else
           decoded ->
             %Postgrex.Result{command: command, num_rows: nrows || 0,
@@ -404,7 +404,7 @@ defmodule Postgrex.Protocol do
         encode_params(s)
       catch
         kind, reason ->
-          reply({:error, kind, reason, System.stacktrace}, s)
+          reply(exit_reply(kind, reason, System.stacktrace), s)
           {[msg_sync], %{s | portal: nil}}
       else
         {pfs, params} ->
@@ -509,4 +509,12 @@ defmodule Postgrex.Protocol do
         {:error, %Postgrex.Error{message: "tcp send: #{reason}"} , s}
     end
   end
+
+  defp exit_reply(kind, reason, stack) do
+    {:exit, exit_reason(kind, reason, stack)}
+  end
+
+  defp exit_reason(:exit, reason, _), do: reason
+  defp exit_reason(:error, reason, stack), do: {reason, stack}
+  defp exit_reason(:throw, value, stack), do: {{:nocatch, value}, stack}
 end
