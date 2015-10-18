@@ -522,8 +522,15 @@ defmodule QueryTest do
     assert [[42]] = rows
 
     context = Map.put(context, :pid, nil)
-    assert_raise ArgumentError, "No process is associated with nil", fn ->
-      async_query("SELECT 42", [])
+
+    if function_exported?(GenServer, :whereis, 1) do
+      assert_raise ArgumentError, "no process is associated with nil", fn ->
+        async_query("SELECT 42", [])
+      end
+    else
+      assert_raise ArgumentError, "requires Elixir 1.1 when passing server name as first argument", fn ->
+        async_query("SELECT 42", [])
+      end
     end
   end
 end

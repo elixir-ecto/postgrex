@@ -99,6 +99,9 @@ defmodule Postgrex.Connection do
 
   When server name passed has no process associated, it will raise an error.
 
+  This function expects a pid as first argument for Elixir 1.0. In Elixir 1.1, a pid
+  or a name could be passed as first argument.
+
   ## Examples
 
       task = %Task{} = Postgrex.Connection.async_query(pid, "SELECT title FROM posts", [])
@@ -106,8 +109,14 @@ defmodule Postgrex.Connection do
   """
   def async_query(pid, statement, params) do
     message = {:query, statement, params}
-    process = GenServer.whereis(pid) ||
-      raise ArgumentError, "No process is associated with #{inspect pid}"
+    process = cond do
+        is_pid(pid) ->
+          pid
+        function_exported?(GenServer, :whereis, 1) ->
+          GenServer.whereis(pid) || raise ArgumentError, "no process is associated with #{inspect pid}"
+        true ->
+          raise ArgumentError, "requires Elixir 1.1 when passing server name as first argument"
+      end
     monitor = Process.monitor(process)
     from = {self(), monitor}
 
