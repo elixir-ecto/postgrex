@@ -80,19 +80,19 @@ defmodule Postgrex.Messages do
   end
 
   # parameter_desc
-  def parse(<<len :: int16, rest :: binary(len, 32)>>, ?t, _size) do
+  def parse(<<len :: uint16, rest :: binary(len, 32)>>, ?t, _size) do
     oids = for <<oid :: size(32) <- rest>>, do: oid
     msg_parameter_desc(type_oids: oids)
   end
 
   # row_desc
-  def parse(<<len :: int16, rest :: binary>>, ?T, _size) do
+  def parse(<<len :: uint16, rest :: binary>>, ?T, _size) do
     fields = decode_row_fields(rest, len)
     msg_row_desc(fields: fields)
   end
 
   # data_row
-  def parse(<<count :: int16, rest :: binary>>, ?D, _size) do
+  def parse(<<count :: uint16, rest :: binary>>, ?D, _size) do
     values = decode_row_values(rest, count)
     msg_data_row(values: values)
   end
@@ -285,7 +285,7 @@ defmodule Postgrex.Messages do
     [nil | decode_row_values(rest, count-1)]
   end
 
-  defp decode_row_values(<<length :: int32, value :: binary(length), rest :: binary>>, count) do
+  defp decode_row_values(<<length :: uint32, value :: binary(length), rest :: binary>>, count) do
     [value | decode_row_values(rest, count-1)]
   end
 
