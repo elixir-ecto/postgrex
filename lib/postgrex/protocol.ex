@@ -213,7 +213,7 @@ defmodule Postgrex.Protocol do
       {:ok, ssl_sock} ->
         startup(%{s | sock: {:ssl, ssl_sock}}, opts)
       {:error, reason} ->
-        error(Postgrex.Error.exception(tag: :ssl, action: "negotiation failed", reason: reason),s)
+        error(Postgrex.Error.exception(tag: :ssl, action: "connect", reason: reason),s)
     end
   end
 

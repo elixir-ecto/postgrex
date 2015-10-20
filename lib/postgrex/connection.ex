@@ -270,11 +270,11 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({tag, _}, s) when tag in [:tcp_closed, :ssl_closed] do
-    error(%Postgrex.Error{message: "tcp closed"}, s)
+    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: :closed), s)
   end
 
   def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(Postgrex.Error.exception(tag: :tcp, action: "async recv", reason: reason), s)
+    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: reason), s)
   end
 
   @doc false
@@ -298,6 +298,11 @@ defmodule Postgrex.Connection do
   end
 
   ### PRIVATE FUNCTIONS ###
+
+  defp get_tag(:tcp_error), do: :tcp
+  defp get_tag(:ssl_error), do: :ssl
+  defp get_tag(:tcp_closed), do: :tcp
+  defp get_tag(:ssl_closed), do: :ssl
 
   defp socket_setopts(:gen_tcp, s, sock, opts) do
     case :inet.setopts(sock, opts) do
