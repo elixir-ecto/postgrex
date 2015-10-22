@@ -24,13 +24,13 @@ defmodule Postgrex.Error do
   end
 
   def exception([tag: :ssl, action: action, reason: reason]) do
-    reason = :ssl.format_error(reason)
-    %Postgrex.Error{message: "ssl #{action}: #{reason}"}
+    formatted_reason = :ssl.format_error(reason)
+    %Postgrex.Error{message: "ssl #{action}: #{inspect(reason)} - #{formatted_reason}"}
   end
 
   def exception([tag: :tcp, action: action, reason: reason]) when not reason in @nonposix_errors do
-    reason = :inet.format_error(reason)
-    %Postgrex.Error{message: "tcp #{action}: #{reason}"}
+    formatted_reason = :inet.format_error(reason)
+    %Postgrex.Error{message: "tcp #{action} #{reason}: #{inspect(reason)} - #{formatted_reason}"}
   end
 
   def exception([tag: :tcp, action: action, reason: reason]) do
