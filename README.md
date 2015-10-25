@@ -55,8 +55,8 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
     bytea           <<42>>
     numeric         #Decimal<42.0> *
     date            %Postgrex.Date{year: 2013, month: 10, day: 12}
-    time            %Postgrex.Time{hour: 0, min: 37, sec: 14, msec: 0}
-    timestamp(tz)   %Postgrex.Timestamp{year: 2013 month: 10, day: 12, hour: 0, min: 37, sec: 14, msec: 0}
+    time            %Postgrex.Time{hour: 0, min: 37, sec: 14, usec: 0}
+    timestamp(tz)   %Postgrex.Timestamp{year: 2013 month: 10, day: 12, hour: 0, min: 37, sec: 14, usec: 0}
     interval        %Postgrex.Interval{months: 14, days: 40, secs: 10920}
     array           [1, 2, 3]
     composite type  {42, "title", "content"}
