@@ -5,11 +5,11 @@ defmodule Postgrex.Connection do
 
   use Connection
   alias Postgrex.Protocol
-  alias Postgrex.Messages
-  import Postgrex.BinaryUtils
-  import Postgrex.Utils
 
   @timeout 5000
+
+  defstruct [parameters: nil, protocol: nil, listeners: HashDict.new(),
+             listener_channels: HashDict.new()]
 
   ### PUBLIC API ###
 
@@ -248,8 +248,10 @@ defmodule Postgrex.Connection do
   @doc false
   def connect(_, opts) do
     case Protocol.init(opts) do
-      {:ok, _} = ok   -> ok
-      {:stop, reason} -> {:stop, reason, opts}
+      {:ok, protocol, parameters, _} ->
+        {:ok, %__MODULE__{protocol: protocol, parameters: parameters}}
+      {:stop, reason} ->
+        {:stop, reason, opts}
     end
   end
 
@@ -267,120 +269,53 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_call(:stop, from, s) do
-    reply(:ok, from)
-    {:stop, :normal, s}
+  def handle_call(:stop, _, s) do
+    {:stop, :normal, :ok, s}
   end
 
   def handle_call(:parameters, _from, %{parameters: params} = s) do
     {:reply, params, s}
   end
 
-  def handle_call(command, from, %{state: state} = s) do
-    command = new_command(command, from)
-    s = update_in(s.queue, &:queue.in(command, &1))
+  def handle_call({:query, statement, params}, from, s) do
+    handle_query(statement, params, &reply(from, &1), s)
+  end
 
-    if state == :ready do
-      case next(s) do
-        {:ok, s} ->
+  def handle_call({:listen, channel, pid}, from, s) do
+    handle_listen(channel, pid, from, s)
+  end
+
+  def handle_call({:unlisten, ref}, from, s) do
+    handle_unlisten(ref, from, s)
+  end
+
+  def handle_cast({{:query, statement, params}, from}, s) do
+    handle_query(statement, params, &reply(from, &1), s)
+  end
+
+  @doc false
+  def handle_info({:DOWN, ref, :process, _, _} = down, s) do
+    case HashDict.fetch(s.listeners, ref) do
+      {:ok, {channel, _pid}} ->
+        s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+        s = update_in(s.listeners, &HashDict.delete(&1, ref))
+
+        if HashSet.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
+          handle_query("UNLISTEN #{channel}", [], fn(_) -> :ok end, s)
+        else
           {:noreply, s}
-        {:error, error, s} ->
-          error(error, s)
-      end
-    else
-      {:noreply, s}
-    end
-  end
-
-  def handle_cast({{:query, _, _} = command, {_, _} = from}, s) do
-    handle_call(command, from, s)
-  end
-
-  @doc false
-  def handle_info({:DOWN, ref, :process, _, _}, s) do
-    s =
-      case HashDict.fetch(s.listeners, ref) do
-        {:ok, {channel, _pid}} ->
-          s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
-          s = update_in(s.listeners, &HashDict.delete(&1, ref))
-
-          if HashSet.size(s.listener_channels[channel]) == 0 do
-            s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-            s = add_dummy_command(s)
-            {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
-            s
-          else
-            s
-          end
+        end
         :error ->
-          s
-      end
-
-    {:noreply, s}
-  end
-
-  def handle_info({tag, _, data}, %{sock: {mod, sock}, tail: tail} = s)
-      when tag in [:tcp, :ssl] do
-    case new_data(tail <> data, %{s | tail: ""}) do
-      {:ok, s} ->
-        socket_setopts(mod, s, sock, active: :once)
-      {:error, error, s} ->
-        error(error, s)
+          protocol_info(down, s)
     end
   end
 
-  def handle_info({tag, _}, s) when tag in [:tcp_closed, :ssl_closed] do
-    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: :closed), s)
-  end
-
-  def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: reason), s)
-  end
-
-  @doc false
-  def new_query(statement, params, %{queue: queue} = s) do
-    {{:value, command}, queue} = :queue.out(queue)
-    new_command = {:query, statement, params}
-    command = %{command | command: new_command}
-
-    queue = :queue.in_r(command, queue)
-    command(new_command, %{s | queue: queue})
-  end
-
-  @doc false
-  def next(%{queue: queue} = s) do
-    case :queue.out(queue) do
-      {{:value, %{command: command}}, _queue} ->
-        command(command, s)
-      {:empty, _queue} ->
-        {:ok, s}
-    end
+  def handle_info(msg, s) do
+    protocol_info(msg, s)
   end
 
   ### PRIVATE FUNCTIONS ###
-
-  defp get_tag(:tcp_error), do: :tcp
-  defp get_tag(:ssl_error), do: :ssl
-  defp get_tag(:tcp_closed), do: :tcp
-  defp get_tag(:ssl_closed), do: :ssl
-
-  defp socket_setopts(:gen_tcp, s, sock, opts) do
-    case :inet.setopts(sock, opts) do
-      :ok ->
-        {:noreply, s}
-      {:error, reason} ->
-        error(Postgrex.Error.exception(tag: :tcp, action: "setopts", reason: reason), s)
-    end
-  end
-
-  defp socket_setopts(:ssl, s, sock, _opts) do
-    case :ssl.setopts(sock, active: :once) do
-      :ok ->
-        {:noreply, s}
-      {:error, reason} ->
-        error(Postgrex.Error.exception(tag: :ssl, action: "setopts", reason: reason), s)
-    end
-  end
 
   defp sync_connect(opts) do
     case connect(:init, opts) do
@@ -389,11 +324,41 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp command({:query, statement, _params}, s) do
-    Protocol.send_query(statement, s)
+  defp handle_query(statement, params, reply, s) do
+    %__MODULE__{protocol: protocol, parameters: parameters} = s
+    case Protocol.handle_query(statement, params, protocol) do
+      {:ok, result, protocol, new_parameters, notifications} ->
+        reply.(result)
+        notify_listeners(notifications, s)
+        parameters = Map.merge(parameters, new_parameters)
+        {:noreply, %__MODULE__{s | protocol: protocol, parameters: parameters}}
+      {:stop, reason, protocol} ->
+        reply.(reason)
+        {:stop, reason, %__MODULE__{s | protocol: protocol}}
+    end
   end
 
-  defp command({:listen, channel, pid}, s) do
+  defp reply(from, reply) do
+    Connection.reply(from, query_response(reply))
+  end
+
+  defp query_response(%Postgrex.Result{} = res), do: {:ok, res}
+  defp query_response(%Postgrex.Error{} = err),  do: {:error, err}
+  defp query_response({:exit, _} = exit),        do: exit
+
+  defp notify_listeners(notifications, s) do
+    %__MODULE__{listener_channels: channels, listeners: listeners} = s
+    _ = for {channel, payload} <- notifications do
+      _ = for ref <- HashDict.get(channels, channel) || [] do
+        {_, pid} = HashDict.fetch!(listeners, ref)
+        send(pid, {:notification, self(), ref, channel, payload})
+        :ok
+      end
+    end
+    :ok
+  end
+
+  defp handle_listen(channel, pid, from, s) do
     ref = Process.monitor(pid)
     s = update_in(s.listeners, &HashDict.put(&1, ref, {channel, pid}))
     s = update_in(s.listener_channels[channel], fn set ->
@@ -401,15 +366,13 @@ defmodule Postgrex.Connection do
     end)
 
     if HashSet.size(s.listener_channels[channel]) == 1 do
-      s = add_reply_to_queue({:ok, ref}, s)
-      new_query("LISTEN #{channel}", [], s)
+      listener_query("LISTEN #{channel}", {:ok, ref}, from, s)
     else
-      reply({:ok, ref}, s)
-      {:ok, s}
+      {:reply, {:ok, ref}, s}
     end
   end
 
-  defp command({:unlisten, ref}, s) do
+  defp handle_unlisten(ref, from, s) do
     case HashDict.fetch(s.listeners, ref) do
       {:ok, {channel, _pid}} ->
         s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
@@ -417,53 +380,33 @@ defmodule Postgrex.Connection do
 
         if HashSet.size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-          s = add_reply_to_queue(:ok, s)
-          new_query("UNLISTEN #{channel}", [], s)
+          listener_query("UNLISTEN #{channel}", :ok, from, s)
         else
-          reply(:ok, s)
-          {:ok, s}
+          {:reply, :ok, s}
         end
-
       :error ->
-        reply({:error, %ArgumentError{}}, s)
-        {:ok, s}
+        {:reply, {:error, %ArgumentError{}}, s}
     end
   end
 
-  defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do
-    size = size - 4
-
-    case data do
-      <<data :: binary(size), tail :: binary>> ->
-        msg = Messages.parse(data, type, size)
-        case Protocol.message(state, msg, s) do
-          {:ok, s} -> new_data(tail, s)
-          {:error, _, _} = err -> err
-        end
-      _ ->
-        {:ok, %{s | tail: tail}}
+  defp listener_query(statement, result, from, s) do
+    reply = fn(%Postgrex.Result{}) ->
+        Connection.reply(from, result)
+      (other) ->
+        reply(from, other)
     end
+    handle_query(statement, [], reply, s)
   end
 
-  defp new_data(data, %{tail: tail} = s) do
-    # NOTE: This can be optimized by building an iolist and only concat to
-    #       a binary when we know we have enough data according to the
-    #       message header.
-    {:ok, %{s | tail: tail <> data}}
-  end
-
-  defp add_dummy_command(s) do
-    command = new_command(:DUMMY, nil)
-    %{s | queue: :queue.in_r(command, s.queue)}
-  end
-
-  defp add_reply_to_queue(reply, %{queue: queue} = s) do
-    {{:value, command}, queue} = :queue.out(queue)
-    command = %{command | reply: {:reply, reply}}
-    %{s | queue: :queue.in_r(command, queue)}
-  end
-
-  defp new_command(command, from) do
-    %{command: command, from: from, reply: :no_reply}
+  defp protocol_info(info, s) do
+    %__MODULE__{protocol: protocol, parameters: parameters} = s
+    case Protocol.handle_info(info, protocol) do
+      {:ok, protocol, new_parameters, notifications} ->
+        notify_listeners(notifications, s)
+        parameters = Map.merge(parameters, new_parameters)
+        {:noreply, %__MODULE__{s | protocol: protocol, parameters: parameters}}
+      {:stop, reason, protocol} ->
+        {:stop, reason, %__MODULE__{s | protocol: protocol}}
+    end
   end
 end
