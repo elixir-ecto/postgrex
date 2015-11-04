@@ -70,6 +70,8 @@ defmodule Postgrex.Connection do
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
+    not (default: `:auto`)
 
   ## Examples
 
@@ -98,11 +100,13 @@ defmodule Postgrex.Connection do
         protocol = %{protocol | timeout: timeout}
         case query(pid, ref, protocol, statement, params, buffer) do
           %Postgrex.Result{} = res ->
-            {:ok, res}
+            {:ok, decode(res, opts)}
           %Postgrex.Error{} = err ->
             {:error, err}
-          {:exit, reason} ->
-            exit({reason, {__MODULE__, :query, [pid, statement, params, opts]}})
+          {:error, _} = error ->
+             error
+          {kind, reason, stack} ->
+            :erlang.raise(kind, reason, stack)
         end
       {:error, _} = error ->
         error
@@ -320,7 +324,14 @@ defmodule Postgrex.Connection do
       kind, reason ->
         stack = System.stacktrace()
         Connection.cast(pid, {:stop, ref})
-        :erlang.raise(kind, reason, stack)
+        {kind, reason, stack}
+    end
+  end
+
+  defp decode(res, opts) do
+    case Keyword.get(opts, :decode, :auto) do
+      :auto   -> Postgrex.Result.decode(res)
+      :manual -> res
     end
   end
 

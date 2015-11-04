@@ -476,6 +476,20 @@ defmodule QueryTest do
     assert res.rows == [[1, 2], [3, 4]]
   end
 
+  test "multi row result struct with manual decoding", context do
+    assert {:ok, res} = P.query(context[:pid], "VALUES (1, 2), (3, 4)", [], decode: :manual)
+    assert res.rows == [[<<0, 0, 0, 3>>, <<0, 0, 0, 4>>],
+      [<<0, 0, 0, 1>>, <<0, 0, 0, 2>>]]
+
+    assert Postgrex.Result.decode(res).rows == [[1, 2], [3, 4]]
+
+    res = Postgrex.Result.decode(res, &Enum.map(&1, fn x -> x * 2 end))
+    assert res.rows == [[2, 4], [6, 8]]
+
+    res = Postgrex.Result.decode(res, & &1 * 2)
+    assert res.rows == [[2, 4], [6, 8]]
+  end
+
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
