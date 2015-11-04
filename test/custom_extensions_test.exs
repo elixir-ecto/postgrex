@@ -79,13 +79,15 @@ defmodule CustomExtensionsTest do
   end
 
   test "encode and decode pushes error to client", context do
-    assert {{%RuntimeError{message: "encode"}, _}, {P, :query, [_|_]}} =
-      catch_exit(query("SELECT $1::boolean", [true]))
+    assert_raise RuntimeError, "encode", fn ->
+      query("SELECT $1::boolean", [true])
+    end
 
     assert Process.alive? context[:pid]
 
-    assert {{%RuntimeError{message: "decode"}, _}, {P, :query, [_|_]}} =
-      catch_exit(query("SELECT true", []))
+    assert_raise RuntimeError, "decode", fn ->
+      query("SELECT true", [])
+    end
 
     assert Process.alive? context[:pid]
   end
