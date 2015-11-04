@@ -10,7 +10,8 @@ defmodule Postgrex.Connection do
   @timeout 5000
 
   defstruct [parameters: nil, protocol: nil, queue: :queue.new(), client: nil,
-             listeners: HashDict.new(), listener_channels: HashDict.new()]
+             timer: nil, listeners: HashDict.new(),
+             listener_channels: HashDict.new()]
 
   ### PUBLIC API ###
 
@@ -83,16 +84,18 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
+    queue_timeout = opts[:queue_timeout] || @timeout
     timeout = opts[:timeout] || @timeout
     ref = make_ref()
     try do
-      Connection.call(pid, {:query, ref}, timeout)
+      Connection.call(pid, {:query, ref, timeout}, queue_timeout)
     catch
       :exit, {_, {Connection, :call, [pid | _]}} = reason ->
         Connection.cast(pid, {:cancel, ref})
         exit(reason)
     else
       {:ok, protocol, pid, buffer} ->
+        protocol = %{protocol | timeout: timeout}
         case query(pid, ref, protocol, statement, params, buffer) do
           %Postgrex.Result{} = res ->
             {:ok, res}
@@ -225,14 +228,14 @@ defmodule Postgrex.Connection do
     {:reply, params, s}
   end
 
-  def handle_call({:query, ref}, {pid, _} = from, %{client: nil} = s) do
+  def handle_call({:query, ref, timeout}, {pid, _} = from, %{client: nil} = s) do
     monitor = Process.monitor(pid)
-    handle_next(:query, from, %{s | client: {ref, monitor}})
+    handle_next({:query, timeout}, from, %{s | client: {ref, monitor}})
   end
 
-  def handle_call({:query, ref}, {pid, _} = from, %{queue: queue} = s) do
+  def handle_call({:query, ref, timeout}, {pid, _} = from, %{queue: queue} = s) do
     client = {ref, Process.monitor(pid)}
-    {:noreply, %{s | queue: :queue.in({:query, client, from}, queue)}}
+    {:noreply, %{s | queue: :queue.in({{:query, timeout}, client, from}, queue)}}
   end
 
   def handle_call({:listen, channel}, from, %{client: nil} = s) do
@@ -293,6 +296,10 @@ defmodule Postgrex.Connection do
     end
   end
 
+  def handle_info({:timeout, timer, __MODULE__}, %{timer: timer} = s) when is_reference(timer) do
+    {:stop, :query_timeout, s}
+  end
+
   def handle_info(msg, s) do
     protocol_info(msg, s)
   end
@@ -324,10 +331,11 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp await_next(buffer, %{client: client, queue: queue} = s) do
+  defp await_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
     _ = client && Process.demonitor(elem(client, 1), [:flush])
+    cancel_timer(timer)
     {item, queue} = :queue.out(queue)
-    s = %{s | client: nil, queue: queue}
+    s = %{s | client: nil, timer: nil, queue: queue}
     case item do
       {:value, {request, client, from}} ->
         await_next(request, from, buffer, %{s | client: client})
@@ -362,8 +370,8 @@ defmodule Postgrex.Connection do
 
   defp handle_next(request, from, buffer \\ :active_once, s)
 
-  defp handle_next(:query, from, buffer, s) do
-    handle_query(from, buffer, s)
+  defp handle_next({:query, timeout}, from, buffer, s) do
+    handle_query(timeout, from, buffer, s)
   end
   defp handle_next({:listen, channel}, from, buffer, s) do
     handle_listen(channel, from, buffer, s)
@@ -387,18 +395,15 @@ defmodule Postgrex.Connection do
     :ok
   end
 
-  defp handle_query(from, :active_once, %{protocol: protocol} = s) do
-    case Protocol.checkout(protocol) do
+  defp handle_query(timeout, from, buffer, %{protocol: protocol} = s) do
+    case Protocol.checkout(protocol, buffer) do
       {:ok, buffer} ->
         Connection.reply(from, {:ok, protocol, self(), buffer})
-        {:noreply,  s}
+        timer = start_timer(timeout)
+        {:noreply,  %{s | timer: timer}}
       {:error, reason} ->
         {:stop, reason, s}
     end
-  end
-  defp handle_query(from, buffer, %{protocol: protocol} = s) do
-    Connection.reply(from, {:ok, protocol, self(), buffer})
-    {:noreply, s}
   end
 
   defp handle_listen(channel, {pid, _} = from, buffer, s) do
@@ -494,6 +499,29 @@ defmodule Postgrex.Connection do
         {:noreply, s}
       {:error, reason} ->
         {:stop, reason, s}
+    end
+  end
+
+  defp start_timer(:infinity), do: nil
+  defp start_timer(timeout) do
+    :erlang.start_timer(timeout, self, __MODULE__)
+  end
+
+  defp cancel_timer(nil), do: :ok
+  defp cancel_timer(timer) do
+    case :erlang.cancel_timer(timer) do
+      false -> flush_timer(timer)
+      _     -> :ok
+    end
+  end
+
+  defp flush_timer(timer) do
+    receive do
+      {:timeout, ^timer, __MODULE__} ->
+        :ok
+    after
+      0 ->
+        raise ArgumentError, "Timer #{inspect(timer)} does not exist"
     end
   end
 end

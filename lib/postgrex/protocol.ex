@@ -38,8 +38,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec checkout(state) :: {:ok, binary} | {:error, %Postgrex.Error{}}
-  def checkout(%{sock: {:gen_tcp, sock}} = s) do
+  @spec checkout(state, binary | :active_once) ::
+    {:ok, binary} | {:error, %Postgrex.Error{}}
+  def checkout(%{sock: {:gen_tcp, sock}} = s, :active_once) do
     case :inet.setopts(sock, [active: :false]) do
       :ok ->
         recv_buffer(s)
@@ -47,7 +48,7 @@ defmodule Postgrex.Protocol do
         error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
     end
   end
-  def checkout(%{sock: {:ssl, sock}} = s) do
+  def checkout(%{sock: {:ssl, sock}} = s, :active_once) do
     case :ssl.setopts(sock, [active: :false]) do
       :ok ->
         recv_buffer(s)
@@ -55,6 +56,7 @@ defmodule Postgrex.Protocol do
         error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
     end
   end
+  def checkout(_, buffer), do: {:ok, buffer}
 
   @spec checkin(state, binary) ::
     {:ok, parameters, notifications} | {:error, %Postgrex.Error{}}
