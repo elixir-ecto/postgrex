@@ -59,7 +59,13 @@ defmodule Postgrex.Protocol do
   @spec checkin(state, binary) ::
     {:ok, parameters, notifications} | {:error, %Postgrex.Error{}}
   def checkin(s, buffer) do
-    ready_recv(s, %{parameters: %{}, notifications: []}, buffer)
+    checkin_recv(s, %{parameters: %{}, notifications: []}, buffer)
+  end
+
+  @spec await(state, binary) ::
+    {:ok, parameters, notifications, binary} | {:error, %Postgrex.Error{}}
+  def await(s, buffer) do
+    await_recv(s, %{parameters: %{}, notifications: []}, buffer)
   end
 
   @spec query(state, String.t, [any], binary | :active_once) ::
@@ -233,7 +239,7 @@ defmodule Postgrex.Protocol do
     case Postgrex.TypeServer.fetch(types_key) do
       {:ok, table} ->
         s = %{s | types: table}
-        {:ok, parameters, notifications} = ok(s, status, buffer)
+        {:ok, parameters, notifications} = activate(s, status, buffer)
         {:ok, s, parameters, notifications}
       {:lock, ref, table} ->
         status = %{status | types_ref: ref}
@@ -298,7 +304,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_await(s, status, buffer) do
-    case ready_recv(s, status, buffer) do
+    case checkin_recv(s, status, buffer) do
       {:ok, parameters, notifications} ->
         {:ok, s, parameters, notifications}
       {:error, _} = error ->
@@ -457,16 +463,31 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## ready
+  ## checkin
 
-  defp ready_recv(%{sock: sock, timeout: timeout} = s, status, buffer) do
+  defp checkin_recv(%{sock: sock, timeout: timeout} = s, status, buffer) do
+    case msg_recv(sock, buffer, timeout) do
+      {:ok, msg_ready(), buffer} ->
+        activate(s, status, buffer)
+      {:ok, msg_error(fields: fields), _} ->
+        error(Postgrex.Error.exception(postgres: fields), s)
+      {:ok, msg, buffer} ->
+        checkin_recv(s, handle_msg(status, msg), buffer)
+      {:error, reason} ->
+        error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
+    end
+  end
+
+  ## await
+
+  defp await_recv(%{sock: sock, timeout: timeout} = s, status, buffer) do
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_ready(), buffer} ->
         ok(s, status, buffer)
       {:ok, msg_error(fields: fields), _} ->
         error(Postgrex.Error.exception(postgres: fields), s)
       {:ok, msg, buffer} ->
-        ready_recv(s, handle_msg(status, msg), buffer)
+        await_recv(s, handle_msg(status, msg), buffer)
       {:error, reason} ->
         error(%Postgrex.Error{message: "tcp recv: #{reason}"}, s)
     end
@@ -480,7 +501,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_error(fields: fields), _} ->
         error(Postgrex.Error.exception(postgres: fields), s)
       {:ok, msg, <<>>} ->
-        ok(s, handle_msg(status, msg), <<>>)
+        activate(s, handle_msg(status, msg), <<>>)
       {:ok, msg, buffer} ->
         data(s, handle_msg(status, msg), buffer)
       {:error, exception} ->
@@ -636,10 +657,9 @@ defmodule Postgrex.Protocol do
     status
   end
 
-  defp ok(%{sock: sock}, status, buffer) do
-    activate(sock, buffer)
+  defp ok(_, status, buffer) do
     %{parameters: parameters, notifications: notifications} = status
-    {:ok, parameters, Enum.reverse(notifications)}
+    {:ok, parameters, Enum.reverse(notifications), buffer}
   end
 
   defp ok(result, _, status, buffer) do
@@ -703,6 +723,12 @@ defmodule Postgrex.Protocol do
       0 ->
         {:ok, <<>>}
     end
+  end
+
+  defp activate(%{sock: sock}, status, buffer) do
+    activate(sock, buffer)
+    %{parameters: parameters, notifications: notifications} = status
+    {:ok, parameters, Enum.reverse(notifications)}
   end
 
   ## Fake [active: once] if buffer not empty and delay error/closed to next call
