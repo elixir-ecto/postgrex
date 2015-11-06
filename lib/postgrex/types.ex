@@ -272,6 +272,17 @@ defmodule Postgrex.Types do
     extension.decode(info, binary, state, opts)
   end
 
+  @doc """
+  Creates a fun that decodes a binary to an Elixir value for
+  the given type.
+  """
+  @spec decoder(oid, state) :: (binary -> term)
+  def decoder(oid, state) do
+    {_oid, info, extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    &extension.decode(info, &1, state, opts)
+  end
+
   defp fetch!(table, oid) do
     case :ets.lookup(table, oid) do
       [value] ->

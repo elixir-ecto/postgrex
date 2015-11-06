@@ -382,21 +382,22 @@ defmodule Postgrex.Protocol do
   ### helpers ###
 
   defp decode_rows(rows, col_oids, types) do
-    col_oids = List.to_tuple(col_oids)
-
-    Enum.reduce(rows, [], fn values, acc ->
-      {_, row} =
-        Enum.reduce(values, {0, []}, fn
-          nil, {count, list} ->
-            {count + 1, [nil|list]}
-          bin, {count, list} ->
-            oid = elem(col_oids, count)
-            decoded = Postgrex.Types.decode(oid, bin, types)
-            {count + 1, [decoded|list]}
-        end)
-      [Enum.reverse(row)|acc]
-    end)
+    decoders = for oid <- col_oids, do: Postgrex.Types.decoder(oid, types)
+    do_decode_rows(rows, decoders, [])
   end
+
+  defp do_decode_rows([row | rows], decoders, decoded) do
+    do_decode_rows(rows, decoders, [decode_row(row, decoders) | decoded])
+  end
+  defp do_decode_rows([], _, decoded), do: decoded
+
+  defp decode_row([nil | rest], [_ | decoders]) do
+    [nil | decode_row(rest, decoders)]
+  end
+  defp decode_row([elem | rest], [decode | decoders]) do
+    [decode.(elem) | decode_row(rest, decoders)]
+  end
+  defp decode_row([], []), do: []
 
   defp send_params(s, rfs) do
     {msgs, s} =
