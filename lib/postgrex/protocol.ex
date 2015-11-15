@@ -15,7 +15,7 @@ defmodule Postgrex.Protocol do
   @typep notifications :: [{binary, binary}]
 
   @spec connect(Keyword.t) ::
-    {:ok, state, parameters, notifications} | {:error, %Postgrex.Error{}}
+    {:ok, state, parameters, notifications} | {:error, Postgrex.Error.t}
   def connect(opts) do
     host       = Keyword.fetch!(opts, :hostname) |> to_char_list
     port       = opts[:port] || 5432
@@ -39,7 +39,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec checkout(state, binary | :active_once) ::
-    {:ok, binary} | {:error, %Postgrex.Error{}}
+    {:ok, binary} | {:error, Postgrex.Error.t}
   def checkout(%{sock: {:gen_tcp, sock}} = s, :active_once) do
     case :inet.setopts(sock, [active: :false]) do
       :ok ->
@@ -59,20 +59,21 @@ defmodule Postgrex.Protocol do
   def checkout(_, buffer), do: {:ok, buffer}
 
   @spec checkin(state, binary) ::
-    {:ok, parameters, notifications} | {:error, %Postgrex.Error{}}
+    {:ok, parameters, notifications} | {:error, Postgrex.Error.t}
   def checkin(s, buffer) do
     checkin_recv(s, %{parameters: %{}, notifications: []}, buffer)
   end
 
   @spec await(state, binary) ::
-    {:ok, parameters, notifications, binary} | {:error, %Postgrex.Error{}}
+    {:ok, parameters, notifications, binary} | {:error, Postgrex.Error.t}
   def await(s, buffer) do
     await_recv(s, %{parameters: %{}, notifications: []}, buffer)
   end
 
   @spec query(state, String.t, [any], binary | :active_once) ::
-    {:ok, %Postgrex.Result{}, parameters, notifications, binary} |
-    {:error, %Postgrex.Error{}}
+    {:ok, Postgrex.Result.t | Postgrex.Error.t |
+      {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
+    {:error, Postgrex.Error.t}
   def query(s, statement, params, buffer) do
     status = %{parameters: %{}, notifications: [], portal: nil,
                column_oids: nil, columns: nil}
@@ -87,7 +88,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec message(state, any) ::
-    {:ok, parameters, notifications} | {:error, %Postgrex.Error{}} | :unknown
+    {:ok, parameters, notifications} | {:error, Postgrex.Error.t} | :unknown
   def message(%{sock: {:gen_tcp, sock}} = s, {:tcp, sock, data}) do
     data(s, data)
   end
@@ -351,17 +352,27 @@ defmodule Postgrex.Protocol do
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
         describe_recv(s, %{status | portal: param_oids}, buffer)
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {col_oids, col_names} = columns(fields)
-        ## TODO: Handle result_formats/2 exceptions.
-        result_formats = result_formats(col_oids, s.types)
-        status = %{status | columns: col_names, column_oids: col_oids}
-        {:execute, result_formats, status, buffer}
+        describe_formats(s, status, fields, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         error(Postgrex.Error.exception(postgres: fields), s, status, buffer)
       {:ok, msg, buffer} ->
         describe_recv(s, handle_msg(status, msg), buffer)
       {:error, exception} ->
         error(exception, s)
+    end
+  end
+
+  defp describe_formats(s, status, fields, buffer) do
+    {col_oids, col_names} = columns(fields)
+    try do
+      result_formats(col_oids, s.types)
+    catch
+      kind, reason ->
+        sync_error(kind, reason, System.stacktrace, s, status, buffer)
+    else
+      formats ->
+        status = %{status | columns: col_names, column_oids: col_oids}
+        {:execute, formats, status, buffer}
     end
   end
 
