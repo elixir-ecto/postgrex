@@ -97,19 +97,33 @@ defmodule Postgrex.Connection do
   and is useful for starting multiple async queries and then waiting on the result
   later on.
 
-  When server name passed has no process associated, it will raise an error.
+  This function expects a pid as first argument for Elixir 1.0. In Elixir 1.1,
+  a pid or a name could be passed as first argument.
 
-  This function expects a pid as first argument for Elixir 1.0. In Elixir 1.1, a pid
-  or a name could be passed as first argument.
+  When server name passed has no process associated, it will raise an error.
 
   ## Examples
 
-      task = %Task{} = Postgrex.Connection.async_query(pid, "SELECT title FROM posts", [])
-      Task.await(task)
+      iex> task = Postgrex.Connection.async_query(pid, "SELECT title FROM posts", [])
+      iex> Task.await(task)
+      {:ok, %Postgrex.Result{...}}
+
+  ## Return values
+
+  When awaited on, the task will return one of:
+
+    * `{:ok, %Postgrex.Result{}}` - the query was successful
+    * `{:error, %Postgrex.Error{}}` - the query failed on Postgres side
+    * `{:exit, term}` - there was an error when processing the query or its results in the connection
+
   """
+  @spec async_query(pid, iodata, list) :: Task.t
   def async_query(pid, statement, params) do
     message = {:query, statement, params}
-    process = cond do
+
+    # TODO: Remove branches when we no longer support Elixir v1.0
+    process =
+      cond do
         is_pid(pid) ->
           pid
         function_exported?(GenServer, :whereis, 1) ->
@@ -117,11 +131,19 @@ defmodule Postgrex.Connection do
         true ->
           raise ArgumentError, "requires Elixir 1.1 when passing server name as first argument"
       end
+
     monitor = Process.monitor(process)
     from = {self(), monitor}
 
-    :ok = Connection.cast(pid, {message, from})
-    %Task{ref: monitor}
+    :ok  = Connection.cast(pid, {message, from})
+    task = %Task{ref: monitor}
+
+    # TODO: Remove branches when we no longer support Elixir v1.1
+    if Map.has_key?(task, :owner) do
+      %{task | owner: self()}
+    else
+      task
+    end
   end
 
   @doc """
