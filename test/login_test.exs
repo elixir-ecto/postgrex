@@ -114,7 +114,7 @@ defmodule LoginTest do
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
       assert_receive {:EXIT, ^pid, %Postgrex.Error{message: message}}, 500
-      assert message == "tcp connect: non-existing domain"
+      assert message == "tcp connect: non-existing domain - :nxdomain"
     end
   end
 end
