@@ -15,6 +15,9 @@ defmodule Postgrex.Utils do
         false
       {{:value, %{from: nil}}, _queue} ->
         false
+      {{:value, %{from: from}}, _queue} when elem(reply, 0) == :error ->
+        Connection.reply(from, reply)
+        true
       {{:value, %{reply: :no_reply, from: from}}, _queue} ->
         Connection.reply(from, reply)
         true
