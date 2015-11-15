@@ -172,8 +172,10 @@ defmodule Postgrex.Connection do
     message = {:listen, channel, self()}
     timeout = opts[:timeout] || @timeout
     case Connection.call(pid, message, timeout) do
-      ref when is_reference(ref)  -> {:ok, ref}
-      %Postgrex.Error{} = err     -> {:error, err}
+      {:exit, reason} ->
+        exit({reason, {__MODULE__, :listen, [pid, channel, opts]}})
+      result ->
+        result
     end
   end
 
@@ -201,9 +203,10 @@ defmodule Postgrex.Connection do
     message = {:unlisten, ref}
     timeout = opts[:timeout] || @timeout
     case Connection.call(pid, message, timeout) do
-      :ok -> :ok
-      %ArgumentError{} = err -> raise err
-      %Postgrex.Error{} = err -> {:error, err}
+      {:exit, reason} ->
+        exit({reason, {__MODULE__, :unlisten, [pid, ref, opts]}})
+      {:error, %ArgumentError{} = err} -> raise err
+      result                           -> result
     end
   end
 
@@ -398,10 +401,10 @@ defmodule Postgrex.Connection do
     end)
 
     if HashSet.size(s.listener_channels[channel]) == 1 do
-      s = add_reply_to_queue(ref, s)
+      s = add_reply_to_queue({:ok, ref}, s)
       new_query("LISTEN #{channel}", [], s)
     else
-      reply(ref, s)
+      reply({:ok, ref}, s)
       {:ok, s}
     end
   end
@@ -422,7 +425,7 @@ defmodule Postgrex.Connection do
         end
 
       :error ->
-        reply(%ArgumentError{}, s)
+        reply({:error, %ArgumentError{}}, s)
         {:ok, s}
     end
   end
