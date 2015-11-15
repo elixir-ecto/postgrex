@@ -92,7 +92,7 @@ defmodule Postgrex.Connection do
     try do
       Connection.call(pid, {:query, ref, timeout}, queue_timeout)
     catch
-      :exit, {_, {Connection, :call, [pid | _]}} = reason ->
+      :exit, {_, {_, :call, [pid | _]}} = reason ->
         Connection.cast(pid, {:cancel, ref})
         exit(reason)
     else
@@ -301,7 +301,7 @@ defmodule Postgrex.Connection do
   end
 
   def handle_info({:timeout, timer, __MODULE__}, %{timer: timer} = s) when is_reference(timer) do
-    {:stop, :query_timeout, s}
+    {:stop, {:shutdown, :timeout}, s}
   end
 
   def handle_info(msg, s) do
