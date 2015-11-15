@@ -264,22 +264,18 @@ defmodule Postgrex.Connection do
       when tag in [:tcp, :ssl] do
     case new_data(tail <> data, %{s | tail: ""}) do
       {:ok, s} ->
-        case mod do
-          :gen_tcp -> :inet.setopts(sock, active: :once)
-          :ssl     -> :ssl.setopts(sock, active: :once)
-        end
-        {:noreply, s}
+        socket_setopts(mod, s, sock, active: :once)
       {:error, error, s} ->
         error(error, s)
     end
   end
 
   def handle_info({tag, _}, s) when tag in [:tcp_closed, :ssl_closed] do
-    error(%Postgrex.Error{message: "tcp closed"}, s)
+    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: :closed), s)
   end
 
   def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(%Postgrex.Error{message: "tcp error: #{reason}"}, s)
+    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: reason), s)
   end
 
   @doc false
@@ -303,6 +299,29 @@ defmodule Postgrex.Connection do
   end
 
   ### PRIVATE FUNCTIONS ###
+
+  defp get_tag(:tcp_error), do: :tcp
+  defp get_tag(:ssl_error), do: :ssl
+  defp get_tag(:tcp_closed), do: :tcp
+  defp get_tag(:ssl_closed), do: :ssl
+
+  defp socket_setopts(:gen_tcp, s, sock, opts) do
+    case :inet.setopts(sock, opts) do
+      :ok ->
+        {:noreply, s}
+      {:error, reason} ->
+        error(Postgrex.Error.exception(tag: :tcp, action: "setopts", reason: reason), s)
+    end
+  end
+
+  defp socket_setopts(:ssl, s, sock, _opts) do
+    case :ssl.setopts(sock, active: :once) do
+      :ok ->
+        {:noreply, s}
+      {:error, reason} ->
+        error(Postgrex.Error.exception(tag: :ssl, action: "setopts", reason: reason), s)
+    end
+  end
 
   defp sync_connect(opts) do
     case connect(:init, opts) do

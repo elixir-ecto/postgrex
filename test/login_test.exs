@@ -18,7 +18,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: code}}}
+      assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: code}}}, 500
       assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
@@ -103,6 +103,18 @@ defmodule LoginTest do
       opts = [ database: "doesntexist" ]
       {:ok, pid} = P.start_link(opts)
       assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}}
+    end
+  end
+
+  test "non-existent domain" do
+    Process.flag(:trap_exit, true)
+    opts = [ hostname: "doesntexist", username: "postgrex_cleartext_pw",
+             password: "password", database: "postgres" ]
+
+    capture_log fn ->
+      assert {:ok, pid} = P.start_link(opts)
+      assert_receive {:EXIT, ^pid, %Postgrex.Error{message: message}}, 500
+      assert message == "tcp connect: non-existing domain"
     end
   end
 end
