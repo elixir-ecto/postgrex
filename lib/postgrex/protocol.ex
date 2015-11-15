@@ -53,21 +53,28 @@ defmodule Postgrex.Protocol do
     activate(sock, buffer)
   end
 
-  @spec query(state, String.t, [any], binary | :active_once) ::
+  @spec extended_query(state, String.t, [any], binary | :active_once) ::
     {:ok, Postgrex.Result.t | Postgrex.Error.t |
       {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
     {:error, Postgrex.Error.t}
-  def query(s, statement, params, buffer) do
+  def extended_query(s, statement, params, buffer) do
     status = %{parameters: %{}, notifications: [], portal: nil,
-               decoders: nil, columns: nil}
+               decoders: nil, columns: nil, mode: :extended}
     case describe(s, status, statement, buffer) do
-      {:ok, %Postgrex.Error{}, _, _, _} = ok ->
-        ok
       {:execute, rfs, status, buffer} ->
         execute(s, status, params, rfs, buffer)
-      {:error, _} = error ->
-        error
+      result ->
+        result
     end
+  end
+
+  @spec simple_query(state, String.t, binary | :active_once) ::
+    {:ok, Postgrex.Result.t | Postgrex.Error.t |
+      {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
+    {:error, Postgrex.Error.t}
+  def simple_query(s, statement, buffer) do
+    status = %{parameters: %{}, notifications: [], columns: nil, mode: :simple}
+    simple_send(s, status, statement, buffer)
   end
 
   @spec message(state, any) ::
@@ -453,6 +460,34 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, result, buffer)
   end
 
+  ## simple
+
+  defp simple_send(%{sock: sock} = s, status, statement, buffer) do
+    msg = msg_query(query: statement)
+    case msg_send(msg, sock) do
+      :ok               -> simple_recv(s, status, buffer)
+      {:error, _} = err -> err
+    end
+  end
+
+  defp simple_recv(s, status, buffer) do
+    %{sock: sock, timeout: timeout} = s
+    case msg_recv(sock, buffer, timeout) do
+      {:ok, msg_empty_query(), buffer} ->
+        sync_recv(s, status, %Postgrex.Result{}, buffer)
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        complete(s, status, [], tag, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg_row_desc(), _} ->
+        {:error, %Postgrex.Error{message: "results can not be decoded with simple query, use extended"}}
+      {:ok, msg, buffer} ->
+        simple_recv(s, handle_msg(status, msg), buffer)
+      {:error, _} = err ->
+        err
+    end
+  end
+
   ## data
 
   defp data(s, status \\ %{parameters: %{}, notifications: []}, buffer) do
@@ -614,19 +649,6 @@ defmodule Postgrex.Protocol do
     status
   end
 
-  defp sync_recv(s, status, result, buffer) do
-    %{sock: sock, timeout: timeout} = s
-    case msg_recv(sock, buffer, timeout) do
-      {:ok, msg_ready(), buffer} ->
-        %{parameters: parameters, notifications: notifications} = status
-        {:ok, result, parameters, Enum.reverse(notifications), buffer}
-      {:ok, msg, buffer} ->
-        sync_recv(s, handle_msg(status, msg), result, buffer)
-      {:error, _} = err ->
-        err
-    end
-  end
-
   defp sync(s, status, result, buffer) do
     case msg_send(msg_sync(), s) do
       :ok ->
@@ -634,6 +656,35 @@ defmodule Postgrex.Protocol do
       {:error, _} = err ->
         err
     end
+  end
+
+  defp sync_recv(s, %{mode: mode} = status, result, buffer) do
+    %{sock: sock, timeout: timeout} = s
+    case msg_recv(sock, buffer, timeout) do
+      {:ok, msg_ready(), buffer} ->
+        %{parameters: parameters, notifications: notifications} = status
+        {:ok, result, parameters, Enum.reverse(notifications), buffer}
+      {:ok, msg, buffer} when mode == :extended ->
+        sync_recv(s, handle_msg(status, msg), result, buffer)
+      {:ok, msg, buffer} when mode == :simple ->
+        simple_sync_msg(s, status, msg, result, buffer)
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp simple_sync_msg(s, status, msg, result, buffer) do
+    case msg do
+      msg_empty_query()      -> multiple_commands()
+      msg_command_complete() -> multiple_commands()
+      msg_error()            -> multiple_commands()
+      msg_row_desc()         -> multiple_commands()
+      msg                    -> sync_recv(s, handle_msg(status, msg), result, buffer)
+    end
+  end
+
+  defp multiple_commands() do
+    {:error, %Postgrex.Error{message: "multiple commands can not be decoded"}}
   end
 
   defp recv_buffer(%{sock: {:gen_tcp, sock}}) do

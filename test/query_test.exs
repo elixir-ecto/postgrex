@@ -444,9 +444,19 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "fail on encode parameters with simple query", context do
+    assert_raise ArgumentError, "parameters can not be encoded with simple query, use extended", fn ->
+      query("SELECT $1::integer[]", [1], [query_mode: :simple])
+    end
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "non data statement", context do
     assert :ok = query("BEGIN", [])
     assert :ok = query("COMMIT", [])
+
+    assert :ok = query("BEGIN", [], [query_mode: :simple])
+    assert :ok = query("COMMIT", [], [query_mode: :simple])
   end
 
   test "result struct", context do
@@ -459,6 +469,8 @@ defmodule QueryTest do
 
   test "error struct", context do
     assert {:error, %Postgrex.Error{}} = P.query(context[:pid], "SELECT 123 + 'a'", [])
+
+    assert {:error, %Postgrex.Error{}} = P.query(context[:pid], "SELECT 123 + 'a'", [], [query_mode: :simple])
   end
 
   test "multi row result struct", context do
@@ -481,6 +493,20 @@ defmodule QueryTest do
     assert res.rows == [[2, 4], [6, 8]]
   end
 
+  test "multi row result errors with simple", context do
+    Process.flag(:trap_exit, true)
+
+    assert {:error, %Postgrex.Error{message: "results can not be decoded with simple query, use extended"}} =
+      P.query(context[:pid], "VALUES (1, 2), (3, 4)", [], [query_mode: :simple])
+  end
+
+  test "multi command result errors with simple", context do
+    Process.flag(:trap_exit, true)
+
+    assert {:error, %Postgrex.Error{message: "multiple commands can not be decoded"}} =
+      P.query(context[:pid], "BEGIN;\nCOMMIT", [], [query_mode: :simple])
+  end
+
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
@@ -490,10 +516,14 @@ defmodule QueryTest do
 
   test "error codes are translated", context  do
     assert %Postgrex.Error{postgres: %{code: :syntax_error}} = query("wat", [])
+    assert %Postgrex.Error{postgres: %{code: :syntax_error}} = query("wat", [], [query_mode: :simple])
   end
 
   test "connection works after failure in parsing state", context do
     assert %Postgrex.Error{} = query("wat", [])
+    assert [[42]] = query("SELECT 42", [])
+
+    assert %Postgrex.Error{} = query("wat", [], [query_mode: :simple])
     assert [[42]] = query("SELECT 42", [])
   end
 
@@ -513,7 +543,7 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "async test", context do
+  test "async with extended", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
       spawn fn ->
@@ -523,6 +553,19 @@ defmodule QueryTest do
 
      Enum.each(1..10, fn _ ->
       assert_receive [[:void]], 1000
+    end)
+  end
+
+  test "async with simple", context do
+    self_pid = self
+    Enum.each(1..10, fn _ ->
+      spawn fn ->
+        send self_pid, query("", [], [query_mode: :simple])
+      end
+    end)
+
+     Enum.each(1..10, fn _ ->
+      assert_receive :ok, 1000
     end)
   end
 
