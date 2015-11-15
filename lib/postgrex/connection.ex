@@ -85,13 +85,43 @@ defmodule Postgrex.Connection do
     message = {:query, statement, params}
     timeout = opts[:timeout] || @timeout
     case Connection.call(pid, message, timeout) do
-      %Postgrex.Result{} = res ->
-        {:ok, res}
-      %Postgrex.Error{} = err ->
-        {:error, err}
       {:exit, reason} ->
         exit({reason, {__MODULE__, :query, [pid, statement, params, opts]}})
+      result ->
+        result
     end
+  end
+
+  @doc """
+  Works like `query/3` and `query/4` but is asynchronous. This returns a `%Task{}`
+  and is useful for starting multiple async queries and then waiting on the result
+  later on.
+
+  When server name passed has no process associated, it will raise an error.
+
+  This function expects a pid as first argument for Elixir 1.0. In Elixir 1.1, a pid
+  or a name could be passed as first argument.
+
+  ## Examples
+
+      task = %Task{} = Postgrex.Connection.async_query(pid, "SELECT title FROM posts", [])
+      Task.await(task)
+  """
+  def async_query(pid, statement, params) do
+    message = {:query, statement, params}
+    process = cond do
+        is_pid(pid) ->
+          pid
+        function_exported?(GenServer, :whereis, 1) ->
+          GenServer.whereis(pid) || raise ArgumentError, "no process is associated with #{inspect pid}"
+        true ->
+          raise ArgumentError, "requires Elixir 1.1 when passing server name as first argument"
+      end
+    monitor = Process.monitor(process)
+    from = {self(), monitor}
+
+    :ok = Connection.cast(pid, {message, from})
+    %Task{ref: monitor}
   end
 
   @doc """
@@ -235,6 +265,10 @@ defmodule Postgrex.Connection do
     else
       {:noreply, s}
     end
+  end
+
+  def handle_cast({{:query, _, _} = command, {_, _} = from}, s) do
+    handle_call(command, from, s)
   end
 
   @doc false

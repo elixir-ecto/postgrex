@@ -510,4 +510,27 @@ defmodule QueryTest do
       assert_receive [[:void]], 1000
     end)
   end
+
+  test "async query", context do
+    task1 = async_query("SELECT true, false", [])
+    task2 = async_query("SELECT 42", [])
+
+    {:ok, %Postgrex.Result{rows: rows}} = Task.await(task1)
+    assert [[true, false]] = rows
+
+    {:ok, %Postgrex.Result{rows: rows}} = Task.await(task2)
+    assert [[42]] = rows
+
+    context = Map.put(context, :pid, nil)
+
+    if function_exported?(GenServer, :whereis, 1) do
+      assert_raise ArgumentError, "no process is associated with nil", fn ->
+        async_query("SELECT 42", [])
+      end
+    else
+      assert_raise ArgumentError, "requires Elixir 1.1 when passing server name as first argument", fn ->
+        async_query("SELECT 42", [])
+      end
+    end
+  end
 end
