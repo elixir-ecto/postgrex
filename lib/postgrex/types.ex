@@ -209,9 +209,25 @@ defmodule Postgrex.Types do
   ### TYPE FORMAT ###
 
   @doc false
-  def format(oid, state) do
-    {_oid, info, extension} = fetch!(state, oid)
+  def encoder(oid, state) do
+    {_, info, extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    {format(info, extension, state), &extension.encode(info, &1, state, opts)}
+  end
 
+  @doc false
+  def decoder(oid, state) do
+    {_, info, extension} = fetch!(state, oid)
+    opts = fetch_opts(state, extension)
+    {format(info, extension, state), &extension.decode(info, &1, state, opts)}
+  end
+
+  defp format(oid, state) do
+    {_, info, extension} = fetch!(state, oid)
+    format(info, extension, state)
+  end
+
+  defp format(info, extension, state) do
     case info.send do
       "array_send" ->
         format(info.array_elem, state)
@@ -270,17 +286,6 @@ defmodule Postgrex.Types do
     {_oid, info, _extension} = fetch!(state, oid)
     opts = fetch_opts(state, extension)
     extension.decode(info, binary, state, opts)
-  end
-
-  @doc """
-  Creates a fun that decodes a binary to an Elixir value for
-  the given type.
-  """
-  @spec decoder(oid, state) :: (binary -> term)
-  def decoder(oid, state) do
-    {_oid, info, extension} = fetch!(state, oid)
-    opts = fetch_opts(state, extension)
-    &extension.decode(info, &1, state, opts)
   end
 
   defp fetch!(table, oid) do

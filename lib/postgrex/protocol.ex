@@ -76,7 +76,7 @@ defmodule Postgrex.Protocol do
     {:error, Postgrex.Error.t}
   def query(s, statement, params, buffer) do
     status = %{parameters: %{}, notifications: [], portal: nil,
-               column_oids: nil, columns: nil}
+               decoders: nil, columns: nil}
     case describe(s, status, statement, buffer) do
       {:ok, %Postgrex.Error{}, _, _, _} = ok ->
         ok
@@ -352,7 +352,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
         describe_recv(s, %{status | portal: param_oids}, buffer)
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        describe_formats(s, status, fields, buffer)
+        describe_fields(s, status, fields, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         error(Postgrex.Error.exception(postgres: fields), s, status, buffer)
       {:ok, msg, buffer} ->
@@ -362,16 +362,16 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp describe_formats(s, status, fields, buffer) do
+  defp describe_fields(s, status, fields, buffer) do
     {col_oids, col_names} = columns(fields)
     try do
-      result_formats(col_oids, s.types)
+      decoders(col_oids, s.types)
     catch
       kind, reason ->
         sync_error(kind, reason, System.stacktrace, s, status, buffer)
     else
-      formats ->
-        status = %{status | columns: col_names, column_oids: col_oids}
+      {formats, decoders} ->
+        status = %{status | columns: col_names, decoders: decoders}
         {:execute, formats, status, buffer}
     end
   end
@@ -456,16 +456,16 @@ defmodule Postgrex.Protocol do
     result =  %Postgrex.Result{command: command, num_rows: nrows || 0}
     ok(result, s, status, buffer)
   end
-  defp complete(%{types: types} = s, status, rows, tag, buffer) do
+  defp complete(s, status, rows, tag, buffer) do
     {command, nrows} = decode_tag(tag)
-    %{column_oids: col_oids, columns: cols} = status
+    %{decoders: decoders, columns: cols} = status
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
     if is_nil(nrows) and command == :select do
       nrows = length(rows)
     end
     result = %Postgrex.Result{command: command, num_rows: nrows || 0,
                               rows: rows, columns: cols,
-                              decoder: {col_oids, types}}
+                              decoders: decoders}
     ok(result, s, status, buffer)
   end
 
@@ -524,8 +524,8 @@ defmodule Postgrex.Protocol do
       {_oid, nil} ->
         {:binary, <<-1::int32>>}
       {oid, param} ->
-        format = Types.format(oid, types)
-        binary = Types.encode(oid, param, types)
+        {format, encoder} = Types.encoder(oid, types)
+        binary = encoder.(param)
         {format, [<<IO.iodata_length(binary)::int32>>, binary]}
     end)
     |> :lists.unzip
@@ -537,8 +537,10 @@ defmodule Postgrex.Protocol do
     end) |> :lists.unzip
   end
 
-  defp result_formats(columns, types) do
-    Enum.map(columns, &Types.format(&1, types))
+  defp decoders(oids, types) do
+    oids
+    |> Enum.map(&Types.decoder(&1, types))
+    |> :lists.unzip()
   end
 
   defp tag(:gen_tcp), do: :tcp

@@ -8,7 +8,7 @@ defmodule Postgrex.Result do
     * `rows` - The result set. A list of tuples, each tuple corresponding to a
                row, each element in the tuple corresponds to a column;
     * `num_rows` - The number of fetched or affected rows;
-    * `decoder`  - Terms used to decode the query in the client;
+    * `decoders` - List of anonymous functions to decode each column;
   """
 
   @type t :: %__MODULE__{
@@ -16,10 +16,10 @@ defmodule Postgrex.Result do
     columns:  [String.t] | nil,
     rows:     [[term] | term] | nil,
     num_rows: integer,
-    decoder:  {[Postgrex.Types.oid], Postgrex.Types.state} | :done}
+    decoders: [(term -> term)] | nil}
 
   defstruct [command: nil, columns: nil, rows: nil, num_rows: nil,
-             decoder: :done]
+             decoders: nil]
 
   @doc """
   Decodes a result set.
@@ -32,24 +32,19 @@ defmodule Postgrex.Result do
   @spec decode(t, ([term] -> term)) :: t
   def decode(result_set, mapper \\ fn x -> x end)
 
-  def decode(%Postgrex.Result{decoder: :done} = res, _mapper), do: res
+  def decode(%Postgrex.Result{decoders: nil} = res, _mapper), do: res
 
   def decode(res, mapper) do
-    %Postgrex.Result{rows: rows, decoder: {col_oids, types}} = res
-    rows = decode(rows, col_oids, types, mapper)
-    %Postgrex.Result{res | rows: rows, decoder: :done}
+    %Postgrex.Result{rows: rows, decoders: decoders} = res
+    rows = decode(rows, decoders, mapper, [])
+    %Postgrex.Result{res | rows: rows, decoders: nil}
   end
 
-  defp decode(rows, col_oids, types, mapper) do
-    decoders = for oid <- col_oids, do: Postgrex.Types.decoder(oid, types)
-    do_decode(rows, decoders, mapper, [])
-  end
-
-  defp do_decode([row | rows], decoders, mapper, decoded) do
+  defp decode([row | rows], decoders, mapper, decoded) do
     decoded = [mapper.(decode_row(row, decoders)) | decoded]
-    do_decode(rows, decoders, mapper, decoded)
+    decode(rows, decoders, mapper, decoded)
   end
-  defp do_decode([], _, _, decoded), do: decoded
+  defp decode([], _, _, decoded), do: decoded
 
   defp decode_row([nil | rest], [_ | decoders]) do
     [nil | decode_row(rest, decoders)]
