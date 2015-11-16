@@ -67,9 +67,4 @@ defmodule NotificationTest do
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid2, "NOTIFY channel", [])
     :timer.sleep(300)
   end
-
-  test "listen error", context do
-    assert {:error, %Postgrex.Error{}} = P.listen(context.pid, "\n")
-  end
-
 end

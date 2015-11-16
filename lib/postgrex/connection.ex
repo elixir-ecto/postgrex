@@ -5,11 +5,13 @@ defmodule Postgrex.Connection do
 
   use Connection
   alias Postgrex.Protocol
-  alias Postgrex.Messages
-  import Postgrex.BinaryUtils
-  import Postgrex.Utils
+  require Logger
 
   @timeout 5000
+
+  defstruct [parameters: nil, protocol: nil, queue: :queue.new(), client: nil,
+             timer: nil, listeners: HashDict.new(),
+             listener_channels: HashDict.new()]
 
   ### PUBLIC API ###
 
@@ -68,6 +70,8 @@ defmodule Postgrex.Connection do
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
+    not (default: `:auto`)
 
   ## Examples
 
@@ -82,67 +86,30 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
-    message = {:query, statement, params}
+    queue_timeout = opts[:queue_timeout] || @timeout
     timeout = opts[:timeout] || @timeout
-    case Connection.call(pid, message, timeout) do
-      {:exit, reason} ->
-        exit({reason, {__MODULE__, :query, [pid, statement, params, opts]}})
-      result ->
-        result
-    end
-  end
-
-  @doc """
-  Works like `query/3` and `query/4` but is asynchronous. This returns a `%Task{}`
-  and is useful for starting multiple async queries and then waiting on the result
-  later on.
-
-  This function expects a pid as first argument for Elixir 1.0. In Elixir 1.1,
-  a pid or a name could be passed as first argument.
-
-  When server name passed has no process associated, it will raise an error.
-
-  ## Examples
-
-      iex> task = Postgrex.Connection.async_query(pid, "SELECT title FROM posts", [])
-      iex> Task.await(task)
-      {:ok, %Postgrex.Result{...}}
-
-  ## Return values
-
-  When awaited on, the task will return one of:
-
-    * `{:ok, %Postgrex.Result{}}` - the query was successful
-    * `{:error, %Postgrex.Error{}}` - the query failed on Postgres side
-    * `{:exit, term}` - there was an error when processing the query or its results in the connection
-
-  """
-  @spec async_query(pid, iodata, list) :: Task.t
-  def async_query(pid, statement, params) do
-    message = {:query, statement, params}
-
-    # TODO: Remove branches when we no longer support Elixir v1.0
-    process =
-      cond do
-        is_pid(pid) ->
-          pid
-        function_exported?(GenServer, :whereis, 1) ->
-          GenServer.whereis(pid) || raise ArgumentError, "no process is associated with #{inspect pid}"
-        true ->
-          raise ArgumentError, "requires Elixir 1.1 when passing server name as first argument"
-      end
-
-    monitor = Process.monitor(process)
-    from = {self(), monitor}
-
-    :ok  = Connection.cast(pid, {message, from})
-    task = %Task{ref: monitor}
-
-    # TODO: Remove branches when we no longer support Elixir v1.1
-    if Map.has_key?(task, :owner) do
-      %{task | owner: self()}
+    ref = make_ref()
+    try do
+      Connection.call(pid, {:query, ref, timeout}, queue_timeout)
+    catch
+      :exit, {_, {_, :call, [pid | _]}} = reason ->
+        Connection.cast(pid, {:cancel, ref})
+        exit(reason)
     else
-      task
+      {:ok, protocol, pid, buffer} ->
+        protocol = %{protocol | timeout: timeout}
+        case query(pid, ref, protocol, statement, params, buffer) do
+          %Postgrex.Result{} = res ->
+            {:ok, decode(res, opts)}
+          %Postgrex.Error{} = err ->
+            {:error, err}
+          {:error, _} = error ->
+             error
+          {kind, reason, stack} ->
+            :erlang.raise(kind, reason, stack)
+        end
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -167,16 +134,11 @@ defmodule Postgrex.Connection do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec listen(pid, String.t, Keyword.t) :: {:ok, reference} | {:error, Postgrex.Error.t}
+  @spec listen(pid, String.t, Keyword.t) :: {:ok, reference}
   def listen(pid, channel, opts \\ []) do
-    message = {:listen, channel, self()}
+    message = {:listen, channel}
     timeout = opts[:timeout] || @timeout
-    case Connection.call(pid, message, timeout) do
-      {:exit, reason} ->
-        exit({reason, {__MODULE__, :listen, [pid, channel, opts]}})
-      result ->
-        result
-    end
+    Connection.call(pid, message, timeout)
   end
 
   @doc """
@@ -184,10 +146,8 @@ defmodule Postgrex.Connection do
   """
   @spec listen!(pid, String.t, Keyword.t) :: reference
   def listen!(pid, channel, opts \\ []) do
-    case listen(pid, channel, opts) do
-      {:ok, ref}    -> ref
-      {:error, err} -> raise err
-    end
+    {:ok, ref} = listen(pid, channel, opts)
+    ref
   end
 
   @doc """
@@ -198,15 +158,13 @@ defmodule Postgrex.Connection do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec unlisten(pid, reference, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  @spec unlisten(pid, reference, Keyword.t) :: :ok
   def unlisten(pid, ref, opts \\ []) do
     message = {:unlisten, ref}
     timeout = opts[:timeout] || @timeout
     case Connection.call(pid, message, timeout) do
-      {:exit, reason} ->
-        exit({reason, {__MODULE__, :unlisten, [pid, ref, opts]}})
+      :ok                              -> :ok
       {:error, %ArgumentError{} = err} -> raise err
-      result                           -> result
     end
   end
 
@@ -216,10 +174,7 @@ defmodule Postgrex.Connection do
   """
   @spec unlisten!(pid, reference, Keyword.t) :: :ok
   def unlisten!(pid, ref, opts \\ []) do
-    case unlisten(pid, ref, opts) do
-      :ok           -> :ok
-      {:error, err} -> raise err
-    end
+    unlisten(pid, ref, opts)
   end
 
   @doc """
@@ -247,9 +202,11 @@ defmodule Postgrex.Connection do
 
   @doc false
   def connect(_, opts) do
-    case Protocol.init(opts) do
-      {:ok, _} = ok   -> ok
-      {:stop, reason} -> {:stop, reason, opts}
+    case Protocol.connect(opts) do
+      {:ok, protocol, parameters, _} ->
+        {:ok, %__MODULE__{protocol: protocol, parameters: parameters}}
+      {:error, reason} ->
+        {:stop, reason, opts}
     end
   end
 
@@ -267,118 +224,114 @@ defmodule Postgrex.Connection do
   end
 
   @doc false
-  def handle_call(:stop, from, s) do
-    reply(:ok, from)
-    {:stop, :normal, s}
+  def handle_call(:stop, _, s) do
+    {:stop, :normal, :ok, s}
   end
 
   def handle_call(:parameters, _from, %{parameters: params} = s) do
     {:reply, params, s}
   end
 
-  def handle_call(command, from, %{state: state} = s) do
-    command = new_command(command, from)
-    s = update_in(s.queue, &:queue.in(command, &1))
+  def handle_call({:query, ref, timeout}, {pid, _} = from, %{client: nil} = s) do
+    monitor = Process.monitor(pid)
+    handle_next({:query, timeout}, from, %{s | client: {ref, monitor}})
+  end
 
-    if state == :ready do
-      case next(s) do
-        {:ok, s} ->
+  def handle_call({:query, ref, timeout}, {pid, _} = from, %{queue: queue} = s) do
+    client = {ref, Process.monitor(pid)}
+    {:noreply, %{s | queue: :queue.in({{:query, timeout}, client, from}, queue)}}
+  end
+
+  def handle_call({:listen, channel}, from, %{client: nil} = s) do
+    handle_next({:listen, channel}, from, s)
+  end
+  def handle_call({:unlisten, ref}, from, %{client: nil} = s) do
+    handle_next({:unlisten, ref}, from, s)
+  end
+
+  def handle_call(request, from, %{queue: queue} = s) do
+    {:noreply, %{s | queue: :queue.in({request, nil, from}, queue)}}
+  end
+
+  @doc false
+  def handle_cast({:done, ref, new_parameters, notifications, buffer}, %{client: {ref, _}} = s) do
+    %{parameters: parameters} = s
+    notify_listeners(notifications, s)
+    parameters = Map.merge(parameters, new_parameters)
+    await_next(buffer, %__MODULE__{s | parameters: parameters})
+  end
+
+  def handle_cast({:stop, ref}, %{client: {ref, _}} = s) do
+    {:stop, {:shutdown, :stop}, s}
+  end
+
+  def handle_cast({:cancel, ref}, %{client: {ref, _}} = s) do
+    {:stop, {:shutdown, :cancel}, s}
+  end
+  def handle_cast({:cancel, ref}, %{queue: queue} = s) do
+    cancel =
+      fn({_, {ref2, monitor}, _}) when ref === ref2 ->
+          Process.demonitor(monitor, [:flush])
+          false
+        (_) ->
+          true
+      end
+    {:noreply, %{s | queue: :queue.filter(cancel, queue)}}
+  end
+
+  @doc false
+  def handle_info({:DOWN, ref, :process, _, _}, %{client: {_, ref}} = s) do
+    {:stop, {:shutdown, :DOWN}, s}
+  end
+  def handle_info({:DOWN, ref, :process, _, _} = down, s) do
+    case HashDict.fetch(s.listeners, ref) do
+      {:ok, {channel, _pid}} ->
+        s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+        s = update_in(s.listeners, &HashDict.delete(&1, ref))
+
+        if HashSet.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
+          down_unlisten(channel, s)
+        else
           {:noreply, s}
-        {:error, error, s} ->
-          error(error, s)
-      end
-    else
-      {:noreply, s}
+        end
+      :error ->
+        filter_queue(down, s)
     end
   end
 
-  def handle_cast({{:query, _, _} = command, {_, _} = from}, s) do
-    handle_call(command, from, s)
+  def handle_info({:timeout, timer, __MODULE__}, %{timer: timer} = s) when is_reference(timer) do
+    {:stop, {:shutdown, :timeout}, s}
   end
 
-  @doc false
-  def handle_info({:DOWN, ref, :process, _, _}, s) do
-    s =
-      case HashDict.fetch(s.listeners, ref) do
-        {:ok, {channel, _pid}} ->
-          s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
-          s = update_in(s.listeners, &HashDict.delete(&1, ref))
-
-          if HashSet.size(s.listener_channels[channel]) == 0 do
-            s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-            s = add_dummy_command(s)
-            {:ok, s} = new_query("UNLISTEN #{channel}", [], s)
-            s
-          else
-            s
-          end
-        :error ->
-          s
-      end
-
-    {:noreply, s}
-  end
-
-  def handle_info({tag, _, data}, %{sock: {mod, sock}, tail: tail} = s)
-      when tag in [:tcp, :ssl] do
-    case new_data(tail <> data, %{s | tail: ""}) do
-      {:ok, s} ->
-        socket_setopts(mod, s, sock, active: :once)
-      {:error, error, s} ->
-        error(error, s)
-    end
-  end
-
-  def handle_info({tag, _}, s) when tag in [:tcp_closed, :ssl_closed] do
-    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: :closed), s)
-  end
-
-  def handle_info({tag, _, reason}, s) when tag in [:tcp_error, :ssl_error] do
-    error(Postgrex.Error.exception(tag: get_tag(tag), action: "async recv", reason: reason), s)
-  end
-
-  @doc false
-  def new_query(statement, params, %{queue: queue} = s) do
-    {{:value, command}, queue} = :queue.out(queue)
-    new_command = {:query, statement, params}
-    command = %{command | command: new_command}
-
-    queue = :queue.in_r(command, queue)
-    command(new_command, %{s | queue: queue})
-  end
-
-  @doc false
-  def next(%{queue: queue} = s) do
-    case :queue.out(queue) do
-      {{:value, %{command: command}}, _queue} ->
-        command(command, s)
-      {:empty, _queue} ->
-        {:ok, s}
-    end
+  def handle_info(msg, s) do
+    protocol_info(msg, s)
   end
 
   ### PRIVATE FUNCTIONS ###
 
-  defp get_tag(:tcp_error), do: :tcp
-  defp get_tag(:ssl_error), do: :ssl
-  defp get_tag(:tcp_closed), do: :tcp
-  defp get_tag(:ssl_closed), do: :ssl
-
-  defp socket_setopts(:gen_tcp, s, sock, opts) do
-    case :inet.setopts(sock, opts) do
-      :ok ->
-        {:noreply, s}
-      {:error, reason} ->
-        error(Postgrex.Error.exception(tag: :tcp, action: "setopts", reason: reason), s)
+  defp query(pid, ref, protocol, statement, params, buffer) do
+    try do
+      Protocol.query(protocol, statement, params, buffer)
+    else
+      {:ok, result, parameters, notifications, buffer} ->
+        Connection.cast(pid, {:done, ref, parameters, notifications, buffer})
+        result
+      {:error, _} = error ->
+        Connection.cast(pid, {:stop, ref})
+        error
+    catch
+      kind, reason ->
+        stack = System.stacktrace()
+        Connection.cast(pid, {:stop, ref})
+        {kind, reason, stack}
     end
   end
 
-  defp socket_setopts(:ssl, s, sock, _opts) do
-    case :ssl.setopts(sock, active: :once) do
-      :ok ->
-        {:noreply, s}
-      {:error, reason} ->
-        error(Postgrex.Error.exception(tag: :ssl, action: "setopts", reason: reason), s)
+  defp decode(res, opts) do
+    case Keyword.get(opts, :decode, :auto) do
+      :auto   -> Postgrex.Result.decode(res)
+      :manual -> res
     end
   end
 
@@ -389,11 +342,82 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp command({:query, statement, _params}, s) do
-    Protocol.send_query(statement, s)
+  defp await_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
+    _ = client && Process.demonitor(elem(client, 1), [:flush])
+    cancel_timer(timer)
+    {item, queue} = :queue.out(queue)
+    s = %{s | client: nil, timer: nil, queue: queue}
+    case item do
+      {:value, {request, client, from}} ->
+        await_next(request, from, buffer, %{s | client: client})
+      :empty ->
+        checkin(buffer, s)
+    end
   end
 
-  defp command({:listen, channel, pid}, s) do
+  defp await_next(request, from, buffer, s) do
+    %{protocol: protocol, parameters: parameters} = s
+    case Protocol.await(protocol, buffer) do
+      {:ok, new_parameters, notifications, buffer} ->
+        notify_listeners(notifications, s)
+        parameters = Map.merge(parameters, new_parameters)
+        s = %__MODULE__{s | parameters: parameters}
+        handle_next(request, from, buffer, s)
+      {:error, reason} ->
+        {:stop, reason, s}
+    end
+  end
+
+  defp checkin(buffer, %{protocol: protocol, parameters: parameters} = s) do
+    case Protocol.checkin(protocol, buffer) do
+      {:ok, new_parameters, notifications} ->
+        notify_listeners(notifications, s)
+        parameters = Map.merge(parameters, new_parameters)
+        {:noreply, %__MODULE__{s | parameters: parameters}}
+      {:error, reason} ->
+        {:stop, reason, s}
+    end
+  end
+
+  defp handle_next(request, from, buffer \\ :active_once, s)
+
+  defp handle_next({:query, timeout}, from, buffer, s) do
+    handle_query(timeout, from, buffer, s)
+  end
+  defp handle_next({:listen, channel}, from, buffer, s) do
+    handle_listen(channel, from, buffer, s)
+  end
+  defp handle_next({:unlisten, ref}, from, buffer, s) do
+    handle_unlisten(ref, from, buffer, s)
+  end
+  defp handle_next({:down_unlisten, channel}, nil, buffer, s) do
+    handle_down_unlisten(channel, buffer, s)
+  end
+
+  defp notify_listeners(notifications, s) do
+    %__MODULE__{listener_channels: channels, listeners: listeners} = s
+    _ = for {channel, payload} <- notifications do
+      _ = for ref <- HashDict.get(channels, channel) || [] do
+        {_, pid} = HashDict.fetch!(listeners, ref)
+        send(pid, {:notification, self(), ref, channel, payload})
+        :ok
+      end
+    end
+    :ok
+  end
+
+  defp handle_query(timeout, from, buffer, %{protocol: protocol} = s) do
+    case Protocol.checkout(protocol, buffer) do
+      {:ok, buffer} ->
+        Connection.reply(from, {:ok, protocol, self(), buffer})
+        timer = start_timer(timeout)
+        {:noreply,  %{s | timer: timer}}
+      {:error, reason} ->
+        {:stop, reason, s}
+    end
+  end
+
+  defp handle_listen(channel, {pid, _} = from, buffer, s) do
     ref = Process.monitor(pid)
     s = update_in(s.listeners, &HashDict.put(&1, ref, {channel, pid}))
     s = update_in(s.listener_channels[channel], fn set ->
@@ -401,69 +425,114 @@ defmodule Postgrex.Connection do
     end)
 
     if HashSet.size(s.listener_channels[channel]) == 1 do
-      s = add_reply_to_queue({:ok, ref}, s)
-      new_query("LISTEN #{channel}", [], s)
+      listener_query("LISTEN #{channel}", {:ok, ref}, from, buffer, s)
     else
-      reply({:ok, ref}, s)
-      {:ok, s}
+      Connection.reply(from, {:ok, ref})
+      await_next(buffer, s)
     end
   end
 
-  defp command({:unlisten, ref}, s) do
+  defp handle_unlisten(ref, from, buffer, s) do
     case HashDict.fetch(s.listeners, ref) do
       {:ok, {channel, _pid}} ->
+        Process.demonitor(ref, [:flush])
         s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
         s = update_in(s.listeners, &HashDict.delete(&1, ref))
 
         if HashSet.size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-          s = add_reply_to_queue(:ok, s)
-          new_query("UNLISTEN #{channel}", [], s)
+          listener_query("UNLISTEN #{channel}", :ok, from, buffer, s)
         else
-          reply(:ok, s)
-          {:ok, s}
+          Connection.reply(from, :ok)
+          await_next(buffer, s)
         end
-
       :error ->
-        reply({:error, %ArgumentError{}}, s)
-        {:ok, s}
+        Connection.reply(from, {:error, %ArgumentError{}})
+        await_next(buffer, s)
     end
   end
 
-  defp new_data(<<type :: int8, size :: int32, data :: binary>> = tail, %{state: state} = s) do
-    size = size - 4
+  defp down_unlisten(channel, %{client: nil} = s) do
+    listener_query("UNLISTEN #{channel}", :ok, nil, :active_once, s)
+  end
+  defp down_unlisten(channel, %{queue: queue} = s) do
+    request = {:down_unlisten, channel}
+    {:noreply, %{s | queue: :queue.in_r({request, nil, nil}, queue)}}
+  end
 
-    case data do
-      <<data :: binary(size), tail :: binary>> ->
-        msg = Messages.parse(data, type, size)
-        case Protocol.message(state, msg, s) do
-          {:ok, s} -> new_data(tail, s)
-          {:error, _, _} = err -> err
-        end
+  defp handle_down_unlisten(channel, buffer, s) do
+   listener_query("UNLISTEN #{channel}", nil, nil, buffer, s)
+  end
+
+  defp listener_query(statement, result, from, buffer, s) do
+    %{protocol: protocol, parameters: parameters} = s
+    case Protocol.query(protocol, statement, [], buffer) do
+      {:ok, %Postgrex.Result{}, new_parameters, notifications, buffer} ->
+        _ = from && Connection.reply(from, result)
+        notify_listeners(notifications, s)
+        parameters = Map.merge(parameters, new_parameters)
+        await_next(buffer, %__MODULE__{s | parameters: parameters})
+      {:error, error} ->
+        Connection.reply(from, error)
+        {:stop, error, s}
+    end
+  end
+
+  defp filter_queue({:DOWN, ref, :process, _, _} = msg, %{queue: queue} = s) do
+    len = :queue.len(queue)
+    down =
+      fn({_, {_, monitor}, _}) when ref === monitor ->
+          false
+        (_) ->
+          true
+      end
+    queue = :queue.filter(down, queue)
+    case :queue.len(queue) do
+      ^len ->
+        protocol_info(msg, s)
       _ ->
-        {:ok, %{s | tail: tail}}
+        {:noreply, %{s | queue: queue}}
     end
   end
 
-  defp new_data(data, %{tail: tail} = s) do
-    # NOTE: This can be optimized by building an iolist and only concat to
-    #       a binary when we know we have enough data according to the
-    #       message header.
-    {:ok, %{s | tail: tail <> data}}
+  defp protocol_info(info, s) do
+    %__MODULE__{protocol: protocol, parameters: parameters} = s
+    case Protocol.message(protocol, info) do
+      {:ok, new_parameters, notifications} ->
+        notify_listeners(notifications, s)
+        parameters = Map.merge(parameters, new_parameters)
+        {:noreply, %__MODULE__{s | parameters: parameters}}
+      :unknown ->
+        Logger.info fn() ->
+          [inspect(__MODULE__), ?\s, inspect(self()), " received message: " |
+            inspect(info)]
+        end
+        {:noreply, s}
+      {:error, reason} ->
+        {:stop, reason, s}
+    end
   end
 
-  defp add_dummy_command(s) do
-    command = new_command(:DUMMY, nil)
-    %{s | queue: :queue.in_r(command, s.queue)}
+  defp start_timer(:infinity), do: nil
+  defp start_timer(timeout) do
+    :erlang.start_timer(timeout, self, __MODULE__)
   end
 
-  defp add_reply_to_queue(reply, %{queue: queue} = s) do
-    {{:value, command}, queue} = :queue.out(queue)
-    command = %{command | reply: {:reply, reply}}
-    %{s | queue: :queue.in_r(command, queue)}
+  defp cancel_timer(nil), do: :ok
+  defp cancel_timer(timer) do
+    case :erlang.cancel_timer(timer) do
+      false -> flush_timer(timer)
+      _     -> :ok
+    end
   end
 
-  defp new_command(command, from) do
-    %{command: command, from: from, reply: :no_reply}
+  defp flush_timer(timer) do
+    receive do
+      {:timeout, ^timer, __MODULE__} ->
+        :ok
+    after
+      0 ->
+        raise ArgumentError, "Timer #{inspect(timer)} does not exist"
+    end
   end
 end
