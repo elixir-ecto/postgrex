@@ -1,7 +1,18 @@
-# v0.9.2-dev
+# v0.10.0 (2015-11-17)
+
+* Enhancements
+  * Improve error message on encoding/decoding failures
+  * Add network types such as: `inet`, `cidr` and `macaddr`
+  * Improve TCP error messages
+  * Support `PGPORT` environment variable
+  * Improve decoding performance by caching extension information
+  * Improve query performance by decoding in the client process hence not blocking the connection
+  * Raise if number of parameters to query is wrong
 
 * Bug fixes
   * Correctly handle errors in connection initialization with `sync_connect: true`
+  * Do not fail on custom error codes
+  * Correctly handle large number of parameters, also fixes some protocol issues where unsigned integers were treated as signed
 
 # v0.9.1 (2015-07-14)
 

@@ -3,7 +3,7 @@ defmodule Postgrex.Mixfile do
 
   def project do
     [app: :postgrex,
-     version: "0.9.2-dev",
+     version: "0.10.0",
      elixir: "~> 1.0",
      deps: deps,
      name: "Postgrex",
@@ -27,7 +27,7 @@ defmodule Postgrex.Mixfile do
     [{:ex_doc, only: :dev},
      {:earmark, only: :dev},
      {:decimal, "~> 1.0"},
-     {:connection, "~> 1.0.0-rc.1"}]
+     {:connection, "~> 1.0"}]
   end
 
   defp description do
@@ -35,7 +35,7 @@ defmodule Postgrex.Mixfile do
   end
 
   defp package do
-    [contributors: ["Eric Meadows-Jönsson"],
+    [maintainers: ["Eric Meadows-Jönsson"],
      licenses: ["Apache 2.0"],
      links: %{"Github" => "https://github.com/ericmj/postgrex"}]
   end
