@@ -5,10 +5,10 @@ defmodule Postgrex.Error do
 
   def message(e) do
     if kw = e.postgres do
-      msg = "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
+      "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
+    else
+      e.message
     end
-
-    msg || e.message
   end
 
   def exception([postgres: fields]) do

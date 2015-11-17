@@ -52,15 +52,18 @@ defmodule Postgrex.Messages do
   # auth
   def parse(<<type :: int32, rest :: binary>>, ?R, size) do
     type = decode_auth_type(type)
-    case type do
-      :md5 ->
-        <<data :: binary-size(4)>> = rest
-      :gss_cont ->
-        rest_size = size - 2
-        <<data :: size(rest_size)>> = rest
-      _ ->
-        data = nil
-    end
+    data =
+      case type do
+        :md5 ->
+          <<data :: binary-size(4)>> = rest
+          data
+        :gss_cont ->
+          rest_size = size - 2
+          <<data :: size(rest_size)>> = rest
+          data
+        _ ->
+          nil
+      end
     msg_auth(type: type, data: data)
   end
 

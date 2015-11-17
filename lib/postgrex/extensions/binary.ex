@@ -164,24 +164,26 @@ defmodule Postgrex.Extensions.Binary do
     else
       string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
 
-      if List.first(string) == ?- do
-        [_|string] = string
-        sign = 0x4000
-      else
-        sign = 0x0000
-      end
+      sign =
+        if List.first(string) == ?- do
+          [_|string] = string
+          0x4000
+        else
+          0x0000
+        end
 
       {int, float} = Enum.split_while(string, &(&1 != ?.))
       {weight, int_digits} = Enum.reverse(int) |> encode_numeric_int(0, [])
 
-      if float != [] do
-        [_|float] = float
-        scale = length(float)
-        float_digits = pad_to_numeric_base(float, scale) |> encode_numeric_float([])
-      else
-        scale = 0
-        float_digits = []
-      end
+      {scale, float_digits} =
+        if float != [] do
+          [_|float] = float
+          scale     = length(float)
+          digits    = pad_to_numeric_base(float, scale) |> encode_numeric_float([])
+          {scale, digits}
+        else
+          {0, []}
+        end
 
       digits = int_digits ++ float_digits
       bin = for digit <- digits, into: "", do: <<digit :: uint16>>
@@ -329,10 +331,10 @@ defmodule Postgrex.Extensions.Binary do
 
   defp encode_range(range, oid, types) do
     flags = 0
+    bin   = ""
 
     if range.lower == nil do
       flags = flags ||| @range_lb_inf
-      bin = ""
     else
       data = Types.encode(oid, range.lower, types)
       bin = [<<IO.iodata_length(data)::int32>>, data]
@@ -357,9 +359,9 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   defp encode_hstore(hstore_map) when is_map(hstore_map) do
-    keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
-        [acc, encode_hstore_key(key), encode_hstore_value(value)]
-    end
+    keys_and_values = Enum.reduce(hstore_map, "", fn ({key, value}, acc) ->
+      [acc, encode_hstore_key(key), encode_hstore_value(value)]
+    end)
     :erlang.iolist_to_binary([<<Map.size(hstore_map)::int32>> | keys_and_values])
   end
 
@@ -619,19 +621,17 @@ defmodule Postgrex.Extensions.Binary do
   end
 
   defp decode_range(<<flags, rest::binary>>, oid, types) do
-    if (flags &&& @range_lb_inf) != 0 do
-      lower = nil
-    else
-      <<size::int32, lower::binary(size), rest::binary>> = rest
-      lower = Postgrex.Types.decode(oid, lower, types)
-    end
+    lower =
+      if (flags &&& @range_lb_inf) == 0 do
+        <<size::int32, lower::binary(size), rest::binary>> = rest
+        Postgrex.Types.decode(oid, lower, types)
+      end
 
-    if (flags &&& @range_ub_inf) != 0 do
-      upper = nil
-    else
-      <<size::int32, upper::binary(size), rest::binary>> = rest
-      upper = Postgrex.Types.decode(oid, upper, types)
-    end
+      upper =
+      if (flags &&& @range_ub_inf) == 0 do
+        <<size::int32, upper::binary(size), rest::binary>> = rest
+        Postgrex.Types.decode(oid, upper, types)
+      end
 
     "" = rest
     lower_inclusive = (flags &&& @range_lb_inc) != 0
