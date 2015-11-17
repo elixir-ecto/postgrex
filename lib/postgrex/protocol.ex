@@ -517,7 +517,7 @@ defmodule Postgrex.Protocol do
 
   ## helpers
 
-  defp encode_params(%{types: types}, %{portal: param_oids}, params) do
+  defp encode_params(%{types: types}, %{portal: param_oids}, params) when length(param_oids) == length(params) do
     zipped = Enum.zip(param_oids, params)
 
     Enum.map(zipped, fn
@@ -529,6 +529,9 @@ defmodule Postgrex.Protocol do
         {format, [<<IO.iodata_length(binary)::int32>>, binary]}
     end)
     |> :lists.unzip
+  end
+  defp encode_params(_, %{portal: param_oids}, _) do
+    raise ArgumentError, "parameters must be of length #{length param_oids} for this query"
   end
 
   defp columns(fields) do
