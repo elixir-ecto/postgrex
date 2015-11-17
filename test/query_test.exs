@@ -437,6 +437,13 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "fail on parameter length mismatch", context do
+    assert_raise ArgumentError, "parameters must be of length 1 for this query", fn ->
+      query("SELECT $1::integer", [1, 2])
+    end
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "non data statement", context do
     assert :ok = query("BEGIN", [])
     assert :ok = query("COMMIT", [])
