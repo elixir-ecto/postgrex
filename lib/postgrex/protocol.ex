@@ -8,7 +8,6 @@ defmodule Postgrex.Protocol do
   require Logger
 
   @timeout 5000
-  @default_extensions [{Postgrex.Extensions.Binary, nil}, {Postgrex.Extensions.Text, nil}]
   @sock_opts [packet: :raw, mode: :binary, active: false]
 
   defstruct [sock: nil, connection_id: nil, types: nil, timeout: nil,
@@ -34,7 +33,7 @@ defmodule Postgrex.Protocol do
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     custom     = opts[:extensions] || []
-    extensions = custom ++ @default_extensions
+    extensions = custom ++ Postgrex.Utils.default_extensions()
     ssl?       = opts[:ssl] || false
     types?     = Keyword.fetch!(opts, :types)
 
