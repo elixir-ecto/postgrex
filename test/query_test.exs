@@ -503,6 +503,16 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "connection works after failure during transaction", context do
+    assert :ok = query("BEGIN", [])
+    assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
+      query("insert into uniques values (1), (1);", [])
+    assert %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}} =
+      query("SELECT 42", [])
+    assert :ok = query("ROLLBACK", [])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "async test", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
