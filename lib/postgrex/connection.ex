@@ -258,7 +258,7 @@ defmodule Postgrex.Connection do
     %{parameters: parameters} = s
     notify_listeners(notifications, s)
     parameters = Map.merge(parameters, new_parameters)
-    await_next(buffer, %__MODULE__{s | parameters: parameters})
+    handle_next(buffer, %__MODULE__{s | parameters: parameters})
   end
 
   def handle_cast({:stop, ref}, %{client: {ref, _}} = s) do
@@ -342,40 +342,16 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp await_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
+  defp handle_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
     _ = client && Process.demonitor(elem(client, 1), [:flush])
     cancel_timer(timer)
     {item, queue} = :queue.out(queue)
     s = %{s | client: nil, timer: nil, queue: queue}
     case item do
       {:value, {request, client, from}} ->
-        await_next(request, from, buffer, %{s | client: client})
+        handle_next(request, from, buffer, %{s | client: client})
       :empty ->
         checkin(buffer, s)
-    end
-  end
-
-  defp await_next(request, from, buffer, s) do
-    %{protocol: protocol, parameters: parameters} = s
-    case Protocol.await(protocol, buffer) do
-      {:ok, new_parameters, notifications, buffer} ->
-        notify_listeners(notifications, s)
-        parameters = Map.merge(parameters, new_parameters)
-        s = %__MODULE__{s | parameters: parameters}
-        handle_next(request, from, buffer, s)
-      {:error, reason} ->
-        {:stop, reason, s}
-    end
-  end
-
-  defp checkin(buffer, %{protocol: protocol, parameters: parameters} = s) do
-    case Protocol.checkin(protocol, buffer) do
-      {:ok, new_parameters, notifications} ->
-        notify_listeners(notifications, s)
-        parameters = Map.merge(parameters, new_parameters)
-        {:noreply, %__MODULE__{s | parameters: parameters}}
-      {:error, reason} ->
-        {:stop, reason, s}
     end
   end
 
@@ -392,6 +368,13 @@ defmodule Postgrex.Connection do
   end
   defp handle_next({:down_unlisten, channel}, nil, buffer, s) do
     handle_down_unlisten(channel, buffer, s)
+  end
+
+  defp checkin(buffer, %{protocol: protocol} = s) do
+    case Protocol.checkin(protocol, buffer) do
+      :ok              -> {:noreply, s}
+      {:error, reason} -> {:stop, reason, s}
+    end
   end
 
   defp notify_listeners(notifications, s) do
@@ -428,7 +411,7 @@ defmodule Postgrex.Connection do
       listener_query("LISTEN #{channel}", {:ok, ref}, from, buffer, s)
     else
       Connection.reply(from, {:ok, ref})
-      await_next(buffer, s)
+      handle_next(buffer, s)
     end
   end
 
@@ -444,11 +427,11 @@ defmodule Postgrex.Connection do
           listener_query("UNLISTEN #{channel}", :ok, from, buffer, s)
         else
           Connection.reply(from, :ok)
-          await_next(buffer, s)
+          handle_next(buffer, s)
         end
       :error ->
         Connection.reply(from, {:error, %ArgumentError{}})
-        await_next(buffer, s)
+        handle_next(buffer, s)
     end
   end
 
@@ -471,7 +454,7 @@ defmodule Postgrex.Connection do
         _ = from && Connection.reply(from, result)
         notify_listeners(notifications, s)
         parameters = Map.merge(parameters, new_parameters)
-        await_next(buffer, %__MODULE__{s | parameters: parameters})
+        handle_next(buffer, %__MODULE__{s | parameters: parameters})
       {:error, error} ->
         Connection.reply(from, error)
         {:stop, error, s}
