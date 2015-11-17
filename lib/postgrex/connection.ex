@@ -72,6 +72,9 @@ defmodule Postgrex.Connection do
     * `:timeout` - Call timeout (default: `#{@timeout}`)
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
+    * `:query_mode` - Query mode: `:extended` for extended query with parameters
+    and `:simple` for simple query without parameters or returning rows
+    (default: `:extended`)
 
   ## Examples
 
@@ -86,30 +89,13 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
-    queue_timeout = opts[:queue_timeout] || @timeout
-    timeout = opts[:timeout] || @timeout
-    ref = make_ref()
-    try do
-      Connection.call(pid, {:query, ref, timeout}, queue_timeout)
-    catch
-      :exit, {_, {_, :call, [pid | _]}} = reason ->
-        Connection.cast(pid, {:cancel, ref})
-        exit(reason)
-    else
-      {:ok, protocol, pid, buffer} ->
-        protocol = %{protocol | timeout: timeout}
-        case query(pid, ref, protocol, statement, params, buffer) do
-          %Postgrex.Result{} = res ->
-            {:ok, decode(res, opts)}
-          %Postgrex.Error{} = err ->
-            {:error, err}
-          {:error, _} = error ->
-             error
-          {kind, reason, stack} ->
-            :erlang.raise(kind, reason, stack)
-        end
-      {:error, _} = error ->
-        error
+    case opts[:query_mode] || :extended do
+      :extended ->
+        extended_query(pid, statement, params, opts)
+      :simple when params == [] ->
+        simple_query(pid, statement, opts)
+      :simple ->
+        raise ArgumentError, "parameters can not be encoded with simple query, use extended"
     end
   end
 
@@ -258,7 +244,7 @@ defmodule Postgrex.Connection do
     %{parameters: parameters} = s
     notify_listeners(notifications, s)
     parameters = Map.merge(parameters, new_parameters)
-    await_next(buffer, %__MODULE__{s | parameters: parameters})
+    handle_next(buffer, %__MODULE__{s | parameters: parameters})
   end
 
   def handle_cast({:stop, ref}, %{client: {ref, _}} = s) do
@@ -310,13 +296,42 @@ defmodule Postgrex.Connection do
 
   ### PRIVATE FUNCTIONS ###
 
-  defp query(pid, ref, protocol, statement, params, buffer) do
+  defp extended_query(pid, statement, params, opts) do
+    query = &Protocol.extended_query(&1, statement, params, &2)
+    run_query(pid, query, opts)
+  end
+
+  defp simple_query(pid, statement, opts) do
+    query = &Protocol.simple_query(&1, statement, &2)
+    run_query(pid, query, opts)
+  end
+
+  def run_query(pid, query, opts) do
+    queue_timeout = opts[:queue_timeout] || @timeout
+    timeout = opts[:timeout] || @timeout
+    ref = make_ref()
     try do
-      Protocol.query(protocol, statement, params, buffer)
+      Connection.call(pid, {:query, ref, timeout}, queue_timeout)
+    catch
+      :exit, {_, {_, :call, [pid | _]}} = reason ->
+        Connection.cast(pid, {:cancel, ref})
+        exit(reason)
+    else
+      {:ok, protocol, pid, buffer} ->
+        protocol = %{protocol | timeout: timeout}
+        run_query(pid, ref, query, protocol, buffer, opts)
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp run_query(pid, ref, query, protocol, buffer, opts) do
+    try do
+      query.(protocol, buffer)
     else
       {:ok, result, parameters, notifications, buffer} ->
         Connection.cast(pid, {:done, ref, parameters, notifications, buffer})
-        result
+        query_result(result, opts)
       {:error, _} = error ->
         Connection.cast(pid, {:stop, ref})
         error
@@ -326,6 +341,16 @@ defmodule Postgrex.Connection do
         Connection.cast(pid, {:stop, ref})
         {kind, reason, stack}
     end
+  end
+
+  defp query_result(%Postgrex.Result{} = res, opts) do
+    {:ok, decode(res, opts)}
+  end
+  defp query_result(%Postgrex.Error{} = err, _) do
+    {:error, err}
+  end
+  defp query_result({kind, reason, stack}, _) do
+    :erlang.raise(kind, reason, stack)
   end
 
   defp decode(res, opts) do
@@ -342,40 +367,16 @@ defmodule Postgrex.Connection do
     end
   end
 
-  defp await_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
+  defp handle_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
     _ = client && Process.demonitor(elem(client, 1), [:flush])
     cancel_timer(timer)
     {item, queue} = :queue.out(queue)
     s = %{s | client: nil, timer: nil, queue: queue}
     case item do
       {:value, {request, client, from}} ->
-        await_next(request, from, buffer, %{s | client: client})
+        handle_next(request, from, buffer, %{s | client: client})
       :empty ->
         checkin(buffer, s)
-    end
-  end
-
-  defp await_next(request, from, buffer, s) do
-    %{protocol: protocol, parameters: parameters} = s
-    case Protocol.await(protocol, buffer) do
-      {:ok, new_parameters, notifications, buffer} ->
-        notify_listeners(notifications, s)
-        parameters = Map.merge(parameters, new_parameters)
-        s = %__MODULE__{s | parameters: parameters}
-        handle_next(request, from, buffer, s)
-      {:error, reason} ->
-        {:stop, reason, s}
-    end
-  end
-
-  defp checkin(buffer, %{protocol: protocol, parameters: parameters} = s) do
-    case Protocol.checkin(protocol, buffer) do
-      {:ok, new_parameters, notifications} ->
-        notify_listeners(notifications, s)
-        parameters = Map.merge(parameters, new_parameters)
-        {:noreply, %__MODULE__{s | parameters: parameters}}
-      {:error, reason} ->
-        {:stop, reason, s}
     end
   end
 
@@ -392,6 +393,13 @@ defmodule Postgrex.Connection do
   end
   defp handle_next({:down_unlisten, channel}, nil, buffer, s) do
     handle_down_unlisten(channel, buffer, s)
+  end
+
+  defp checkin(buffer, %{protocol: protocol} = s) do
+    case Protocol.checkin(protocol, buffer) do
+      :ok              -> {:noreply, s}
+      {:error, reason} -> {:stop, reason, s}
+    end
   end
 
   defp notify_listeners(notifications, s) do
@@ -428,7 +436,7 @@ defmodule Postgrex.Connection do
       listener_query("LISTEN #{channel}", {:ok, ref}, from, buffer, s)
     else
       Connection.reply(from, {:ok, ref})
-      await_next(buffer, s)
+      handle_next(buffer, s)
     end
   end
 
@@ -444,11 +452,11 @@ defmodule Postgrex.Connection do
           listener_query("UNLISTEN #{channel}", :ok, from, buffer, s)
         else
           Connection.reply(from, :ok)
-          await_next(buffer, s)
+          handle_next(buffer, s)
         end
       :error ->
         Connection.reply(from, {:error, %ArgumentError{}})
-        await_next(buffer, s)
+        handle_next(buffer, s)
     end
   end
 
@@ -466,12 +474,12 @@ defmodule Postgrex.Connection do
 
   defp listener_query(statement, result, from, buffer, s) do
     %{protocol: protocol, parameters: parameters} = s
-    case Protocol.query(protocol, statement, [], buffer) do
+    case Protocol.extended_query(protocol, statement, [], buffer) do
       {:ok, %Postgrex.Result{}, new_parameters, notifications, buffer} ->
         _ = from && Connection.reply(from, result)
         notify_listeners(notifications, s)
         parameters = Map.merge(parameters, new_parameters)
-        await_next(buffer, %__MODULE__{s | parameters: parameters})
+        handle_next(buffer, %__MODULE__{s | parameters: parameters})
       {:error, error} ->
         Connection.reply(from, error)
         {:stop, error, s}
