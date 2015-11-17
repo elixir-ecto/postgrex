@@ -3,7 +3,7 @@ defmodule Postgrex.Mixfile do
 
   def project do
     [app: :postgrex,
-     version: "0.10.0",
+     version: "0.10.1-dev",
      elixir: "~> 1.0",
      deps: deps,
      name: "Postgrex",
