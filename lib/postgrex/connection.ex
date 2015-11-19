@@ -86,31 +86,7 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
-    queue_timeout = opts[:queue_timeout] || @timeout
-    timeout = opts[:timeout] || @timeout
-    ref = make_ref()
-    try do
-      Connection.call(pid, {:query, ref, timeout}, queue_timeout)
-    catch
-      :exit, {_, {_, :call, [pid | _]}} = reason ->
-        Connection.cast(pid, {:cancel, ref})
-        exit(reason)
-    else
-      {:ok, protocol, pid, buffer} ->
-        protocol = %{protocol | timeout: timeout}
-        case query(pid, ref, protocol, statement, params, buffer) do
-          %Postgrex.Result{} = res ->
-            {:ok, decode(res, opts)}
-          %Postgrex.Error{} = err ->
-            {:error, err}
-          {:error, _} = error ->
-             error
-          {kind, reason, stack} ->
-            :erlang.raise(kind, reason, stack)
-        end
-      {:error, _} = error ->
-        error
-    end
+    run(pid, &Protocol.query(&1, statement, params, &2), opts)
   end
 
   @doc """
@@ -121,6 +97,110 @@ defmodule Postgrex.Connection do
   def query!(pid, statement, params, opts \\ []) do
     case query(pid, statement, params, opts) do
       {:ok, res}    -> res
+      {:error, err} -> raise err
+    end
+  end
+
+  @doc """
+  Parses an (extended) query and returns the result as
+  `{:ok, %Postgrex.Query{}}` or `{:error, %Postgrex.Error{}}` if there was an
+  error. Parameters can be set in the query as `$1` embedded in the query
+  string. To execute the query call `execute/4`. To close the parsed query call
+  `close/3`. See `Postgrex.Query` for the query data.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
+
+  ## Examples
+
+      Postgrex.Connection.parse(pid, "CREATE TABLE posts (id serial, title text)")
+  """
+  @spec parse(pid, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
+  def parse(pid, name, statement, opts \\ []) do
+    run(pid, &Protocol.parse(&1, name, statement, &2), opts)
+  end
+
+  @doc """
+  Parsed an (extended) query and returns the parsed query or raises
+  `Postgrex.Error` if there was an error. See `parse/4`.
+  """
+  @spec parse!(pid, iodata, iodata, Keyword.t) :: Postgrex.Query.t
+  def parse!(pid, name, statement, opts \\ []) do
+    case parse(pid, name, statement, opts) do
+      {:ok, query}  -> query
+      {:error, err} -> raise err
+    end
+  end
+
+  @doc """
+  Runs an (extended) parsed query and returns the result as
+  `{:ok, %Postgrex.Result{}}` or `{:error, %Postgrex.Error{}}` if there was an
+  error. Parameters are given as part of the parsed query, `%Postgrex.Query{}`.
+  See the README for information on how Postgrex encodes and decodes Elixir
+  values by default. See `Postgrex.Query` for the query data and
+  `Postgrex.Result` for the result data.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
+    not (default: `:auto`)
+
+  ## Examples
+
+      query = Postgrex.Connection.parse!(pid, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.Connection.execute(pid, query)
+
+      query = Postgrex.Connection.parse!(pid, "SELECT id FROM posts WHERE title like $1")
+      Postgrex.Connection.execute(pid, %Postgrex.Query{query | params: ["%my%"]}
+  """
+  def execute(pid, query, opts \\ []) do
+    query = Postgrex.Query.encode(query)
+    run(pid, &Protocol.execute(&1, query, &2), opts)
+  end
+
+  @doc """
+  Runs an (extended) parsed query and returns the result or raises
+  `Postgrex.Error` if there was an error. See `execute/3`.
+  """
+  @spec execute!(pid, Postgrex.Query.t, Keyword.t) :: Postgrex.Result.t
+  def execute!(pid, query, opts \\ []) do
+    case execute(pid, query, opts) do
+      {:ok, res}    -> res
+      {:error, err} -> raise err
+    end
+  end
+
+  @doc """
+  Closes an (extended) parsed query and returns `:ok` or
+  `{:error, %Postgrex.Error{}}` if there was an error. Closing a query releases
+  any resources held by postgresql for a parsed query with that name. See
+  `Postgrex.Query` for the query data.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+
+  ## Examples
+
+      query = Postgrex.Connection.parse!(pid, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.Connection.close(pid, query)
+  """
+  @spec close(pid, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  def close(pid, query, opts \\ []) do
+    run(pid, &Protocol.close(&1, query, &2), opts)
+  end
+
+  @doc """
+  Closes an (extended) parsed query and returns `:ok` or raises `Postgrex.Error`
+  if there was an error. See `close/3`.
+  """
+  @spec close!(pid, Postgrex.Query.t, Keyword.t) :: :ok
+  def close!(pid, query, opts \\ []) do
+    case close(pid, query, opts) do
+      :ok           -> :ok
       {:error, err} -> raise err
     end
   end
@@ -232,14 +312,14 @@ defmodule Postgrex.Connection do
     {:reply, params, s}
   end
 
-  def handle_call({:query, ref, timeout}, {pid, _} = from, %{client: nil} = s) do
+  def handle_call({:checkout, ref, timeout}, {pid, _} = from, %{client: nil} = s) do
     monitor = Process.monitor(pid)
-    handle_next({:query, timeout}, from, %{s | client: {ref, monitor}})
+    handle_next({:checkout, timeout}, from, %{s | client: {ref, monitor}})
   end
 
-  def handle_call({:query, ref, timeout}, {pid, _} = from, %{queue: queue} = s) do
+  def handle_call({:checkout, ref, timeout}, {pid, _} = from, %{queue: queue} = s) do
     client = {ref, Process.monitor(pid)}
-    {:noreply, %{s | queue: :queue.in({{:query, timeout}, client, from}, queue)}}
+    {:noreply, %{s | queue: :queue.in({{:checkout, timeout}, client, from}, queue)}}
   end
 
   def handle_call({:listen, channel}, from, %{client: nil} = s) do
@@ -259,6 +339,13 @@ defmodule Postgrex.Connection do
     notify_listeners(notifications, s)
     parameters = Map.merge(parameters, new_parameters)
     handle_next(buffer, %__MODULE__{s | parameters: parameters})
+  end
+
+  def handle_cast({:update, ref, new_parameters, notifications}, %{client: {ref, _}} = s) do
+    %{parameters: parameters} = s
+    notify_listeners(notifications, s)
+    parameters = Map.merge(parameters, new_parameters)
+    {:noreply, %__MODULE__{s | parameters: parameters}}
   end
 
   def handle_cast({:stop, ref}, %{client: {ref, _}} = s) do
@@ -310,13 +397,36 @@ defmodule Postgrex.Connection do
 
   ### PRIVATE FUNCTIONS ###
 
-  defp query(pid, ref, protocol, statement, params, buffer) do
+  defp run(pid, fun, opts) do
+    queue_timeout = opts[:queue_timeout] || @timeout
+    timeout = opts[:timeout] || @timeout
+    ref = make_ref()
     try do
-      Protocol.query(protocol, statement, params, buffer)
+      Connection.call(pid, {:checkout, ref, timeout}, queue_timeout)
+    catch
+      :exit, {_, {_, :call, [pid | _]}} = reason ->
+        Connection.cast(pid, {:cancel, ref})
+        exit(reason)
+    else
+      {:ok, protocol, pid, buffer} ->
+        protocol = %{protocol | timeout: timeout}
+        result = run(pid, ref, fun, protocol, buffer)
+        run_result(result, opts)
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp run(pid, ref, fun, protocol, buffer) do
+    try do
+      fun.(protocol, buffer)
     else
       {:ok, result, parameters, notifications, buffer} ->
         Connection.cast(pid, {:done, ref, parameters, notifications, buffer})
         result
+      {:ok, parameters, notifications, buffer} ->
+        Connection.cast(pid, {:done, ref, parameters, notifications, buffer})
+        :ok
       {:error, _} = error ->
         Connection.cast(pid, {:stop, ref})
         error
@@ -324,16 +434,23 @@ defmodule Postgrex.Connection do
       kind, reason ->
         stack = System.stacktrace()
         Connection.cast(pid, {:stop, ref})
-        {kind, reason, stack}
+        :erlang.raise(kind, reason, stack)
     end
   end
 
-  defp decode(res, opts) do
+  defp run_result(%Postgrex.Result{} = res, opts) do
     case Keyword.get(opts, :decode, :auto) do
-      :auto   -> Postgrex.Result.decode(res)
-      :manual -> res
+      :auto   -> {:ok, Postgrex.Result.decode(res)}
+      :manual -> {:ok, res}
     end
   end
+  defp run_result({kind, reason, stack}, _) do
+    :erlang.raise(kind, reason, stack)
+  end
+  defp run_result(%Postgrex.Query{} = query, _), do: {:ok, query}
+  defp run_result(%Postgrex.Error{} = err, _), do: {:error, err}
+  defp run_result(:ok, _), do: :ok
+  defp run_result({:error, _} = err, _), do: err
 
   defp sync_connect(opts) do
     case connect(:init, opts) do
@@ -357,8 +474,8 @@ defmodule Postgrex.Connection do
 
   defp handle_next(request, from, buffer \\ :active_once, s)
 
-  defp handle_next({:query, timeout}, from, buffer, s) do
-    handle_query(timeout, from, buffer, s)
+  defp handle_next({:checkout, timeout}, from, buffer, s) do
+    handle_checkout(timeout, from, buffer, s)
   end
   defp handle_next({:listen, channel}, from, buffer, s) do
     handle_listen(channel, from, buffer, s)
@@ -389,7 +506,7 @@ defmodule Postgrex.Connection do
     :ok
   end
 
-  defp handle_query(timeout, from, buffer, %{protocol: protocol} = s) do
+  defp handle_checkout(timeout, from, buffer, %{protocol: protocol} = s) do
     case Protocol.checkout(protocol, buffer) do
       {:ok, buffer} ->
         Connection.reply(from, {:ok, protocol, self(), buffer})
@@ -446,6 +563,7 @@ defmodule Postgrex.Connection do
   defp handle_down_unlisten(channel, buffer, s) do
    listener_query("UNLISTEN #{channel}", nil, nil, buffer, s)
   end
+
 
   defp listener_query(statement, result, from, buffer, s) do
     %{protocol: protocol, parameters: parameters} = s
