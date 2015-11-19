@@ -23,10 +23,11 @@ defmodule Postgrex.Messages do
   defrecord :msg_backend_key, [:pid, :key]
   defrecord :msg_ready, [:status]
   defrecord :msg_notice, [:fields]
-  defrecord :msg_query, [:query]
-  defrecord :msg_parse, [:name, :query, :type_oids]
+  defrecord :msg_query, [:statement]
+  defrecord :msg_parse, [:name, :statement, :type_oids]
   defrecord :msg_describe, [:type, :name]
   defrecord :msg_flush, []
+  defrecord :msg_close, [:type, :name]
   defrecord :msg_parse_complete, []
   defrecord :msg_parameter_desc, [:type_oids]
   defrecord :msg_row_desc, [:fields]
@@ -37,6 +38,7 @@ defmodule Postgrex.Messages do
   defrecord :msg_execute, [:name_port, :max_rows]
   defrecord :msg_sync, []
   defrecord :msg_bind_complete, []
+  defrecord :msg_close_complete, []
   defrecord :msg_portal_suspend, []
   defrecord :msg_data_row, [:values]
   defrecord :msg_command_complete, [:tag]
@@ -138,6 +140,11 @@ defmodule Postgrex.Messages do
     msg_bind_complete()
   end
 
+  # close_complete
+  def parse(_rest, ?3, _size) do
+    msg_close_complete()
+  end
+
   # portal_suspended
   def parse(_rest, ?s, _size) do
     msg_portal_suspend()
@@ -182,15 +189,15 @@ defmodule Postgrex.Messages do
   end
 
   # query
-  defp encode(msg_query(query: query)) do
-    {?Q, [query, 0]}
+  defp encode(msg_query(statement: statement)) do
+    {?Q, [statement, 0]}
   end
 
   # parse
-  defp encode(msg_parse(name: name, query: query, type_oids: oids)) do
+  defp encode(msg_parse(name: name, statement: statement, type_oids: oids)) do
     oids = for oid <- oids, into: "", do: <<oid :: uint32>>
     len = <<div(byte_size(oids), 4) :: int16>>
-    {?P, [name, 0, query, 0, len, oids]}
+    {?P, [name, 0, statement, 0, len, oids]}
   end
 
   # describe
@@ -207,18 +214,26 @@ defmodule Postgrex.Messages do
     {?H, ""}
   end
 
+  # close
+  defp encode(msg_close(type: type, name: name)) do
+    byte = case type do
+      :statement -> ?S
+      :portal -> ?P
+    end
+    {?C, [byte, name, 0]}
+  end
+
   # bind
   defp encode(msg_bind(name_port: port, name_stat: stat, param_formats: param_formats,
                           params: params, result_formats: result_formats)) do
     pfs = for format <- param_formats,  into: "", do: <<format(format) :: int16>>
     rfs = for format <- result_formats, into: "", do: <<format(format) :: int16>>
-    ps  = for param  <- params,                   do: param
 
     len_pfs = <<div(byte_size(pfs), 2) :: int16>>
     len_rfs = <<div(byte_size(rfs), 2) :: int16>>
-    len_ps  = <<length(ps) :: int16>>
+    len_params  = <<length(params) :: int16>>
 
-    {?B, [port, 0, stat, 0, len_pfs, pfs, len_ps, ps, len_rfs, rfs]}
+    {?B, [port, 0, stat, 0, len_pfs, pfs, len_params, params, len_rfs, rfs]}
   end
 
   # execute

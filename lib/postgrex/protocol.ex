@@ -2,6 +2,7 @@ defmodule Postgrex.Protocol do
   @moduledoc false
 
   alias Postgrex.Types
+  alias Postgrex.Query
   import Postgrex.Messages
   import Postgrex.BinaryUtils
 
@@ -58,14 +59,41 @@ defmodule Postgrex.Protocol do
       {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
     {:error, Postgrex.Error.t}
   def query(s, statement, params, buffer) do
-    status = %{parameters: %{}, notifications: [], portal: nil,
-               decoders: nil, columns: nil}
-    case describe(s, status, statement, buffer) do
-      {:execute, rfs, status, buffer} ->
-        execute(s, status, params, rfs, buffer)
+    status = %{parameters: %{}, notifications: [], ok: :status,
+               sync: :close_sync}
+    case parse_send(s, status, "", statement, buffer) do
+      {:ok, %Query{} = query, status, buffer} ->
+        query_encode(s, %{status | ok: :result}, query, params, buffer)
+      {:ok, result, status, buffer} ->
+        ok(result, %{status | ok: :result}, buffer)
       result ->
         result
     end
+  end
+
+  @spec parse(state, iodata, iodata, binary | :active_once) ::
+    {:ok, Postgrex.Query.t | Postgrex.Error.t |
+      {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
+    {:error, Postgrex.Error.t}
+  def parse(s, name, statement, buffer) do
+    status = %{parameters: %{}, notifications: [], ok: :result}
+    parse_send(s, status, name, statement, buffer)
+  end
+
+  @spec execute(state, Postgrex.Query.t, binary | :active_once) ::
+    {:ok, Postgrex.Result.t | Postgrex.Error.t |
+      {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
+    {:error, Postgrex.Error.t}
+  def execute(s, %Query{encoders: nil} = query, buffer) do
+    status = %{parameters: %{}, notifications: [], ok: :result, sync: :sync}
+    execute_send(s, status, query, buffer)
+  end
+
+  @spec close(state, Postgrex.Query.t, binary | :active_once) ::
+    {:ok, parameters, notifications, binary} | {:error, Postgrex.Error.t}
+  def close(s, query, buffer) do
+    status = %{parameters: %{}, notifications: [], ok: :no_result}
+    close(s, status, query, nil, buffer)
   end
 
   @spec message(state, any) ::
@@ -232,8 +260,8 @@ defmodule Postgrex.Protocol do
     extension_opts = Types.prepare_extensions(extensions, parameters)
     matchers = Types.extension_matchers(extension_keys, extension_opts)
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    query = Types.bootstrap_query(matchers, version)
-    msg = msg_query(query: query)
+    statement = Types.bootstrap_query(matchers, version)
+    msg = msg_query(statement: statement)
     case msg_send(msg, sock) do
       :ok ->
         status = %{status | extension_info: {extension_keys, extension_opts}}
@@ -303,144 +331,185 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## describe
+  ## query
 
-  defp describe(s, status, statement, buffer) do
+  defp query_encode(s, status, query, params, buffer) do
+    try do
+      Query.encode(%Query{query | params: params})
+    catch
+      kind, reason ->
+        close(s, status, query, {kind, reason, System.stacktrace}, buffer)
+    else
+      query ->
+        execute_send(s, status, query, buffer)
+    end
+  end
+
+  ## parse
+
+  defp parse_send(s, status, name, statement, buffer) do
     msgs = [
-      msg_parse(name: "", query: statement, type_oids: []),
-      msg_describe(type: :statement, name: ""),
+      msg_parse(name: name, statement: statement, type_oids: []),
+      msg_describe(type: :statement, name: name),
       msg_flush() ]
     case msg_send(msgs, s) do
-      :ok               -> parse_recv(s, status, buffer)
+      :ok ->
+        parse_recv(s, status, %Query{name: name, statement: statement}, buffer)
       {:error, _} = err -> err
     end
   end
 
-  defp parse_recv(s, status, buffer) do
+  defp parse_recv(s, status, query, buffer) do
     %{sock: sock, timeout: timeout} = s
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_parse_complete(), buffer} ->
-        describe_recv(s, status, buffer)
+        describe_recv(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
-        sync(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+        exception = Postgrex.Error.exception(postgres: fields)
+        sync_close(s, status, query, exception, buffer)
       {:ok, msg, buffer} ->
-        parse_recv(s, handle_msg(status, msg), buffer)
+        parse_recv(s, handle_msg(status, msg), query, buffer)
       {:error, _} = err ->
         err
     end
   end
 
-  defp describe_recv(s, status, buffer) do
+  defp describe_recv(s, status, query, buffer) do
     %{sock: sock, timeout: timeout} = s
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_no_data(), buffer} ->
-        {:execute, [], status, buffer}
+        ok(query, status, buffer)
+      {:ok, msg_parameter_desc(type_oids: []), buffer} ->
+        describe_recv(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
-        describe_recv(s, %{status | portal: param_oids}, buffer)
+        describe_params(s, status, query, param_oids, buffer)
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        describe_fields(s, status, fields, buffer)
+        describe_results(s, status, query, fields, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
-        sync(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+        exception = Postgrex.Error.exception(postgres: fields)
+        sync_close(s, status, query, exception, buffer)
       {:ok, msg, buffer} ->
-        describe_recv(s, handle_msg(status, msg), buffer)
+        describe_recv(s, handle_msg(status, msg), query, buffer)
       {:error, _} = err ->
         err
     end
   end
 
-  defp describe_fields(s, status, fields, buffer) do
+  defp describe_params(s, status, query, param_oids, buffer) do
+    try do
+      encoders(param_oids, s.types)
+    catch
+      kind, reason ->
+        close(s, status, query, {kind, reason, System.stacktrace}, buffer)
+    else
+      {pfs, encoders} ->
+        query = %Query{query | param_formats: pfs, encoders: encoders}
+        describe_recv(s, status, query, buffer)
+    end
+  end
+
+  defp describe_results(s, status, query, fields, buffer) do
     {col_oids, col_names} = columns(fields)
     try do
       decoders(col_oids, s.types)
     catch
       kind, reason ->
-        sync(s, status, {kind, reason, System.stacktrace}, buffer)
+        close(s, status, query, {kind, reason, System.stacktrace}, buffer)
     else
-      {formats, decoders} ->
-        status = %{status | columns: col_names, decoders: decoders}
-        {:execute, formats, status, buffer}
+      {rfs, decoders} ->
+        query = %Query{query | result_formats: rfs, decoders: decoders,
+          columns: col_names}
+        ok(query, status, buffer)
+    end
+  end
+
+  defp sync_close(s, status, %Query{name: name}, result, buffer) do
+    msgs = [
+      msg_close(type: :statement, name: name),
+      msg_sync() ]
+    case msg_send(msgs, s) do
+      :ok               -> sync_recv(s, status, result, buffer)
+      {:error, _} = err -> err
     end
   end
 
   ## execute
 
-  defp execute(s, status, params, rfs, buffer) do
-    try do
-      encode_params(s, status, params)
-    catch
-      kind, reason ->
-        sync(s, status, {kind, reason, System.stacktrace}, buffer)
-    else
-      {pfs, params} ->
-        execute(s, status, pfs, params, rfs, buffer)
-    end
-  end
-
-  defp execute(s, status, pfs, params, rfs, buffer) do
+  defp execute_send(s, %{sync: sync} = status, query, buffer) do
+    %Query{param_formats: pfs, params: params, result_formats: rfs,
+           name: name} = query
+    pfs = pfs || []
+    params = params || []
+    rfs = rfs || []
+    msgs =
+      case sync do
+        :close_sync -> [msg_close(type: :statement, name: name), msg_sync()]
+        :sync       -> [msg_sync()]
+      end
     msgs = [
-      msg_bind(name_port: "", name_stat: "", param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0),
-      msg_sync() ]
+      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
+      msg_execute(name_port: "", max_rows: 0) |
+      msgs ]
     case msg_send(msgs, s) do
-      :ok               -> bind_recv(s, status, buffer)
+      :ok               -> bind_recv(s, status, query, buffer)
       {:error, _} = err -> err
     end
   end
 
-  defp bind_recv(s, status, buffer) do
+  defp bind_recv(s, status, query, buffer) do
     %{sock: sock, timeout: timeout} = s
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_bind_complete(), buffer} ->
-        execute_recv(s, status, buffer)
+        execute_recv(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
-        bind_recv(s, handle_msg(status, msg), buffer)
+        bind_recv(s, handle_msg(status, msg), query, buffer)
       {:error, _} = err ->
         err
     end
   end
 
-  defp execute_recv(s, status, buffer) do
+  defp execute_recv(s, status, query, buffer) do
     %{sock: sock, timeout: timeout} = s
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, [values], buffer)
+        execute_recv(s, status, query, [values], buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, [], tag, buffer)
+        complete(s, status, query, [], tag, buffer)
       {:ok, msg_empty_query(), buffer} ->
         sync_recv(s, status, %Postgrex.Result{}, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
-        execute_recv(s, handle_msg(status, msg), buffer)
+        execute_recv(s, handle_msg(status, msg), query, buffer)
       {:error, _} = err ->
         err
     end
   end
 
-  defp execute_recv(s, status, rows, buffer) do
+  defp execute_recv(s, status, query, rows, buffer) do
     %{sock: sock, timeout: timeout} = s
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, [values | rows], buffer)
+        execute_recv(s, status, query, [values | rows], buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, rows, tag, buffer)
+        complete(s, status, query, rows, tag, buffer)
       {:ok, msg, buffer} ->
-        execute_recv(s, handle_msg(status, msg), buffer)
+        execute_recv(s, handle_msg(status, msg), query, buffer)
       {:error, _} = err ->
         err
     end
   end
 
-  defp complete(s, %{columns: nil} = status, [], tag, buffer) do
+  defp complete(s, status, %Query{columns: nil}, [], tag, buffer) do
     {command, nrows} = decode_tag(tag)
     result =  %Postgrex.Result{command: command, num_rows: nrows || 0}
     sync_recv(s, status, result, buffer)
   end
-  defp complete(s, status, rows, tag, buffer) do
+  defp complete(s, status, query, rows, tag, buffer) do
     {command, nrows} = decode_tag(tag)
-    %{decoders: decoders, columns: cols} = status
+    %Query{decoders: decoders, columns: cols} = query
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
     if is_nil(nrows) and command == :select do
       nrows = length(rows)
@@ -449,6 +518,32 @@ defmodule Postgrex.Protocol do
                               rows: rows, columns: cols,
                               decoders: decoders}
     sync_recv(s, status, result, buffer)
+  end
+
+  ## close
+
+  defp close(s, status, %Query{name: name}, result, buffer) do
+    msgs = [
+      msg_close(type: :statement, name: name),
+      msg_flush() ]
+    case msg_send(msgs, s) do
+      :ok               -> close_recv(s, status, result, buffer)
+      {:error, _} = err -> err
+    end
+  end
+
+  defp close_recv(s, status, result, buffer) do
+    %{sock: sock, timeout: timeout} = s
+    case msg_recv(sock, buffer, timeout) do
+      {:ok, msg_close_complete(), buffer} ->
+        ok(result, status, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        ok(Postgrex.Error.exception(postgres: fields), status, buffer)
+      {:ok, msg, buffer} ->
+        close_recv(s, handle_msg(status, msg), result, buffer)
+      {:error, _} = err ->
+        err
+    end
   end
 
   ## data
@@ -479,21 +574,10 @@ defmodule Postgrex.Protocol do
 
   ## helpers
 
-  defp encode_params(%{types: types}, %{portal: param_oids}, params) when length(param_oids) == length(params) do
-    zipped = Enum.zip(param_oids, params)
-
-    Enum.map(zipped, fn
-      {_oid, nil} ->
-        {:binary, <<-1::int32>>}
-      {oid, param} ->
-        {format, encoder} = Types.encoder(oid, types)
-        binary = encoder.(param)
-        {format, [<<IO.iodata_length(binary)::int32>>, binary]}
-    end)
-    |> :lists.unzip
-  end
-  defp encode_params(_, %{portal: param_oids}, _) do
-    raise ArgumentError, "parameters must be of length #{length param_oids} for this query"
+  defp encoders(oids, types) do
+    oids
+    |> Enum.map(&Types.encoder(&1, types))
+    |> :lists.unzip()
   end
 
   defp columns(fields) do
@@ -612,23 +696,27 @@ defmodule Postgrex.Protocol do
     status
   end
 
+  defp ok(result, %{ok: :status} = status, buffer) do
+    {:ok, result, status, buffer}
+  end
+  defp ok(result, %{ok: :result} = status, buffer) do
+    %{parameters: parameters, notifications: notifications} = status
+    {:ok, result, parameters, Enum.reverse(notifications), buffer}
+  end
+  defp ok(nil, %{ok: :no_result} = status, buffer) do
+    %{parameters: parameters, notifications: notifications} = status
+    {:ok, parameters, Enum.reverse(notifications), buffer}
+  end
+
   defp sync_recv(s, status, result, buffer) do
     %{sock: sock, timeout: timeout} = s
     case msg_recv(sock, buffer, timeout) do
       {:ok, msg_ready(), buffer} ->
-        %{parameters: parameters, notifications: notifications} = status
-        {:ok, result, parameters, Enum.reverse(notifications), buffer}
+        ok(result, status, buffer)
+      {:ok, msg_close_complete(), buffer} ->
+        sync_recv(s, status, result, buffer)
       {:ok, msg, buffer} ->
         sync_recv(s, handle_msg(status, msg), result, buffer)
-      {:error, _} = err ->
-        err
-    end
-  end
-
-  defp sync(s, status, result, buffer) do
-    case msg_send(msg_sync(), s) do
-      :ok ->
-        sync_recv(s, status, result, buffer)
       {:error, _} = err ->
         err
     end
