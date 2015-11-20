@@ -111,6 +111,37 @@ defmodule Postgrex.TestHelper do
     end
   end
 
+  defmacro prepare(name, stat, opts \\ []) do
+    quote do
+      case Postgrex.Connection.prepare(var!(context)[:pid], unquote(name),
+                                     unquote(stat), unquote(opts)) do
+        {:ok, %Postgrex.Query{} = query} -> query
+        {:error, %Postgrex.Error{} = err} -> err
+      end
+    end
+  end
+
+  defmacro execute(query, opts \\ []) do
+    quote do
+      case Postgrex.Connection.execute(var!(context)[:pid], unquote(query),
+                                       unquote(opts)) do
+        {:ok, %Postgrex.Result{rows: nil}} -> :ok
+        {:ok, %Postgrex.Result{rows: rows}} -> rows
+        {:error, %Postgrex.Error{} = err} -> err
+      end
+    end
+  end
+
+  defmacro close(query, opts \\ []) do
+    quote do
+      case Postgrex.Connection.close(var!(context)[:pid], unquote(query),
+                                     unquote(opts)) do
+        :ok -> :ok
+        {:error, %Postgrex.Error{} = err} -> err
+      end
+    end
+  end
+
   def capture_log(fun) do
     Logger.remove_backend(:console)
     fun.()

@@ -16,7 +16,7 @@ defmodule Postgrex.Result do
     columns:  [String.t] | nil,
     rows:     [[term] | term] | nil,
     num_rows: integer,
-    decoders: [(term -> term)] | nil}
+    decoders: [(binary -> term)] | nil}
 
   defstruct [command: nil, columns: nil, rows: nil, num_rows: nil,
              decoders: nil]
