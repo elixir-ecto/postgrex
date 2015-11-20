@@ -111,9 +111,9 @@ defmodule Postgrex.TestHelper do
     end
   end
 
-  defmacro parse(name, stat, opts \\ []) do
+  defmacro prepare(name, stat, opts \\ []) do
     quote do
-      case Postgrex.Connection.parse(var!(context)[:pid], unquote(name),
+      case Postgrex.Connection.prepare(var!(context)[:pid], unquote(name),
                                      unquote(stat), unquote(opts)) do
         {:ok, %Postgrex.Query{} = query} -> query
         {:error, %Postgrex.Error{} = err} -> err

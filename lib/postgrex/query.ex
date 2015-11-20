@@ -1,9 +1,9 @@
 defmodule Postgrex.Query do
   @moduledoc """
-  Query struct returned from a successfully parsed query. Its fields are:
+  Query struct returned from a successfully prepared query. Its fields are:
 
-    * `name` - The name of the parsed statement;
-    * `statement` - The parsed statement;
+    * `name` - The name of the prepared statement;
+    * `statement` - The prepared statement;
     * `params` - The parameters of the query.
     * `param_formats` - List of formats for each parameters encoded to;
     * `encoders` - List of anonymous functions to encode each parameter;
@@ -28,7 +28,7 @@ defmodule Postgrex.Query do
     :result_formats, :decoders]
 
   @doc """
-  Encodes a parsed query..
+  Encodes a prepared query.
 
   It is a no-op if the parameters are already encoded.
 

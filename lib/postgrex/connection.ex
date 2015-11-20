@@ -102,11 +102,11 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Parses an (extended) query and returns the result as
+  Prepares an (extended) query and returns the result as
   `{:ok, %Postgrex.Query{}}` or `{:error, %Postgrex.Error{}}` if there was an
   error. Parameters can be set in the query as `$1` embedded in the query
-  string. To execute the query call `execute/4`. To close the parsed query call
-  `close/3`. See `Postgrex.Query` for the query data.
+  string. To execute the query call `execute/4`. To close the prepared query
+  call `close/3`. See `Postgrex.Query` for the query data.
 
   ## Options
 
@@ -115,29 +115,29 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      Postgrex.Connection.parse(pid, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.Connection.prepare(pid, "CREATE TABLE posts (id serial, title text)")
   """
-  @spec parse(pid, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
-  def parse(pid, name, statement, opts \\ []) do
-    run(pid, &Protocol.parse(&1, name, statement, &2), opts)
+  @spec prepare(pid, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
+  def prepare(pid, name, statement, opts \\ []) do
+    run(pid, &Protocol.prepare(&1, name, statement, &2), opts)
   end
 
   @doc """
-  Parsed an (extended) query and returns the parsed query or raises
-  `Postgrex.Error` if there was an error. See `parse/4`.
+  Prepared an (extended) query and returns the prepared query or raises
+  `Postgrex.Error` if there was an error. See `prepare/4`.
   """
-  @spec parse!(pid, iodata, iodata, Keyword.t) :: Postgrex.Query.t
-  def parse!(pid, name, statement, opts \\ []) do
-    case parse(pid, name, statement, opts) do
+  @spec prepare!(pid, iodata, iodata, Keyword.t) :: Postgrex.Query.t
+  def prepare!(pid, name, statement, opts \\ []) do
+    case prepare(pid, name, statement, opts) do
       {:ok, query}  -> query
       {:error, err} -> raise err
     end
   end
 
   @doc """
-  Runs an (extended) parsed query and returns the result as
+  Runs an (extended) prepared query and returns the result as
   `{:ok, %Postgrex.Result{}}` or `{:error, %Postgrex.Error{}}` if there was an
-  error. Parameters are given as part of the parsed query, `%Postgrex.Query{}`.
+  error. Parameters are given as part of the prepared query, `%Postgrex.Query{}`.
   See the README for information on how Postgrex encodes and decodes Elixir
   values by default. See `Postgrex.Query` for the query data and
   `Postgrex.Result` for the result data.
@@ -150,10 +150,10 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      query = Postgrex.Connection.parse!(pid, "CREATE TABLE posts (id serial, title text)")
+      query = Postgrex.Connection.prepare!(pid, "CREATE TABLE posts (id serial, title text)")
       Postgrex.Connection.execute(pid, query)
 
-      query = Postgrex.Connection.parse!(pid, "SELECT id FROM posts WHERE title like $1")
+      query = Postgrex.Connection.prepare!(pid, "SELECT id FROM posts WHERE title like $1")
       Postgrex.Connection.execute(pid, %Postgrex.Query{query | params: ["%my%"]}
   """
   def execute(pid, query, opts \\ []) do
@@ -162,7 +162,7 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Runs an (extended) parsed query and returns the result or raises
+  Runs an (extended) prepared query and returns the result or raises
   `Postgrex.Error` if there was an error. See `execute/3`.
   """
   @spec execute!(pid, Postgrex.Query.t, Keyword.t) :: Postgrex.Result.t
@@ -174,9 +174,9 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Closes an (extended) parsed query and returns `:ok` or
+  Closes an (extended) prepared query and returns `:ok` or
   `{:error, %Postgrex.Error{}}` if there was an error. Closing a query releases
-  any resources held by postgresql for a parsed query with that name. See
+  any resources held by postgresql for a prepared query with that name. See
   `Postgrex.Query` for the query data.
 
   ## Options
@@ -185,7 +185,7 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      query = Postgrex.Connection.parse!(pid, "CREATE TABLE posts (id serial, title text)")
+      query = Postgrex.Connection.prepare!(pid, "CREATE TABLE posts (id serial, title text)")
       Postgrex.Connection.close(pid, query)
   """
   @spec close(pid, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
@@ -194,8 +194,8 @@ defmodule Postgrex.Connection do
   end
 
   @doc """
-  Closes an (extended) parsed query and returns `:ok` or raises `Postgrex.Error`
-  if there was an error. See `close/3`.
+  Closes an (extended) prepared query and returns `:ok` or raises
+  `Postgrex.Error` if there was an error. See `close/3`.
   """
   @spec close!(pid, Postgrex.Query.t, Keyword.t) :: :ok
   def close!(pid, query, opts \\ []) do

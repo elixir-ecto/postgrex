@@ -61,7 +61,7 @@ defmodule Postgrex.Protocol do
   def query(s, statement, params, buffer) do
     status = %{parameters: %{}, notifications: [], ok: :status,
                sync: :close_sync}
-    case parse_send(s, status, "", statement, buffer) do
+    case prepare_send(s, status, "", statement, buffer) do
       {:ok, %Query{} = query, status, buffer} ->
         query_encode(s, %{status | ok: :result}, query, params, buffer)
       {:ok, result, status, buffer} ->
@@ -71,13 +71,13 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec parse(state, iodata, iodata, binary | :active_once) ::
+  @spec prepare(state, iodata, iodata, binary | :active_once) ::
     {:ok, Postgrex.Query.t | Postgrex.Error.t |
       {:error | :throw | :exit, any, list}, parameters, notifications, binary} |
     {:error, Postgrex.Error.t}
-  def parse(s, name, statement, buffer) do
+  def prepare(s, name, statement, buffer) do
     status = %{parameters: %{}, notifications: [], ok: :result}
-    parse_send(s, status, name, statement, buffer)
+    prepare_send(s, status, name, statement, buffer)
   end
 
   @spec execute(state, Postgrex.Query.t, binary | :active_once) ::
@@ -345,9 +345,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## parse
+  ## prepare
 
-  defp parse_send(s, status, name, statement, buffer) do
+  defp prepare_send(s, status, name, statement, buffer) do
     msgs = [
       msg_parse(name: name, statement: statement, type_oids: []),
       msg_describe(type: :statement, name: name),
