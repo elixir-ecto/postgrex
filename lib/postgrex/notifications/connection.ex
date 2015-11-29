@@ -120,8 +120,7 @@ defmodule Postgrex.Notifications.Connection do
       {:ok, {channel, _pid}} ->
         Process.demonitor(ref, [:flush])
 
-        s = update_in(s.listeners, &HashDict.delete(&1, ref))
-        s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+        s = remove_monitored_listener(s, ref, channel)
 
         # If no listeners remain for `channel`, then let's actually issue an
         # UNLISTEN query.
@@ -139,8 +138,7 @@ defmodule Postgrex.Notifications.Connection do
       :error ->
         {:noreply, s}
       {:ok, {channel, _pid}} ->
-        s = update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
-        s = update_in(s.listeners, &HashDict.delete(&1, ref))
+        s = remove_monitored_listener(s, ref, channel)
 
         if HashSet.size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
@@ -160,7 +158,7 @@ defmodule Postgrex.Notifications.Connection do
 
     case Protocol.query(protocol, statement, [], buffer) do
       {:ok, %Postgrex.Result{}, new_parameters, notifications, buffer} ->
-        _ = from && Connection.reply(from, result)
+        if from, do: Connection.reply(from, result)
         notify_listeners(notifications, s)
         parameters = Map.merge(parameters, new_parameters)
         checkin(buffer, s)
@@ -173,14 +171,13 @@ defmodule Postgrex.Notifications.Connection do
 
   defp notify_listeners(notifications, s) do
     %__MODULE__{listener_channels: channels, listeners: listeners} = s
-    _ = for {channel, payload} <- notifications do
-      _ = for ref <- HashDict.get(channels, channel) || [] do
+
+    Enum.each notifications, fn {channel, payload} ->
+      Enum.each (HashDict.get(channels, channel) || []), fn ref ->
         {_, pid} = HashDict.fetch!(listeners, ref)
         send(pid, {:notification, self(), ref, channel, payload})
-        :ok
       end
     end
-    :ok
   end
 
   defp protocol_info(msg, s) do
@@ -211,5 +208,10 @@ defmodule Postgrex.Notifications.Connection do
       {:ok, _} = ok      -> ok
       {:stop, reason, _} -> {:stop, reason}
     end
+  end
+
+  defp remove_monitored_listener(s, ref, channel) do
+    s = update_in(s.listeners, &HashDict.delete(&1, ref))
+    update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
   end
 end
