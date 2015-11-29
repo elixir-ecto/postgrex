@@ -19,23 +19,8 @@ defmodule Postgrex.Notifications.Connection do
   @doc """
   Start the notification connection process and connect to postgres.
 
-  ## Options
-
-    * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
-    * `:port` - Server port (default: 5432);
-    * `:database` - Database (required);
-    * `:username` - Username (default: PGUSER env variable, then USER env var);
-    * `:password` - User password (default PGPASSWORD);
-    * `:parameters` - Keyword list of connection parameters;
-    * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
-    * `:ssl` - Set to `true` if ssl should be used (default: `false`);
-    * `:ssl_opts` - A list of ssl options, see ssl docs;
-    * `:socket_options` - Options to be given to the underlying socket;
-    * `:sync_connect` - Block in `start_link/1` until connection is set up (default: `false`)
-    * `:extensions` - A list of `{module, opts}` pairs where `module` is
-      implementing the `Postgrex.Extension` behaviour and `opts` are the
-      extension options;
-
+  The option that this function accepts are exactly the same accepted by
+  `Postgrex.Connection.start_link/1`.
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
