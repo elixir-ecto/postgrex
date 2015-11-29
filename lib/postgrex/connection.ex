@@ -5,7 +5,6 @@ defmodule Postgrex.Connection do
 
   use Connection
   alias Postgrex.Protocol
-  alias Postgrex.ConnectionUtils
   require Logger
 
   @timeout 5000
@@ -37,7 +36,7 @@ defmodule Postgrex.Connection do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    Connection.start_link(__MODULE__, ConnectionUtils.default_opts(opts))
+    Connection.start_link(__MODULE__, Postgrex.Utils.default_opts(opts))
   end
 
   @doc """
@@ -274,7 +273,7 @@ defmodule Postgrex.Connection do
     {:noreply, %{s | queue: :queue.in({request, nil, from}, queue)}}
   end
 
-  # @doc false
+  @doc false
   def handle_cast({:done, ref, new_parameters, _notifications, buffer}, %{client: {ref, _}} = s) do
     %{parameters: parameters} = s
     parameters = Map.merge(parameters, new_parameters)

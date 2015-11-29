@@ -8,7 +8,6 @@ defmodule Postgrex.Notifications.Connection do
   require Logger
 
   alias Postgrex.Protocol
-  alias Postgrex.ConnectionUtils
 
   @timeout 5000
 
@@ -40,7 +39,7 @@ defmodule Postgrex.Notifications.Connection do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    Connection.start_link(__MODULE__, ConnectionUtils.default_opts(opts))
+    Connection.start_link(__MODULE__, Postgrex.Utils.default_opts(opts))
   end
 
   @doc """
