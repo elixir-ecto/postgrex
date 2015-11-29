@@ -3,8 +3,8 @@ defmodule Postgrex.Connection do
   Main API for Postgrex. This module handles the connection to postgres.
 
   Note that the notifications API (pub/sub) supported by Postgres is handled by
-  `Postgrex.Notifications.Connection` and not by this module. Hence, to use this
-  feature, you need to start a separate (notifications) connection.
+  `Postgrex.Notifications` and not by this module. Hence, to use this feature,
+  you need to start a separate (notifications) connection.
   """
 
   use Connection

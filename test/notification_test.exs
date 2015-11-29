@@ -2,7 +2,7 @@ defmodule NotificationTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
   alias Postgrex.Connection, as: P
-  alias Postgrex.Notifications.Connection, as: PN
+  alias Postgrex.Notifications, as: PN
 
   setup do
     opts = [ database: "postgrex_test" ]

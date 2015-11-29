@@ -1,4 +1,4 @@
-defmodule Postgrex.Notifications.Connection do
+defmodule Postgrex.Notifications do
   @moduledoc """
   API for notifications (pub/sub) in Postgres.
   """
