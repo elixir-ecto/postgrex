@@ -38,7 +38,7 @@ defmodule Postgrex.Extensions.Binary do
               int2send int4send int8send float4send float8send numeric_send
               uuid_send date_send time_send timetz_send timestamp_send
               timestamptz_send interval_send enum_send tidsend unknownsend
-              inet_send cidr_send macaddr_send
+              inet_send cidr_send macaddr_send point_send
               ) ++ @oid_senders
 
   @pg_extensions ~w(hstore citext)
@@ -132,6 +132,8 @@ defmodule Postgrex.Extensions.Binary do
     do: encode_network(cidr)
   def encode(%TypeInfo{type: "macaddr"}, %Postgrex.MACADDR{} = macaddr, _, _),
     do: encode_network(macaddr)
+  def encode(%TypeInfo{type: "point", send: "point_send"}, %Postgrex.Point{} = point, _, _),
+    do: encode_point(point)
 
   # Define encodings for PG extensions. They could be defined inside a schema,
   # so only :type field could be matched exactly, b/c other fields may have schema prefix
@@ -393,6 +395,9 @@ defmodule Postgrex.Extensions.Binary do
   defp encode_network(%Postgrex.MACADDR{address: {a, b, c, d, e, f}}),
     do: <<a, b, c, d, e, f>>
 
+  defp encode_point(%Postgrex.Point{x: x, y: y}),
+    do: <<x :: float64, y ::float64>>
+
   defp tuple_to_binary({a, b, c, d}),
     do: <<a::8, b::8, c::8, d::8>>
   defp tuple_to_binary({a, b, c, d, e, f, g, h}) do
@@ -479,6 +484,8 @@ defmodule Postgrex.Extensions.Binary do
     do: decode_network(binary)
   def decode(%TypeInfo{type: "macaddr"}, binary, _, _),
     do: decode_network(binary)
+  def decode(%TypeInfo{type: "point"}, binary, _, _),
+    do: decode_point(binary)
 
 
   # Define decodings for PG extensions. They could be defined inside a schema,
@@ -669,6 +676,11 @@ defmodule Postgrex.Extensions.Binary do
     do: %Postgrex.CIDR{address: binary_to_tuple(addr), netmask: netmask}
   defp decode_network(<<a::8, b::8, c::8, d::8, e::8, f::8>>),
     do: %Postgrex.MACADDR{address: {a, b, c, d, e, f}}
+
+  # Geometrics
+  defp decode_point(<<x :: float64, y :: float64>>) do
+    %Postgrex.Point{ x: x, y: y }
+  end
 
   defp binary_to_tuple(<<a::8, b::8, c::8, d::8>>),
     do: {a, b, c, d}
