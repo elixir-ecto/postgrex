@@ -678,8 +678,8 @@ defmodule Postgrex.Extensions.Binary do
     do: %Postgrex.MACADDR{address: {a, b, c, d, e, f}}
 
   # Geometrics
-  defp decode_point(<<x::float64, y::float64>>) do
-    %Postgrex.Point{x: x, y: y}
+  defp decode_point(<<x :: float64, y :: float64>>) do
+    %Postgrex.Point{ x: x, y: y }
   end
 
   defp binary_to_tuple(<<a::8, b::8, c::8, d::8>>),
