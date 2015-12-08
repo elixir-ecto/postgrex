@@ -109,6 +109,14 @@ defmodule QueryTest do
            query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'", [])
   end
 
+  test "decode point", context do
+    assert [[%Postgrex.Point{x: -97.5, y: 100.1}]] == query("SELECT point(-97.5, 100.1)::point", [])
+  end
+
+  test "encode point", context do
+    assert [[%Postgrex.Point{x: -97, y: 100}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
+  end
+
   test "decode record", context do
     assert [[{1, "2"}]] = query("SELECT (1, '2')::composite1", [])
     assert [[[{1, "2"}]]] = query("SELECT ARRAY[(1, '2')::composite1]", [])

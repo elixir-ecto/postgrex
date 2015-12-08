@@ -16,6 +16,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Network,
     Postgrex.Extensions.Numeric,
     Postgrex.Extensions.OID,
+    Postgrex.Extensions.Point,
     Postgrex.Extensions.Range,
     Postgrex.Extensions.Raw,
     Postgrex.Extensions.Record,

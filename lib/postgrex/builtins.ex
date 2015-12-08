@@ -146,3 +146,18 @@ defmodule Postgrex.MACADDR do
 
   defstruct [address: nil]
 end
+
+defmodule Postgrex.Point do
+  @moduledoc """
+  Struct for Postgres point.
+
+  ## Fields
+    * `x`
+    * `y`
+  """
+  @type t :: %__MODULE__{x: float, y: float}
+
+  defstruct [
+    x: nil,
+    y: nil]
+end
