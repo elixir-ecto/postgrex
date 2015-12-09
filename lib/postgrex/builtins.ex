@@ -155,10 +155,10 @@ defmodule Postgrex.Point do
     * `x`
     * `y`
   """
-  @type t :: %__MODULE__{x: :x, y: :x}
+  require Decimal
+  @type t :: %__MODULE__{x: float, y: float}
 
   defstruct [
     x: nil,
     y: nil]
-
 end
