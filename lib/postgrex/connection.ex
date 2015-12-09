@@ -7,14 +7,9 @@ defmodule Postgrex.Connection do
   you need to start a separate (notifications) connection.
   """
 
-  use Connection
-  alias Postgrex.Protocol
-  require Logger
+  alias Postgrex.Query
 
   @timeout 5000
-
-  defstruct [parameters: nil, protocol: nil, queue: :queue.new(), client: nil,
-             timer: nil]
 
   ### PUBLIC API ###
 
@@ -40,19 +35,7 @@ defmodule Postgrex.Connection do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    Connection.start_link(__MODULE__, Postgrex.Utils.default_opts(opts))
-  end
-
-  @doc """
-  Stop the process and disconnect.
-
-  ## Options
-
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
-  """
-  @spec stop(pid, Keyword.t) :: :ok
-  def stop(pid, opts \\ []) do
-    Connection.call(pid, :stop, opts[:timeout] || @timeout)
+    DBConnection.start_link(Postgrex.Protocol, Postgrex.Utils.default_opts(opts))
   end
 
   @doc """
@@ -82,7 +65,8 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
-    run(pid, &Protocol.query(&1, statement, params, &2), opts)
+    query = %Query{name: "", statement: statement, params: params}
+    DBConnection.query(pid, query, opts)
   end
 
   @doc """
@@ -91,10 +75,8 @@ defmodule Postgrex.Connection do
   """
   @spec query!(pid, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(pid, statement, params, opts \\ []) do
-    case query(pid, statement, params, opts) do
-      {:ok, res}    -> res
-      {:error, err} -> raise err
-    end
+    query = %Query{name: "", statement: statement, params: params}
+    DBConnection.query!(pid, query, opts)
   end
 
   @doc """
@@ -115,7 +97,7 @@ defmodule Postgrex.Connection do
   """
   @spec prepare(pid, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
   def prepare(pid, name, statement, opts \\ []) do
-    run(pid, &Protocol.prepare(&1, name, statement, &2), opts)
+    DBConnection.prepare(pid, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
@@ -124,10 +106,7 @@ defmodule Postgrex.Connection do
   """
   @spec prepare!(pid, iodata, iodata, Keyword.t) :: Postgrex.Query.t
   def prepare!(pid, name, statement, opts \\ []) do
-    case prepare(pid, name, statement, opts) do
-      {:ok, query}  -> query
-      {:error, err} -> raise err
-    end
+    DBConnection.prepare!(pid, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
@@ -152,9 +131,10 @@ defmodule Postgrex.Connection do
       query = Postgrex.Connection.prepare!(pid, "SELECT id FROM posts WHERE title like $1")
       Postgrex.Connection.execute(pid, %Postgrex.Query{query | params: ["%my%"]}
   """
+  @spec execute(pid, Postgrex.Query.t, Keyword.t) ::
+    {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(pid, query, opts \\ []) do
-    query = Postgrex.Query.encode(query)
-    run(pid, &Protocol.execute(&1, query, &2), opts)
+    DBConnection.execute(pid, query, opts)
   end
 
   @doc """
@@ -163,10 +143,7 @@ defmodule Postgrex.Connection do
   """
   @spec execute!(pid, Postgrex.Query.t, Keyword.t) :: Postgrex.Result.t
   def execute!(pid, query, opts \\ []) do
-    case execute(pid, query, opts) do
-      {:ok, res}    -> res
-      {:error, err} -> raise err
-    end
+    DBConnection.execute!(pid, query, opts)
   end
 
   @doc """
@@ -186,7 +163,7 @@ defmodule Postgrex.Connection do
   """
   @spec close(pid, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def close(pid, query, opts \\ []) do
-    run(pid, &Protocol.close(&1, query, &2), opts)
+    DBConnection.close(pid, query, opts)
   end
 
   @doc """
@@ -195,294 +172,16 @@ defmodule Postgrex.Connection do
   """
   @spec close!(pid, Postgrex.Query.t, Keyword.t) :: :ok
   def close!(pid, query, opts \\ []) do
-    case close(pid, query, opts) do
-      :ok           -> :ok
-      {:error, err} -> raise err
-    end
+    DBConnection.close!(pid, query, opts)
   end
 
   @doc """
   Returns a cached map of connection parameters.
-
   ## Options
-
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
+  * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec parameters(pid, Keyword.t) :: map
+  @spec parameters(pid, Keyword.t) :: %{binary => binary}
   def parameters(pid, opts \\ []) do
-    Connection.call(pid, :parameters, opts[:timeout] || @timeout)
-  end
-
-  ### CONNECTION CALLBACKS ###
-
-  @doc false
-  def init(opts) do
-    if opts[:sync_connect] do
-      sync_connect(opts)
-    else
-      {:connect, :init, opts}
-    end
-  end
-
-  @doc false
-  def connect(_, opts) do
-    case Protocol.connect(opts) do
-      {:ok, protocol, parameters, _} ->
-        {:ok, %__MODULE__{protocol: protocol, parameters: parameters}}
-      {:error, reason} ->
-        {:stop, reason, opts}
-    end
-  end
-
-  @doc false
-  def format_status(:terminate, [_pdict, opts]) when is_list(opts) do
-    Keyword.put(opts, :password, :REDACTED)
-  end
-  def format_status(opt, [_pdict, s]) do
-    s = %{s | types: :types_removed}
-    if opt == :normal do
-      [data: [{'State', s}]]
-    else
-      s
-    end
-  end
-
-  @doc false
-  def handle_call(:stop, _, s) do
-    {:stop, :normal, :ok, s}
-  end
-
-  def handle_call(:parameters, _from, %{parameters: params} = s) do
-    {:reply, params, s}
-  end
-
-  def handle_call({:checkout, ref, timeout}, {pid, _} = from, %{client: nil} = s) do
-    monitor = Process.monitor(pid)
-    handle_next({:checkout, timeout}, from, %{s | client: {ref, monitor}})
-  end
-
-  def handle_call({:checkout, ref, timeout}, {pid, _} = from, %{queue: queue} = s) do
-    client = {ref, Process.monitor(pid)}
-    {:noreply, %{s | queue: :queue.in({{:checkout, timeout}, client, from}, queue)}}
-  end
-
-  def handle_call({:listen, channel}, from, %{client: nil} = s) do
-    handle_next({:listen, channel}, from, s)
-  end
-  def handle_call({:unlisten, ref}, from, %{client: nil} = s) do
-    handle_next({:unlisten, ref}, from, s)
-  end
-
-  def handle_call(request, from, %{queue: queue} = s) do
-    {:noreply, %{s | queue: :queue.in({request, nil, from}, queue)}}
-  end
-
-  @doc false
-  def handle_cast({:done, ref, new_parameters, _notifications, buffer}, %{client: {ref, _}} = s) do
-    %{parameters: parameters} = s
-    parameters = Map.merge(parameters, new_parameters)
-    handle_next(buffer, %__MODULE__{s | parameters: parameters})
-  end
-
-  def handle_cast({:update, ref, new_parameters, _notifications}, %{client: {ref, _}} = s) do
-    %{parameters: parameters} = s
-    parameters = Map.merge(parameters, new_parameters)
-    {:noreply, %__MODULE__{s | parameters: parameters}}
-  end
-
-  def handle_cast({:stop, ref}, %{client: {ref, _}} = s) do
-    {:stop, {:shutdown, :stop}, s}
-  end
-
-  def handle_cast({:cancel, ref}, %{client: {ref, _}} = s) do
-    {:stop, {:shutdown, :cancel}, s}
-  end
-  def handle_cast({:cancel, ref}, %{queue: queue} = s) do
-    cancel =
-      fn({_, {ref2, monitor}, _}) when ref === ref2 ->
-          Process.demonitor(monitor, [:flush])
-          false
-        (_) ->
-          true
-      end
-    {:noreply, %{s | queue: :queue.filter(cancel, queue)}}
-  end
-
-  @doc false
-  def handle_info({:DOWN, ref, :process, _, _}, %{client: {_, ref}} = s) do
-    {:stop, {:shutdown, :DOWN}, s}
-  end
-
-  def handle_info({:DOWN, _, :process, _, _} = down, s) do
-    filter_queue(down, s)
-  end
-
-  def handle_info({:timeout, timer, __MODULE__}, %{timer: timer} = s) when is_reference(timer) do
-    {:stop, {:shutdown, :timeout}, s}
-  end
-
-  def handle_info(msg, s) do
-    protocol_info(msg, s)
-  end
-
-  ### PRIVATE FUNCTIONS ###
-
-  defp run(pid, fun, opts) do
-    queue_timeout = opts[:queue_timeout] || @timeout
-    timeout = opts[:timeout] || @timeout
-    ref = make_ref()
-    try do
-      Connection.call(pid, {:checkout, ref, timeout}, queue_timeout)
-    catch
-      :exit, {_, {_, :call, [pid | _]}} = reason ->
-        Connection.cast(pid, {:cancel, ref})
-        exit(reason)
-    else
-      {:ok, protocol, pid, buffer} ->
-        protocol = %{protocol | timeout: timeout}
-        result = run(pid, ref, fun, protocol, buffer)
-        run_result(result, opts)
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  defp run(pid, ref, fun, protocol, buffer) do
-    try do
-      fun.(protocol, buffer)
-    else
-      {:ok, result, parameters, notifications, buffer} ->
-        Connection.cast(pid, {:done, ref, parameters, notifications, buffer})
-        result
-      {:ok, parameters, notifications, buffer} ->
-        Connection.cast(pid, {:done, ref, parameters, notifications, buffer})
-        :ok
-      {:error, _} = error ->
-        Connection.cast(pid, {:stop, ref})
-        error
-    catch
-      kind, reason ->
-        stack = System.stacktrace()
-        Connection.cast(pid, {:stop, ref})
-        :erlang.raise(kind, reason, stack)
-    end
-  end
-
-  defp run_result(%Postgrex.Result{} = res, opts) do
-    case Keyword.get(opts, :decode, :auto) do
-      :auto   -> {:ok, Postgrex.Result.decode(res)}
-      :manual -> {:ok, res}
-    end
-  end
-  defp run_result({kind, reason, stack}, _) do
-    :erlang.raise(kind, reason, stack)
-  end
-  defp run_result(%Postgrex.Query{} = query, _), do: {:ok, query}
-  defp run_result(%Postgrex.Error{} = err, _), do: {:error, err}
-  defp run_result(:ok, _), do: :ok
-  defp run_result({:error, _} = err, _), do: err
-
-  defp sync_connect(opts) do
-    case connect(:init, opts) do
-      {:ok, _} = ok      -> ok
-      {:stop, reason, _} -> {:stop, reason}
-    end
-  end
-
-  defp handle_next(buffer, %{client: client, timer: timer, queue: queue} = s) do
-    _ = client && Process.demonitor(elem(client, 1), [:flush])
-    cancel_timer(timer)
-    {item, queue} = :queue.out(queue)
-    s = %{s | client: nil, timer: nil, queue: queue}
-    case item do
-      {:value, {request, client, from}} ->
-        handle_next(request, from, buffer, %{s | client: client})
-      :empty ->
-        checkin(buffer, s)
-    end
-  end
-
-  defp handle_next(request, from, buffer \\ :active_once, s)
-
-  defp handle_next({:checkout, timeout}, from, buffer, s) do
-    handle_checkout(timeout, from, buffer, s)
-  end
-
-  defp checkin(buffer, %{protocol: protocol} = s) do
-    case Protocol.checkin(protocol, buffer) do
-      :ok              -> {:noreply, s}
-      {:error, reason} -> {:stop, reason, s}
-    end
-  end
-
-  defp handle_checkout(timeout, from, buffer, %{protocol: protocol} = s) do
-    case Protocol.checkout(protocol, buffer) do
-      {:ok, buffer} ->
-        Connection.reply(from, {:ok, protocol, self(), buffer})
-        timer = start_timer(timeout)
-        {:noreply,  %{s | timer: timer}}
-      {:error, reason} ->
-        {:stop, reason, s}
-    end
-  end
-
-  defp filter_queue({:DOWN, ref, :process, _, _} = msg, %{queue: queue} = s) do
-    len = :queue.len(queue)
-
-    down =
-      fn({_, {_, monitor}, _}) when ref === monitor ->
-          false
-        (_) ->
-          true
-      end
-
-    queue = :queue.filter(down, queue)
-
-    case :queue.len(queue) do
-      ^len ->
-        protocol_info(msg, s)
-      _ ->
-        {:noreply, %{s | queue: queue}}
-    end
-  end
-
-  defp protocol_info(info, s) do
-    %__MODULE__{protocol: protocol, parameters: parameters} = s
-    case Protocol.message(protocol, info) do
-      {:ok, new_parameters, _notifications} ->
-        parameters = Map.merge(parameters, new_parameters)
-        {:noreply, %__MODULE__{s | parameters: parameters}}
-      :unknown ->
-        Logger.info fn() ->
-          [inspect(__MODULE__), ?\s, inspect(self()), " received message: " |
-            inspect(info)]
-        end
-        {:noreply, s}
-      {:error, reason} ->
-        {:stop, reason, s}
-    end
-  end
-
-  defp start_timer(:infinity), do: nil
-  defp start_timer(timeout) do
-    :erlang.start_timer(timeout, self, __MODULE__)
-  end
-
-  defp cancel_timer(nil), do: :ok
-  defp cancel_timer(timer) do
-    case :erlang.cancel_timer(timer) do
-      false -> flush_timer(timer)
-      _     -> :ok
-    end
-  end
-
-  defp flush_timer(timer) do
-    receive do
-      {:timeout, ^timer, __MODULE__} ->
-        :ok
-    after
-      0 ->
-        raise ArgumentError, "Timer #{inspect(timer)} does not exist"
-    end
+    DBConnection.execute!(pid, %Postgrex.Parameters{}, opts)
   end
 end

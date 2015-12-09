@@ -18,7 +18,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: code}}}, 500
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}}, [_|_]}, 500
       assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
@@ -37,7 +37,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: code}}}
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}}, [_|_]}
       assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
@@ -93,16 +93,16 @@ defmodule LoginTest do
 
     capture_log fn ->
       opts = [ database: "doesntexist", sync_connect: true ]
-      assert {:error, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}} =
+      assert {:error, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}} =
              P.start_link(opts)
 
-      assert_receive {:EXIT, _, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}}
+      assert_receive {:EXIT, _, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
     end
 
     capture_log fn ->
       opts = [ database: "doesntexist" ]
       {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, %Postgrex.Error{postgres: %{code: :invalid_catalog_name}}}
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
     end
   end
 
@@ -113,7 +113,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, %Postgrex.Error{message: message}}, 500
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{message: message}, [_|_]}}, 500
       assert message == "tcp connect: non-existing domain - :nxdomain"
     end
   end

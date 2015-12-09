@@ -27,6 +27,7 @@ defmodule Postgrex.Mixfile do
     [{:ex_doc, only: :dev},
      {:earmark, only: :dev},
      {:decimal, "~> 1.0"},
+     {:db_connection, "~> 0.1"},
      {:connection, "~> 1.0"}]
   end
 
