@@ -90,7 +90,7 @@ defmodule Postgrex.Notifications do
   end
 
   def connect(_, opts) do
-    case Protocol.connect(opts) do
+    case Protocol.connect([types: false] ++ opts) do
       {:ok, protocol, parameters, _} ->
         {:ok, %__MODULE__{protocol: protocol, parameters: parameters}}
       {:error, reason} ->
@@ -156,7 +156,7 @@ defmodule Postgrex.Notifications do
   defp listener_query(statement, result, from, buffer, s) do
     %{protocol: protocol, parameters: parameters} = s
 
-    case Protocol.query(protocol, statement, [], buffer) do
+    case Protocol.simple_query(protocol, statement, buffer) do
       {:ok, %Postgrex.Result{}, new_parameters, notifications, buffer} ->
         if from, do: Connection.reply(from, result)
         notify_listeners(notifications, s)

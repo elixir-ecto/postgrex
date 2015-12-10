@@ -25,10 +25,11 @@ defmodule Postgrex.Protocol do
     custom     = opts[:extensions] || []
     extensions = custom ++ @default_extensions
     ssl?       = opts[:ssl] || false
+    types?     = opts[:types] || true
 
     s = %{sock: nil, backend_key: nil, types: nil, timeout: timeout}
 
-    types_key = {host, port, Keyword.fetch!(opts, :database), custom}
+    types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), custom}
     status = %{opts: opts, parameters: %{}, notifications: [],
                types_key: types_key, types_ref: nil, extensions: extensions,
                extension_info: nil}
@@ -52,6 +53,15 @@ defmodule Postgrex.Protocol do
   @spec checkin(state, binary) :: :ok | {:error, Postgrex.Error.t}
   def checkin(%{sock: sock}, buffer) do
     activate(sock, buffer)
+  end
+
+  @spec simple_query(state, String.t, binary | :active_once) ::
+    {:ok, Postgrex.Result.t | Postgrex.Error.t, parameters, notifications,
+      binary} |
+    {:error, Postgrex.Error.t}
+  def simple_query(s, statement, buffer) do
+    status = %{parameters: %{}, notifications: [], ok: :result, sync: :sync}
+    simple_send(s, status, statement, buffer)
   end
 
   @spec query(state, String.t, [any], binary | :active_once) ::
@@ -243,6 +253,9 @@ defmodule Postgrex.Protocol do
 
   ## bootstrap
 
+  defp bootstrap(s, %{types_key: nil} = status, buffer) do
+    bootstrap_ready(s, status, buffer)
+  end
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
     case Postgrex.TypeServer.fetch(types_key) do
       {:ok, table} ->
@@ -326,6 +339,30 @@ defmodule Postgrex.Protocol do
     case activate(sock, buffer) do
       :ok ->
         {:ok, s, parameters, Enum.reverse(notifications)}
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  ## simple
+
+  defp simple_send(%{sock: sock} = s, status, statement, buffer) do
+    msg = msg_query(statement: statement)
+    case msg_send(msg, sock) do
+      :ok               -> simple_recv(s, status, buffer)
+      {:error, _} = err -> err
+    end
+  end
+
+  defp simple_recv(s, status, buffer) do
+    %{sock: sock, timeout: timeout} = s
+    case msg_recv(sock, buffer, timeout) do
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        complete(s, status, %Query{}, [], tag, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        simple_recv(s, handle_msg(status, msg), buffer)
       {:error, _} = err ->
         err
     end
