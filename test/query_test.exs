@@ -109,8 +109,12 @@ defmodule QueryTest do
            query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'", [])
   end
 
+  test "point comparison", context do
+    assert [[%Postgrex.Point{x: -97, y: 100}]] == [[%Postgrex.Point{x: -97.0, y: 100.0}]]
+  end
+
   test "decode point", context do
-    assert [[%Postgrex.Point{x: -97, y: 100}]] == query("SELECT point(-97, 100)::point", [])
+    assert [[%Postgrex.Point{x: -97.0, y: 100.0}]] == query("SELECT point(-97, 100)::point", [])
     assert [[%Postgrex.Point{x: -97.5, y: 100.1}]] == query("SELECT point(-97.5, 100.1)::point", [])
   end
 
