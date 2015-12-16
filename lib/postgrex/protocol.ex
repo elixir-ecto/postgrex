@@ -90,6 +90,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
+    {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_execute(%Query{} = query, params, opts, s) do
@@ -110,10 +111,11 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute_close(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
+    {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_execute_close(query, params, opts, s) do
-    handle_execute(query, params, :close_sync, opts, s)
+    handle_execute(query, params, :sync_close, opts, s)
   end
 
   @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
@@ -394,7 +396,7 @@ defmodule Postgrex.Protocol do
   ## prepare
 
   defp handle_prepare(query, prepare, opts, %{buffer: buffer} = s) do
-    status = %{notify: notify(opts), prepare: prepare}
+    status = %{notify: notify(opts), prepare: prepare, sync: :sync}
     prepare_send(%{s | buffer: nil}, status, query, buffer)
   end
 
@@ -464,15 +466,18 @@ defmodule Postgrex.Protocol do
 
   ## execute
 
-  defp handle_execute(query, params, sync, opts, %{buffer: buffer} = s) do
+  defp handle_execute(query, params, sync, opts, s) do
+    %{types: types, buffer: buffer} = s
     case query do
-      %Query{param_formats: nil, types: nil} ->
+      %Query{types: nil} ->
         query_error(s, "query #{inspect query} has not been prepared")
-      %Query{param_formats: nil} ->
+      %Query{param_formats: nil, types: ^types} ->
         query_error(s, "query #{inspect query} has not been described")
-      %Query{} = query ->
+      %Query{types: ^types} = query ->
        status = %{notify: notify(opts), sync: sync}
        execute_send(%{s | buffer: nil}, status, query, params, buffer)
+      %Query{} = query ->
+        query_error(s, "query #{inspect query} has invalid types for the connection")
     end
   end
 
@@ -484,8 +489,10 @@ defmodule Postgrex.Protocol do
     %Query{param_formats: pfs, result_formats: rfs, name: name} = query
     msgs =
       case sync do
-        :close_sync -> [msg_close(type: :statement, name: name), msg_sync()]
-        :sync       -> [msg_sync()]
+        :sync_close ->
+          [msg_sync(), msg_close(type: :statement, name: name), msg_flush()]
+        :sync ->
+          [msg_sync()]
       end
     msgs = [
       msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
@@ -502,11 +509,20 @@ defmodule Postgrex.Protocol do
       {:ok, msg_bind_complete(), buffer} ->
         execute_recv(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
-        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+        bind_error(s, status, fields, buffer)
       {:ok, msg, buffer} ->
         bind_recv(handle_msg(s, status, msg), status, query, buffer)
       {:disconnect, _, _} = dis ->
         dis
+    end
+  end
+
+  defp bind_error(s, status, fields, buffer) do
+    case Postgrex.Error.exception(postgres: fields) do
+      %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} ->
+        sync_recv(s, status, :prepare, buffer)
+      err ->
+        sync_recv(s, status, err, buffer)
     end
   end
 
@@ -742,6 +758,9 @@ defmodule Postgrex.Protocol do
   defp ok(s, %Postgrex.Error{} = err, buffer) do
     {:error, err, %{s | buffer: buffer}}
   end
+  defp ok(s, :prepare, buffer) do
+    {:prepare, %{s | buffer: buffer}}
+  end
 
   defp disconnect(s, tag, action, reason, buffer) do
     err = Postgrex.Error.exception(tag: tag, action: action, reason: reason)
@@ -756,11 +775,12 @@ defmodule Postgrex.Protocol do
   # buffer or in flight. sync_recv/4 used by simple queries so can't use
   # :infinity.
   defp sync_recv(%{timeout: timeout} = s, status, result, buffer) do
+    %{sync: sync} = status
     case msg_recv(s, timeout, buffer) do
-      {:ok, msg_ready(), buffer} ->
+      {:ok, msg_ready(), buffer} when sync == :sync ->
         ok(s, result, buffer)
-      {:ok, msg_close_complete(), buffer} ->
-        sync_recv(s, status, result, buffer)
+      {:ok, msg_ready(), buffer} when sync == :sync_close ->
+        close_recv(s, status, result, buffer)
       {:ok, msg, buffer} ->
         sync_recv(handle_msg(s, status, msg), status, result, buffer)
       {:disconnect, _, _} = dis ->

@@ -36,7 +36,7 @@ defmodule Postgrex.Query do
   @spec encode(t, [any], (term -> term)) :: [any]
   def encode(query, params, mapper \\ fn x -> x end)
 
-  def encode(%Postgrex.Query{param_formats: nil, types: nil} = query, _params, _mapper) do
+  def encode(%Postgrex.Query{types: nil} = query, _params, _mapper) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
@@ -85,8 +85,7 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     {pfs, encoders} = encoders(poids, types)
     {rfs, decoders} = decoders(roids, types)
     %Postgrex.Query{query | param_formats: pfs, encoders: encoders,
-                            result_formats: rfs, decoders: decoders,
-                            types: nil}
+                            result_formats: rfs, decoders: decoders}
   end
 
   def encode(query, params, opts) do

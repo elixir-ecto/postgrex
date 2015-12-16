@@ -501,6 +501,13 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "prepare, close and execute", context do
+    assert (%Postgrex.Query{} = query) = prepare("reuse", "SELECT $1::int")
+    assert [[42]] = execute(query, [42])
+    assert :ok = close(query)
+    assert [[42]] = execute(query, [42])
+  end
+
   test "execute with automatic encoding", context do
     assert (%Postgrex.Query{} = query) = prepare("auto", "SELECT $1::int")
     assert [[41]] = execute(query, [41])
@@ -571,46 +578,23 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "execute on closed prepared query fails", context do
-    assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert :ok = close(query)
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query, [])
-    assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "connection closes nameless prepared query after query", context do
+  test "connection reuses prepared query after query", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert [[42]] = query("SELECT 42", [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query, [])
+    assert [[41]] = execute(query, [])
   end
 
-  test "connection closes nameless prepared query after failure in parsing state", context do
+  test "connection reuses prepared query after failure in preparing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
-    assert %Postgrex.Error{} = query("wat", [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query, [])
+    assert %Postgrex.Error{} = query("wat", []) 
+    assert [[41]] = execute(query, [])
   end
 
-  test "connection closes nameless prepared query after failure in executing state", context do
-    %Postgrex.Query{} = query = prepare("", "SELECT 41")
-    assert %Postgrex.Error{} = query("wat", [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query, [])
-  end
-
-  test "connection closes nameless prepared query after failure during transaction query", context do
-    assert :ok = query("BEGIN", [])
+  test "connection reuses prepared query after failure in executing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
       query("insert into uniques values (1), (1);", [])
-    assert %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}} =
-      query("SELECT 42", [])
-    %Postgrex.Query{} = rollback = prepare("rollback", "ROLLBACK")
-    assert :ok = execute(rollback, [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query, [])
+    assert [[41]] = execute(query, [])
   end
 
   test "async test", context do
