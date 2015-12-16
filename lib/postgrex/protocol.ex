@@ -18,7 +18,7 @@ defmodule Postgrex.Protocol do
                              backend_key: {pos_integer, pos_integer},
                              types: (nil | Postgrex.TypeServer.table),
                              timeout: timeout,
-                             parameters: %{binary => binary},
+                             parameters: %{binary => binary} | reference,
                              buffer: nil | binary | :active_once}
   @type notify :: ((binary, binary) -> any)
 
@@ -36,9 +36,8 @@ defmodule Postgrex.Protocol do
     s = %__MODULE__{timeout: timeout}
 
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), custom}
-    status = %{opts: opts, parameters: %{}, notifications: [],
-               types_key: types_key, types_ref: nil, extensions: extensions,
-               extension_info: nil}
+    status = %{opts: opts, types_key: types_key, types_ref: nil,
+               extensions: extensions, extension_info: nil}
     case connect(host, port, sock_opts ++ @sock_opts, s) do
       {:ok, s} when ssl?  -> s |> ssl(status) |> connected()
       {:ok, s}            -> s |> startup(status) |> connected()
@@ -46,8 +45,11 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connected({:ok, _} = ok), do: ok
   defp connected({:error, _} = err), do: err
+  defp connected({:ok, %{parameters: parameters} = s}) do
+    ref = Postgrex.Parameters.insert(parameters)
+    {:ok, %{s | parameters: ref}}
+  end
   defp connected({:disconnect, err, s}) do
     disconnect(s)
     {:error, err}
@@ -94,9 +96,16 @@ defmodule Postgrex.Protocol do
     handle_execute(query, params, :sync, opts, s)
   end
   @spec handle_execute(Postgrex.Parameters.t, nil, Keyword.t, state) ::
-    {:ok, %{binary => binary}, state}
+    {:ok, %{binary => binary}, state} |
+    {:error, Postgrex.Errpr.t, state}
   def handle_execute(%Postgrex.Parameters{}, nil, _, s) do
-    {:ok, s.parameters, s}
+    %{parameters: parameters} = s
+    case Postgrex.Parameters.fetch(parameters) do
+      {:ok, parameters} ->
+        {:ok, parameters, s}
+      :error ->
+        {:error, %Postgrex.Error{message: "parameters not available"}, s}
+    end
   end
 
   @spec handle_execute_close(Postgrex.Query.t, list, Keyword.t, state) ::
@@ -697,9 +706,19 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## TODO: See if :binary.copy/1 of parameters/notifications reduces memory
   defp handle_msg(s, _, msg_parameter(name: name, value: value)) do
-    update_in(s.parameters, &Map.put(&1, name, value))
+    %{parameters: parameters} = s
+    # Binaries likely part of much larger binary and only keeping name/value
+    # over long term
+    name = :binary.copy(name)
+    value = :binary.copy(value)
+    cond do
+      is_reference(parameters) ->
+        _ = Postgrex.Parameters.put(parameters, name, value)
+        s
+      is_map(parameters) ->
+        %{s | parameters: Map.put(parameters, name, value)}
+    end
   end
   defp handle_msg(s, status, msg_notify(channel: channel, payload: payload)) do
     %{notify: notify} = status
