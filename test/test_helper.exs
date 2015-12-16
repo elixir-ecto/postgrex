@@ -121,10 +121,10 @@ defmodule Postgrex.TestHelper do
     end
   end
 
-  defmacro execute(query, opts \\ []) do
+  defmacro execute(query, params, opts \\ []) do
     quote do
       case Postgrex.Connection.execute(var!(context)[:pid], unquote(query),
-                                       unquote(opts)) do
+                                       unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
         {:error, %Postgrex.Error{} = err} -> err

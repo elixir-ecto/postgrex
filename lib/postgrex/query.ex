@@ -4,7 +4,6 @@ defmodule Postgrex.Query do
 
     * `name` - The name of the prepared statement;
     * `statement` - The prepared statement;
-    * `params` - The parameters of the query.
     * `param_formats` - List of formats for each parameters encoded to;
     * `encoders` - List of anonymous functions to encode each parameter;
     * `columns` - The column names;
@@ -18,7 +17,6 @@ defmodule Postgrex.Query do
   @type t :: %__MODULE__{
     name:           iodata,
     statement:      iodata,
-    params:         [term] | nil,
     param_formats:  [:binary | :text] | nil,
     encoders:       [Postgrex.Types.oid] | [(term -> iodata)] | nil,
     columns:        [String.t] | nil,
@@ -26,37 +24,32 @@ defmodule Postgrex.Query do
     decoders:       [Postgrex.Types.oid] | [(binary -> term)] | nil,
     types:          Postgrex.TypeServer.table | nil}
 
-  defstruct [:name, :statement, :params, :param_formats, :encoders, :columns,
+  defstruct [:name, :statement, :param_formats, :encoders, :columns,
     :result_formats, :decoders, :types]
 
   @doc """
-  Encodes a prepared query.
-
-  It is a no-op if the parameters are already encoded.
+  Encodes parameters for a prepared query.
 
   A mapper function can be given to process each
   parameter before encoding, in no specific order.
   """
-  @spec encode(t, (term -> term)) :: t
-  def encode(query, mapper \\ fn x -> x end)
+  @spec encode(t, [any], (term -> term)) :: [any]
+  def encode(query, params, mapper \\ fn x -> x end)
 
-  def encode(%Postgrex.Query{param_formats: nil, types: nil} = query, _mapper) do
+  def encode(%Postgrex.Query{param_formats: nil, types: nil} = query, _params, _mapper) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
-  def encode(%Postgrex.Query{param_formats: nil} = query, _mapper) do
+  def encode(%Postgrex.Query{param_formats: nil} = query, _params, _mapper) do
     raise ArgumentError, "query #{inspect query} has not been described"
   end
 
-  def encode(%Postgrex.Query{encoders: nil} = query, _mapper), do: query
-
-  def encode(query, mapper) do
-    %Postgrex.Query{params: params, encoders: encoders} = query
+  def encode(%Postgrex.Query{encoders: encoders}, params, mapper) do
     case encode_params(params || [], encoders, mapper, []) do
       :error ->
         raise ArgumentError, "parameters must be of length #{length encoders} for this query"
       params ->
-       %Postgrex.Query{query | params: params, encoders: nil}
+       params
     end
   end
 
@@ -96,10 +89,17 @@ defimpl DBConnection.Query, for: Postgrex.Query do
                             types: nil}
   end
 
-  def encode(query, opts) do
+  def encode(query, params, opts) do
     case opts[:encode] || :auto do
-      :auto   -> Postgrex.Query.encode(query)
-      :manual -> query
+      :auto   -> Postgrex.Query.encode(query, params)
+      :manual -> params
+    end
+  end
+
+  def decode(_, result, opts) do
+    case opts[:decode] || :auto do
+      :auto   -> Postgrex.Result.decode(result)
+      :manual -> result
     end
   end
 

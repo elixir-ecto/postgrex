@@ -86,25 +86,25 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_execute(Postgrex.Query.t, Keyword.t, state) ::
+  @spec handle_execute(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
-  def handle_execute(%Query{encoders: nil} = query, opts, s) do
-    handle_execute(query, :sync, opts, s)
+  def handle_execute(%Query{} = query, params, opts, s) do
+    handle_execute(query, params, :sync, opts, s)
   end
-  @spec handle_execute(Postgrex.Parameters.t, Keyword.t, state) ::
+  @spec handle_execute(Postgrex.Parameters.t, nil, Keyword.t, state) ::
     {:ok, %{binary => binary}, state}
-  def handle_execute(%Postgrex.Parameters{} = res, _, s) do
-    {:ok, %Postgrex.Parameters{res | parameters: s.parameters}, s}
+  def handle_execute(%Postgrex.Parameters{}, nil, _, s) do
+    {:ok, s.parameters, s}
   end
 
-  @spec handle_execute_close(Postgrex.Query.t, Keyword.t, state) ::
+  @spec handle_execute_close(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
-  def handle_execute_close(query, opts, s) do
-    handle_execute(query, :close_sync, opts, s)
+  def handle_execute_close(query, params, opts, s) do
+    handle_execute(query, params, :close_sync, opts, s)
   end
 
   @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
@@ -223,8 +223,8 @@ defmodule Postgrex.Protocol do
 
   ## auth
 
-  defp auth_recv(s, status, buffer) do
-    case msg_recv(s, buffer) do
+  defp auth_recv(%{timeout: timeout} = s, status, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_auth(type: :ok), buffer} ->
         init_recv(s, status, buffer)
       {:ok, msg_auth(type: :cleartext), buffer} ->
@@ -263,8 +263,8 @@ defmodule Postgrex.Protocol do
 
   ## init
 
-  defp init_recv(s, status, buffer) do
-    case msg_recv(s, buffer) do
+  defp init_recv(%{timeout: timeout} = s, status, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_backend_key(pid: pid, key: key), buffer} ->
         init_recv(%{s | backend_key: {pid, key}}, status, buffer)
       {:ok, msg_ready(), buffer} ->
@@ -311,8 +311,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_recv(s, status, buffer) do
-    case msg_recv(s, buffer) do
+  defp bootstrap_recv(%{timeout: timeout} = s, status, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_row_desc(), buffer} ->
         bootstrap_recv(s, status, [], buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -324,8 +324,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_recv(s, status, rows, buffer) do
-    case msg_recv(s, buffer) do
+  defp bootstrap_recv(%{timeout: timeout} = s, status, rows, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_data_row(values: values), buffer} ->
         bootstrap_recv(s, status, [values | rows], buffer)
       {:ok, msg_command_complete(), buffer} ->
@@ -347,8 +347,8 @@ defmodule Postgrex.Protocol do
     bootstrap_sync_recv(s, status, buffer)
   end
 
-  defp bootstrap_sync_recv(s, status, buffer) do
-    case msg_recv(s, buffer) do
+  defp bootstrap_sync_recv(%{timeout: timeout} = s, status, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_ready(), buffer} ->
         activate(s, buffer)
       {:ok, msg, buffer} ->
@@ -368,8 +368,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp simple_recv(s, status, buffer) do
-    case msg_recv(s, buffer) do
+  defp simple_recv(%{timeout: timeout} = s, status, buffer) do
+    ## simple queries here are only done by Postgrex.Notifications processes
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
         complete(s, status, %Query{}, [], tag, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -407,7 +408,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp parse_recv(s, %{prepare: prepare} = status, query, buffer) do
-    case msg_recv(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_parse_complete(), buffer} when prepare == :parse_describe ->
         describe_recv(s, status, %Query{query | types: s.types}, buffer)
       {:ok, msg_parse_complete(), buffer} when prepare == :parse ->
@@ -423,7 +424,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_recv(s, status, query, buffer) do
-    case msg_recv(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_no_data(), buffer} ->
         ok(s, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
@@ -454,17 +455,15 @@ defmodule Postgrex.Protocol do
 
   ## execute
 
-  defp handle_execute(query, sync, opts, %{buffer: buffer} = s) do
+  defp handle_execute(query, params, sync, opts, %{buffer: buffer} = s) do
     case query do
       %Query{param_formats: nil, types: nil} ->
         query_error(s, "query #{inspect query} has not been prepared")
       %Query{param_formats: nil} ->
         query_error(s, "query #{inspect query} has not been described")
-      %Query{encoders: encoders} when is_list(encoders) ->
-        query_error(s, "query #{inspect query} has not been encoded")
       %Query{} = query ->
        status = %{notify: notify(opts), sync: sync}
-       execute_send(%{s | buffer: nil}, status, query, buffer)
+       execute_send(%{s | buffer: nil}, status, query, params, buffer)
     end
   end
 
@@ -472,9 +471,8 @@ defmodule Postgrex.Protocol do
     {:error, ArgumentError.exception(msg), s}
   end
 
-  defp execute_send(s, %{sync: sync} = status, query, buffer) do
-    %Query{param_formats: pfs, params: params, result_formats: rfs,
-           name: name} = query
+  defp execute_send(s, %{sync: sync} = status, query, params, buffer) do
+    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
     msgs =
       case sync do
         :close_sync -> [msg_close(type: :statement, name: name), msg_sync()]
@@ -491,7 +489,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp bind_recv(s, status, query, buffer) do
-    case msg_recv(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_bind_complete(), buffer} ->
         execute_recv(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -504,7 +502,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp execute_recv(s, status, query, buffer) do
-    case msg_recv(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_data_row(values: values), buffer} ->
         execute_recv(s, status, query, [values], buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
@@ -521,7 +519,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp execute_recv(s, status, query, rows, buffer) do
-     case msg_recv(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_data_row(values: values), buffer} ->
         execute_recv(s, status, query, [values | rows], buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
@@ -564,7 +562,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp close_recv(s, status, result, buffer) do
-    case msg_recv(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_close_complete(), buffer} ->
         ok(s, result, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -582,8 +580,8 @@ defmodule Postgrex.Protocol do
     data(s, %{notify: notify(opts)}, buffer)
   end
 
-  defp data(s, status, buffer) do
-    case msg_recv(s, buffer) do
+  defp data(%{timeout: timeout} = s, status, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, <<>>} ->
@@ -624,10 +622,12 @@ defmodule Postgrex.Protocol do
     {command, List.last(nums)}
   end
 
-  defp msg_recv(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, :active_once) do
+  # It is ok to use infinity timeout here if in client process as timer is
+  # running.
+  defp msg_recv(%{sock: {:gen_tcp, sock}} = s, timeout, :active_once) do
     receive do
       {:tcp, ^sock, buffer} ->
-        msg_recv(s, buffer)
+        msg_recv(s, timeout, buffer)
       {:tcp_closed, ^sock} ->
         disconnect(s, :tcp, "async_recv", :closed, :active_once)
       {:tcp_error, ^sock, reason} ->
@@ -637,10 +637,10 @@ defmodule Postgrex.Protocol do
         disconnect(s, :tcp, "async_recv", :timeout, :active_one)
     end
   end
-  defp msg_recv(%{sock: {:ssl, sock}, timeout: timeout} = s, :active_once) do
+  defp msg_recv(%{sock: {:ssl, sock}} = s, timeout, :active_once) do
     receive do
       {:ssl, ^sock, buffer} ->
-        msg_recv(s, buffer)
+        msg_recv(s, timeout, buffer)
       {:ssl_closed, ^sock} ->
         disconnect(s, :ssl, "async_recv", :closed, :active_once)
       {:ssl_error, ^sock, reason} ->
@@ -650,17 +650,17 @@ defmodule Postgrex.Protocol do
         disconnect(s, :ssl, "async_recv", :timeout, :active_once)
     end
   end
-  defp msg_recv(s, buffer) do
+  defp msg_recv(s, timeout, buffer) do
     case msg_decode(buffer) do
       {:ok, _, _} = ok -> ok
-      {:more, more}    -> msg_recv(s, buffer, more)
+      {:more, more}    -> msg_recv(s, timeout, buffer, more)
     end
   end
 
-  defp msg_recv(%{sock: {mod, sock}, timeout: timeout} = s, buffer, more) do
+  defp msg_recv(%{sock: {mod, sock}} = s, timeout, buffer, more) do
     case mod.recv(sock, more, timeout) do
       {:ok, data} ->
-        msg_recv(s, buffer <> data)
+        msg_recv(s, timeout, buffer <> data)
       {:error, reason} ->
         disconnect(s, tag(mod), "recv", reason, buffer)
     end
@@ -733,8 +733,11 @@ defmodule Postgrex.Protocol do
     {:disconnect, err, %{s | buffer: buffer}}
   end
 
-  defp sync_recv(s, status, result, buffer) do
-    case msg_recv(s, buffer) do
+  # Query has completed so ok to use state timeout as message should either be
+  # buffer or in flight. sync_recv/4 used by simple queries so can't use
+  # :infinity.
+  defp sync_recv(%{timeout: timeout} = s, status, result, buffer) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_ready(), buffer} ->
         ok(s, result, buffer)
       {:ok, msg_close_complete(), buffer} ->

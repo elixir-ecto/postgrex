@@ -54,12 +54,3 @@ defmodule Postgrex.Result do
   end
   defp decode_row([], []), do: []
 end
-
-defimpl DBConnection.Result, for: Postgrex.Result do
-  def decode(result, opts) do
-    case opts[:decode] || :auto do
-      :auto   -> Postgrex.Result.decode(result)
-      :manual -> result
-    end
-  end
-end

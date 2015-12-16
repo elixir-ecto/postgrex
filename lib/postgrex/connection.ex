@@ -65,8 +65,8 @@ defmodule Postgrex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(pid, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement, params: params}
-    DBConnection.query(pid, query, opts)
+    query = %Query{name: "", statement: statement}
+    DBConnection.query(pid, query, params, opts)
   end
 
   @doc """
@@ -75,8 +75,8 @@ defmodule Postgrex.Connection do
   """
   @spec query!(pid, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(pid, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement, params: params}
-    DBConnection.query!(pid, query, opts)
+    query = %Query{name: "", statement: statement}
+    DBConnection.query!(pid, query, params, opts)
   end
 
   @doc """
@@ -126,24 +126,24 @@ defmodule Postgrex.Connection do
   ## Examples
 
       query = Postgrex.Connection.prepare!(pid, "CREATE TABLE posts (id serial, title text)")
-      Postgrex.Connection.execute(pid, query)
+      Postgrex.Connection.execute(pid, query, [])
 
       query = Postgrex.Connection.prepare!(pid, "SELECT id FROM posts WHERE title like $1")
-      Postgrex.Connection.execute(pid, %Postgrex.Query{query | params: ["%my%"]}
+      Postgrex.Connection.execute(pid, query, ["%my%"])
   """
-  @spec execute(pid, Postgrex.Query.t, Keyword.t) ::
+  @spec execute(pid, Postgrex.Query.t, list, Keyword.t) ::
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  def execute(pid, query, opts \\ []) do
-    DBConnection.execute(pid, query, opts)
+  def execute(pid, query, params, opts \\ []) do
+    DBConnection.execute(pid, query, params, opts)
   end
 
   @doc """
   Runs an (extended) prepared query and returns the result or raises
-  `Postgrex.Error` if there was an error. See `execute/3`.
+  `Postgrex.Error` if there was an error. See `execute/4`.
   """
-  @spec execute!(pid, Postgrex.Query.t, Keyword.t) :: Postgrex.Result.t
-  def execute!(pid, query, opts \\ []) do
-    DBConnection.execute!(pid, query, opts)
+  @spec execute!(pid, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Result.t
+  def execute!(pid, query, params, opts \\ []) do
+    DBConnection.execute!(pid, query, params, opts)
   end
 
   @doc """
@@ -177,11 +177,13 @@ defmodule Postgrex.Connection do
 
   @doc """
   Returns a cached map of connection parameters.
+
   ## Options
-  * `:timeout` - Call timeout (default: `#{@timeout}`)
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
   @spec parameters(pid, Keyword.t) :: %{binary => binary}
   def parameters(pid, opts \\ []) do
-    DBConnection.execute!(pid, %Postgrex.Parameters{}, opts)
+    DBConnection.execute!(pid, %Postgrex.Parameters{}, nil, opts)
   end
 end

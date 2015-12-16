@@ -495,37 +495,34 @@ defmodule QueryTest do
 
   test "prepare, execute and close", context do
     assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert [[42]] = execute(query)
-    assert [[42]] = execute(query)
+    assert [[42]] = execute(query, [])
+    assert [[42]] = execute(query, [])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
   end
 
   test "execute with automatic encoding", context do
     assert (%Postgrex.Query{} = query) = prepare("auto", "SELECT $1::int")
-    assert [[41]] = execute(%Postgrex.Query{query | params: [41]})
+    assert [[41]] = execute(query, [41])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
   end
 
   test "execute with manual encoding", context do
     assert (%Postgrex.Query{} = query) = prepare("manual", "SELECT $1::int")
-    query = %Postgrex.Query{query | params: [41]}
-    assert (%Postgrex.Query{} = query) = Postgrex.Query.encode(query)
-    assert Postgrex.Query.encode(query) == query
-    assert [[41]] = execute(query)
+
+    params = Postgrex.Query.encode(query, [41])
+
+    assert [[41]] = execute(query, params, [encode: :manual])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
   end
 
   test "manual encode prepared query without params", context do
     assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert (%Postgrex.Query{} = query) = Postgrex.Query.encode(query)
+    assert Postgrex.Query.encode(query, []) == []
 
-    query = %Postgrex.Query{query | params: []}
-    assert (%Postgrex.Query{} = query) = Postgrex.Query.encode(query)
-
-    assert [[42]] = execute(query)
+    assert [[42]] = execute(query, [])
     assert :ok = close(query)
   end
 
@@ -568,9 +565,9 @@ defmodule QueryTest do
   test "connection works after failure in execute", context do
     %Postgrex.Query{} = query = prepare("unique", "insert into uniques values (1), (1);")
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
-      execute(query)
+      execute(query, [])
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
-      execute(query)
+      execute(query, [])
     assert [[42]] = query("SELECT 42", [])
   end
 
@@ -578,7 +575,7 @@ defmodule QueryTest do
     assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
     assert :ok = close(query)
     assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+      execute(query, [])
     assert [[42]] = query("SELECT 42", [])
   end
 
@@ -586,21 +583,21 @@ defmodule QueryTest do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert [[42]] = query("SELECT 42", [])
     assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+      execute(query, [])
   end
 
   test "connection closes nameless prepared query after failure in parsing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert %Postgrex.Error{} = query("wat", [])
     assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+      execute(query, [])
   end
 
   test "connection closes nameless prepared query after failure in executing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert %Postgrex.Error{} = query("wat", [])
     assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+      execute(query, [])
   end
 
   test "connection closes nameless prepared query after failure during transaction query", context do
@@ -611,9 +608,9 @@ defmodule QueryTest do
     assert %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}} =
       query("SELECT 42", [])
     %Postgrex.Query{} = rollback = prepare("rollback", "ROLLBACK")
-    assert :ok = execute(rollback)
+    assert :ok = execute(rollback, [])
     assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+      execute(query, [])
   end
 
   test "async test", context do
