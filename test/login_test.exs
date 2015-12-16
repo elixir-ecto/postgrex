@@ -10,15 +10,17 @@ defmodule LoginTest do
              password: "postgrex_cleartext_pw", database: "postgres" ]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert :ok = P.stop(pid)
-    assert_receive {:EXIT, ^pid, :normal}
+  end
+
+  test "login cleartext password failure" do
+    Process.flag(:trap_exit, true)
 
     opts = [ hostname: "localhost", username: "postgrex_cleartext_pw",
              password: "wrong_password", database: "postgres" ]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}}, [_|_]}, 500
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}, [_|_]}}, 500
       assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
@@ -30,14 +32,17 @@ defmodule LoginTest do
              password: "postgrex_md5_pw", database: "postgres" ]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert :ok = P.stop(pid)
+  end
+
+  test "login md5 password failure" do
+    Process.flag(:trap_exit, true)
 
     opts = [ hostname: "localhost", username: "postgrex_md5_pw",
              password: "wrong_password", database: "postgres" ]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}}, [_|_]}
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}, [_|_]}}
       assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
@@ -52,15 +57,11 @@ defmodule LoginTest do
 
     if String.match? P.parameters(pid)["server_version"], ~R"9\.\d+\.\d+" do
       assert "" == P.parameters(pid)["application_name"]
-      assert :ok = P.stop(pid)
 
       opts = opts ++ [parameters: [application_name: "postgrex"]]
       assert {:ok, pid} = P.start_link(opts)
       assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
       assert "postgrex" == P.parameters(pid)["application_name"]
-      assert :ok = P.stop(pid)
-    else
-      assert :ok = P.stop(pid)
     end
   end
 
@@ -71,21 +72,18 @@ defmodule LoginTest do
              ssl: true ]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert :ok = P.stop(pid)
   end
 
   test "env var defaults" do
     opts = [ database: "postgrex_test" ]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert :ok = P.stop(pid)
   end
 
   test "sync connect" do
     opts = [ database: "postgres", sync_connect: true ]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert :ok = P.stop(pid)
   end
 
   test "non existant database" do
