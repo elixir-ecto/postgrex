@@ -40,6 +40,9 @@ defmodule Postgrex.Connection do
       extension options;
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
+    * `:pool_mod` - Set the pool module to use, see `DBConnection`, it must be
+    included with all requests if not the default (default:
+    `DBConnection.Connection`);
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
@@ -64,6 +67,8 @@ defmodule Postgrex.Connection do
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
+    * `:pool_mod` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
 
   ## Examples
 
@@ -106,6 +111,8 @@ defmodule Postgrex.Connection do
     * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
     as the call timeout (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
+    * `:pool_mod` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
 
   ## Examples
 
@@ -142,6 +149,8 @@ defmodule Postgrex.Connection do
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
+    * `:pool_mod` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
 
   ## Examples
 
@@ -179,6 +188,8 @@ defmodule Postgrex.Connection do
     * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
     as the call timeout (default: `true`);
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
+    * `:pool_mod` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
 
   ## Examples
 
@@ -223,6 +234,8 @@ defmodule Postgrex.Connection do
     * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
     as the call timeout (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
+    * `:pool_mod` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
@@ -262,6 +275,9 @@ defmodule Postgrex.Connection do
   ## Options
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:pool_mod` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
+
   """
   @spec parameters(conn, Keyword.t) :: %{binary => binary}
   def parameters(conn, opts \\ []) do
