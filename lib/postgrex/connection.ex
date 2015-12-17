@@ -14,8 +14,9 @@ defmodule Postgrex.Connection do
   """
   @type conn :: DBConnection.conn
 
-  @queue_timeout 5_000
+  @queue_timeout 5000
   @timeout 5000
+  @idle_timeout 5000
 
   ### PUBLIC API ###
 
@@ -31,6 +32,8 @@ defmodule Postgrex.Connection do
     * `:password` - User password (default PGPASSWORD);
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
+    * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
+    (default: `#{@idle_timeout}`)
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:socket_options` - Options to be given to the underlying socket;

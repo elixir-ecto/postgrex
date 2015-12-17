@@ -62,14 +62,22 @@ defmodule Postgrex.Protocol do
     {:ok, %{s | parameters: ref}}
   end
   defp connected({:disconnect, err, s}) do
-    disconnect(s)
+    disconnect(err, s)
     {:error, err}
   end
 
-  def disconnect(s) do
+  @spec disconnect(Exception.t, state) :: :ok
+  def disconnect(_, s) do
     sock_close(s)
     _ = recv_buffer(s)
     :ok
+  end
+
+  @spec ping(state) ::
+    {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+  def ping(%{buffer: buffer} = s) do
+    status = %{notify: notify([]), sync: :sync}
+    sync(%{s | buffer: nil}, status, buffer)
   end
 
   @spec checkout(state) ::
@@ -667,6 +675,15 @@ defmodule Postgrex.Protocol do
         close_recv(handle_msg(s, status, msg), status, result, buffer)
       {:error, _} = err ->
         err
+    end
+  end
+
+  ## sync
+
+  defp sync(s, status, buffer) do
+    case msg_send(s, msg_sync(), buffer) do
+      :ok               -> sync_recv(s, status, nil, buffer)
+      {:error, _} = err -> err
     end
   end
 
