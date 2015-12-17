@@ -622,9 +622,11 @@ defmodule QueryTest do
     conn = context[:pid]
 
     Process.flag(:trap_exit, true)
-    assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
+    capture_log fn ->
+      assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
 
-    assert_receive {:EXIT, ^conn, {%DBConnection.Error{}, _}}
+      assert_receive {:EXIT, ^conn, {%DBConnection.Error{}, _}}
+    end
   end
 
   test "active client cancel", context do
@@ -649,9 +651,10 @@ defmodule QueryTest do
 
     :timer.sleep(100)
     Process.flag(:trap_exit, true)
-    Process.exit(pid, :shutdown)
-
-    assert_receive {:EXIT, ^conn, {%DBConnection.Error{}, [_|_]}}
+    capture_log fn ->
+      Process.exit(pid, :shutdown)
+      assert_receive {:EXIT, ^conn, {%DBConnection.Error{}, [_|_]}}
+    end
   end
 
   test "queued client cancel", context do
