@@ -142,6 +142,13 @@ defmodule Postgrex.TestHelper do
     end
   end
 
+  defmacro transaction(fun, opts \\ []) do
+    quote do
+      Postgrex.Connection.transaction(var!(context)[:pid], unquote(fun),
+                                      unquote(opts))
+    end
+  end
+
   def capture_log(fun) do
     Logger.remove_backend(:console)
     fun.()

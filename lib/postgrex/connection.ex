@@ -9,6 +9,11 @@ defmodule Postgrex.Connection do
 
   alias Postgrex.Query
 
+  @typedoc """
+  A connection process name, pid or transaction reference.
+  """
+  @type conn :: DBConnection.conn
+
   @timeout 5000
 
   ### PUBLIC API ###
@@ -32,10 +37,13 @@ defmodule Postgrex.Connection do
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
       implementing the `Postgrex.Extension` behaviour and `opts` are the
       extension options;
+    * `:transactions` - Set to `:strict` to error on unexpected transaction
+    state, otherwise set to `naive` (default: `:naive`);
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    DBConnection.start_link(Postgrex.Protocol, Postgrex.Utils.default_opts(opts))
+    opts = [types: true] ++ Postgrex.Utils.default_opts(opts)
+    DBConnection.start_link(Postgrex.Protocol, opts)
   end
 
   @doc """
@@ -54,29 +62,29 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      Postgrex.Connection.query(pid, "CREATE TABLE posts (id serial, title text)", [])
+      Postgrex.Connection.query(conn, "CREATE TABLE posts (id serial, title text)", [])
 
-      Postgrex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')", [])
+      Postgrex.Connection.query(conn, "INSERT INTO posts (title) VALUES ('my title')", [])
 
-      Postgrex.Connection.query(pid, "SELECT title FROM posts", [])
+      Postgrex.Connection.query(conn, "SELECT title FROM posts", [])
 
-      Postgrex.Connection.query(pid, "SELECT id FROM posts WHERE title like $1", ["%my%"])
+      Postgrex.Connection.query(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
   """
-  @spec query(pid, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  def query(pid, statement, params, opts \\ []) do
+  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query(pid, query, params, opts)
+    DBConnection.query(conn, query, params, opts)
   end
 
   @doc """
   Runs an (extended) query and returns the result or raises `Postgrex.Error` if
   there was an error. See `query/3`.
   """
-  @spec query!(pid, iodata, list, Keyword.t) :: Postgrex.Result.t
-  def query!(pid, statement, params, opts \\ []) do
+  @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
+  def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query!(pid, query, params, opts)
+    DBConnection.query!(conn, query, params, opts)
   end
 
   @doc """
@@ -93,20 +101,20 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      Postgrex.Connection.prepare(pid, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.Connection.prepare(conn, "CREATE TABLE posts (id serial, title text)")
   """
-  @spec prepare(pid, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
-  def prepare(pid, name, statement, opts \\ []) do
-    DBConnection.prepare(pid, %Query{name: name, statement: statement}, opts)
+  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
+  def prepare(conn, name, statement, opts \\ []) do
+    DBConnection.prepare(conn, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
   Prepared an (extended) query and returns the prepared query or raises
   `Postgrex.Error` if there was an error. See `prepare/4`.
   """
-  @spec prepare!(pid, iodata, iodata, Keyword.t) :: Postgrex.Query.t
-  def prepare!(pid, name, statement, opts \\ []) do
-    DBConnection.prepare!(pid, %Query{name: name, statement: statement}, opts)
+  @spec prepare!(conn, iodata, iodata, Keyword.t) :: Postgrex.Query.t
+  def prepare!(conn, name, statement, opts \\ []) do
+    DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
@@ -125,25 +133,25 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      query = Postgrex.Connection.prepare!(pid, "CREATE TABLE posts (id serial, title text)")
-      Postgrex.Connection.execute(pid, query, [])
+      query = Postgrex.Connection.prepare!(conn, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.Connection.execute(conn, query, [])
 
-      query = Postgrex.Connection.prepare!(pid, "SELECT id FROM posts WHERE title like $1")
-      Postgrex.Connection.execute(pid, query, ["%my%"])
+      query = Postgrex.Connection.prepare!(conn, "SELECT id FROM posts WHERE title like $1")
+      Postgrex.Connection.execute(conn, query, ["%my%"])
   """
-  @spec execute(pid, Postgrex.Query.t, list, Keyword.t) ::
+  @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  def execute(pid, query, params, opts \\ []) do
-    DBConnection.execute(pid, query, params, opts)
+  def execute(conn, query, params, opts \\ []) do
+    DBConnection.execute(conn, query, params, opts)
   end
 
   @doc """
   Runs an (extended) prepared query and returns the result or raises
   `Postgrex.Error` if there was an error. See `execute/4`.
   """
-  @spec execute!(pid, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Result.t
-  def execute!(pid, query, params, opts \\ []) do
-    DBConnection.execute!(pid, query, params, opts)
+  @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Result.t
+  def execute!(conn, query, params, opts \\ []) do
+    DBConnection.execute!(conn, query, params, opts)
   end
 
   @doc """
@@ -158,22 +166,75 @@ defmodule Postgrex.Connection do
 
   ## Examples
 
-      query = Postgrex.Connection.prepare!(pid, "CREATE TABLE posts (id serial, title text)")
-      Postgrex.Connection.close(pid, query)
+      query = Postgrex.Connection.prepare!(conn, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.Connection.close(conn, query)
   """
-  @spec close(pid, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
-  def close(pid, query, opts \\ []) do
-    DBConnection.close(pid, query, opts)
+  @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  def close(conn, query, opts \\ []) do
+    DBConnection.close(conn, query, opts)
   end
 
   @doc """
   Closes an (extended) prepared query and returns `:ok` or raises
   `Postgrex.Error` if there was an error. See `close/3`.
   """
-  @spec close!(pid, Postgrex.Query.t, Keyword.t) :: :ok
-  def close!(pid, query, opts \\ []) do
-    DBConnection.close!(pid, query, opts)
+  @spec close!(conn, Postgrex.Query.t, Keyword.t) :: :ok
+  def close!(conn, query, opts \\ []) do
+    DBConnection.close!(conn, query, opts)
   end
+
+  @doc """
+  Acquire a lock on a connection and run a series of requests inside a
+  transaction. The result of the transaction fun is return inside an `:ok`
+  tuple: `{:ok result}`.
+
+  To use the locked connection call the request with the connection
+  reference passed as the single argument to the `fun`. If the
+  connection disconnects all future calls using that connection
+  reference will fail.
+
+  `rollback/2` rolls back the transaction and causes the function to
+  return `{:error, reason}`.
+
+  `transaction/3` can be nested multiple times if the transaction
+  reference is used to start a nested transaction. The top level
+  transaction function is the actual transaction.
+
+  ## Options
+
+    * `:timeout` - Transaction timeout (default: `#{@timeout}`);
+
+  The `:timeout` is for the duration of the transaction and all nested
+  transactions and requests. This timeout overrides timeouts set by internal
+  transactions and requests.
+
+  ### Example
+
+      {:ok, res} = Postgrex.Connection.transaction(pid, fn(conn) ->
+        Postgrex.Connection.query!(conn, "SELECT title FROM posts", [])
+      end)
+  """
+  @spec transaction(conn, ((DBConnection.t) -> result), Keyword.t) ::
+    {:ok, result} | {:error, any} when result: var
+  def transaction(conn, fun, opts \\ []) do
+    DBConnection.transaction(conn, fun, opts)
+  end
+
+  @doc """
+  Rollback a transaction, does not return.
+
+  Aborts the current transaction fun. If inside multile `transaction/3`
+  functions, bubbles up to the top level.
+
+  ### Example
+
+      {:error, :oops} = Postgrex.Connection.transaction(pid, fn(conn) ->
+        DBConnection.rollback(conn, :bar)
+        IO.puts "never reaches here!"
+      end)
+  """
+  @spec rollback(DBConnection.t, any) :: no_return()
+  defdelegate rollback(conn, any), to: DBConnection
 
   @doc """
   Returns a cached map of connection parameters.
@@ -182,8 +243,8 @@ defmodule Postgrex.Connection do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec parameters(pid, Keyword.t) :: %{binary => binary}
-  def parameters(pid, opts \\ []) do
-    DBConnection.execute!(pid, %Postgrex.Parameters{}, nil, opts)
+  @spec parameters(conn, Keyword.t) :: %{binary => binary}
+  def parameters(conn, opts \\ []) do
+    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, opts)
   end
 end

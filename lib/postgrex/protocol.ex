@@ -12,15 +12,19 @@ defmodule Postgrex.Protocol do
   @sock_opts [packet: :raw, mode: :binary, active: false]
 
   defstruct [sock: nil, backend_key: nil, types: nil, timeout: nil,
-             parameters: %{}, buffer: nil]
+             parameters: %{}, postgres: :idle, buffer: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
                              backend_key: {pos_integer, pos_integer},
                              types: (nil | Postgrex.TypeServer.table),
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
+                             postgres: :idle | :transaction | :naive,
                              buffer: nil | binary | :active_once}
   @type notify :: ((binary, binary) -> any)
+
+  @reserved_prefix "POSTGREX_"
+  @reserved_queries ["BEGIN", "COMMIT", "ROLLBACK"]
 
   @spec connect(Keyword.t) ::
     {:ok, state} | {:error, Postgrex.Error.t}
@@ -32,8 +36,15 @@ defmodule Postgrex.Protocol do
     custom     = opts[:extensions] || []
     extensions = custom ++ @default_extensions
     ssl?       = opts[:ssl] || false
-    types?     = opts[:types] || true
-    s = %__MODULE__{timeout: timeout}
+    types?     = Keyword.fetch!(opts, :types)
+
+    postgres =
+      case opts[:transactions] || :naive do
+        :naive  -> :naive
+        :strict -> :idle
+      end
+
+    s = %__MODULE__{timeout: timeout, postgres: postgres}
 
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
@@ -63,6 +74,9 @@ defmodule Postgrex.Protocol do
 
   @spec checkout(state) ::
     {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+  def checkout(%{postgres: :transaction} = s) do
+    sync_error(s, :transaction)
+  end
   def checkout(%{buffer: :active_once} = s) do
     case setopts(s, [active: :false], :active_once) do
       :ok                       -> recv_buffer(s)
@@ -72,6 +86,9 @@ defmodule Postgrex.Protocol do
 
   @spec checkin(state) ::
   {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+  def checkin(%{postgres: :transaction} = s) do
+    sync_error(s, :transaction)
+  end
   def checkin(%{buffer: buffer} = s) when is_binary(buffer) do
     activate(s, buffer)
   end
@@ -79,6 +96,9 @@ defmodule Postgrex.Protocol do
   @spec handle_prepare(Postgrex.Query.t, Keyword.t, state) ::
     {:ok, Postgrex.Query.t, state} |
     {:error | :disconnect, Postgrex.Query.t, state}
+  def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
+    reserved_error(query, s)
+  end
   def handle_prepare(query, opts, s) do
     case query do
       %Query{param_formats: pfs, encoders: encoders} when is_list(pfs) and is_list(encoders) ->
@@ -114,15 +134,33 @@ defmodule Postgrex.Protocol do
     {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
+  def handle_execute_close(%Query{name: @reserved_prefix <> _} = query, _, _, s) do
+    reserved_error(query, s)
+  end
   def handle_execute_close(query, params, opts, s) do
     handle_execute(query, params, :sync_close, opts, s)
   end
 
   @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
     {:ok, state} | {:error | :disconnect, Postgrex.Error.t, state}
+  def handle_close(%Query{name: @reserved_prefix <> _} = query, _, s) do
+    reserved_error(query, s)
+  end
   def handle_close(query, opts, %{buffer: buffer} = s) do
     status = %{notify: notify(opts)}
     close(%{s | buffer: nil}, status, query, nil, buffer)
+  end
+
+  def handle_begin(opts, s) do
+    handle_transaction(@reserved_prefix <> "BEGIN", :transaction, opts, s)
+  end
+
+  def handle_commit(opts, s) do
+    handle_transaction(@reserved_prefix <> "COMMIT", :idle, opts, s)
+  end
+
+  def handle_rollback(opts, s) do
+    handle_transaction(@reserved_prefix <> "ROLLBACK", :idle, opts, s)
   end
 
   @spec handle_simple(String.t, Keyword.t, state) ::
@@ -297,7 +335,7 @@ defmodule Postgrex.Protocol do
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
     case Postgrex.TypeServer.fetch(types_key) do
       {:ok, table} ->
-        activate(%{s | types: table}, buffer)
+        reserve_send(%{s | types: table}, status, buffer)
       {:lock, ref, table} ->
         status = %{status | types_ref: ref}
         bootstrap_send(%{s | types: table}, status, buffer)
@@ -361,9 +399,42 @@ defmodule Postgrex.Protocol do
   defp bootstrap_sync_recv(%{timeout: timeout} = s, status, buffer) do
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_ready(), buffer} ->
-        activate(s, buffer)
+        reserve_send(s, status, buffer)
       {:ok, msg, buffer} ->
         bootstrap_sync_recv(handle_msg(s, status, msg), status, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp reserve_send(s, status, buffer) do
+    case msg_send(s, reserve_msgs() ++ [msg_sync()], buffer) do
+      :ok ->
+        reserve_recv(s, status, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp reserve_msgs() do
+    for statement <- @reserved_queries do
+      name = @reserved_prefix <> statement
+      msg_parse(name: name, statement: statement, type_oids: [])
+    end
+  end
+
+  defp reserve_recv(%{timeout: timeout} = s, status, buffer) do
+    case msg_recv(s, timeout, buffer) do
+      {:ok, msg_parse_complete(), buffer} ->
+        reserve_recv(s, status, buffer)
+      {:ok, msg_ready(status: :idle), buffer} ->
+        activate(s, buffer)
+      {:ok, msg_ready(status: postgres), buffer} ->
+        sync_error(s, postgres, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        reserve_recv(handle_msg(s, status, msg), status, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -599,6 +670,54 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  ## transaction
+
+  defp handle_transaction(name, _, opts, %{postgres: :naive} = s) do
+    handle_transaction(name, :naive, opts, s)
+  end
+  defp handle_transaction(name, postgres, opts, %{buffer: buffer} = s) do
+    status = %{notify: notify(opts), sync: :sync}
+    transaction_send(%{s | buffer: nil}, status, name, postgres, buffer)
+  end
+
+  defp transaction_send(s, status, name, postgres, buffer) do
+    msgs = [
+      msg_bind(name_port: "", name_stat: name, param_formats: [], params: [], result_formats: []),
+      msg_execute(name_port: "" , max_rows: 0),
+      msg_sync()]
+    case msg_send(s, msgs, buffer) do
+      :ok ->
+        transaction_recv(s, status, postgres, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp transaction_recv(s, status, postgres, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_ready(), buffer} when postgres == :naive ->
+        ok(s, nil, buffer)
+      {:ok, msg_ready(status: ^postgres), buffer} ->
+        ok(s, postgres, buffer)
+      {:ok, msg_ready(status: postgres), buffer} ->
+        sync_error(s, postgres, buffer)
+      {:ok, msg_bind_complete(), buffer} ->
+        transaction_recv(s, status, postgres, buffer)
+      {:ok, msg_command_complete(), buffer} ->
+        transaction_recv(s, status, postgres, buffer)
+      {:ok, msg_error(fields: fields), buffer} when postgres == :naive ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        disconnect(s, err, buffer)
+      {:ok, msg, buffer} ->
+        transaction_recv(handle_msg(s, status, msg), status, postgres, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
   ## data
 
   defp handle_data(s, opts, buffer) do
@@ -761,6 +880,9 @@ defmodule Postgrex.Protocol do
   defp ok(s, :prepare, buffer) do
     {:prepare, %{s | buffer: buffer}}
   end
+  defp ok(s, postgres, buffer) when postgres in [:idle, :transaction] do
+    {:ok, %{s | postgres: postgres, buffer: buffer}}
+  end
 
   defp disconnect(s, tag, action, reason, buffer) do
     err = Postgrex.Error.exception(tag: tag, action: action, reason: reason)
@@ -771,12 +893,23 @@ defmodule Postgrex.Protocol do
     {:disconnect, err, %{s | buffer: buffer}}
   end
 
+  defp reserved_error(query, s) do
+    err = ArgumentError.exception("query #{inspect query} uses reserved name")
+    {:error, err, s}
+  end
+
   # Query has completed so ok to use state timeout as message should either be
   # buffer or in flight. sync_recv/4 used by simple queries so can't use
   # :infinity.
-  defp sync_recv(%{timeout: timeout} = s, status, result, buffer) do
-    %{sync: sync} = status
+  defp sync_recv(s, %{sync: sync} = status, result, buffer) do
+    %{postgres: postgres, timeout: timeout} = s
     case msg_recv(s, timeout, buffer) do
+      {:ok, msg_ready(status: :idle), buffer} when postgres == :transaction ->
+        sync_error(s, :idle, buffer)
+      {:ok, msg_ready(status: :transaction), buffer} when postgres == :idle ->
+        sync_error(s, :transaction, buffer)
+      {:ok, msg_ready(status: :failed), buffer} when postgres == :idle ->
+        sync_error(s, :failed, buffer)
       {:ok, msg_ready(), buffer} when sync == :sync ->
         ok(s, result, buffer)
       {:ok, msg_ready(), buffer} when sync == :sync_close ->
@@ -786,6 +919,15 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = dis ->
         dis
     end
+  end
+
+  defp sync_error(s, postgres, buffer) do
+    sync_error(%{s | buffer: buffer}, postgres)
+  end
+
+  defp sync_error(s, postgres) do
+    err = %Postgrex.Error{message: "unexpected postgres status: #{postgres}"}
+    {:disconnect, err, s}
   end
 
   defp recv_buffer(%{sock: {:gen_tcp, sock}} = s) do

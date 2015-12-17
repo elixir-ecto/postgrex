@@ -564,6 +564,14 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "connection works on custom transactions", context do
+    assert :ok = query("BEGIN", [])
+    assert :ok = query("COMMIT", [])
+    assert :ok = query("BEGIN", [])
+    assert :ok = query("ROLLBACK", [])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "connection works after failure in prepare", context do
     assert %Postgrex.Error{} = prepare("bad", "wat")
     assert [[42]] = query("SELECT 42", [])
@@ -586,7 +594,7 @@ defmodule QueryTest do
 
   test "connection reuses prepared query after failure in preparing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
-    assert %Postgrex.Error{} = query("wat", []) 
+    assert %Postgrex.Error{} = query("wat", [])
     assert [[41]] = execute(query, [])
   end
 
