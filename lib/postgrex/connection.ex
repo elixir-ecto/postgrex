@@ -14,6 +14,7 @@ defmodule Postgrex.Connection do
   """
   @type conn :: DBConnection.conn
 
+  @queue_timeout 5_000
   @timeout 5000
 
   ### PUBLIC API ###
@@ -56,7 +57,11 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:queue_timeout` - Time to wait in the queue for the connection
+    (default: `#{@queue_timeout}`)
+    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
+    as the call timeout (default: `true`);
+    * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
 
@@ -74,7 +79,7 @@ defmodule Postgrex.Connection do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query(conn, query, params, opts)
+    DBConnection.query(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -84,7 +89,7 @@ defmodule Postgrex.Connection do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query!(conn, query, params, opts)
+    DBConnection.query!(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -96,8 +101,11 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
-    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
+    * `:queue_timeout` - Time to wait in the queue for the connection
+    (default: `#{@queue_timeout}`)
+    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
+    as the call timeout (default: `true`);
+    * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
 
   ## Examples
 
@@ -105,7 +113,7 @@ defmodule Postgrex.Connection do
   """
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
-    DBConnection.prepare(conn, %Query{name: name, statement: statement}, opts)
+    DBConnection.prepare(conn, %Query{name: name, statement: statement}, defaults(opts))
   end
 
   @doc """
@@ -114,7 +122,7 @@ defmodule Postgrex.Connection do
   """
   @spec prepare!(conn, iodata, iodata, Keyword.t) :: Postgrex.Query.t
   def prepare!(conn, name, statement, opts \\ []) do
-    DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
+    DBConnection.prepare!(conn, %Query{name: name, statement: statement}, defaults(opts))
   end
 
   @doc """
@@ -127,7 +135,11 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:queue_timeout` - Time to wait in the queue for the connection
+    (default: `#{@queue_timeout}`)
+    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
+    as the call timeout (default: `true`);
+    * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
 
@@ -142,7 +154,7 @@ defmodule Postgrex.Connection do
   @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
-    DBConnection.execute(conn, query, params, opts)
+    DBConnection.execute(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -151,7 +163,7 @@ defmodule Postgrex.Connection do
   """
   @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    DBConnection.execute!(conn, query, params, opts)
+    DBConnection.execute!(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -162,7 +174,11 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
+    * `:queue_timeout` - Time to wait in the queue for the connection
+    (default: `#{@queue_timeout}`)
+    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
+    as the call timeout (default: `true`);
+    * `:timeout` - Close request timeout (default: `#{@timeout}`);
 
   ## Examples
 
@@ -171,7 +187,7 @@ defmodule Postgrex.Connection do
   """
   @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def close(conn, query, opts \\ []) do
-    DBConnection.close(conn, query, opts)
+    DBConnection.close(conn, query, defaults(opts))
   end
 
   @doc """
@@ -180,7 +196,7 @@ defmodule Postgrex.Connection do
   """
   @spec close!(conn, Postgrex.Query.t, Keyword.t) :: :ok
   def close!(conn, query, opts \\ []) do
-    DBConnection.close!(conn, query, opts)
+    DBConnection.close!(conn, query, defaults(opts))
   end
 
   @doc """
@@ -202,13 +218,17 @@ defmodule Postgrex.Connection do
 
   ## Options
 
+    * `:queue_timeout` - Time to wait in the queue for the connection
+    (default: `#{@queue_timeout}`)
+    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
+    as the call timeout (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
   transactions and requests.
 
-  ### Example
+  ## Example
 
       {:ok, res} = Postgrex.Connection.transaction(pid, fn(conn) ->
         Postgrex.Connection.query!(conn, "SELECT title FROM posts", [])
@@ -217,7 +237,7 @@ defmodule Postgrex.Connection do
   @spec transaction(conn, ((DBConnection.t) -> result), Keyword.t) ::
     {:ok, result} | {:error, any} when result: var
   def transaction(conn, fun, opts \\ []) do
-    DBConnection.transaction(conn, fun, opts)
+    DBConnection.transaction(conn, fun, defaults(opts))
   end
 
   @doc """
@@ -226,7 +246,7 @@ defmodule Postgrex.Connection do
   Aborts the current transaction fun. If inside multile `transaction/3`
   functions, bubbles up to the top level.
 
-  ### Example
+  ## Example
 
       {:error, :oops} = Postgrex.Connection.transaction(pid, fn(conn) ->
         DBConnection.rollback(conn, :bar)
@@ -245,6 +265,12 @@ defmodule Postgrex.Connection do
   """
   @spec parameters(conn, Keyword.t) :: %{binary => binary}
   def parameters(conn, opts \\ []) do
-    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, opts)
+    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, defaults(opts))
+  end
+
+  ## Helpers
+
+  defp defaults(opts) do
+    Keyword.put_new(opts, :timeout, @timeout)
   end
 end
