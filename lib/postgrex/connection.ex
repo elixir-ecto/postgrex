@@ -43,7 +43,7 @@ defmodule Postgrex.Connection do
       extension options;
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
-    * `:pool_mod` - Set the pool module to use, see `DBConnection`, it must be
+    * `:pool_mod` - The pool module to use, see `DBConnection`, it must be
     included with all requests if not the default (default:
     `DBConnection.Connection`);
   """
@@ -72,7 +72,7 @@ defmodule Postgrex.Connection do
     not (default: `:auto`)
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    * `:proxy_mod` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -118,7 +118,7 @@ defmodule Postgrex.Connection do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    * `:proxy_mod` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -158,7 +158,7 @@ defmodule Postgrex.Connection do
     not (default: `:auto`)
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    * `:proxy_mod` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -199,7 +199,7 @@ defmodule Postgrex.Connection do
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    * `:proxy_mod` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -247,7 +247,7 @@ defmodule Postgrex.Connection do
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    * `:proxy_mod` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   The `:timeout` is for the duration of the transaction and all nested
