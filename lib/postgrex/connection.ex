@@ -69,6 +69,8 @@ defmodule Postgrex.Connection do
     not (default: `:auto`)
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -113,6 +115,8 @@ defmodule Postgrex.Connection do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -151,6 +155,8 @@ defmodule Postgrex.Connection do
     not (default: `:auto`)
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -190,6 +196,8 @@ defmodule Postgrex.Connection do
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -236,10 +244,13 @@ defmodule Postgrex.Connection do
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:proxy_mod` - Set the proxy module for the request, if any, see
+    `DBConnection.Proxy` (default: `nil`);
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests.
+  transactions and requests. The `:pool_mod` and `:proxy_mod` will be used
+  for all requests inside the transaction function.
 
   ## Example
 
