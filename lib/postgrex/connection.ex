@@ -10,7 +10,10 @@ defmodule Postgrex.Connection do
   alias Postgrex.Query
 
   @typedoc """
-  A connection process name, pid or transaction reference.
+  A connection process name, pid or reference.
+
+  A connection reference is used when making multiple requests to the same
+  connection, see `transaction/3` and `:after_connect` in `start_link/1`.
   """
   @type conn :: DBConnection.conn
 
@@ -39,6 +42,9 @@ defmodule Postgrex.Connection do
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
       implementing the `Postgrex.Extension` behaviour and `opts` are the
       extension options;
+    * `:after_connect` - A function to run on connect, either a 1-arity fun
+    called with a connection reference, `{module, function, args}` with the
+    connection reference prepended to `args` or `nil`, (default: `nil`)
     * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
     (default: `#{@idle_timeout}`)
     * `:backoff_start` - The first backoff interval when reconnecting (default:
@@ -240,7 +246,7 @@ defmodule Postgrex.Connection do
   `rollback/2` rolls back the transaction and causes the function to
   return `{:error, reason}`.
 
-  `transaction/3` can be nested multiple times if the transaction
+  `transaction/3` can be nested multiple times if the connection
   reference is used to start a nested transaction. The top level
   transaction function is the actual transaction.
 
@@ -276,7 +282,7 @@ defmodule Postgrex.Connection do
   @doc """
   Rollback a transaction, does not return.
 
-  Aborts the current transaction fun. If inside multile `transaction/3`
+  Aborts the current transaction fun. If inside multiple `transaction/3`
   functions, bubbles up to the top level.
 
   ## Example

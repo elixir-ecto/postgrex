@@ -151,4 +151,16 @@ defmodule LoginTest do
       :code.purge(BackoffTest)
     end
   end
+
+  test "after connect function run" do
+    parent = self()
+    after_connect = fn(conn) -> send(parent, P.query(conn, "SELECT 42", [])) end
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test",
+             after_connect: after_connect ]
+
+    {:ok, _} = P.start_link(opts)
+
+    assert_receive {:ok, %Postgrex.Result{}}
+  end
 end
