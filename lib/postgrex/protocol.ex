@@ -16,7 +16,7 @@ defmodule Postgrex.Protocol do
 
   @type state :: %__MODULE__{sock: {module, any},
                              backend_key: {pos_integer, pos_integer},
-                             types: (nil | Postgrex.TypeServer.table),
+                             types: (nil | reference | Postgrex.TypeServer.table),
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
                              postgres: :idle | :transaction | :naive,
@@ -48,7 +48,7 @@ defmodule Postgrex.Protocol do
 
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
-               extensions: extensions, extension_info: nil}
+               types_table: nil, extensions: extensions, extension_info: nil}
     case connect(host, port, sock_opts ++ @sock_opts, s) do
       {:ok, s} when ssl?  -> s |> ssl(status) |> connected()
       {:ok, s}            -> s |> startup(status) |> connected()
@@ -67,9 +67,15 @@ defmodule Postgrex.Protocol do
   end
 
   @spec disconnect(Exception.t, state) :: :ok
+  def disconnect(err, %{types: ref}) when is_reference(ref) do
+    # Don't handle the case where connection failure occurs during bootstrap
+    # (hard to test and "unlikely" given auth just succeeded)
+    raise err
+  end
   def disconnect(_, s) do
     sock_close(s)
     _ = recv_buffer(s)
+    delete_parameters(s)
     :ok
   end
 
@@ -345,8 +351,8 @@ defmodule Postgrex.Protocol do
       {:ok, table} ->
         reserve_send(%{s | types: table}, status, buffer)
       {:lock, ref, table} ->
-        status = %{status | types_ref: ref}
-        bootstrap_send(%{s | types: table}, status, buffer)
+        status = %{status | types_ref: ref, types_table: table}
+        bootstrap_send(%{s | types: ref}, status, buffer)
     end
   end
 
@@ -396,12 +402,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_types(%{types: table} = s, status, rows, buffer) do
+  defp bootstrap_types(s, %{types_table: table} = status, rows, buffer) do
     %{types_ref: ref, extension_info: {extension_keys, extension_opts}} = status
     types = Types.build_types(rows)
     Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
     Postgrex.TypeServer.unlock(ref)
-    bootstrap_sync_recv(s, status, buffer)
+    bootstrap_sync_recv(%{s | types: table}, status, buffer)
   end
 
   defp bootstrap_sync_recv(%{timeout: timeout} = s, status, buffer) do
@@ -999,4 +1005,9 @@ defmodule Postgrex.Protocol do
   defp setopts(:ssl, sock, opts), do: :ssl.setopts(sock, opts)
 
   defp sock_close(%{sock: {mod, sock}}), do: mod.close(sock)
+
+  defp delete_parameters(%{parameters: ref}) when is_reference(ref) do
+    Postgrex.Parameters.delete(ref)
+  end
+  defp delete_parameters(_), do: :ok
 end

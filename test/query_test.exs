@@ -4,7 +4,7 @@ defmodule QueryTest do
   alias Postgrex.Connection, as: P
 
   setup do
-    opts = [ database: "postgrex_test" ]
+    opts = [ database: "postgrex_test", backoff_type: :stop ]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
   end

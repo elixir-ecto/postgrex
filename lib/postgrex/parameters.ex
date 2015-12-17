@@ -29,6 +29,11 @@ defmodule Postgrex.Parameters do
     end
   end
 
+  @spec delete(reference) :: :ok
+  def delete(ref) do
+    GenServer.cast(__MODULE__, {:delete, ref})
+  end
+
   @spec fetch(reference) :: {:ok, %{binary => binary}} | :error
   def fetch(ref) do
     try do
@@ -53,6 +58,11 @@ defmodule Postgrex.Parameters do
     ref = Process.monitor(pid)
     true = :ets.insert_new(state, {ref, parameters})
     {:reply, ref, state}
+  end
+
+  def handle_cast({:delete, ref}, state) do
+    :ets.delete(state, ref)
+    {:noreply, state}
   end
 
   def handle_info({:DOWN, ref, :process, _, _}, state) do

@@ -16,7 +16,8 @@ defmodule LoginTest do
     Process.flag(:trap_exit, true)
 
     opts = [ hostname: "localhost", username: "postgrex_cleartext_pw",
-             password: "wrong_password", database: "postgres" ]
+             password: "wrong_password", database: "postgres",
+             backoff_type: :stop]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
@@ -38,7 +39,8 @@ defmodule LoginTest do
     Process.flag(:trap_exit, true)
 
     opts = [ hostname: "localhost", username: "postgrex_md5_pw",
-             password: "wrong_password", database: "postgres" ]
+             password: "wrong_password", database: "postgres",
+             backoff_type: :stop]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
@@ -90,7 +92,8 @@ defmodule LoginTest do
     Process.flag(:trap_exit, true)
 
     capture_log fn ->
-      opts = [ database: "doesntexist", sync_connect: true ]
+      opts = [ database: "doesntexist", sync_connect: true ,
+               backoff_type: :stop ]
       assert {:error, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}} =
              P.start_link(opts)
 
@@ -98,7 +101,7 @@ defmodule LoginTest do
     end
 
     capture_log fn ->
-      opts = [ database: "doesntexist" ]
+      opts = [ database: "doesntexist", backoff_type: :stop ]
       {:ok, pid} = P.start_link(opts)
       assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
     end
@@ -107,12 +110,45 @@ defmodule LoginTest do
   test "non-existent domain" do
     Process.flag(:trap_exit, true)
     opts = [ hostname: "doesntexist", username: "postgrex_cleartext_pw",
-             password: "password", database: "postgres" ]
+             password: "password", database: "postgres", backoff_type: :stop ]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
       assert_receive {:EXIT, ^pid, {%Postgrex.Error{message: message}, [_|_]}}, 500
       assert message == "tcp connect: non-existing domain - :nxdomain"
+    end
+  end
+
+  test "parameters cleaned up on disconnect" do
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test" ]
+
+    try do
+      defmodule BackoffTest do
+
+        use DBConnection.Proxy
+
+        def handle_close(_, _, _, %{parameters: ref} = state, _) do
+          send(self(), {:ref, ref})
+          err = RuntimeError.exception("oops")
+          {:disconnect, err, state}
+        end
+      end
+
+      {:ok, pid} = P.start_link(opts)
+
+      capture_log fn ->
+        assert_raise RuntimeError, "oops",
+          fn() -> P.close!(pid, %Postgrex.Query{}, [proxy_mod: BackoffTest]) end
+
+        assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+
+        assert_received {:ref, ref}
+        assert Postgrex.Parameters.fetch(ref) == :error
+      end
+    after
+      :code.delete(BackoffTest)
+      :code.purge(BackoffTest)
     end
   end
 end

@@ -32,8 +32,6 @@ defmodule Postgrex.Connection do
     * `:password` - User password (default PGPASSWORD);
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
-    * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
-    (default: `#{@idle_timeout}`)
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:socket_options` - Options to be given to the underlying socket;
@@ -41,6 +39,14 @@ defmodule Postgrex.Connection do
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
       implementing the `Postgrex.Extension` behaviour and `opts` are the
       extension options;
+    * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
+    (default: `#{@idle_timeout}`)
+    * `:backoff_start` - The first backoff interval when reconnecting (default:
+    `200`);
+    * `:backoff_max` - The maximum backoff interval when reconnecting (default:
+    `15_000`);
+    * `:backoff_type` - The backoff strategy when reconnecting, `:stop` for no
+    backoff and to stop (see `:backoff`, default: `:jitter`)
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
     * `:pool_mod` - The pool module to use, see `DBConnection`, it must be
