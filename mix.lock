@@ -1,6 +1,6 @@
 %{"backoff": {:hex, :backoff, "1.1.1"},
   "connection": {:hex, :connection, "1.0.2"},
-  "db_connection": {:git, "https://github.com/fishcakez/db_connection.git", "ec11fbb8ca9ad4f6bd9d4757cc09c88a3b942558", []},
+  "db_connection": {:hex, :db_connection, "0.1.5"},
   "decimal": {:hex, :decimal, "1.1.0"},
   "earmark": {:hex, :earmark, "0.1.19"},
   "ex_doc": {:hex, :ex_doc, "0.10.0"}}
