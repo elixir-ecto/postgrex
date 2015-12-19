@@ -119,3 +119,9 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     |> :lists.unzip()
   end
 end
+
+defimpl String.Chars, for: Postgrex.Query do
+  def to_string(%Postgrex.Query{statement: statement}) do
+    IO.iodata_to_binary(statement)
+  end
+end

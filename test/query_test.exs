@@ -713,4 +713,8 @@ defmodule QueryTest do
 
     assert_raise ArgumentError, ~r/uses reserved name/, fn -> close(query) end
   end
+
+  test "query struct interpolates to statement" do
+    assert "#{%Postgrex.Query{statement: "BEGIN"}}" == "BEGIN"
+  end
 end
