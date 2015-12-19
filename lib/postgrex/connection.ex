@@ -101,7 +101,12 @@ defmodule Postgrex.Connection do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query(conn, query, params, defaults(opts))
+    case DBConnection.query(conn, query, params, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
   end
 
   @doc """
@@ -139,7 +144,13 @@ defmodule Postgrex.Connection do
   """
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
-    DBConnection.prepare(conn, %Query{name: name, statement: statement}, defaults(opts))
+    query = %Query{name: name, statement: statement}
+    case DBConnection.prepare(conn, query, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
   end
 
   @doc """
@@ -184,7 +195,12 @@ defmodule Postgrex.Connection do
   @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
-    DBConnection.execute(conn, query, params, defaults(opts))
+    case DBConnection.execute(conn, query, params, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
   end
 
   @doc """
@@ -221,7 +237,12 @@ defmodule Postgrex.Connection do
   """
   @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def close(conn, query, opts \\ []) do
-    DBConnection.close(conn, query, defaults(opts))
+    case DBConnection.close(conn, query, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
   end
 
   @doc """

@@ -109,6 +109,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_prepare(Postgrex.Query.t, Keyword.t, state) ::
     {:ok, Postgrex.Query.t, state} |
+    {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Query.t, state}
   def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
@@ -156,7 +157,9 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
-    {:ok, state} | {:error | :disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:error, ArgumentError.t, state} |
+    {:error | :disconnect, Postgrex.Error.t, state}
   def handle_close(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
   end
