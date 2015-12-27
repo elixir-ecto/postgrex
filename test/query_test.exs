@@ -544,6 +544,12 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "connection works after failure in binding state", context do
+    assert %Postgrex.Error{postgres: %{code: :invalid_text_representation}} =
+      query("insert into uniques values (CAST($1::text AS int))", ["invalid"])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "connection works after failure in executing state", context do
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
       query("insert into uniques values (1), (1);", [])
