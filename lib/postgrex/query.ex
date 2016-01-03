@@ -97,7 +97,9 @@ defimpl DBConnection.Query, for: Postgrex.Query do
 
   def decode(_, result, opts) do
     case opts[:decode] || :auto do
-      :auto   -> Postgrex.Result.decode(result)
+      :auto   ->
+        mapper = opts[:decode_mapper] || fn x -> x end
+        Postgrex.Result.decode(result, mapper)
       :manual -> result
     end
   end

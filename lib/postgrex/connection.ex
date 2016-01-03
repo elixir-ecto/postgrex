@@ -82,6 +82,8 @@ defmodule Postgrex.Connection do
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
+    * `:decode_mapper` - Fun to map each row in the result to a term, see
+    `Postgrex.Result.decode/2`, (default: `fn x -> x end`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
     * `:proxy_mod` - The proxy module for the request, if any, see
@@ -179,6 +181,8 @@ defmodule Postgrex.Connection do
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
+    * `:decode_mapper` - Fun to map each row in the result to a term, see
+    `Postgrex.Result.decode/2`, (default: `fn x -> x end`);
     * `:pool_mod` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
     * `:proxy_mod` - The proxy module for the request, if any, see
