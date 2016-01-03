@@ -698,7 +698,8 @@ defmodule Postgrex.Protocol do
 
   ## transaction
 
-  defp handle_transaction(name, _, opts, %{postgres: :naive} = s) do
+  defp handle_transaction(name, postgres, opts, %{postgres: :naive} = s)
+  when postgres != :naive do
     handle_transaction(name, :naive, opts, s)
   end
   defp handle_transaction(name, postgres, opts, %{buffer: buffer} = s) do
