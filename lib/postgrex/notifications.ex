@@ -91,8 +91,8 @@ defmodule Postgrex.Notifications do
 
   def connect(_, opts) do
     case Protocol.connect([types: false] ++ opts) do
-      {:ok, protocol, parameters, _} ->
-        {:ok, %__MODULE__{protocol: protocol, parameters: parameters}}
+      {:ok, protocol} ->
+        {:ok, %__MODULE__{protocol: protocol}}
       {:error, reason} ->
         {:stop, reason, opts}
     end
@@ -107,7 +107,7 @@ defmodule Postgrex.Notifications do
     # If this is the first listener for the given channel, we need to actually
     # issue the LISTEN query.
     if HashSet.size(s.listener_channels[channel]) == 1 do
-      listener_query("LISTEN #{channel}", {:ok, ref}, from, :active_once, s)
+      listener_query("LISTEN #{channel}", {:ok, ref}, from, s)
     else
       {:reply, {:ok, ref}, s}
     end
@@ -126,7 +126,7 @@ defmodule Postgrex.Notifications do
         # UNLISTEN query.
         if HashSet.size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-          listener_query("UNLISTEN #{channel}", :ok, from, :active_once, s)
+          listener_query("UNLISTEN #{channel}", :ok, from, s)
         else
           {:reply, :ok, s}
         end
@@ -142,7 +142,7 @@ defmodule Postgrex.Notifications do
 
         if HashSet.size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-          listener_query("UNLISTEN #{channel}", :ok, nil, :active_once, s)
+          listener_query("UNLISTEN #{channel}", :ok, nil, s)
         else
           {:noreply, s}
         end
@@ -150,56 +150,44 @@ defmodule Postgrex.Notifications do
   end
 
   def handle_info(msg, s) do
-    protocol_info(msg, s)
+    %{protocol: protocol, listener_channels: channels, listeners: listeners} = s
+    opts = [notify: &notify_listeners(channels, listeners, &1, &2)]
+
+    case Protocol.handle_info(msg, opts, protocol) do
+      {:ok, protocol} ->
+        {:noreply, %{s | protocol: protocol}}
+      {error, reason, protocol} when error in [:error, :disconnect] ->
+        {:stop, reason, %{s | protocol: protocol}}
+    end
   end
 
-  defp listener_query(statement, result, from, buffer, s) do
-    %{protocol: protocol, parameters: parameters} = s
+  defp listener_query(statement, result, from, s) do
+    %{protocol: protocol, listener_channels: channels, listeners: listeners} = s
+    opts = [notify: &notify_listeners(channels, listeners, &1, &2)]
 
-    case Protocol.simple_query(protocol, statement, buffer) do
-      {:ok, %Postgrex.Result{}, new_parameters, notifications, buffer} ->
+    case Protocol.handle_simple(statement, opts, protocol) do
+      {:ok, %Postgrex.Result{}, protocol} ->
         if from, do: Connection.reply(from, result)
-        notify_listeners(notifications, s)
-        parameters = Map.merge(parameters, new_parameters)
-        checkin(buffer, s)
-        {:noreply, %{s | parameters: parameters}}
-      {:error, error} ->
-        Connection.reply(from, error)
-        {:stop, error, s}
+        checkin(protocol, s)
+      {error, reason, protocol} when error in [:error, :disconnect] ->
+        Connection.reply(from, reason)
+        {:stop, reason, %{s | protocol: protocol}}
     end
   end
 
-  defp notify_listeners(notifications, s) do
-    %__MODULE__{listener_channels: channels, listeners: listeners} = s
-
-    Enum.each notifications, fn {channel, payload} ->
-      Enum.each (HashDict.get(channels, channel) || []), fn ref ->
-        {_, pid} = HashDict.fetch!(listeners, ref)
-        send(pid, {:notification, self(), ref, channel, payload})
-      end
+  defp notify_listeners(channels, listeners, channel, payload) do
+    Enum.each (HashDict.get(channels, channel) || []), fn ref ->
+      {_, pid} = HashDict.fetch!(listeners, ref)
+      send(pid, {:notification, self(), ref, channel, payload})
     end
   end
 
-  defp protocol_info(msg, s) do
-    case Protocol.message(s.protocol, msg) do
-      {:ok, new_parameters, notifications} ->
-        notify_listeners(notifications, s)
-        {:noreply, %{s | parameters: Map.merge(s.parameters, new_parameters)}}
-      :unknown ->
-        Logger.info fn() ->
-          [inspect(__MODULE__), ?\s, inspect(self()), " received message: " |
-            inspect(msg)]
-        end
-        {:noreply, s}
-      {:error, reason} ->
-        {:stop, reason, s}
-    end
-  end
-
-  defp checkin(buffer, s) do
-    case Protocol.checkin(s.protocol, buffer) do
-      :ok              -> {:noreply, s}
-      {:error, reason} -> {:stop, reason, s}
+  defp checkin(protocol, s) do
+    case Protocol.checkin(protocol) do
+      {:ok, protocol} ->
+        {:noreply, %{s | protocol: protocol}}
+      {error, reason, protocol} when error in [:error, :disconnect] ->
+        {:stop, reason, %{s | protocol: protocol}}
     end
   end
 

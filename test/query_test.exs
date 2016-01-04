@@ -4,7 +4,7 @@ defmodule QueryTest do
   alias Postgrex.Connection, as: P
 
   setup do
-    opts = [ database: "postgrex_test" ]
+    opts = [ database: "postgrex_test", backoff_type: :stop ]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
   end
@@ -438,11 +438,11 @@ defmodule QueryTest do
   end
 
   test "fail on parameter length mismatch", context do
-    assert_raise ArgumentError, "parameters must be of length 1 for this query", fn ->
+    assert_raise ArgumentError, ~r"parameters must be of length 1 for query", fn ->
       query("SELECT $1::integer", [1, 2])
     end
 
-    assert_raise ArgumentError, "parameters must be of length 0 for this query", fn ->
+    assert_raise ArgumentError, ~r"parameters must be of length 0 for query", fn ->
       query("SELECT 42", [1])
     end
 
@@ -472,18 +472,9 @@ defmodule QueryTest do
     assert res.rows == [[1, 2], [3, 4]]
   end
 
-  test "multi row result struct with manual decoding", context do
-    assert {:ok, res} = P.query(context[:pid], "VALUES (1, 2), (3, 4)", [], decode: :manual)
-    assert res.rows == [[<<0, 0, 0, 3>>, <<0, 0, 0, 4>>],
-      [<<0, 0, 0, 1>>, <<0, 0, 0, 2>>]]
-
-    assert Postgrex.Result.decode(res).rows == [[1, 2], [3, 4]]
-
-    res = Postgrex.Result.decode(res, &Enum.map(&1, fn x -> x * 2 end))
-    assert res.rows == [[2, 4], [6, 8]]
-
-    res = Postgrex.Result.decode(res, & &1 * 2)
-    assert res.rows == [[2, 4], [6, 8]]
+  test "multi row result struct with decode mapper", context do
+    map = &Enum.map(&1, fn x -> x * 2 end)
+    assert [[2,4], [6,8]] = query("VALUES (1, 2), (3, 4)", [], decode_mapper: map)
   end
 
   test "insert", context do
@@ -495,38 +486,24 @@ defmodule QueryTest do
 
   test "prepare, execute and close", context do
     assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert [[42]] = execute(query)
-    assert [[42]] = execute(query)
+    assert [[42]] = execute(query, [])
+    assert [[42]] = execute(query, [])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "execute with automatic encoding", context do
-    assert (%Postgrex.Query{} = query) = prepare("auto", "SELECT $1::int")
-    assert [[41]] = execute(%Postgrex.Query{query | params: [41]})
+  test "prepare, close and execute", context do
+    assert (%Postgrex.Query{} = query) = prepare("reuse", "SELECT $1::int")
+    assert [[42]] = execute(query, [42])
     assert :ok = close(query)
-    assert [[42]] = query("SELECT 42", [])
+    assert [[42]] = execute(query, [42])
   end
 
-  test "execute with manual encoding", context do
-    assert (%Postgrex.Query{} = query) = prepare("manual", "SELECT $1::int")
-    query = %Postgrex.Query{query | params: [41]}
-    assert (%Postgrex.Query{} = query) = Postgrex.Query.encode(query)
-    assert Postgrex.Query.encode(query) == query
-    assert [[41]] = execute(query)
+  test "execute with encode mapper", context do
+    assert (%Postgrex.Query{} = query) = prepare("mapper", "SELECT $1::int")
+    assert [[84]] = execute(query, [42], [encode_mapper: fn(n) -> n * 2 end])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "manual encode prepared query without params", context do
-    assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert (%Postgrex.Query{} = query) = Postgrex.Query.encode(query)
-
-    query = %Postgrex.Query{query | params: []}
-    assert (%Postgrex.Query{} = query) = Postgrex.Query.encode(query)
-
-    assert [[42]] = execute(query)
-    assert :ok = close(query)
   end
 
   test "closing prepared query that does not exist succeeds", context do
@@ -566,6 +543,14 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "connection works on custom transactions", context do
+    assert :ok = query("BEGIN", [])
+    assert :ok = query("COMMIT", [])
+    assert :ok = query("BEGIN", [])
+    assert :ok = query("ROLLBACK", [])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "connection works after failure in prepare", context do
     assert %Postgrex.Error{} = prepare("bad", "wat")
     assert [[42]] = query("SELECT 42", [])
@@ -574,52 +559,29 @@ defmodule QueryTest do
   test "connection works after failure in execute", context do
     %Postgrex.Query{} = query = prepare("unique", "insert into uniques values (1), (1);")
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
-      execute(query)
+      execute(query, [])
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
-      execute(query)
+      execute(query, [])
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "execute on closed prepared query fails", context do
-    assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert :ok = close(query)
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
-    assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "connection closes nameless prepared query after query", context do
+  test "connection reuses prepared query after query", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert [[42]] = query("SELECT 42", [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+    assert [[41]] = execute(query, [])
   end
 
-  test "connection closes nameless prepared query after failure in parsing state", context do
+  test "connection reuses prepared query after failure in preparing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert %Postgrex.Error{} = query("wat", [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+    assert [[41]] = execute(query, [])
   end
 
-  test "connection closes nameless prepared query after failure in executing state", context do
-    %Postgrex.Query{} = query = prepare("", "SELECT 41")
-    assert %Postgrex.Error{} = query("wat", [])
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
-  end
-
-  test "connection closes nameless prepared query after failure during transaction query", context do
-    assert :ok = query("BEGIN", [])
+  test "connection reuses prepared query after failure in executing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
       query("insert into uniques values (1), (1);", [])
-    assert %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}} =
-      query("SELECT 42", [])
-    %Postgrex.Query{} = rollback = prepare("rollback", "ROLLBACK")
-    assert :ok = execute(rollback)
-    assert %Postgrex.Error{postgres: %{code: :invalid_sql_statement_name}} =
-      execute(query)
+    assert [[41]] = execute(query, [])
   end
 
   test "async test", context do
@@ -639,21 +601,23 @@ defmodule QueryTest do
     conn = context[:pid]
 
     Process.flag(:trap_exit, true)
-    assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
+    capture_log fn ->
+      assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
 
-    assert_receive {:EXIT, ^conn, {:shutdown, :timeout}}
+      assert_receive {:EXIT, ^conn, {%DBConnection.Error{}, _}}
+    end
   end
 
   test "active client cancel", context do
     conn = context[:pid]
     :sys.suspend(conn)
 
-    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [queue_timeout: 0]))
+    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
 
     Process.flag(:trap_exit, true)
     :sys.resume(conn)
 
-    assert_receive {:EXIT, ^conn, {:shutdown, :cancel}}
+    assert [[42]] = query("SELECT 42", [])
   end
 
   test "active client DOWN", context do
@@ -666,9 +630,10 @@ defmodule QueryTest do
 
     :timer.sleep(100)
     Process.flag(:trap_exit, true)
-    Process.exit(pid, :shutdown)
-
-    assert_receive {:EXIT, ^conn, {:shutdown, :DOWN}}
+    capture_log fn ->
+      Process.exit(pid, :shutdown)
+      assert_receive {:EXIT, ^conn, {%DBConnection.Error{}, [_|_]}}
+    end
   end
 
   test "queued client cancel", context do
@@ -681,7 +646,7 @@ defmodule QueryTest do
 
     assert_receive [[:void]], 1000
 
-    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [queue_timeout: 0]))
+    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
     assert [[42]] = query("SELECT 42", [])
 
      Enum.each(2..10, fn _ ->
@@ -711,5 +676,24 @@ defmodule QueryTest do
     Enum.each(2..10, fn _ ->
       assert_received [[:void]]
     end)
+  end
+
+  test "raise when trying to execute unprepared query", context do
+    assert_raise ArgumentError, ~r/has not been prepared/,
+      fn -> execute(%Postgrex.Query{name: "hi", statement: "BEGIN"}, []) end
+  end
+
+  test "raise when trying to prepare or close reserved query", context do
+    assert_raise ArgumentError, ~r/uses reserved name/,
+      fn -> prepare("POSTGREX_BEGIN", "COMMIT") end
+
+    query = prepare("BEGIN", "BEGIN")
+    query = %Postgrex.Query{query | name: "POSTGREX_BEGIN"}
+
+    assert_raise ArgumentError, ~r/uses reserved name/, fn -> close(query) end
+  end
+
+  test "query struct interpolates to statement" do
+    assert "#{%Postgrex.Query{statement: "BEGIN"}}" == "BEGIN"
   end
 end
