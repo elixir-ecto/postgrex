@@ -12,8 +12,6 @@ defmodule Postgrex.Query do
     * `types` - The type serber table to fetch the type information from;
   """
 
-  import Postgrex.BinaryUtils
-
   @type t :: %__MODULE__{
     name:           iodata,
     statement:      iodata,
@@ -26,60 +24,14 @@ defmodule Postgrex.Query do
 
   defstruct [:name, :statement, :param_formats, :encoders, :columns,
     :result_formats, :decoders, :types]
-
-  @doc """
-  Encodes parameters for a prepared query.
-
-  A mapper function can be given to process each
-  parameter before encoding, in no specific order.
-  """
-  @spec encode(t, [any], (term -> term)) :: [any]
-  def encode(query, params, mapper \\ fn x -> x end)
-
-  def encode(%Postgrex.Query{types: nil} = query, _params, _mapper) do
-    raise ArgumentError, "query #{inspect query} has not been prepared"
-  end
-
-  def encode(%Postgrex.Query{param_formats: nil} = query, _params, _mapper) do
-    raise ArgumentError, "query #{inspect query} has not been described"
-  end
-
-  def encode(%Postgrex.Query{encoders: encoders}, params, mapper) do
-    case encode_params(params || [], encoders, mapper, []) do
-      :error ->
-        raise ArgumentError, "parameters must be of length #{length encoders} for this query"
-      params ->
-       params
-    end
-  end
-
-  ## helpers
-
-  defp encode_params([param | params], [encoder | encoders], mapper, encoded) do
-    case mapper.(param) do
-      nil   ->
-        encode_params(params, encoders, mapper, [<<-1::int32>> | encoded])
-      param ->
-        param = encoder.(param)
-        encoded = [[<<IO.iodata_length(param)::int32>> | param] | encoded]
-        encode_params(params, encoders, mapper, encoded)
-    end
-  end
-  defp encode_params([], [], _, encoded), do: Enum.reverse(encoded)
-  defp encode_params(params, _, _, _) when is_list(params), do: :error
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
 
+  import Postgrex.BinaryUtils
+
   def parse(query, _), do: query
 
-  def describe(%Postgrex.Query{param_formats: nil, types: nil} = query, _) do
-    raise ArgumentError, "query #{inspect query} has not been prepared"
-  end
-  def describe(%Postgrex.Query{encoders: encoders, types: nil} = query, _)
-  when is_list(encoders) do
-    query
-  end
   def describe(query, _) do
     %Postgrex.Query{encoders: poids, decoders: roids, types: types} = query
     {pfs, encoders} = encoders(poids, types)
@@ -88,20 +40,27 @@ defimpl DBConnection.Query, for: Postgrex.Query do
                             result_formats: rfs, decoders: decoders}
   end
 
-  def encode(query, params, opts) do
-    case opts[:encode] || :auto do
-      :auto   -> Postgrex.Query.encode(query, params)
-      :manual -> params
+  def encode(%Postgrex.Query{types: nil} = query, _params, _mapper) do
+    raise ArgumentError, "query #{inspect query} has not been prepared"
+  end
+
+  def encode(%Postgrex.Query{encoders: encoders} = query, params, opts) do
+    mapper = opts[:encode_mapper] || fn x -> x end
+    case encode(params || [], encoders, mapper, []) do
+      :error ->
+        raise ArgumentError,
+        "parameters must be of length #{length encoders} for query #{inspect query}"
+      params ->
+       params
     end
   end
 
-  def decode(_, result, opts) do
-    case opts[:decode] || :auto do
-      :auto   ->
-        mapper = opts[:decode_mapper] || fn x -> x end
-        Postgrex.Result.decode(result, mapper)
-      :manual -> result
-    end
+  def decode(%Postgrex.Query{decoders: nil}, res, _), do: res
+  def decode(%Postgrex.Query{decoders: decoders}, res, opts) do
+    mapper = opts[:decode_mapper] || fn x -> x end
+    %Postgrex.Result{rows: rows} = res
+    rows = decode(rows, decoders, mapper, [])
+    %Postgrex.Result{res | rows: rows}
   end
 
   ## helpers
@@ -120,6 +79,33 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     |> Enum.map(&Postgrex.Types.decoder(&1, types))
     |> :lists.unzip()
   end
+
+ defp encode([param | params], [encoder | encoders], mapper, encoded) do
+    case mapper.(param) do
+      nil   ->
+        encode(params, encoders, mapper, [<<-1::int32>> | encoded])
+      param ->
+        param = encoder.(param)
+        encoded = [[<<IO.iodata_length(param)::int32>> | param] | encoded]
+        encode(params, encoders, mapper, encoded)
+    end
+  end
+  defp encode([], [], _, encoded), do: Enum.reverse(encoded)
+  defp encode(params, _, _, _) when is_list(params), do: :error
+
+  defp decode([row | rows], decoders, mapper, decoded) do
+    decoded = [mapper.(decode_row(row, decoders, [])) | decoded]
+    decode(rows, decoders, mapper, decoded)
+  end
+  defp decode([], _, _, decoded), do: decoded
+
+  defp decode_row([nil | rest], [_ | decoders], decoded) do
+    decode_row(rest, decoders, [nil | decoded])
+  end
+  defp decode_row([elem | rest], [decode | decoders], decoded) do
+    decode_row(rest, decoders, [decode.(elem) | decoded])
+  end
+  defp decode_row([], [], decoded), do: Enum.reverse(decoded)
 end
 
 defimpl String.Chars, for: Postgrex.Query do

@@ -651,14 +651,13 @@ defmodule Postgrex.Protocol do
   end
   defp complete(s, status, query, rows, tag, buffer) do
     {command, nrows} = decode_tag(tag)
-    %Query{decoders: decoders, columns: cols} = query
+    %Query{columns: cols} = query
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
     if is_nil(nrows) and command == :select do
       nrows = length(rows)
     end
     result = %Postgrex.Result{command: command, num_rows: nrows || 0,
-                              rows: rows, columns: cols,
-                              decoders: decoders}
+                              rows: rows, columns: cols}
     sync_recv(s, status, result, buffer)
   end
 

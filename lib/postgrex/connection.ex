@@ -79,10 +79,10 @@ defmodule Postgrex.Connection do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
-    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
-    not (default: `:auto`)
-    * `:decode_mapper` - Fun to map each row in the result to a term, see
-    `Postgrex.Result.decode/2`, (default: `fn x -> x end`);
+    * `:encode_mapper` - Fun to map each parameter before encoding, see
+    (default: `fn x -> x end`)
+    * `:decode_mapper` - Fun to map each row in the result to a term after
+    decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
     * `:proxy` - The proxy module for the request, if any, see
@@ -176,10 +176,10 @@ defmodule Postgrex.Connection do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
-    * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
-    not (default: `:auto`)
-    * `:decode_mapper` - Fun to map each row in the result to a term, see
-    `Postgrex.Result.decode/2`, (default: `fn x -> x end`);
+    * `:encode_mapper` - Fun to map each parameter before encoding, see
+    (default: `fn x -> x end`)
+    * `:decode_mapper` - Fun to map each row in the result to a term after
+    decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
     * `:proxy` - The proxy module for the request, if any, see

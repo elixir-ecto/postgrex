@@ -438,11 +438,11 @@ defmodule QueryTest do
   end
 
   test "fail on parameter length mismatch", context do
-    assert_raise ArgumentError, "parameters must be of length 1 for this query", fn ->
+    assert_raise ArgumentError, ~r"parameters must be of length 1 for query", fn ->
       query("SELECT $1::integer", [1, 2])
     end
 
-    assert_raise ArgumentError, "parameters must be of length 0 for this query", fn ->
+    assert_raise ArgumentError, ~r"parameters must be of length 0 for query", fn ->
       query("SELECT 42", [1])
     end
 
@@ -472,20 +472,6 @@ defmodule QueryTest do
     assert res.rows == [[1, 2], [3, 4]]
   end
 
-  test "multi row result struct with manual decoding", context do
-    assert {:ok, res} = P.query(context[:pid], "VALUES (1, 2), (3, 4)", [], decode: :manual)
-    assert res.rows == [[<<0, 0, 0, 3>>, <<0, 0, 0, 4>>],
-      [<<0, 0, 0, 1>>, <<0, 0, 0, 2>>]]
-
-    assert Postgrex.Result.decode(res).rows == [[1, 2], [3, 4]]
-
-    res = Postgrex.Result.decode(res, &Enum.map(&1, fn x -> x * 2 end))
-    assert res.rows == [[2, 4], [6, 8]]
-
-    res = Postgrex.Result.decode(res, & &1 * 2)
-    assert res.rows == [[2, 4], [6, 8]]
-  end
-
   test "multi row result struct with decode mapper", context do
     map = &Enum.map(&1, fn x -> x * 2 end)
     assert [[2,4], [6,8]] = query("VALUES (1, 2), (3, 4)", [], decode_mapper: map)
@@ -513,29 +499,11 @@ defmodule QueryTest do
     assert [[42]] = execute(query, [42])
   end
 
-  test "execute with automatic encoding", context do
-    assert (%Postgrex.Query{} = query) = prepare("auto", "SELECT $1::int")
-    assert [[41]] = execute(query, [41])
+  test "execute with encode mapper", context do
+    assert (%Postgrex.Query{} = query) = prepare("mapper", "SELECT $1::int")
+    assert [[84]] = execute(query, [42], [encode_mapper: fn(n) -> n * 2 end])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "execute with manual encoding", context do
-    assert (%Postgrex.Query{} = query) = prepare("manual", "SELECT $1::int")
-
-    params = Postgrex.Query.encode(query, [41])
-
-    assert [[41]] = execute(query, params, [encode: :manual])
-    assert :ok = close(query)
-    assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "manual encode prepared query without params", context do
-    assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
-    assert Postgrex.Query.encode(query, []) == []
-
-    assert [[42]] = execute(query, [])
-    assert :ok = close(query)
   end
 
   test "closing prepared query that does not exist succeeds", context do
