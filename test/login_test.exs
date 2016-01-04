@@ -128,10 +128,10 @@ defmodule LoginTest do
 
         use DBConnection.Proxy
 
-        def handle_close(_, _, _, %{parameters: ref} = state, _) do
+        def handle_close(_, _, _, %{parameters: ref} = state, s) do
           send(self(), {:ref, ref})
           err = RuntimeError.exception("oops")
-          {:disconnect, err, state}
+          {:disconnect, err, state, s}
         end
       end
 
@@ -139,7 +139,7 @@ defmodule LoginTest do
 
       capture_log fn ->
         assert_raise RuntimeError, "oops",
-          fn() -> P.close!(pid, %Postgrex.Query{}, [proxy_mod: BackoffTest]) end
+          fn() -> P.close!(pid, %Postgrex.Query{}, [proxy: BackoffTest]) end
 
         assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
 

@@ -638,7 +638,7 @@ defmodule QueryTest do
     conn = context[:pid]
     :sys.suspend(conn)
 
-    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [queue_timeout: 0]))
+    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
 
     Process.flag(:trap_exit, true)
     :sys.resume(conn)
@@ -672,7 +672,7 @@ defmodule QueryTest do
 
     assert_receive [[:void]], 1000
 
-    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [queue_timeout: 0]))
+    assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
     assert [[42]] = query("SELECT 42", [])
 
      Enum.each(2..10, fn _ ->

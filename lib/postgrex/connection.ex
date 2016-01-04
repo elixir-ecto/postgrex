@@ -17,7 +17,7 @@ defmodule Postgrex.Connection do
   """
   @type conn :: DBConnection.conn
 
-  @queue_timeout 5000
+  @pool_timeout 5000
   @timeout 5000
   @idle_timeout 5000
 
@@ -55,7 +55,7 @@ defmodule Postgrex.Connection do
     backoff and to stop (see `:backoff`, default: `:jitter`)
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
-    * `:pool_mod` - The pool module to use, see `DBConnection`, it must be
+    * `:pool` - The pool module to use, see `DBConnection`, it must be
     included with all requests if not the default (default:
     `DBConnection.Connection`);
   """
@@ -75,18 +75,17 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:queue_timeout` - Time to wait in the queue for the connection
-    (default: `#{@queue_timeout}`)
-    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
-    as the call timeout (default: `true`);
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
     * `:decode_mapper` - Fun to map each row in the result to a term, see
     `Postgrex.Result.decode/2`, (default: `fn x -> x end`);
-    * `:pool_mod` - The pool module to use, must match that set on
+    * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - The proxy module for the request, if any, see
+    * `:proxy` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -130,14 +129,13 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:queue_timeout` - Time to wait in the queue for the connection
-    (default: `#{@queue_timeout}`)
-    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
-    as the call timeout (default: `true`);
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool_mod` - The pool module to use, must match that set on
+    * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - The proxy module for the request, if any, see
+    * `:proxy` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -174,18 +172,17 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:queue_timeout` - Time to wait in the queue for the connection
-    (default: `#{@queue_timeout}`)
-    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
-    as the call timeout (default: `true`);
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode`  - Decode method: `:auto` decodes the result and `:manual` does
     not (default: `:auto`)
     * `:decode_mapper` - Fun to map each row in the result to a term, see
     `Postgrex.Result.decode/2`, (default: `fn x -> x end`);
-    * `:pool_mod` - The pool module to use, must match that set on
+    * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - The proxy module for the request, if any, see
+    * `:proxy` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -224,14 +221,13 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:queue_timeout` - Time to wait in the queue for the connection
-    (default: `#{@queue_timeout}`)
-    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
-    as the call timeout (default: `true`);
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
-    * `:pool_mod` - The pool module to use, must match that set on
+    * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - The proxy module for the request, if any, see
+    * `:proxy` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
@@ -277,19 +273,18 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:queue_timeout` - Time to wait in the queue for the connection
-    (default: `#{@queue_timeout}`)
-    * `:queue` - Whether to wait in the queue, if false `:queue_timeout` acts
-    as the call timeout (default: `true`);
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
-    * `:pool_mod` - The pool module to use, must match that set on
+    * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy_mod` - The proxy module for the request, if any, see
+    * `:proxy` - The proxy module for the request, if any, see
     `DBConnection.Proxy` (default: `nil`);
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool_mod` and `:proxy_mod` will be used
+  transactions and requests. The `:pool` and `:proxy` will be used
   for all requests inside the transaction function.
 
   ## Example
@@ -325,8 +320,8 @@ defmodule Postgrex.Connection do
 
   ## Options
 
-    * `:timeout` - Call timeout (default: `#{@timeout}`)
-    * `:pool_mod` - The pool module to use, must match that set on
+    * `:pool_timeout` - Call timeout (default: `#{@pool_timeout}`)
+    * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
 
   """
