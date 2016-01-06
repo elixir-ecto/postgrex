@@ -11,11 +11,11 @@ defmodule Postgrex.Protocol do
   @default_extensions [{Postgrex.Extensions.Binary, nil}, {Postgrex.Extensions.Text, nil}]
   @sock_opts [packet: :raw, mode: :binary, active: false]
 
-  defstruct [sock: nil, backend_key: nil, types: nil, timeout: nil,
+  defstruct [sock: nil, connection_id: nil, types: nil, timeout: nil,
              parameters: %{}, postgres: :idle, buffer: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
-                             backend_key: {pos_integer, pos_integer},
+                             connection_id: pos_integer,
                              types: (nil | reference | Postgrex.TypeServer.table),
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
@@ -331,8 +331,8 @@ defmodule Postgrex.Protocol do
 
   defp init_recv(%{timeout: timeout} = s, status, buffer) do
     case msg_recv(s, timeout, buffer) do
-      {:ok, msg_backend_key(pid: pid, key: key), buffer} ->
-        init_recv(%{s | backend_key: {pid, key}}, status, buffer)
+      {:ok, msg_backend_key(pid: pid), buffer} ->
+        init_recv(%{s | connection_id: pid}, status, buffer)
       {:ok, msg_ready(), buffer} ->
         bootstrap(s, status, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -644,12 +644,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp complete(s, status, %Query{columns: nil}, [], tag, buffer) do
+  defp complete(%{connection_id: connection_id} = s, status, %Query{columns: nil}, [], tag, buffer) do
     {command, nrows} = decode_tag(tag)
-    result =  %Postgrex.Result{command: command, num_rows: nrows || 0}
+    result =  %Postgrex.Result{command: command, num_rows: nrows || 0, connection_id: connection_id}
     sync_recv(s, status, result, buffer)
   end
-  defp complete(s, status, query, rows, tag, buffer) do
+  defp complete(%{connection_id: connection_id} = s, status, query, rows, tag, buffer) do
     {command, nrows} = decode_tag(tag)
     %Query{columns: cols} = query
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
@@ -657,7 +657,7 @@ defmodule Postgrex.Protocol do
       nrows = length(rows)
     end
     result = %Postgrex.Result{command: command, num_rows: nrows || 0,
-                              rows: rows, columns: cols}
+                              rows: rows, columns: cols, connection_id: connection_id}
     sync_recv(s, status, result, buffer)
   end
 
@@ -900,8 +900,8 @@ defmodule Postgrex.Protocol do
   defp ok(s, nil, buffer) do
     {:ok, %{s | buffer: buffer}}
   end
-  defp ok(s, %Postgrex.Error{} = err, buffer) do
-    {:error, err, %{s | buffer: buffer}}
+  defp ok(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
+    {:error, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
   end
   defp ok(s, :prepare, buffer) do
     {:prepare, %{s | buffer: buffer}}
@@ -915,8 +915,8 @@ defmodule Postgrex.Protocol do
     disconnect(s, err, buffer)
   end
 
-  defp disconnect(s, err, buffer) do
-    {:disconnect, err, %{s | buffer: buffer}}
+  defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
+    {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
   end
 
   defp reserved_error(query, s) do
