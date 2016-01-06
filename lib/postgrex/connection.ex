@@ -79,8 +79,6 @@ defmodule Postgrex.Connection do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
-    * `:encode_mapper` - Fun to map each parameter before encoding, see
-    (default: `fn x -> x end`)
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
@@ -176,8 +174,6 @@ defmodule Postgrex.Connection do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
-    * `:encode_mapper` - Fun to map each parameter before encoding, see
-    (default: `fn x -> x end`)
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
