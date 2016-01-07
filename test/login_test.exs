@@ -55,16 +55,22 @@ defmodule LoginTest do
 
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert String.match? P.parameters(pid)["server_version"], ~R"\d+\.\d+\.\d+"
 
-    if String.match? P.parameters(pid)["server_version"], ~R"9\.\d+\.\d+" do
-      assert "" == P.parameters(pid)["application_name"]
+    assert String.match? P.parameters(pid)["server_version"], ~R"^\d+\.\d+"
+  end
 
-      opts = opts ++ [parameters: [application_name: "postgrex"]]
-      assert {:ok, pid} = P.start_link(opts)
-      assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-      assert "postgrex" == P.parameters(pid)["application_name"]
-    end
+  @tag min_pg_version: "9.0"
+  test "setting parameters" do
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test" ]
+
+    assert {:ok, pid} = P.start_link(opts)
+    assert "" == P.parameters(pid)["application_name"]
+
+    opts = opts ++ [parameters: [application_name: "postgrex"]]
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+    assert "postgrex" == P.parameters(pid)["application_name"]
   end
 
   @tag :ssl
