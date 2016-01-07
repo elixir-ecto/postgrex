@@ -32,7 +32,7 @@ defmodule Postgrex.ErrorCode do
   @spec code_to_name(String.t) :: atom | no_return
   def code_to_name(code)
 
-  for {code, errcodes} <- Enum.group_by(errcodes, HashDict.new, &elem(&1, 0)) do
+  for {code, errcodes} <- Enum.group_by(errcodes, &elem(&1, 0)) do
     [{^code, name}] = errcodes
     def code_to_name(unquote(code)), do: unquote(name)
   end
@@ -57,7 +57,7 @@ defmodule Postgrex.ErrorCode do
     null_value_not_allowed: "22004"               # 39004 not used
   ]
 
-  for {name, errcodes} <- Enum.group_by(errcodes, HashDict.new, &elem(&1, 1)) do
+  for {name, errcodes} <- Enum.group_by(errcodes, &elem(&1, 1)) do
     case Keyword.fetch(@code_decision_table, name) do
       {:ok, nil} ->
         :ok
