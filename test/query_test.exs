@@ -586,7 +586,7 @@ defmodule QueryTest do
     end)
 
      Enum.each(1..10, fn _ ->
-      assert_receive [[:void]], 1000
+      assert_receive [[:void]]
     end)
   end
 
@@ -637,7 +637,7 @@ defmodule QueryTest do
       end
     end)
 
-    assert_receive [[:void]], 1000
+    assert_receive [[:void]]
 
     assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
     assert [[42]] = query("SELECT 42", [])
@@ -655,7 +655,7 @@ defmodule QueryTest do
       end
     end)
 
-    assert_receive [[:void]], 1000
+    assert_receive [[:void]]
 
     pid = spawn fn ->
       send self_pid, query("SELECT 42", [])

@@ -28,7 +28,7 @@ defmodule NotificationTest do
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel, 'hello'", [])
     receiver_pid = context.pid_ps
     ref = ref
-    assert_receive {:notification, ^receiver_pid, ^ref, "channel", "hello"}, 1_000
+    assert_receive {:notification, ^receiver_pid, ^ref, "channel", "hello"}
   end
 
   test "listening, notify, then receive (without payload)", context do
@@ -37,7 +37,7 @@ defmodule NotificationTest do
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
     receiver_pid = context.pid_ps
     ref = ref
-    assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}, 1_000
+    assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
   end
 
   test "listening, unlistening, notify, don't receive", context do
@@ -46,7 +46,7 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
     pid = context.pid_ps
-    refute_receive {:notification, ^pid, ^ref, "channel", ""}, 1_000
+    refute_receive {:notification, ^pid, ^ref, "channel", ""}
   end
 
   test "listening x2, unlistening, notify, receive", context do

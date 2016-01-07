@@ -21,7 +21,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}, [_|_]}}, 500
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}, [_|_]}}
       assert code in [:invalid_authorization_specification, :invalid_password]
     end
   end
@@ -114,7 +114,7 @@ defmodule LoginTest do
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{message: message}, [_|_]}}, 500
+      assert_receive {:EXIT, ^pid, {%Postgrex.Error{message: message}, [_|_]}}
       assert message == "tcp connect: non-existing domain - :nxdomain"
     end
   end
