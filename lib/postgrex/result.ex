@@ -8,13 +8,15 @@ defmodule Postgrex.Result do
     * `rows` - The result set. A list of tuples, each tuple corresponding to a
                row, each element in the tuple corresponds to a column;
     * `num_rows` - The number of fetched or affected rows;
+    * `connection_id` - The OS pid of the Postgres backend that executed the query;
   """
 
   @type t :: %__MODULE__{
     command:  atom,
     columns:  [String.t] | nil,
     rows:     [[term] | term] | nil,
-    num_rows: integer}
+    num_rows: integer,
+    connection_id: pos_integer}
 
-  defstruct [command: nil, columns: nil, rows: nil, num_rows: nil]
+  defstruct [command: nil, columns: nil, rows: nil, num_rows: nil, connection_id: nil]
 end

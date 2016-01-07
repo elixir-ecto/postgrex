@@ -689,4 +689,15 @@ defmodule QueryTest do
   test "query struct interpolates to statement" do
     assert "#{%Postgrex.Query{statement: "BEGIN"}}" == "BEGIN"
   end
+
+  test "connection_id", context do
+    assert {:ok, %Postgrex.Result{connection_id: connection_id, rows: [[backend_pid]]}} =
+      Postgrex.Connection.query(context[:pid], "SELECT pg_backend_pid()", [])
+    assert is_integer(connection_id)
+    assert connection_id == backend_pid
+
+    assert {:error, %Postgrex.Error{connection_id: connection_id}} =
+      Postgrex.Connection.query(context[:pid], "FOO BAR", [])
+    assert is_integer(connection_id)
+  end
 end
