@@ -9,7 +9,7 @@ defmodule Postgrex.Query do
     * `columns` - The column names;
     * `result_formats` - List of formats for each column is decoded from;
     * `decoders` - List of anonymous functions to decode each column;
-    * `types` - The type serber table to fetch the type information from;
+    * `types` - The type server table to fetch the type information from;
   """
 
   @type t :: %__MODULE__{
@@ -29,7 +29,11 @@ end
 defimpl DBConnection.Query, for: Postgrex.Query do
   import Postgrex.BinaryUtils
 
-  def parse(query, _), do: query
+  def parse(%{name: name, statement: statement} = query, _) do
+    # for query table to match on two identical statements they must be equal
+    %{query | name: IO.iodata_to_binary(name),
+      statement: IO.iodata_to_binary(statement)}
+  end
 
   def describe(query, _) do
     %Postgrex.Query{encoders: poids, decoders: roids, types: types} = query

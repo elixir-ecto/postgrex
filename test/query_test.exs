@@ -577,6 +577,13 @@ defmodule QueryTest do
     assert [[41]] = execute(query, [])
   end
 
+  test "connection forces prepare on execute after prepare of same name", context do
+    %Postgrex.Query{} = query41 = prepare("", "SELECT 41")
+    assert %Postgrex.Query{} = query42 = prepare("", "SELECT 42")
+    assert [[42]] = execute(query42, [])
+    assert [[41]] = execute(query41, [])
+  end
+
   test "async test", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
