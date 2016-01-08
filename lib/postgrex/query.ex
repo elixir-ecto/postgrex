@@ -97,13 +97,13 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   end
   defp do_decode([], _, _, decoded), do: decoded
 
-  defp decode_row([nil | rest], [_ | decoders], decoded) do
+  defp decode_row(<<-1 :: int32, rest :: binary>>, [_ | decoders], decoded) do
     decode_row(rest, decoders, [nil | decoded])
   end
-  defp decode_row([elem | rest], [decode | decoders], decoded) do
-    decode_row(rest, decoders, [decode.(elem) | decoded])
+  defp decode_row(<<len :: uint32, value :: binary(len), rest :: binary>>, [decode | decoders], decoded) do
+    decode_row(rest, decoders, [decode.(value) | decoded])
   end
-  defp decode_row([], [], decoded), do: Enum.reverse(decoded)
+  defp decode_row(<<>>, [], decoded), do: Enum.reverse(decoded)
 end
 
 defimpl String.Chars, for: Postgrex.Query do

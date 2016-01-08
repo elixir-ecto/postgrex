@@ -393,7 +393,7 @@ defmodule Postgrex.Protocol do
   defp bootstrap_recv(%{timeout: timeout} = s, status, rows, buffer) do
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_data_row(values: values), buffer} ->
-        bootstrap_recv(s, status, [values | rows], buffer)
+        bootstrap_recv(s, status, [row_decode(values) | rows], buffer)
       {:ok, msg_command_complete(), buffer} ->
         bootstrap_types(s, status, rows, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -847,6 +847,14 @@ defmodule Postgrex.Protocol do
       _ ->
         {:more, size - byte_size(rest)}
     end
+  end
+
+  defp row_decode(<<>>), do: []
+  defp row_decode(<<-1::int32, rest::binary>>) do
+    [nil | row_decode(rest)]
+  end
+  defp row_decode(<<len::uint32, value::binary(len), rest::binary>>) do
+    [value | row_decode(rest)]
   end
 
   defp msg_send(s, msgs, buffer) when is_list(msgs) do

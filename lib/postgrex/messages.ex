@@ -97,9 +97,8 @@ defmodule Postgrex.Messages do
   end
 
   # data_row
-  def parse(<<count :: uint16, rest :: binary>>, ?D, _size) do
-    values = decode_row_values(rest, count)
-    msg_data_row(values: values)
+  def parse(<<_ :: uint16, rest :: binary>>, ?D, _size) do
+    msg_data_row(values: rest)
   end
 
   # notify
@@ -295,16 +294,6 @@ defmodule Postgrex.Messages do
     field = row_field(name: name, table_oid: table_oid, column: column, type_oid: type_oid,
                       type_size: type_size, type_mod: type_mod, format: format)
     {field, rest}
-  end
-
-  defp decode_row_values("", 0), do: []
-
-  defp decode_row_values(<<-1 :: int32, rest :: binary>>, count) do
-    [nil | decode_row_values(rest, count-1)]
-  end
-
-  defp decode_row_values(<<length :: uint32, value :: binary(length), rest :: binary>>, count) do
-    [value | decode_row_values(rest, count-1)]
   end
 
   Enum.each(@auth_types, fn {type, value} ->
