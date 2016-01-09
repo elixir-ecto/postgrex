@@ -234,10 +234,10 @@ defmodule Postgrex.Connection do
   @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
   def close(conn, query, opts \\ []) do
     case DBConnection.close(conn, query, defaults(opts)) do
+      {:ok, _} ->
+        :ok
       {:error, %ArgumentError{} = err} ->
         raise err
-      other ->
-        other
     end
   end
 

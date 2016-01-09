@@ -160,27 +160,40 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
-    {:ok, state} |
+    {:ok, Postgrex.Result.t, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_close(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
   end
-  def handle_close(query, opts, %{buffer: buffer} = s) do
+  def handle_close(query, opts, s) do
+    %{connection_id: connection_id, buffer: buffer} = s
     status = %{notify: notify(opts)}
-    close(%{s | buffer: nil}, status, query, nil, buffer)
+    res = %Postgrex.Result{command: :close, connection_id: connection_id}
+    close(%{s | buffer: nil}, status, query, res, buffer)
   end
 
+  @spec handle_begin(Keyword.t, state) ::
+    {:ok, Postgrex.Result.t, state} |
+    {:error | :disconnect, Postgrex.Error.t, state}
   def handle_begin(opts, s) do
-    handle_transaction(@reserved_prefix <> "BEGIN", :transaction, opts, s)
+    name = @reserved_prefix <> "BEGIN"
+    handle_transaction(name, :transaction, :begin, opts, s)
   end
 
+  @spec handle_commit(Keyword.t, state) ::
+    {:ok, Postgrex.Result.t, state} |
+    {:error | :disconnect, Postgrex.Error.t, state}
   def handle_commit(opts, s) do
-    handle_transaction(@reserved_prefix <> "COMMIT", :idle, opts, s)
+    handle_transaction(@reserved_prefix <> "COMMIT", :idle, :commit, opts, s)
   end
 
+  @spec handle_rollback(Keyword.t, state) ::
+    {:ok, Postgrex.Result.t, state} |
+    {:error | :disconnect, Postgrex.Error.t, state}
   def handle_rollback(opts, s) do
-    handle_transaction(@reserved_prefix <> "ROLLBACK", :idle, opts, s)
+    name = @reserved_prefix <> "ROLLBACK"
+    handle_transaction(name, :idle, :rollback, opts, s)
   end
 
   @spec handle_simple(String.t, Keyword.t, state) ::
@@ -724,40 +737,42 @@ defmodule Postgrex.Protocol do
 
   ## transaction
 
-  defp handle_transaction(name, postgres, opts, %{postgres: :naive} = s)
+  defp handle_transaction(name, postgres, cmd, opts, %{postgres: :naive} = s)
   when postgres != :naive do
-    handle_transaction(name, :naive, opts, s)
+    handle_transaction(name, :naive, cmd, opts, s)
   end
-  defp handle_transaction(name, postgres, opts, %{buffer: buffer} = s) do
+  defp handle_transaction(name, postgres, cmd, opts, s) do
+    %{connection_id: connection_id, buffer: buffer} = s
     status = %{notify: notify(opts), sync: :sync}
-    transaction_send(%{s | buffer: nil}, status, name, postgres, buffer)
+    res = %Postgrex.Result{command: cmd, connection_id: connection_id}
+    transaction_send(%{s | buffer: nil}, status, name, postgres, res, buffer)
   end
 
-  defp transaction_send(s, status, name, postgres, buffer) do
+  defp transaction_send(s, status, name, postgres, res, buffer) do
     msgs = [
       msg_bind(name_port: "", name_stat: name, param_formats: [], params: [], result_formats: []),
       msg_execute(name_port: "" , max_rows: 0),
       msg_sync()]
     case msg_send(s, msgs, buffer) do
       :ok ->
-        transaction_recv(s, status, postgres, buffer)
+        transaction_recv(s, status, postgres, res, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp transaction_recv(s, status, postgres, buffer) do
+  defp transaction_recv(s, status, postgres, res, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(), buffer} when postgres == :naive ->
-        ok(s, nil, buffer)
+        ok(s, res, buffer)
       {:ok, msg_ready(status: ^postgres), buffer} ->
-        ok(s, postgres, buffer)
+        ok(s, res, postgres, buffer)
       {:ok, msg_ready(status: postgres), buffer} ->
         sync_error(s, postgres, buffer)
       {:ok, msg_bind_complete(), buffer} ->
-        transaction_recv(s, status, postgres, buffer)
+        transaction_recv(s, status, postgres, res, buffer)
       {:ok, msg_command_complete(), buffer} ->
-        transaction_recv(s, status, postgres, buffer)
+        transaction_recv(s, status, postgres, res, buffer)
       {:ok, msg_error(fields: fields), buffer} when postgres == :naive ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
@@ -765,7 +780,8 @@ defmodule Postgrex.Protocol do
         err = Postgrex.Error.exception(postgres: fields)
         disconnect(s, err, buffer)
       {:ok, msg, buffer} ->
-        transaction_recv(handle_msg(s, status, msg), status, postgres, buffer)
+        s = handle_msg(s, status, msg)
+        transaction_recv(s, status, postgres, res, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -932,17 +948,13 @@ defmodule Postgrex.Protocol do
   defp ok(s, %Postgrex.Query{} = query, buffer) do
     {:ok, query, %{s | buffer: buffer}}
    end
-  defp ok(s, nil, buffer) do
-    {:ok, %{s | buffer: buffer}}
-  end
   defp ok(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:error, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
   end
-  defp ok(s, :prepare, buffer) do
-    {:prepare, %{s | buffer: buffer}}
-  end
-  defp ok(s, postgres, buffer) when postgres in [:idle, :transaction] do
-    {:ok, %{s | postgres: postgres, buffer: buffer}}
+
+  defp ok(s, %Postgrex.Result{} = res, postgres, buffer)
+  when postgres in [:idle, :transaction] do
+    {:ok, res, %{s | postgres: postgres, buffer: buffer}}
   end
 
   defp disconnect(s, tag, action, reason, buffer) do
