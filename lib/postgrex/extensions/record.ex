@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.Record do
   alias Postgrex.TypeInfo
   alias Postgrex.Types
   import Postgrex.BinaryUtils
-  use Postgrex.BinaryExtension, send: "record_send"
+  use Postgrex.BinaryExtension, [] # send: "record_send" hard cored in types
 
   def encode(%TypeInfo{comp_elems: elem_oids}, tuple, types, _) when is_tuple(tuple),
     do: encode_record(tuple, elem_oids, types)

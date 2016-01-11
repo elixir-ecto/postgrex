@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.Array do
   alias Postgrex.TypeInfo
   alias Postgrex.Types
   import Postgrex.BinaryUtils
-  use Postgrex.BinaryExtension, send: "array_send"
+  use Postgrex.BinaryExtension, [] # send: "array_send" hard coded in types
 
   def encode(%TypeInfo{array_elem: elem_oid}, list, types, _) when is_list(list),
     do: encode_array(list, elem_oid, types)

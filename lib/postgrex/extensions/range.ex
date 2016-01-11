@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.Range do
   alias Postgrex.TypeInfo
   alias Postgrex.Types
   import Postgrex.BinaryUtils
-  use Postgrex.BinaryExtension, send: "range_send"
+  use Postgrex.BinaryExtension, [] # send: "range_send" hard coded in types
   use Bitwise, only_operators: true
 
   @range_empty   0x01
