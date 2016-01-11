@@ -25,7 +25,12 @@ defmodule Postgrex.Protocol do
   @type notify :: ((binary, binary) -> any)
 
   @reserved_prefix "POSTGREX_"
-  @reserved_queries ["BEGIN", "COMMIT", "ROLLBACK"]
+  @reserved_queries ["BEGIN",
+                     "COMMIT",
+                     "ROLLBACK",
+                     "SAVEPOINT postgrex_savepoint",
+                     "RELEASE SAVEPOINT postgrex_savepoint",
+                     "ROLLBACK TO SAVEPOINT postgrex_savepoint"]
 
   @spec connect(Keyword.t) ::
     {:ok, state} | {:error, Postgrex.Error.t}
@@ -177,23 +182,33 @@ defmodule Postgrex.Protocol do
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_begin(opts, s) do
-    name = @reserved_prefix <> "BEGIN"
-    handle_transaction(name, :transaction, :begin, opts, s)
+    name = case Keyword.get(opts, :mode, :transaction) do
+      :transaction -> "BEGIN"
+      :savepoint   -> "SAVEPOINT postgrex_savepoint"
+    end
+    handle_transaction(@reserved_prefix <> name, :transaction, :begin, opts, s)
   end
 
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_commit(opts, s) do
-    handle_transaction(@reserved_prefix <> "COMMIT", :idle, :commit, opts, s)
+    name = case Keyword.get(opts, :mode, :transaction) do
+      :transaction -> "COMMIT"
+      :savepoint   -> "RELEASE SAVEPOINT postgrex_savepoint"
+    end
+    handle_transaction(@reserved_prefix <> name, :idle, :commit, opts, s)
   end
 
   @spec handle_rollback(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_rollback(opts, s) do
-    name = @reserved_prefix <> "ROLLBACK"
-    handle_transaction(name, :idle, :rollback, opts, s)
+    name = case Keyword.get(opts, :mode, :transaction) do
+      :transaction -> "ROLLBACK"
+      :savepoint   -> "ROLLBACK TO SAVEPOINT postgrex_savepoint"
+    end
+    handle_transaction(@reserved_prefix <> name, :idle, :rollback, opts, s)
   end
 
   @spec handle_simple(String.t, Keyword.t, state) ::
