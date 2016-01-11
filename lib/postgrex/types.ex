@@ -104,10 +104,13 @@ defmodule Postgrex.Types do
   def associate_extensions_with_types(table, extensions, extension_opts, types) do
     oid_types = Enum.into(types, HashDict.new, &{&1.oid, &1})
 
+    for {extension, opts} <- extension_opts do
+      :ets.insert(table, {extension, opts})
+    end
+
     for type_info <- types,
         extension = find_extension(type_info, extensions, extension_opts, oid_types) do
       :ets.insert(table, {type_info.oid, type_info, extension})
-      :ets.insert(table, {extension, extension_opts[extension]})
     end
 
     :ok

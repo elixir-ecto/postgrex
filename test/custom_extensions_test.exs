@@ -17,13 +17,11 @@ defmodule CustomExtensionsTest do
       do: :binary
 
     def encode(%TypeInfo{send: "int4send", oid: oid}, value, types, []) do
-      <<0::32, bin::binary>> = Postgrex.Types.encode(Postgrex.Extensions.Int8, oid, value + 1, types)
-      bin
+      Postgrex.Types.encode(Postgrex.Extensions.Int4, oid, value + 1, types)
     end
 
     def decode(%TypeInfo{send: "int4send", oid: oid}, bin, types, []) do
-      bin = <<0::32, bin::binary>>
-      Postgrex.Types.decode(Postgrex.Extensions.Int8, oid, bin, types) + 1
+      Postgrex.Types.decode(Postgrex.Extensions.Int4, oid, bin, types) + 1
     end
   end
 
