@@ -125,39 +125,6 @@ defmodule LoginTest do
     end
   end
 
-  test "parameters cleaned up on disconnect" do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test" ]
-
-    try do
-      defmodule BackoffTest do
-
-        use DBConnection.Proxy
-
-        def handle_close(_, _, _, %{parameters: ref} = state, s) do
-          send(self(), {:ref, ref})
-          err = RuntimeError.exception("oops")
-          {:disconnect, err, state, s}
-        end
-      end
-
-      {:ok, pid} = P.start_link(opts)
-
-      capture_log fn ->
-        assert_raise RuntimeError, "oops",
-          fn() -> P.close!(pid, %Postgrex.Query{}, [proxy: BackoffTest]) end
-
-        assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-
-        assert_received {:ref, ref}
-        assert Postgrex.Parameters.fetch(ref) == :error
-      end
-    after
-      :code.delete(BackoffTest)
-      :code.purge(BackoffTest)
-    end
-  end
-
   test "after connect function run" do
     parent = self()
     after_connect = fn(conn) -> send(parent, P.query(conn, "SELECT 42", [])) end

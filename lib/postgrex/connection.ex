@@ -83,8 +83,6 @@ defmodule Postgrex.Connection do
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy` - The proxy module for the request, if any, see
-    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -133,8 +131,6 @@ defmodule Postgrex.Connection do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy` - The proxy module for the request, if any, see
-    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -178,8 +174,6 @@ defmodule Postgrex.Connection do
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy` - The proxy module for the request, if any, see
-    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -223,8 +217,6 @@ defmodule Postgrex.Connection do
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy` - The proxy module for the request, if any, see
-    `DBConnection.Proxy` (default: `nil`);
 
   ## Examples
 
@@ -275,13 +267,11 @@ defmodule Postgrex.Connection do
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:proxy` - The proxy module for the request, if any, see
-    `DBConnection.Proxy` (default: `nil`);
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool` and `:proxy` will be used
-  for all requests inside the transaction function.
+  transactions and requests. The `:pool` will be used for all requests inside
+  the transaction function.
 
   ## Example
 
