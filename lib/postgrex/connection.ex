@@ -266,12 +266,15 @@ defmodule Postgrex.Connection do
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
+    `start_link/1`, see `DBConnection;
+    * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
+    transaction, otherwise set to `:transaction` (default: `:transaction`);
+
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool` will be used for all requests inside
-  the transaction function.
+  transactions and requests. The `:pool` and `:mode` will be used for all
+  requests inside the transaction function.
 
   ## Example
 

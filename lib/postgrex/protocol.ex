@@ -182,33 +182,43 @@ defmodule Postgrex.Protocol do
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_begin(opts, s) do
-    name = case Keyword.get(opts, :mode, :transaction) do
-      :transaction -> "BEGIN"
-      :savepoint   -> "SAVEPOINT postgrex_savepoint"
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "BEGIN"
+        handle_transaction(name, :transaction, :begin, opts, s)
+      :savepoint   ->
+        name = @reserved_prefix <> "SAVEPOINT postgrex_savepoint"
+        handle_savepoint([name], :savepoint, opts, s)
     end
-    handle_transaction(@reserved_prefix <> name, :transaction, :begin, opts, s)
   end
 
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_commit(opts, s) do
-    name = case Keyword.get(opts, :mode, :transaction) do
-      :transaction -> "COMMIT"
-      :savepoint   -> "RELEASE SAVEPOINT postgrex_savepoint"
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "COMMIT"
+        handle_transaction(name, :idle, :commit, opts, s)
+      :savepoint ->
+        name = @reserved_prefix <> "RELEASE SAVEPOINT postgrex_savepoint"
+        handle_savepoint([name], :release, opts, s)
     end
-    handle_transaction(@reserved_prefix <> name, :idle, :commit, opts, s)
   end
 
   @spec handle_rollback(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_rollback(opts, s) do
-    name = case Keyword.get(opts, :mode, :transaction) do
-      :transaction -> "ROLLBACK"
-      :savepoint   -> "ROLLBACK TO SAVEPOINT postgrex_savepoint"
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "ROLLBACK"
+        handle_transaction(name, :idle, :rollback, opts, s)
+      :savepoint ->
+        names = [@reserved_prefix <> "ROLLBACK TO SAVEPOINT postgrex_savepoint",
+                 @reserved_prefix <> "RELEASE SAVEPOINT postgrex_savepoint"]
+        handle_savepoint(names, [:rollback, :release], opts, s)
     end
-    handle_transaction(@reserved_prefix <> name, :idle, :rollback, opts, s)
   end
 
   @spec handle_simple(String.t, Keyword.t, state) ::
@@ -764,16 +774,22 @@ defmodule Postgrex.Protocol do
   end
 
   defp transaction_send(s, status, name, postgres, res, buffer) do
-    msgs = [
-      msg_bind(name_port: "", name_stat: name, param_formats: [], params: [], result_formats: []),
-      msg_execute(name_port: "" , max_rows: 0),
-      msg_sync()]
+    msgs = transaction_msgs([name])
     case msg_send(s, msgs, buffer) do
       :ok ->
         transaction_recv(s, status, postgres, res, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
+  end
+
+  defp transaction_msgs([]) do
+     [msg_sync()]
+  end
+  defp transaction_msgs([name | names]) do
+    [msg_bind(name_port: "", name_stat: name, param_formats: [], params: [], result_formats: []),
+     msg_execute(name_port: "" , max_rows: 0) |
+     transaction_msgs(names)]
   end
 
   defp transaction_recv(s, status, postgres, res, buffer) do
@@ -797,6 +813,48 @@ defmodule Postgrex.Protocol do
       {:ok, msg, buffer} ->
         s = handle_msg(s, status, msg)
         transaction_recv(s, status, postgres, res, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp handle_savepoint(names, cmd, opts, s) do
+   %{connection_id: connection_id, buffer: buffer} = s
+    status = %{notify: notify(opts), sync: :sync}
+    res = %Postgrex.Result{command: cmd, connection_id: connection_id}
+    savepoint_send(%{s | buffer: nil}, status, names, res, buffer)
+  end
+
+  defp savepoint_send(s, status, names, res, buffer) do
+    msgs = transaction_msgs(names)
+    case msg_send(s, msgs, buffer) do
+      :ok ->
+        savepoint_recv(s, status, res, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp savepoint_recv(%{postgres: postgres} = s, status, res, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_bind_complete(), buffer} ->
+        savepoint_recv(s, status, res, buffer)
+      {:ok, msg_command_complete(), buffer} ->
+        savepoint_recv(s, status, res, buffer)
+      {:ok, msg_ready(status: :idle), buffer} when postgres == :transaction ->
+        sync_error(s, :idle, buffer)
+      {:ok, msg_ready(status: :transaction), buffer} when postgres == :idle ->
+        sync_error(s, :transaction, buffer)
+      {:ok, msg_ready(status: :failed), buffer} when postgres == :idle ->
+        sync_error(s, :failed, buffer)
+      {:ok, msg_ready(), buffer} ->
+        ok(s, res, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg, buffer} ->
+        s = handle_msg(s, status, msg)
+        savepoint_recv(s, status, res, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
