@@ -133,11 +133,13 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_execute(%Query{} = query, params, opts, s) do
-    handle_execute(query, params, :sync, opts, s)
+    case execute_many(s, [{query, params, []}], opts) do
+        {:ok, [result], s} -> {:ok, result, s}
+        other              -> other
+    end
   end
   @spec handle_execute(Postgrex.Parameters.t, nil, Keyword.t, state) ::
     {:ok, %{binary => binary}, state} |
@@ -154,14 +156,25 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute_close(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_execute_close(%Query{name: @reserved_prefix <> _} = query, _, _, s) do
     reserved_error(query, s)
   end
   def handle_execute_close(query, params, opts, s) do
-    handle_execute(query, params, :sync_close, opts, s)
+    case execute_close(s, query, params, opts) do
+      {:ok, [result], s} -> {:ok, result, s}
+      other              -> other
+    end
+  end
+
+  @spec handle_execute_many([{Postgrex.Query.t, list, Keyword.t}], Keyword.t,
+  state) ::
+    {:ok, [Postgrex.Result.t], state} |
+    {:error, ArgumentError.t, state} |
+    {:error | :disconnect, Postgrex.Error.t, state}
+  def handle_execute_many(requests, opts, s) do
+    execute_many(s, requests, opts)
   end
 
   @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
@@ -512,7 +525,8 @@ defmodule Postgrex.Protocol do
     ## simple queries here are only done by Postgrex.Notifications processes
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, %Query{}, [], tag, buffer)
+        result = complete(s, %Query{}, tag, [])
+        sync_recv(s, status, result, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
@@ -548,12 +562,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp parse_recv(s, %{prepare: prepare, sync: sync} = status, query, buffer) do
+  defp parse_recv(s, %{prepare: prepare} = status, query, buffer) do
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_parse_complete(), buffer} when prepare == :parse_execute ->
-        if sync == :sync, do: query_put(s, query)
-        bind_recv(s, status, query, buffer)
-      {:ok, msg_parse_complete(), buffer} when prepare == :parse_describe ->
+     {:ok, msg_parse_complete(), buffer} when prepare == :parse_describe ->
         query_put(s, query)
         describe_recv(s, status, %Query{query | types: s.types}, buffer)
       {:ok, msg_parse_complete(), buffer} when prepare == :parse ->
@@ -589,138 +600,161 @@ defmodule Postgrex.Protocol do
 
   ## execute
 
-  defp handle_execute(query, params, sync, opts, s) do
-    %{types: types, buffer: buffer} = s
-    case query do
-      %Query{types: nil} ->
+  defp execute_many(s, requests, opts) do
+    status = %{notify: notify(opts), sync: :sync}
+    case execute_encode(requests, s) do
+      {:ok, queries, parse, encoded} ->
+        execute_send(s, status, queries, parse, encoded)
+      other ->
+        other
+    end
+  end
+
+  defp execute_encode(reqs, s, queries \\ [], parse \\ [], acc \\ [])
+
+  defp execute_encode([{query, params, _} | reqs], s, queries, parse, acc) do
+    case query_update(s, query) do
+      true ->
+        msgs = encode_execute(query, params)
+        execute_encode(reqs, s, [query | queries], parse, [acc | msgs])
+      false ->
+        msgs = encode_parse_execute(query, params)
+        execute_encode(reqs, s, [query | queries], [query | parse], [acc | msgs])
+      :not_prepared ->
+        query_delete_many(s, parse)
         query_error(s, "query #{inspect query} has not been prepared")
-      %Query{types: ^types} = query ->
-       status = %{notify: notify(opts), sync: sync, prepare: :parse_execute}
-       execute_lookup(%{s | buffer: nil}, status, query, params, buffer)
-      %Query{} = query ->
+      :invalid_types ->
+        query_delete_many(s, parse)
         query_error(s, "query #{inspect query} has invalid types for the connection")
     end
+  end
+  defp execute_encode([], _, queries, parse, acc) do
+    {:ok, queries, Enum.reverse(parse), [acc | encode_msg(msg_sync)]}
+  end
+
+  defp encode_execute(query, params) do
+    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
+
+    bind = msg_bind(name_port: "", name_stat: name, param_formats: pfs,
+                    params: params, result_formats: rfs)
+    execute = msg_execute(name_port: "", max_rows: 0)
+    [encode_msg(bind) | encode_msg(execute)]
+  end
+
+  defp encode_parse_execute(query, params) do
+    %Query{param_formats: pfs, result_formats: rfs, name: name, statement: statement} = query
+
+    parse = msg_parse(name: name, statement: statement, type_oids: [])
+    bind = msg_bind(name_port: "", name_stat: name, param_formats: pfs,
+                    params: params, result_formats: rfs)
+    execute = msg_execute(name_port: "", max_rows: 0)
+    [encode_msg(parse), encode_msg(bind) | encode_msg(execute)]
   end
 
   defp query_error(s, msg) do
     {:error, ArgumentError.exception(msg), s}
   end
 
-  defp execute_lookup(s, status, query, params, buffer) do
-    case query_member?(s, query) do
-      true ->
-        execute_send(s, status, query, params, buffer)
-      false ->
-        parse_execute_send(s, status, query, params, buffer)
-    end
-  end
-
-  defp execute_send(s, status, query, params, buffer) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
-    msgs = [
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0) |
-      sync_msgs(status, name)]
-    case msg_send(s, msgs, buffer) do
+  defp execute_send(%{buffer: buffer} = s, status, queries, parse, encoded) do
+    case do_send(s, encoded, buffer) do
       :ok ->
-        bind_recv(s, status, query, buffer)
+        execute_recv(s, status, queries, parse, [], [], buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp parse_execute_send(s, status, query, params, buffer) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name, statement: statement} = query
-    msgs = [
-      msg_parse(name: name, statement: statement, type_oids: []),
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0) |
-      sync_msgs(status, name)]
-    case msg_send(s, msgs, buffer) do
-      :ok ->
-        query_delete(s, query)
-        parse_recv(s, status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp sync_msgs(%{sync: :sync_close}, name) do
-    [msg_sync(), msg_close(type: :statement, name: name), msg_flush()]
-  end
-  defp sync_msgs(_, _) do
-    [msg_sync()]
-  end
-
-  defp bind_recv(s, status, query, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_bind_complete(), buffer} ->
-        execute_recv(s, status, query, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        bind_error(s, status, query, fields, buffer)
-      {:ok, msg, buffer} ->
-        bind_recv(handle_msg(s, status, msg), status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp bind_error(s, status, query, fields, buffer) do
-    err = Postgrex.Error.exception(postgres: fields)
-    _ = if err.postgres.code == :invalid_sql_statement_name do
-      Logger.error fn() ->
-        [inspect(query) | " is not prepared on backend"]
-      end
-      query_delete(s, query)
-    end
-    sync_recv(s, status, err, buffer)
-  end
-
-  defp execute_recv(s, status, query, buffer) do
+  defp execute_recv(s, status, queries, parse, acc, rows, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, query, [values], buffer)
+        execute_recv(s, status, queries, parse, acc, [values | rows], buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, [], tag, buffer)
-      {:ok, msg_empty_query(), buffer} ->
-        sync_recv(s, status, %Postgrex.Result{}, buffer)
+        execute_recv(s, status, queries, parse, [{tag, rows} | acc], [], buffer)
+      {:ok, msg_bind_complete(), buffer} when rows == [] ->
+        execute_recv(s, status, queries, parse, acc, [], buffer)
+      {:ok, msg_parse_complete(), buffer} when rows == [] ->
+        execute_recv(s, status, queries, tl(parse), acc, [], buffer)
+      {:ok, msg_ready(status: postgres), buffer} when rows==[] and parse==[] ->
+        execute_ready(s, status, queries, acc, postgres, buffer)
+      {:ok, msg_empty_query(), buffer} when rows == [] ->
+        execute_recv(s, status, queries, parse, [nil | acc], [], buffer)
       {:ok, msg_error(fields: fields), buffer} ->
+        query_delete_many(s, parse)
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
-        execute_recv(handle_msg(s, status, msg), status, query, buffer)
+        s = handle_msg(s, status, msg)
+        execute_recv(s, status, queries, parse, acc, rows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp execute_recv(s, status, query, rows, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, query, [values | rows], buffer)
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, rows, tag, buffer)
-      {:ok, msg, buffer} ->
-        execute_recv(handle_msg(s, status, msg), status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
+  defp execute_ready(s, status, queries, results, postgres, buffer) do
+    %{postgres: expected} = s
+    case expected do
+      :naive ->
+        execute_complete(s, status, queries, results, buffer)
+      ^postgres ->
+        execute_complete(s, status, queries, results, buffer)
+      _ ->
+        sync_error(s, postgres, buffer)
     end
   end
 
-  defp complete(%{connection_id: connection_id} = s, status, %Query{columns: nil}, [], tag, buffer) do
-    {command, nrows} = decode_tag(tag)
-    result =  %Postgrex.Result{command: command, num_rows: nrows || 0, connection_id: connection_id}
-    sync_recv(s, status, result, buffer)
+  defp execute_complete(s, %{sync: sync} = status, queries, results, buffer) do
+    results = complete_many(s, queries, results, [])
+    case sync do
+      :sync ->
+        ok(s, results, buffer)
+      :sync_close ->
+        close_recv(s, status, results, buffer)
+    end
   end
-  defp complete(%{connection_id: connection_id} = s, status, query, rows, tag, buffer) do
-    {command, nrows} = decode_tag(tag)
+
+  defp complete_many(s, [query | queries], [{tag, rows} | results], acc) do
+    complete_many(s, queries, results, [complete(s, query, tag, rows) | acc])
+  end
+  defp complete_many(_, [], [], acc), do: acc
+
+  defp complete(s, query, tag, rows) do
+    %{connection_id: connection_id} = s
     %Query{columns: cols} = query
+    {command, nrows} = decode_tag(tag)
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
     if is_nil(nrows) and command == :select do
       nrows = length(rows)
     end
-    result = %Postgrex.Result{command: command, num_rows: nrows || 0,
-                              rows: rows, columns: cols, connection_id: connection_id}
-    sync_recv(s, status, result, buffer)
+    if is_nil(cols) do
+      rows = nil
+    end
+    %Postgrex.Result{command: command, num_rows: nrows || 0, rows: rows,
+                     columns: cols, connection_id: connection_id}
+  end
+
+  ## execute_close
+
+  defp execute_close(s, query, params, opts) do
+    status = %{notify: notify(opts), sync: :sync_close}
+    case query_member?(s, query) do
+      true ->
+        msgs = encode_execute(query, params)
+        execute_close_send(s, status, query, [], msgs)
+      false ->
+        msgs = encode_parse_execute(query, params)
+        execute_close_send(s, status, query, [query], msgs)
+      :not_prepared ->
+        query_error(s, "query #{inspect query} has not been prepared")
+      :invalid_types ->
+        query_error(s, "query #{inspect query} has invalid types for the connection")
+    end
+  end
+
+  defp execute_close_send(s, status, query, parse, encoded) do
+    %Query{name: name} = query
+    sync = encode_msg(msg_sync())
+    close = encode_msg(msg_close(type: :statement, name: name))
+    flush = encode_msg(msg_flush())
+    execute_send(s, status, [query], parse, [encoded, sync, close | flush])
   end
 
   ## close
@@ -894,6 +928,7 @@ defmodule Postgrex.Protocol do
   defp tag(:gen_tcp), do: :tcp
   defp tag(:ssl), do: :ssl
 
+  defp decode_tag(nil), do: {nil, nil}
   defp decode_tag(tag) do
     words = :binary.split(tag, " ", [:global])
     words = Enum.map(words, fn word ->
@@ -1016,6 +1051,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp ok(s, %Postgrex.Result{} = res, buffer) do
+    {:ok, res, %{s | buffer: buffer}}
+  end
+  defp ok(s, [%Postgrex.Result{} | _] = res, buffer) do
     {:ok, res, %{s | buffer: buffer}}
   end
   defp ok(s, %Postgrex.Query{} = query, buffer) do
@@ -1141,6 +1179,10 @@ defmodule Postgrex.Protocol do
 
   defp query_put(%{queries: queries}, query) do
     %Query{name: name, statement: statement} = query
+    query_put(queries, name, statement)
+  end
+
+  defp query_put(queries, name, statement) do
     try do
       :ets.insert(queries, {name, statement})
     rescue
@@ -1166,8 +1208,20 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp query_member?(%{queries: queries}, query) do
-    %Query{name: name, statement: statement} = query
+  defp query_delete_many(%{queries: queries}, delete) do
+    try do
+      _ = for %Query{name: name} <- delete do
+        :ets.delete(queries, name)
+      end
+      :ok
+    rescue
+      ArgumentError ->
+        :ok
+    end
+  end
+
+  defp query_member?(%{types: types, queries: queries},
+  %Query{types: types, name: name, statement: statement}) do
     try do
       :ets.lookup(queries, name)
     rescue
@@ -1180,4 +1234,24 @@ defmodule Postgrex.Protocol do
         false
     end
   end
+  defp query_member?(_, %Query{types: nil}), do: :not_prepared
+  defp query_member?(_, _), do: :invalid_types
+
+  defp query_update(%{types: types, queries: queries},
+  %Query{types: types, name: name, statement: statement}) do
+    try do
+      :ets.lookup(queries, name)
+    rescue
+      ArgumentError ->
+        false
+    else
+      [{_, ^statement}] ->
+        true
+      _ ->
+        _ = query_put(queries, name, statement)
+        false
+    end
+  end
+  defp query_update(_, %Query{types: nil}), do: :not_prepared
+  defp query_update(_, _), do: :invalid_types
 end

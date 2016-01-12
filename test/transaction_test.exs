@@ -99,6 +99,14 @@ defmodule TransactionTest do
     end
   end
 
+  @tag mode: :transaction
+  test "execute_many rolls back on error", context do
+    query = prepare("unique", "insert into uniques values (1), (1);")
+    assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
+      execute_many([{query, [], []}, {query, [], []}])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   @tag mode: :savepoint
   test "savepoint transaction releases savepoint", context do
     :ok = query("BEGIN", [])

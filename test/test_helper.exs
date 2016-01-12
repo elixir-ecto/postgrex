@@ -132,6 +132,24 @@ defmodule Postgrex.TestHelper do
     end
   end
 
+  defmacro execute_many(reqs, opts \\ []) do
+    quote do
+      case Postgrex.Connection.execute_many(var!(context)[:pid], unquote(reqs),
+                                            unquote(opts)) do
+        {:ok, results} ->
+          for result <- results do
+            %Postgrex.Result{rows: rows} = result
+            case rows do
+              nil  -> :ok
+              rows -> rows
+            end
+          end
+        {:error, %Postgrex.Error{} = err} -> err
+      end
+    end
+  end
+
+
   defmacro close(query, opts \\ []) do
     quote do
       case Postgrex.Connection.close(var!(context)[:pid], unquote(query),

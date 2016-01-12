@@ -477,6 +477,13 @@ defmodule QueryTest do
     assert [[2,4], [6,8]] = query("VALUES (1, 2), (3, 4)", [], decode_mapper: map)
   end
 
+  test "many results with decode mapper", context do
+    assert (%Postgrex.Query{} = query) = prepare("", "VALUES ($1::int4, $2::int4)")
+    reqx2 = {query, [1, 2], [decode_mapper: &Enum.map(&1, fn x -> x * 2 end)]}
+    reqx1 = {query, [3, 4], []}
+    assert [[[2,4]], [[3,4]]] = execute_many([reqx2, reqx1], [transaction: false])
+  end
+
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
@@ -555,6 +562,13 @@ defmodule QueryTest do
       execute(query, [])
     assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
       execute(query, [])
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "connection works after failure in execute_many", context do
+    %Postgrex.Query{} = query = prepare("unique", "insert into uniques values (1), (1);")
+    assert %Postgrex.Error{postgres: %{code: :unique_violation}} =
+      execute_many([{query, [], []}, {query, [], []}], [transaction: false])
     assert [[42]] = query("SELECT 42", [])
   end
 
