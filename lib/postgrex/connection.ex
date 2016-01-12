@@ -203,6 +203,17 @@ defmodule Postgrex.Connection do
     DBConnection.execute!(conn, query, params, defaults(opts))
   end
 
+  def execute_many(conn, requests, opts \\ []) do
+    case DBConnection.execute_many(conn, requests, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
+  end
+
+
+
   @doc """
   Closes an (extended) prepared query and returns `:ok` or
   `{:error, %Postgrex.Error{}}` if there was an error. Closing a query releases
