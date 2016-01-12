@@ -19,14 +19,17 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
 
 ## Disclaimer
 
-Postgrex is currently on 0.x beta releases. We are heading towards a stable release but, until then, the API may still change. Here is our roadmap (subject to change):
+Postgrex is currently on 0.x beta releases. We are heading towards a stable release but, until then, the API may still change. Here is our roadmap:
 
-  * 0.10 - will change Postgrex to use [db_connection](https://github.com/fishcakez/db_connection). This means better performance by copying less data between processes, faster encoding/decoding, support for transactions blocks, the ability to use both Poolboy and Sojourn as pools out of the box, and more.
+  * 0.10 - will change Postgrex to use [DBConnection](https://github.com/fishcakez/db_connection). This means better performance by copying less data between processes, faster encoding/decoding, support for transactions blocks, prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more.
+
+Please consult the issues tracker for more information and outstanding issues.
 
 ## Features
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
   * User defined extensions for encoding and decoding any PostgresSQL type
+  * Supports transactions, prepared queries and multiple pools via [DBConnection](https://github.com/fishcakez/db_connection)
   * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, and 9.4 (hstore is not supported on 8.4)
 
 ## Data representation
@@ -53,6 +56,8 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
     oid types       42
 
 \* [Decimal](http://github.com/ericmj/decimal)
+
+Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, suport new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
 ## Extensions
 
