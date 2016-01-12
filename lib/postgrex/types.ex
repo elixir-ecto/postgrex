@@ -104,10 +104,13 @@ defmodule Postgrex.Types do
   def associate_extensions_with_types(table, extensions, extension_opts, types) do
     oid_types = Enum.into(types, HashDict.new, &{&1.oid, &1})
 
+    for {extension, opts} <- extension_opts do
+      :ets.insert(table, {extension, opts})
+    end
+
     for type_info <- types,
         extension = find_extension(type_info, extensions, extension_opts, oid_types) do
       :ets.insert(table, {type_info.oid, type_info, extension})
-      :ets.insert(table, {extension, extension_opts[extension]})
     end
 
     :ok
@@ -141,49 +144,48 @@ defmodule Postgrex.Types do
     case type_info.send do
       "array_send" ->
         oid = type_info.array_elem
-        find_format_extension(oid, extensions, extension_opts, types)
+        if binary_format?(oid, extensions, extension_opts, types) do
+          Postgrex.Extensions.Array
+        end
 
       "range_send" ->
         oid = type_info.base_type
-        find_format_extension(oid, extensions, extension_opts, types)
+        if binary_format?(oid, extensions, extension_opts, types) do
+          Postgrex.Extensions.Range
+        end
 
       "record_send" ->
         oids = type_info.comp_elems
-        find_format_extension(oids, extensions, extension_opts, types)
+        if binary_format?(oids, extensions, extension_opts, types) do
+          Postgrex.Extensions.Record
+        end
 
       _ ->
         nil
     end
   end
 
-  defp find_format_extension(oid, extensions, extension_opts, types) when is_integer(oid) do
+  defp binary_format?(oid, extensions, extension_opts, types) when is_integer(oid) do
     # TODO: Support text
     if extension = find_extension(types[oid], extensions, extension_opts, types) do
       opts = HashDict.fetch!(extension_opts, extension)
-      if extension.format(opts) == :binary do
-        Postgrex.Extensions.Binary
-      end
+      extension.format(opts) == :binary
     end
   end
 
-  defp find_format_extension(oids, extensions, extension_opts, types) when is_list(oids) do
+  defp binary_format?(oids, extensions, extension_opts, types) when is_list(oids) do
     # TODO: Support text
     # All record elements need to be able to be encoded/decoded with the
     # same format. For now we only support binary.
 
-    all_binary? =
-      oids
-      |> Enum.map(&find_extension(types[&1], extensions, extension_opts, types))
-      |> Enum.all?(fn extension ->
-           if extension do
-             opts = HashDict.fetch!(extension_opts, extension)
-             extension.format(opts) == :binary
-           end
-         end)
-
-    if all_binary? do
-      Postgrex.Extensions.Binary
-    end
+    oids
+    |> Enum.map(&find_extension(types[&1], extensions, extension_opts, types))
+    |> Enum.all?(fn extension ->
+        if extension do
+           opts = HashDict.fetch!(extension_opts, extension)
+           extension.format(opts) == :binary
+        end
+    end)
   end
 
   defp parse_oids("{}") do

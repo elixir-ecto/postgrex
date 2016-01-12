@@ -16,11 +16,13 @@ defmodule CustomExtensionsTest do
     def format([]),
       do: :binary
 
-    def encode(%TypeInfo{send: "int4send", oid: oid}, value, types, []),
-      do: Postgrex.Types.encode(Postgrex.Extensions.Binary, oid, value + 1, types)
+    def encode(%TypeInfo{send: "int4send", oid: oid}, value, types, []) do
+      Postgrex.Types.encode(Postgrex.Extensions.Int4, oid, value + 1, types)
+    end
 
-    def decode(%TypeInfo{send: "int4send", oid: oid}, binary, types, []),
-      do: Postgrex.Types.decode(Postgrex.Extensions.Binary, oid, binary, types) + 1
+    def decode(%TypeInfo{send: "int4send", oid: oid}, bin, types, []) do
+      Postgrex.Types.decode(Postgrex.Extensions.Int4, oid, bin, types) + 1
+    end
   end
 
   defmodule TextExtension do

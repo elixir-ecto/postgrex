@@ -224,7 +224,7 @@ defmodule QueryTest do
 
   test "fail on encoding wrong value", context do
     assert %ArgumentError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
-    assert message =~ "Postgrex expected a term that can be encoded/cast to type \"int4\""
+    assert message =~ "Postgrex expected an integer in -2147483648..2147483647 that can be encoded/cast to type \"int4\""
   end
 
   @tag min_pg_version: "9.0"
