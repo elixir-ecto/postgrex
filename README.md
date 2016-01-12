@@ -17,6 +17,12 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
 %Postgrex.Result{command: :insert, columns: nil, rows: nil, num_rows: 1}}
 ```
 
+## Disclaimer
+
+Postgrex is currently on 0.x beta releases. We are heading towards a stable release but, until then, the API may still change. Here is our roadmap (subject to change):
+
+  * 0.10 - will change Postgrex to use [db_connection](https://github.com/fishcakez/db_connection). This means better performance by copying less data between processes, faster encoding/decoding, support for transactions blocks, the ability to use both Poolboy and Sojourn as pools out of the box, and more.
+
 ## Features
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
