@@ -1,7 +1,7 @@
 defmodule CustomExtensionsTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
-  alias Postgrex.Connection, as: P
+  alias Postgrex, as: P
   alias Postgrex.TypeInfo
 
   defmodule BinaryExtension do

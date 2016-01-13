@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.JSON do
   An extension that supports the `json` and `jsonb` types.
 
   This extension is not used by default, it needs to be included in the
-  `:extensions` option to `Postgrex.Connection.start_link/1`.
+  `:extensions` option to `Postgrex.start_link/1`.
   """
 
   alias Postgrex.TypeInfo

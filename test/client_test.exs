@@ -4,7 +4,7 @@ defmodule ClientTest do
 
   setup do
     opts = [ database: "postgrex_test", backoff_type: :stop ]
-    {:ok, pid} = Postgrex.Connection.start_link(opts)
+    {:ok, pid} = Postgrex.start_link(opts)
     {:ok, [pid: pid]}
   end
 

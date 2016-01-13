@@ -1,7 +1,7 @@
 defmodule SchemaTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
-  alias Postgrex.Connection, as: P
+  alias Postgrex, as: P
 
   setup do
     opts = [ database: "postgrex_test_with_schemas" ]

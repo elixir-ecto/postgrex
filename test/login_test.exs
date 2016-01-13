@@ -1,6 +1,6 @@
 defmodule LoginTest do
   use ExUnit.Case
-  alias Postgrex.Connection, as: P
+  alias Postgrex, as: P
   import Postgrex.TestHelper
 
   test "login cleartext password" do

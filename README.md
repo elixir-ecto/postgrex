@@ -9,11 +9,11 @@ Documentation: http://hexdocs.pm/postgrex/
 ## Example
 
 ```iex
-iex> {:ok, pid} = Postgrex.Connection.start_link(hostname: "localhost", username: "postgres", password: "postgres", database: "postgres")
+iex> {:ok, pid} = Postgrex.start_link(hostname: "localhost", username: "postgres", password: "postgres", database: "postgres")
 {:ok, #PID<0.69.0>}
-iex> Postgrex.Connection.query!(pid, "SELECT user_id, text FROM comments", [])
+iex> Postgrex.query!(pid, "SELECT user_id, text FROM comments", [])
 %Postgrex.Result{command: :select, empty?: false, columns: ["user_id", "text"], rows: [[3,"hey"],[4,"there"]], size: 2}}
-iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')", [])
+iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')", [])
 %Postgrex.Result{command: :insert, columns: nil, rows: nil, num_rows: 1}}
 ```
 
@@ -21,7 +21,7 @@ iex> Postgrex.Connection.query!(pid, "INSERT INTO comments (user_id, text) VALUE
 
 Postgrex is currently on 0.x beta releases. We are heading towards a stable release but, until then, the API may still change. Here is our roadmap:
 
-  * 0.11 - will change Postgrex to use [DBConnection](https://github.com/fishcakez/db_connection). This means better performance by copying less data between processes, faster encoding/decoding, support for transactions, `after_connect` hooks, connection backoff, logging , prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more.
+  * 0.11 - will change Postgrex to use [DBConnection](https://github.com/fishcakez/db_connection). This means better performance by copying less data between processes, faster encoding/decoding, support for transactions, `after_connect` hooks, connection backoff, logging, prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more.
 
 Please consult the issues tracker for more information and outstanding issues.
 
@@ -68,7 +68,7 @@ Here is a [JSON extension](https://github.com/ericmj/postgrex/blob/master/lib/po
 To use the extension pass it to the connection as seen below:
 
 ```elixir
-Postgrex.Connection.start_link(extensions: [{Postgrex.Extensions.JSON, library: Poison}], ...)
+Postgrex.start_link(extensions: [{Postgrex.Extensions.JSON, library: Poison}], ...)
 ```
 
 ## OID type encoding
