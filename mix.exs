@@ -3,7 +3,7 @@ defmodule Postgrex.Mixfile do
 
   def project do
     [app: :postgrex,
-     version: "0.10.1-dev",
+     version: "0.11.0-dev",
      elixir: "~> 1.0",
      deps: deps,
      name: "Postgrex",
@@ -19,7 +19,7 @@ defmodule Postgrex.Mixfile do
   # Configuration for the OTP application
   def application do
     [applications: [:logger, :db_connection, :decimal],
-     mod: {Postgrex, []},
+     mod: {Postgrex.App, []},
      env: [type_server_reap_after: 3 * 60_000]]
   end
 

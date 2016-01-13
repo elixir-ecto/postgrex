@@ -1,7 +1,7 @@
 defmodule QueryTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
-  alias Postgrex.Connection, as: P
+  alias Postgrex, as: P
 
   setup do
     opts = [ database: "postgrex_test", backoff_type: :stop ]
@@ -618,12 +618,12 @@ defmodule QueryTest do
 
   test "connection_id", context do
     assert {:ok, %Postgrex.Result{connection_id: connection_id, rows: [[backend_pid]]}} =
-      Postgrex.Connection.query(context[:pid], "SELECT pg_backend_pid()", [])
+      Postgrex.query(context[:pid], "SELECT pg_backend_pid()", [])
     assert is_integer(connection_id)
     assert connection_id == backend_pid
 
     assert {:error, %Postgrex.Error{connection_id: connection_id}} =
-      Postgrex.Connection.query(context[:pid], "FOO BAR", [])
+      Postgrex.query(context[:pid], "FOO BAR", [])
     assert is_integer(connection_id)
   end
 end

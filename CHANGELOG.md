@@ -1,4 +1,11 @@
-# v0.10.1-dev
+# v0.11.0-dev
+
+* Enhancements
+  * Rely on DBConnection. This means better performance by copying less data between processes, faster encoding/decoding, support for transactions, `after_connect` hooks, connection backoff, logging, prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more
+
+* Backwards incompatible change
+  * Connection API from `Postgrex.Connection` has been moved to `Postgrex`
+  * Notifications API from `Postgrex.Connection` has been moved to `Postgrex.Notifications`
 
 # v0.10.0 (2015-11-17)
 
@@ -27,8 +34,8 @@
 * Enhancements
   * Cached type bootstrapping for less memory usage and faster connection set up
   * The result set is now decoded in the calling process to reduce time spent in the connection process
-  * Add a `decode: :manual` option to `Postgrex.Connection.query/4` and the function `Postgrex.decode/2` for manually decoding the result
-  * Add `:sync_connect` option to `Postgrex.Connection.start_link/1`
+  * Add a `decode: :manual` option to `Postgrex.query/4` and the function `Postgrex.decode/2` for manually decoding the result
+  * Add `:sync_connect` option to `Postgrex.start_link/1`
 
 * Bug fixes
   * Correctly handle extension types created inside schemas
@@ -50,7 +57,7 @@
 # v0.8.2 (2015-06-01)
 
 * Enhancements
-  * Add `:socket_options` option to `Postgrex.Connection.start_link/1`
+  * Add `:socket_options` option to `Postgrex.start_link/1`
   * Improved performance regarding binary handling
   * Add hstore support
 

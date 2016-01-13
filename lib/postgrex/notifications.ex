@@ -20,7 +20,7 @@ defmodule Postgrex.Notifications do
   Start the notification connection process and connect to postgres.
 
   The option that this function accepts are exactly the same accepted by
-  `Postgrex.Connection.start_link/1`.
+  `Postgrex.start_link/1`.
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do

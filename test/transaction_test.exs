@@ -1,7 +1,7 @@
 defmodule TransactionTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
-  alias Postgrex.Connection, as: P
+  alias Postgrex, as: P
 
   setup context do
     transactions =

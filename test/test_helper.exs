@@ -102,7 +102,7 @@ end)
 defmodule Postgrex.TestHelper do
   defmacro query(stat, params, opts \\ []) do
     quote do
-      case Postgrex.Connection.query(var!(context)[:pid], unquote(stat),
+      case Postgrex.query(var!(context)[:pid], unquote(stat),
                                      unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
@@ -113,7 +113,7 @@ defmodule Postgrex.TestHelper do
 
   defmacro prepare(name, stat, opts \\ []) do
     quote do
-      case Postgrex.Connection.prepare(var!(context)[:pid], unquote(name),
+      case Postgrex.prepare(var!(context)[:pid], unquote(name),
                                      unquote(stat), unquote(opts)) do
         {:ok, %Postgrex.Query{} = query} -> query
         {:error, %Postgrex.Error{} = err} -> err
@@ -123,7 +123,7 @@ defmodule Postgrex.TestHelper do
 
   defmacro execute(query, params, opts \\ []) do
     quote do
-      case Postgrex.Connection.execute(var!(context)[:pid], unquote(query),
+      case Postgrex.execute(var!(context)[:pid], unquote(query),
                                        unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
@@ -134,7 +134,7 @@ defmodule Postgrex.TestHelper do
 
   defmacro close(query, opts \\ []) do
     quote do
-      case Postgrex.Connection.close(var!(context)[:pid], unquote(query),
+      case Postgrex.close(var!(context)[:pid], unquote(query),
                                      unquote(opts)) do
         :ok -> :ok
         {:error, %Postgrex.Error{} = err} -> err
@@ -144,7 +144,7 @@ defmodule Postgrex.TestHelper do
 
   defmacro transaction(fun, opts \\ []) do
     quote do
-      Postgrex.Connection.transaction(var!(context)[:pid], unquote(fun),
+      Postgrex.transaction(var!(context)[:pid], unquote(fun),
                                       unquote(opts))
     end
   end
