@@ -1023,6 +1023,9 @@ defmodule Postgrex.Protocol do
   defp ok(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:error, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
   end
+  defp ok(s, nil, buffer) do
+    {:ok, %{s | buffer: buffer}}
+  end
 
   defp ok(s, %Postgrex.Result{} = res, postgres, buffer)
   when postgres in [:idle, :transaction] do
