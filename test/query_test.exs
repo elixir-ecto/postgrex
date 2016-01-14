@@ -626,4 +626,14 @@ defmodule QueryTest do
       Postgrex.query(context[:pid], "FOO BAR", [])
     assert is_integer(connection_id)
   end
+
+  test "query before and after idle ping" do
+    opts = [ database: "postgrex_test", backoff_type: :stop, idle_timeout: 1]
+    {:ok, pid} = P.start_link(opts)
+    assert {:ok, _} = P.query(pid, "SELECT 42", [])
+    :timer.sleep(20)
+    assert {:ok, _} = P.query(pid, "SELECT 42", [])
+    :timer.sleep(20)
+    assert {:ok, _} = P.query(pid, "SELECT 42", [])
+  end
 end

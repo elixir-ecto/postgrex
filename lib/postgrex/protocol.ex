@@ -90,7 +90,13 @@ defmodule Postgrex.Protocol do
     {:ok, state} | {:disconnect, Postgrex.Error.t, state}
   def ping(%{buffer: buffer} = s) do
     status = %{notify: notify([]), sync: :sync}
-    sync(%{s | buffer: nil}, status, buffer)
+    s = %{s | buffer: nil}
+    case buffer do
+      :active_once ->
+        sync(s, status, :active_once, buffer)
+      _ when is_binary(buffer) ->
+        sync(s, status, nil, buffer)
+    end
   end
 
   @spec checkout(state) ::
@@ -752,7 +758,7 @@ defmodule Postgrex.Protocol do
 
   ## sync
 
-  defp sync(s, status, result \\ nil, buffer) do
+  defp sync(s, status, result, buffer) do
     case msg_send(s, msg_sync(), buffer) do
       :ok               -> sync_recv(s, status, result, buffer)
       {:error, _} = err -> err
@@ -1022,6 +1028,9 @@ defmodule Postgrex.Protocol do
    end
   defp ok(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:error, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
+  end
+  defp ok(s, :active_once, buffer) do
+    activate(s, buffer)
   end
   defp ok(s, nil, buffer) do
     {:ok, %{s | buffer: buffer}}
