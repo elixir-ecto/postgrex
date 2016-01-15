@@ -39,7 +39,7 @@ defmodule Postgrex.Extension do
   Should encode an Elixir value to a binary in the specified Postgres protocol
   format.
   """
-  defcallback encode(TypeInfo.t, term, Types.types, opts) :: binary
+  defcallback encode(TypeInfo.t, term, Types.types, opts) :: iodata
 
   @doc """
   Should decode a binary in the specified Postgres protocol format to an Elixir

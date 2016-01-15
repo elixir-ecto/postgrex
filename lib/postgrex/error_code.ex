@@ -46,7 +46,7 @@ defmodule Postgrex.ErrorCode do
       iex> name_to_code(:prohibited_sql_statement_attempted)
       "2F003"
   """
-  @spec name_to_code(atom) :: [String.t] | no_return
+  @spec name_to_code(atom) :: String.t
   def name_to_code(name)
 
   @code_decision_table [

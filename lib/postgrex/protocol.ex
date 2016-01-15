@@ -61,7 +61,6 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connected({:error, _} = err), do: err
   defp connected({:ok, %{parameters: parameters} = s}) do
     ref = Postgrex.Parameters.insert(parameters)
     tid = queries_new()
@@ -138,7 +137,6 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_execute(%Query{} = query, params, opts, s) do
@@ -159,7 +157,6 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute_close(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:prepare, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
   def handle_execute_close(%Query{name: @reserved_prefix <> _} = query, _, _, s) do
@@ -235,7 +232,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_info(any, Keyword.t, state) ::
-    {:ok, state} | {:error | :disconnect, Postgrex.Error.t}
+    {:ok, state} | {:error | :disconnect, Postgrex.Error.t, state}
   def handle_info(msg, opts \\ [], s)
 
   def handle_info({:tcp, sock, data}, opts, %{sock: {:gen_tcp, sock}} = s) do
@@ -293,8 +290,8 @@ defmodule Postgrex.Protocol do
 
   defp ssl(s, status) do
     case msg_send(s, msg_ssl_request(), "") do
-      :ok              -> ssl_recv(s, status)
-      {:error, _} = err -> err
+      :ok                       -> ssl_recv(s, status)
+      {:disconnect, _, _} = dis -> dis
     end
   end
 
@@ -738,8 +735,8 @@ defmodule Postgrex.Protocol do
       :ok ->
         query_delete(s, query)
         close_recv(s, status, result, buffer)
-      {:error, _} = err ->
-        err
+      {:disconnect, _, _} = dis ->
+        dis
     end
   end
 
@@ -751,8 +748,8 @@ defmodule Postgrex.Protocol do
         ok(s, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
         close_recv(handle_msg(s, status, msg), status, result, buffer)
-      {:error, _} = err ->
-        err
+      {:disconnect, _, _} = dis ->
+        dis
     end
   end
 
@@ -760,8 +757,8 @@ defmodule Postgrex.Protocol do
 
   defp sync(s, status, result, buffer) do
     case msg_send(s, msg_sync(), buffer) do
-      :ok               -> sync_recv(s, status, result, buffer)
-      {:error, _} = err -> err
+      :ok                       -> sync_recv(s, status, result, buffer)
+      {:disconnect, _, _} = dis -> dis
     end
   end
 
