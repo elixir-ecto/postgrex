@@ -74,7 +74,7 @@ defmodule TypeServerTest do
     wait_until_dead(task.pid)
 
     # Wait until timeout kicks in
-    assert_receive {:trace, ^ts, :receive, {:drop, _, _}}
+    assert_receive {:trace, ^ts, :receive, {:drop, _, ^key}}
 
     task = Task.async(fn -> TS.fetch(key) end)
     assert {:lock, _, table2} = Task.await(task)
