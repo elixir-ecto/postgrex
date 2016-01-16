@@ -897,17 +897,25 @@ defmodule Postgrex.Protocol do
   defp tag(:ssl), do: :ssl
 
   defp decode_tag(tag) do
-    words = :binary.split(tag, " ", [:global])
-    words = Enum.map(words, fn word ->
-      case Integer.parse(word) do
-        {num, ""} -> num
-        :error -> word
-      end
-    end)
+    decode_tag(tag, "")
+  end
 
-    {command, nums} = Enum.split_while(words, &is_binary(&1))
-    command = Enum.join(command, "_") |> String.downcase |> String.to_atom
-    {command, List.last(nums)}
+  defp decode_tag(<<?\s, i, t::binary>>, acc) when i in ?0..?9,
+    do: {String.to_atom(acc), decode_int(<<i, t::binary>>)}
+  defp decode_tag(<<>>, acc),
+    do: {String.to_atom(acc), nil}
+  defp decode_tag(<<?\s, t::binary>>, acc),
+    do: decode_tag(t, <<acc::binary, ?_>>)
+  defp decode_tag(<<h, t::binary>>, acc) when h in ?A..?Z,
+    do: decode_tag(t, <<acc::binary, h+32>>)
+  defp decode_tag(<<h, t::binary>>, acc),
+    do: decode_tag(t, <<acc::binary, h>>)
+
+  defp decode_int(binary) do
+    case Integer.parse(binary) do
+      {nrows, ""} -> nrows
+      {_, " " <> rest} -> decode_int(rest)
+    end
   end
 
   # It is ok to use infinity timeout here if in client process as timer is
