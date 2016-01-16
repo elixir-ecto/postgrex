@@ -587,13 +587,15 @@ defmodule QueryTest do
   test "async test", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
-      spawn fn ->
-        send self_pid, query("SELECT pg_sleep(0.1)", [])
+      spawn_link fn ->
+        send self_pid, query("SELECT pg_sleep(0.05)", [])
       end
     end)
 
+    assert [[42]] = query("SELECT 42", [])
+
     Enum.each(1..10, fn _ ->
-      assert_receive [[:void]], 200
+      assert_receive [[:void]]
     end)
   end
 

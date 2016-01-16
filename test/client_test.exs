@@ -50,17 +50,20 @@ defmodule ClientTest do
   test "queued client cancel", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
-      spawn fn ->
+      spawn_link fn ->
         send self_pid, query("SELECT pg_sleep(0.1)", [])
       end
     end)
 
-    assert_receive [[:void]], 200
+    :sys.suspend(context[:pid])
 
     assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
+
+    :sys.resume(context[:pid])
+
     assert [[42]] = query("SELECT 42", [])
 
-     Enum.each(2..10, fn _ ->
+     Enum.each(1..10, fn _ ->
       assert_received [[:void]]
     end)
   end
@@ -68,23 +71,24 @@ defmodule ClientTest do
   test "queued client DOWN", context do
     self_pid = self
     Enum.each(1..10, fn _ ->
-      spawn fn ->
+      spawn_link fn ->
         send self_pid, query("SELECT pg_sleep(0.1)", [])
       end
     end)
 
-    assert_receive [[:void]], 200
+    :sys.suspend(context[:pid])
 
     pid = spawn fn ->
       send self_pid, query("SELECT 42", [])
     end
 
-    :timer.sleep(100)
+    :sys.resume(context[:pid])
+
     Process.exit(pid, :shutdown)
 
     assert [[42]] = query("SELECT 42", [])
 
-    Enum.each(2..10, fn _ ->
+    Enum.each(1..10, fn _ ->
       assert_received [[:void]]
     end)
   end
