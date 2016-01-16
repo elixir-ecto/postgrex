@@ -55,7 +55,7 @@ defmodule ClientTest do
       end
     end)
 
-    assert_receive [[:void]]
+    assert_receive [[:void]], 200
 
     assert {:timeout, _} = catch_exit(query("SELECT 42", [], [pool_timeout: 0]))
     assert [[42]] = query("SELECT 42", [])
@@ -73,7 +73,7 @@ defmodule ClientTest do
       end
     end)
 
-    assert_receive [[:void]]
+    assert_receive [[:void]], 200
 
     pid = spawn fn ->
       send self_pid, query("SELECT 42", [])

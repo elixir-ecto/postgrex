@@ -592,8 +592,8 @@ defmodule QueryTest do
       end
     end)
 
-     Enum.each(1..10, fn _ ->
-      assert_receive [[:void]]
+    Enum.each(1..10, fn _ ->
+      assert_receive [[:void]], 200
     end)
   end
 
