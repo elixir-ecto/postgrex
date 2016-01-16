@@ -1,17 +1,16 @@
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
+  @version "0.11.0-dev"
+
   def project do
     [app: :postgrex,
-     version: "0.11.0-dev",
+     version: @version,
      elixir: "~> 1.0",
      deps: deps,
      name: "Postgrex",
      source_url: "https://github.com/ericmj/postgrex",
-     docs: fn ->
-       {ref, 0} = System.cmd("git", ["rev-parse", "--verify", "--quiet", "HEAD"])
-       [source_ref: ref, main: "extra-readme", extras: ["README.md"]]
-     end,
+     docs: [source_ref: "v#{@version}", main: "extra-readme", extras: ["README.md"]],
      description: description,
      package: package]
   end

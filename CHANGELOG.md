@@ -1,4 +1,6 @@
-# v0.11.0-dev
+# Changelog
+
+## v0.11.0-dev
 
 * Enhancements
   * Rely on DBConnection. This means better performance by copying less data between processes, faster encoding/decoding, support for transactions, `after_connect` hooks, connection backoff, logging, prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more
@@ -7,7 +9,7 @@
   * Connection API from `Postgrex.Connection` has been moved to `Postgrex`
   * Notifications API from `Postgrex.Connection` has been moved to `Postgrex.Notifications`
 
-# v0.10.0 (2015-11-17)
+## v0.10.0 (2015-11-17)
 
 * Enhancements
   * Improve error message on encoding/decoding failures
@@ -23,13 +25,13 @@
   * Do not fail on custom error codes
   * Correctly handle large number of parameters, also fixes some protocol issues where unsigned integers were treated as signed
 
-# v0.9.1 (2015-07-14)
+## v0.9.1 (2015-07-14)
 
 * Enhancements
   * Revert client side decoding as affects performance negatively (around 15% slower)
   * Cast floats and integers to decimal if a decimal is requested
 
-# v0.9.0 (2015-07-12)
+## v0.9.0 (2015-07-12)
 
 * Enhancements
   * Cached type bootstrapping for less memory usage and faster connection set up
@@ -43,18 +45,18 @@
 * Backwards incompatible changes
   * Each row in `Postgrex.Result.rows` is now a list of columns instead of a tuple
 
-# v0.8.4 (2015-06-24)
+## v0.8.4 (2015-06-24)
 
 * Bug fixes
   * Fix version detection
 
-# v0.8.3 (2015-06-22)
+## v0.8.3 (2015-06-22)
 
 * Enhancements
   * Add `Postgrex.Extensions.JSON` extension for `json` and `jsonb` types
   * Set suitable TCP buffer size automatically
 
-# v0.8.2 (2015-06-01)
+## v0.8.2 (2015-06-01)
 
 * Enhancements
   * Add `:socket_options` option to `Postgrex.start_link/1`
@@ -64,7 +66,7 @@
 * Backwards incompatible changes
   * Remove `:async_connect` option and make it the default
 
-# v0.8.1 (2015-04-09)
+## v0.8.1 (2015-04-09)
 
 * Enhancements
   * Keep the postgres error code in `:pg_code`
@@ -78,7 +80,7 @@
   * Support encoding `timetz` type
   * Fix time and timestamp off-by-one bounds
 
-# v0.8.0 (2015-02-26)
+## v0.8.0 (2015-02-26)
 
 * Enhancements
   * Add extensions
@@ -97,7 +99,7 @@
   * Change the default timeout for all operations to 5000ms
   * Show Postgres error codes as their names instead
 
-# v0.7.0 (2015-01-20)
+## v0.7.0 (2015-01-20)
 
 * Enhancements
   * Add asynchronous notifications through `listen` and `unlisten`
@@ -108,7 +110,7 @@
 * Bug fixes
   * Fix encoding `nil` values in arrays and composite types
 
-# v0.6.0 (2014-09-07)
+## v0.6.0 (2014-09-07)
 
 * Enhancements
   * Queries can be constructed of `iodata`
@@ -119,45 +121,45 @@
   * `Postgrex.Connect.query` `params` parameter is no longer optional (pass an empty list if query has no parameters)
   * The `timeout` parameter for all functions have been moved to a keyword list with the key `:timeout`
 
-# v0.5.5 (2014-08-20)
+## v0.5.5 (2014-08-20)
 
 * Enhancements
   * Reduce the amount of intermediary binaries constructed with the help of `iodata`
 
-# v0.5.4 (2014-08-04)
+## v0.5.4 (2014-08-04)
 
-# v0.5.3 (2014-07-13)
+## v0.5.3 (2014-07-13)
 
-# v0.5.2 (2014-06-18)
+## v0.5.2 (2014-06-18)
 
-# v0.5.1 (2014-05-24)
+## v0.5.1 (2014-05-24)
 
 * Backwards incompatible changes
   * `Postgrex.Error` exception converted to struct
 
-# v0.5.0 (2014-05-01)
+## v0.5.0 (2014-05-01)
 
 * Backwards incompatible changes
   * `Postgrex.Result` and `Postgrex.TypeInfo` converted to structs
 
-# v0.4.2 (2014-04-21)
+## v0.4.2 (2014-04-21)
 
 * Enhancements
   * Add timeouts to all synchronous calls. When a timeout is hit an exit error will be raised in the caller process and the connection process will exit
   * Add automatic fallback to environment variables `PGUSER`, `PGHOST` and `PGPASS`
 
-# v0.4.0 (2014-01-16)
+## v0.4.0 (2014-01-16)
 
 * Enhancements
   * Numerics decode and encode to Decimal
 
-# v0.3.1 (2014-01-15)
+## v0.3.1 (2014-01-15)
 
 * Enhancements
   * Compact state before printing to logs and hide password
   * Concurrency support, safe to use connection from multiple processes concurrently
 
-# v0.3.0 (2013-12-16)
+## v0.3.0 (2013-12-16)
 
 * Bug fixes
   * Don't try to decode values of text format
@@ -165,8 +167,7 @@
 * Backwards incompatible changes
   * Types are stored as binaries instead of atoms, update your custom encoders and decoders
 
-
-# v0.2.1 (2013-12-10)
+## v0.2.1 (2013-12-10)
 
 * Enhancements
   * Add support for SSL
@@ -174,8 +175,7 @@
 * Bug fixes
   * Fix decoding of unknown type when using custom decoder
 
-
-# v0.2.0 (2013-11-14)
+## v0.2.0 (2013-11-14)
 
 * Enhancements
   * Floats handles NaN, inf and -inf
@@ -192,7 +192,6 @@
 * Backwards incompatible changes
   * Simplify custom decoding and encoding with default function
 
-
-# v0.1.0 (2013-10-14)
+## v0.1.0 (2013-10-14)
 
 First release!
