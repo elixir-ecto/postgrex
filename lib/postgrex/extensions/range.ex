@@ -31,28 +31,35 @@ defmodule Postgrex.Extensions.Range do
   defp encode_range(range, oid, types) do
     flags = 0
 
-    if range.lower == nil do
-      flags = flags ||| @range_lb_inf
-      bin = ""
-    else
-      data = Types.encode(oid, range.lower, types)
-      bin = [<<IO.iodata_length(data)::int32>>, data]
-    end
+    {flags, bin} =
+      if range.lower == nil do
+        {flags ||| @range_lb_inf, ""}
+      else
+        data = Types.encode(oid, range.lower, types)
+        {flags, [<<IO.iodata_length(data)::int32>>, data]}
+      end
 
+    {flags, bin} =
     if range.upper == nil do
-      flags = flags ||| @range_ub_inf
+      {flags ||| @range_ub_inf, bin}
     else
       data = Types.encode(oid, range.upper, types)
-      bin = [bin, <<IO.iodata_length(data)::int32>>, data]
+      {flags, [bin, <<IO.iodata_length(data)::int32>>, data]}
     end
 
-    if range.lower_inclusive do
-      flags = flags ||| @range_lb_inc
-    end
+    flags =
+      if range.lower_inclusive do
+        flags ||| @range_lb_inc
+      else
+        flags
+      end
 
-    if range.upper_inclusive do
-      flags = flags ||| @range_ub_inc
-    end
+    flags =
+      if range.upper_inclusive do
+        flags ||| @range_ub_inc
+      else
+        flags
+      end
 
     [flags|bin]
   end
@@ -62,19 +69,21 @@ defmodule Postgrex.Extensions.Range do
   end
 
   defp decode_range(<<flags, rest::binary>>, oid, types) do
-    if (flags &&& @range_lb_inf) != 0 do
-      lower = nil
-    else
-      <<size::int32, lower::binary(size), rest::binary>> = rest
-      lower = Types.decode(oid, lower, types)
-    end
+    lower =
+      if (flags &&& @range_lb_inf) != 0 do
+        nil
+      else
+        <<size::int32, lower::binary(size), rest::binary>> = rest
+        Types.decode(oid, lower, types)
+      end
 
-    if (flags &&& @range_ub_inf) != 0 do
-      upper = nil
-    else
-      <<size::int32, upper::binary(size), rest::binary>> = rest
-      upper = Types.decode(oid, upper, types)
-    end
+    upper =
+      if (flags &&& @range_ub_inf) != 0 do
+        nil
+      else
+        <<size::int32, upper::binary(size), rest::binary>> = rest
+        Types.decode(oid, upper, types)
+      end
 
     "" = rest
     lower_inclusive = (flags &&& @range_lb_inc) != 0

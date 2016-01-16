@@ -26,24 +26,26 @@ defmodule Postgrex.Extensions.Numeric do
     else
       string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
 
-      if List.first(string) == ?- do
-        [_|string] = string
-        sign = 0x4000
-      else
-        sign = 0x0000
-      end
+      sign =
+        if List.first(string) == ?- do
+          [_|string] = string
+          0x4000
+        else
+          0x0000
+        end
 
       {int, float} = Enum.split_while(string, &(&1 != ?.))
       {weight, int_digits} = Enum.reverse(int) |> encode_numeric_int(0, [])
 
-      if float != [] do
-        [_|float] = float
-        scale = length(float)
-        float_digits = pad_to_numeric_base(float, scale) |> encode_numeric_float([])
-      else
-        scale = 0
-        float_digits = []
-      end
+      {scale, float_digits} =
+        if float != [] do
+          [_|float] = float
+          scale = length(float)
+          {scale,
+           pad_to_numeric_base(float, scale) |> encode_numeric_float([])}
+        else
+          {0, []}
+        end
 
       digits = int_digits ++ float_digits
       bin = for digit <- digits, into: "", do: <<digit :: uint16>>
