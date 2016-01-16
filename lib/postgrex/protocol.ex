@@ -896,12 +896,31 @@ defmodule Postgrex.Protocol do
   defp tag(:gen_tcp), do: :tcp
   defp tag(:ssl), do: :ssl
 
-  defp decode_tag(tag) do
-    decode_tag(tag, "")
+  defp decode_tag("INSERT " <> rest) do
+    [_oid, nrows] = :binary.split(rest, " ")
+    {:insert, String.to_integer(nrows)}
   end
+  defp decode_tag("SELECT " <> int),
+    do: {:select, String.to_integer(int)}
+  defp decode_tag("UPDATE " <> int),
+    do: {:update, String.to_integer(int)}
+  defp decode_tag("DELETE " <> int),
+    do: {:delete, String.to_integer(int)}
+  defp decode_tag("FETCH " <> int),
+    do: {:fetch, String.to_integer(int)}
+  defp decode_tag("MOVE " <> int),
+    do: {:move, String.to_integer(int)}
+  defp decode_tag("COPY " <> int),
+    do: {:copy, String.to_integer(int)}
+  defp decode_tag("BEGIN"),
+    do: {:commit, nil}
+  defp decode_tag("COMMIT"),
+    do: {:commit, nil}
+  defp decode_tag("ROLLBACK"),
+    do: {:rollback, nil}
+  defp decode_tag(tag),
+    do: decode_tag(tag, "")
 
-  defp decode_tag(<<?\s, i, t::binary>>, acc) when i in ?0..?9,
-    do: {String.to_atom(acc), decode_int(<<i, t::binary>>)}
   defp decode_tag(<<>>, acc),
     do: {String.to_atom(acc), nil}
   defp decode_tag(<<?\s, t::binary>>, acc),
@@ -910,13 +929,6 @@ defmodule Postgrex.Protocol do
     do: decode_tag(t, <<acc::binary, h+32>>)
   defp decode_tag(<<h, t::binary>>, acc),
     do: decode_tag(t, <<acc::binary, h>>)
-
-  defp decode_int(binary) do
-    case Integer.parse(binary) do
-      {nrows, ""} -> nrows
-      {_, " " <> rest} -> decode_int(rest)
-    end
-  end
 
   # It is ok to use infinity timeout here if in client process as timer is
   # running.
