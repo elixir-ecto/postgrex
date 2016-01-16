@@ -896,19 +896,39 @@ defmodule Postgrex.Protocol do
   defp tag(:gen_tcp), do: :tcp
   defp tag(:ssl), do: :ssl
 
-  defp decode_tag(tag) do
-    words = :binary.split(tag, " ", [:global])
-    words = Enum.map(words, fn word ->
-      case Integer.parse(word) do
-        {num, ""} -> num
-        :error -> word
-      end
-    end)
-
-    {command, nums} = Enum.split_while(words, &is_binary(&1))
-    command = Enum.join(command, "_") |> String.downcase |> String.to_atom
-    {command, List.last(nums)}
+  defp decode_tag("INSERT " <> rest) do
+    [_oid, nrows] = :binary.split(rest, " ")
+    {:insert, String.to_integer(nrows)}
   end
+  defp decode_tag("SELECT " <> int),
+    do: {:select, String.to_integer(int)}
+  defp decode_tag("UPDATE " <> int),
+    do: {:update, String.to_integer(int)}
+  defp decode_tag("DELETE " <> int),
+    do: {:delete, String.to_integer(int)}
+  defp decode_tag("FETCH " <> int),
+    do: {:fetch, String.to_integer(int)}
+  defp decode_tag("MOVE " <> int),
+    do: {:move, String.to_integer(int)}
+  defp decode_tag("COPY " <> int),
+    do: {:copy, String.to_integer(int)}
+  defp decode_tag("BEGIN"),
+    do: {:commit, nil}
+  defp decode_tag("COMMIT"),
+    do: {:commit, nil}
+  defp decode_tag("ROLLBACK"),
+    do: {:rollback, nil}
+  defp decode_tag(tag),
+    do: decode_tag(tag, "")
+
+  defp decode_tag(<<>>, acc),
+    do: {String.to_atom(acc), nil}
+  defp decode_tag(<<?\s, t::binary>>, acc),
+    do: decode_tag(t, <<acc::binary, ?_>>)
+  defp decode_tag(<<h, t::binary>>, acc) when h in ?A..?Z,
+    do: decode_tag(t, <<acc::binary, h+32>>)
+  defp decode_tag(<<h, t::binary>>, acc),
+    do: decode_tag(t, <<acc::binary, h>>)
 
   # It is ok to use infinity timeout here if in client process as timer is
   # running.
