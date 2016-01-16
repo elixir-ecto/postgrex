@@ -44,27 +44,27 @@ defmodule TransactionTest do
     Process.flag(:trap_exit, true)
 
     capture_log fn ->
-      assert (err = %Postgrex.Error{message: "unexpected postgres status: transaction"}) = query("BEGIN", [])
+      assert (%Postgrex.Error{message: "unexpected postgres status: transaction"}) = query("BEGIN", [])
 
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {^err, _}}
+      assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
     end
   end
 
   @tag mode: :transaction
-  test "query commit returns error", context do
+  test "idle status during transaction returns error and disconnects", context do
     Process.flag(:trap_exit, true)
 
     assert transaction(fn(conn) ->
       capture_log fn ->
-        assert {:error, err = %Postgrex.Error{message: "unexpected postgres status: idle"}} =
+        assert {:error, %Postgrex.Error{message: "unexpected postgres status: idle"}} =
           P.query(conn, "ROLLBACK", [])
 
         pid = context[:pid]
-        assert_receive {:EXIT, ^pid, {^err, _}}
+        assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
       end
       :hi
-    end) == {:ok, :hi}
+    end) == {:error, :rollback}
   end
 
   @tag mode: :transaction
@@ -77,8 +77,7 @@ defmodule TransactionTest do
         %{conn | mod_state: %{mod | state: %{state | postgres: :transaction}}}
       end)
     capture_log fn ->
-      assert {{%Postgrex.Error{message: "unexpected postgres status: transaction"}, [_|_]}, _} =
-        catch_exit(query("SELECT 42", []))
+      assert {{:shutdown, :disconnect}, _} = catch_exit(query("SELECT 42", []))
     end
   end
 
@@ -95,7 +94,7 @@ defmodule TransactionTest do
         fn(%{mod_state: %{state: state} = mod} = conn) ->
           %{conn | mod_state: %{mod | state: %{state | postgres: :transaction}}}
         end)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{message: "unexpected postgres status: idle"}, [_|_]}}
+      assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
     end
   end
 
