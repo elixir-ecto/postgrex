@@ -1,7 +1,6 @@
 language: elixir
 elixir:
-  - 1.1.0
-  - 1.2.0
+  - 1.2.1
 otp_release:
   - 18.2
 cache: apt
@@ -30,6 +29,14 @@ env:
     - PGVERSION=9.3
     - PGVERSION=9.4
     - PGVERSION=9.5
+matrix:
+  include:
+    - elixir: 1.0.5
+      otp_release: 17.5
+      env: PGVERSION=9.5
+    - elixir: 1.1.0
+      otp_release: 17.5
+      env: PGVERSION=9.5
 notifications:
   recipients:
     - eric.meadows.jonsson@gmail.com
