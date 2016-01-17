@@ -561,6 +561,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg_parse_complete(), buffer} when prepare == :parse ->
         query_put(s, query)
         ok(s, query, buffer)
+      {:ok, msg_error(fields: fields), buffer} when prepare == :parse_execute ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
