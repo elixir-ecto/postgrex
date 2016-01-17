@@ -492,6 +492,16 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "prepare query and execute different query with same name", context do
+    assert (%Postgrex.Query{} = query42) = prepare("select", "SELECT 42")
+    assert close(query42) == :ok
+    assert %Postgrex.Query{} = prepare("select", "SELECT 41")
+    assert %Postgrex.Error{postgres: %{code: :duplicate_prepared_statement}} =
+      execute(query42, [])
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "prepare, close and execute", context do
     assert (%Postgrex.Query{} = query) = prepare("reuse", "SELECT $1::int")
     assert [[42]] = execute(query, [42])
