@@ -574,9 +574,15 @@ defmodule QueryTest do
     assert [[41]] = execute(query, [])
   end
 
-  test "connection reuses prepared query after failure in preparing state", context do
+  test "connection reuses prepared query after failure in unnamed preparing state", context do
     %Postgrex.Query{} = query = prepare("", "SELECT 41")
-    assert %Postgrex.Error{} = query("wat", [])
+    assert %Postgrex.Error{postgres: %{code: :syntax_error}} = query("wat", [])
+    assert [[41]] = execute(query, [])
+  end
+
+  test "connection reuses prepared query after failure in named preparing state", context do
+    %Postgrex.Query{} = query = prepare("named", "SELECT 41")
+    assert %Postgrex.Error{postgres: %{code: :syntax_error}} = prepare("named", "wat")
     assert [[41]] = execute(query, [])
   end
 
@@ -592,6 +598,13 @@ defmodule QueryTest do
     assert %Postgrex.Query{} = query42 = prepare("", "SELECT 42")
     assert [[42]] = execute(query42, [])
     assert [[41]] = execute(query41, [])
+  end
+
+  test "connection describes query when already prepared", context do
+    %Postgrex.Query{} = prepare("", "SELECT 41")
+    %Postgrex.Query{} = query = prepare("", "SELECT 41")
+    assert [[41]] = execute(query, [])
+    assert [[42]] = query("SELECT 42", [])
   end
 
   test "async test", context do
