@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.11.0-dev
+## v0.11.0 (2016-01-21)
 
 * Enhancements
   * Rely on DBConnection. This means better performance by copying less data between processes, faster encoding/decoding, support for transactions, `after_connect` hooks, connection backoff, logging, prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more

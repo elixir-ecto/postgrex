@@ -19,11 +19,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 
 ## Disclaimer
 
-Postgrex is currently on 0.x beta releases. We are heading towards a stable release but, until then, the API may still change. Here is our roadmap:
-
-  * 0.11 - will change Postgrex to use [DBConnection](https://github.com/fishcakez/db_connection). This means better performance by copying less data between processes, faster encoding/decoding, support for transactions, `after_connect` hooks, connection backoff, logging, prepared queries, the ability to use both Poolboy and Sojourn as pools out of the box, and more.
-
-Please consult the issues tracker for more information and outstanding issues.
+Postgrex is currently on 0.x beta releases. We are heading towards a stable release soon. Please consult the issues tracker for more information and outstanding issues.
 
 ## Features
 
