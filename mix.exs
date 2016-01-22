@@ -10,7 +10,7 @@ defmodule Postgrex.Mixfile do
      deps: deps,
      name: "Postgrex",
      source_url: "https://github.com/ericmj/postgrex",
-     docs: [source_ref: "v#{@version}", main: "extra-readme", extras: ["README.md"]],
+     docs: [source_ref: "v#{@version}", main: "readme", extras: ["README.md"]],
      description: description,
      package: package]
   end
