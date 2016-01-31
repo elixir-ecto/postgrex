@@ -10,7 +10,7 @@ defmodule TransactionTest do
         :savepoint   -> :naive
       end
     opts = [ database: "postgrex_test", transactions: transactions,
-             backoff_type: :stop ]
+             backoff_type: :stop, prepare: context[:prepare] || :named]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
   end
@@ -98,11 +98,30 @@ defmodule TransactionTest do
     end
   end
 
+  @tag mode: :transaction
+  @tag prepare: :unnamed
+  test "transaction commits with unnamed queries", context do
+    assert transaction(fn(conn) ->
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+      :hi
+    end) == {:ok, :hi}
+    assert query("SELECT 42", []) == [[42]]
+  end
+
+  @tag mode: :transaction
+  @tag prepare: :unnamed
+  test "transaction rolls back with unnamed queries", context do
+    assert transaction(fn(conn) ->
+      P.rollback(conn, :oops)
+    end) == {:error, :oops}
+    assert query("SELECT 42", []) == [[42]]
+  end
+
   @tag mode: :savepoint
   test "savepoint transaction releases savepoint", context do
     :ok = query("BEGIN", [])
     assert transaction(fn(conn) ->
-      assert {:ok, _} = P.query(conn, "SELECT 42", [])
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
     end, [mode: :savepoint]) == {:ok, :hi}
     assert [[42]] = query("SELECT 42", [])
@@ -117,6 +136,33 @@ defmodule TransactionTest do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
         P.query(conn, "insert into uniques values (1), (1);", [])
+      P.rollback(conn, :oops)
+    end, [mode: :savepoint]) == {:error, :oops}
+    assert [[42]] = query("SELECT 42", [])
+    assert %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}} =
+      query("RELEASE SAVEPOINT postgrex_savepoint", [])
+    assert :ok = query("ROLLBACK", [])
+  end
+
+  @tag mode: :savepoint
+  @tag prepare: :unnamed
+  test "savepoint transaction releases with unnamed queries", context do
+    assert :ok = query("BEGIN", [])
+    assert transaction(fn(conn) ->
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+      :hi
+    end, [mode: :savepoint]) == {:ok, :hi}
+    assert [[42]] = query("SELECT 42", [])
+    assert %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}} =
+      query("RELEASE SAVEPOINT postgrex_savepoint", [])
+    assert :ok = query("ROLLBACK", [])
+  end
+
+  @tag mode: :savepoint
+  @tag prepare: :unnamed
+  test "savepoint transaction rolls back and releases with unnamed queries", context do
+    assert :ok = query("BEGIN", [])
+    assert transaction(fn(conn) ->
       P.rollback(conn, :oops)
     end, [mode: :savepoint]) == {:error, :oops}
     assert [[42]] = query("SELECT 42", [])

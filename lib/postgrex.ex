@@ -46,6 +46,8 @@ defmodule Postgrex do
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
     implementing the `Postgrex.Extension` behaviour and `opts` are the
     extension options;
+    * `:prepare` - How to prepare queries, either `:named` to use named queries
+    or `:unnamed` to force unnamed queries (default: `:named`);
     * `:after_connect` - A function to run on connect, either a 1-arity fun
     called with a connection reference, `{module, function, args}` with the
     connection reference prepended to `args` or `nil`, (default: `nil`)
