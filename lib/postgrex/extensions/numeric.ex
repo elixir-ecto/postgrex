@@ -63,15 +63,19 @@ defmodule Postgrex.Extensions.Numeric do
     end
   end
 
-  defp encode_numeric_float([], [digit|acc]) do
-    [pad_float(digit)|acc]
+  defp encode_numeric_float([], digits) do
+    digits
     |> trim_zeros
     |> Enum.reverse
   end
 
   defp encode_numeric_float(list, acc) do
     {list, rest} = Enum.split(list, 4)
-    digit = List.to_integer(list)
+
+    digit =
+      list
+      |> Kernel.++(List.duplicate(?0, 4 - length(list)))
+      |> List.to_integer
 
     encode_numeric_float(rest, [digit|acc])
   end
@@ -91,19 +95,6 @@ defmodule Postgrex.Extensions.Numeric do
 
   defp trim_zeros([0|tail]), do: trim_zeros(tail)
   defp trim_zeros(list), do: list
-
-  defp pad_float(0) do
-    0
-  end
-
-  defp pad_float(num) do
-    num10 = num*10
-    if num10 >= @numeric_base do
-      num
-    else
-      pad_float(num10)
-    end
-  end
 
   defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
     decode_numeric(ndigits, weight, sign, scale, tail)
