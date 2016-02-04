@@ -47,8 +47,9 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
-  def encode(%Postgrex.Query{encoders: encoders} = query, params, _opts) do
-    case do_encode(params || [], encoders, []) do
+  def encode(%Postgrex.Query{encoders: encoders} = query, params, opts) do
+    null = opts[:null] || nil
+    case do_encode(params || [], encoders, null, []) do
       :error ->
         raise ArgumentError,
         "parameters must be of length #{length encoders} for query #{inspect query}"
@@ -59,9 +60,10 @@ defimpl DBConnection.Query, for: Postgrex.Query do
 
   def decode(%Postgrex.Query{decoders: nil}, res, _), do: res
   def decode(%Postgrex.Query{decoders: decoders}, res, opts) do
+    null = opts[:null] || nil
     mapper = opts[:decode_mapper] || fn x -> x end
     %Postgrex.Result{rows: rows} = res
-    rows = do_decode(rows, decoders, mapper, [])
+    rows = do_decode(rows, decoders, null, mapper, [])
     %Postgrex.Result{res | rows: rows}
   end
 
@@ -82,32 +84,32 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     |> :lists.unzip()
   end
 
-  defp do_encode([nil | params], [_encoder | encoders], encoded) do
-    do_encode(params, encoders, [<<-1::int32>> | encoded])
+  defp do_encode([null | params], [_encoder | encoders], null, encoded) do
+    do_encode(params, encoders, null, [<<-1::int32>> | encoded])
   end
 
-  defp do_encode([param | params], [encoder | encoders], encoded) do
+  defp do_encode([param | params], [encoder | encoders], null, encoded) do
     param = encoder.(param)
     encoded = [[<<IO.iodata_length(param)::int32>> | param] | encoded]
-    do_encode(params, encoders, encoded)
+    do_encode(params, encoders, null, encoded)
   end
 
-  defp do_encode([], [], encoded), do: Enum.reverse(encoded)
-  defp do_encode(params, _, _) when is_list(params), do: :error
+  defp do_encode([], [], _, encoded), do: Enum.reverse(encoded)
+  defp do_encode(params, _, _, _) when is_list(params), do: :error
 
-  defp do_decode([row | rows], decoders, mapper, decoded) do
-    decoded = [mapper.(decode_row(row, decoders, [])) | decoded]
-    do_decode(rows, decoders, mapper, decoded)
+  defp do_decode([row | rows], decoders, null, mapper, decoded) do
+    decoded = [mapper.(decode_row(row, decoders, null, [])) | decoded]
+    do_decode(rows, decoders, null, mapper, decoded)
   end
-  defp do_decode([], _, _, decoded), do: decoded
+  defp do_decode([], _, _, _, decoded), do: decoded
 
-  defp decode_row(<<-1 :: int32, rest :: binary>>, [_ | decoders], decoded) do
-    decode_row(rest, decoders, [nil | decoded])
+  defp decode_row(<<-1 :: int32, rest :: binary>>, [_ | decoders], null, decoded) do
+    decode_row(rest, decoders, null, [null | decoded])
   end
-  defp decode_row(<<len :: uint32, value :: binary(len), rest :: binary>>, [decode | decoders], decoded) do
-    decode_row(rest, decoders, [decode.(value) | decoded])
+  defp decode_row(<<len :: uint32, value :: binary(len), rest :: binary>>, [decode | decoders], null, decoded) do
+    decode_row(rest, decoders, null, [decode.(value) | decoded])
   end
-  defp decode_row(<<>>, [], decoded), do: Enum.reverse(decoded)
+  defp decode_row(<<>>, [], _, decoded), do: Enum.reverse(decoded)
 end
 
 defimpl String.Chars, for: Postgrex.Query do
