@@ -20,10 +20,11 @@ defmodule Postgrex.Query do
     columns:        [String.t] | nil,
     result_formats: [:binary | :text] | nil,
     decoders:       [Postgrex.Types.oid] | [(binary -> term)] | nil,
-    types:          Postgrex.TypeServer.table | nil}
+    types:          Postgrex.TypeServer.table | nil,
+    null:           atom}
 
   defstruct [:name, :statement, :param_formats, :encoders, :columns,
-    :result_formats, :decoders, :types]
+    :result_formats, :decoders, :types, :null]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
@@ -35,20 +36,27 @@ defimpl DBConnection.Query, for: Postgrex.Query do
       statement: IO.iodata_to_binary(statement)}
   end
 
-  def describe(query, _) do
-    %Postgrex.Query{encoders: poids, decoders: roids, types: types} = query
+  def describe(query, opts) do
+    %Postgrex.Query{encoders: poids, decoders: roids,
+                    types: types, null: conn_null} = query
     {pfs, encoders} = encoders(poids, types)
     {rfs, decoders} = decoders(roids, types)
+
+    null = case Keyword.fetch(opts, :null) do
+      {:ok, q_null} -> q_null
+      :error -> conn_null
+    end
+
     %Postgrex.Query{query | param_formats: pfs, encoders: encoders,
-                            result_formats: rfs, decoders: decoders}
+                            result_formats: rfs, decoders: decoders,
+                            null: null}
   end
 
-  def encode(%Postgrex.Query{types: nil} = query, _params, _opts) do
+  def encode(%Postgrex.Query{types: nil} = query, _params, _) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
-  def encode(%Postgrex.Query{encoders: encoders} = query, params, opts) do
-    null = opts[:null] || nil
+  def encode(%Postgrex.Query{encoders: encoders, null: null} = query, params, _) do
     case do_encode(params || [], encoders, null, []) do
       :error ->
         raise ArgumentError,
@@ -59,8 +67,7 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   end
 
   def decode(%Postgrex.Query{decoders: nil}, res, _), do: res
-  def decode(%Postgrex.Query{decoders: decoders}, res, opts) do
-    null = opts[:null] || nil
+  def decode(%Postgrex.Query{decoders: decoders, null: null}, res, opts) do
     mapper = opts[:decode_mapper] || fn x -> x end
     %Postgrex.Result{rows: rows} = res
     rows = do_decode(rows, decoders, null, mapper, [])

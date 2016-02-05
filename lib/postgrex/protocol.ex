@@ -10,12 +10,14 @@ defmodule Postgrex.Protocol do
   @timeout 5000
   @sock_opts [packet: :raw, mode: :binary, active: false]
 
-  defstruct [sock: nil, connection_id: nil, types: nil, timeout: nil,
-             parameters: %{}, queries: nil, postgres: :idle, buffer: nil]
+  defstruct [sock: nil, connection_id: nil, types: nil, null: nil,
+             timeout: nil, parameters: %{}, queries: nil,
+             postgres: :idle, buffer: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
                              connection_id: pos_integer,
                              types: (nil | reference | Postgrex.TypeServer.table),
+                             null: atom,
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
                              queries: nil | :ets.tid,
@@ -42,6 +44,7 @@ defmodule Postgrex.Protocol do
     extensions = custom ++ Postgrex.Utils.default_extensions()
     ssl?       = opts[:ssl] || false
     types?     = Keyword.fetch!(opts, :types)
+    null       = opts[:null]
 
     postgres =
       case opts[:transactions] || :naive do
@@ -49,7 +52,7 @@ defmodule Postgrex.Protocol do
         :strict -> :idle
       end
 
-    s = %__MODULE__{timeout: timeout, postgres: postgres}
+    s = %__MODULE__{timeout: timeout, postgres: postgres, null: null}
 
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
@@ -584,13 +587,13 @@ defmodule Postgrex.Protocol do
   defp describe_recv(s, status, query, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_no_data(), buffer} ->
-        ok(s, %Query{query | types: s.types}, buffer)
+        ok(s, %Query{query | types: s.types, null: s.null}, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
         describe_recv(s, status, %Query{query | encoders: param_oids}, buffer)
       {:ok, msg_row_desc(fields: fields), buffer} ->
         {col_oids, col_names} = columns(fields)
-        query = %Query{query | types: s.types, columns: col_names,
-                               decoders: col_oids}
+        query = %Query{query | types: s.types, null: s.null,
+                               columns: col_names, decoders: col_oids}
         ok(s, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync(s, status, Postgrex.Error.exception(postgres: fields), buffer)
