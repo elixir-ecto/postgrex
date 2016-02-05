@@ -44,8 +44,8 @@ defmodule Postgrex do
     * `:socket_options` - Options to be given to the underlying socket;
     * `:sync_connect` - Block in `start_link/1` until connection is set up (default: `false`)
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
-      implementing the `Postgrex.Extension` behaviour and `opts` are the
-      extension options;
+    implementing the `Postgrex.Extension` behaviour and `opts` are the
+    extension options;
     * `:after_connect` - A function to run on connect, either a 1-arity fun
     called with a connection reference, `{module, function, args}` with the
     connection reference prepended to `args` or `nil`, (default: `nil`)
@@ -62,7 +62,7 @@ defmodule Postgrex do
     * `:pool` - The pool module to use, see `DBConnection`, it must be
     included with all requests if not the default (default:
     `DBConnection.Connection`);
-    * `:null` - The atom to use as a stand in for postgres' `NULL' in encoding
+    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding (default: `nil`);
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
@@ -89,7 +89,7 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:null` - The atom to use as a stand in for postgres' `NULL' in encoding
+    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding;
 
   ## Examples
@@ -139,7 +139,7 @@ defmodule Postgrex do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:null` - The atom to use as a stand in for postgres' `NULL' in encoding
+    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding;
 
   ## Examples
@@ -158,7 +158,7 @@ defmodule Postgrex do
   end
 
   @doc """
-  Prepared an (extended) query and returns the prepared query or raises
+  Prepares an (extended) query and returns the prepared query or raises
   `Postgrex.Error` if there was an error. See `prepare/4`.
   """
   @spec prepare!(conn, iodata, iodata, Keyword.t) :: Postgrex.Query.t
@@ -255,7 +255,7 @@ defmodule Postgrex do
   @doc """
   Acquire a lock on a connection and run a series of requests inside a
   transaction. The result of the transaction fun is return inside an `:ok`
-  tuple: `{:ok result}`.
+  tuple: `{:ok, result}`.
 
   To use the locked connection call the request with the connection
   reference passed as the single argument to the `fun`. If the
