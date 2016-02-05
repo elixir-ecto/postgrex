@@ -10,6 +10,7 @@ defmodule Postgrex.Query do
     * `result_formats` - List of formats for each column is decoded from;
     * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
+    * `null` - Atom to use as a stand in for postgres' `NULL`;
   """
 
   @type t :: %__MODULE__{

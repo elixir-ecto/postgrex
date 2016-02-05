@@ -62,6 +62,8 @@ defmodule Postgrex do
     * `:pool` - The pool module to use, see `DBConnection`, it must be
     included with all requests if not the default (default:
     `DBConnection.Connection`);
+    * `:null` - The atom to use as a stand in for postgres' `NULL' in encoding
+    and decoding (default: `nil`);
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
@@ -87,6 +89,8 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:null` - The atom to use as a stand in for postgres' `NULL' in encoding
+    and decoding;
 
   ## Examples
 
@@ -135,6 +139,8 @@ defmodule Postgrex do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:null` - The atom to use as a stand in for postgres' `NULL' in encoding
+    and decoding;
 
   ## Examples
 
