@@ -329,6 +329,15 @@ defmodule Postgrex do
     DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, defaults(opts))
   end
 
+  @doc """
+  Returns a supervisor child specification for a DBConnection pool.
+  """
+  @spec child_spec(Keyword.t) :: Supervisor.Spec.spec
+  def child_spec(opts) do
+    opts = Postgrex.Utils.default_opts(opts)
+    DBConnection.child_spec(Postgrex.Protocol, opts)
+  end
+
   ## Helpers
 
   defp defaults(opts) do
