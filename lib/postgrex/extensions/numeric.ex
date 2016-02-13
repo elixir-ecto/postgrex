@@ -26,12 +26,10 @@ defmodule Postgrex.Extensions.Numeric do
     else
       string = Decimal.to_string(dec, :normal) |> :binary.bin_to_list
 
-      sign =
-        if List.first(string) == ?- do
-          [_|string] = string
-          0x4000
-        else
-          0x0000
+      {string, sign} =
+        case string do
+          [?-|tail] -> {tail, 0x4000}
+          _ -> {string, 0x0000}
         end
 
       {int, float} = Enum.split_while(string, &(&1 != ?.))
@@ -87,9 +85,7 @@ defmodule Postgrex.Extensions.Numeric do
   defp encode_numeric_int(list, weight, acc) do
     {list, rest} = Enum.split(list, 4)
     digit = Enum.reverse(list) |> List.to_integer
-
-    if rest != [], do: weight = weight + 1
-
+    weight = if rest != [], do: weight + 1, else: weight
     encode_numeric_int(rest, weight, [digit|acc])
   end
 
@@ -107,10 +103,11 @@ defmodule Postgrex.Extensions.Numeric do
   defp decode_numeric(_num_digits, weight, sign, scale, bin) do
     {value, weight} = decode_numeric_int(bin, weight, 0)
 
-    case sign do
-      0x0000 -> sign = 1
-      0x4000 -> sign = -1
-    end
+    sign =
+      case sign do
+        0x0000 -> 1
+        0x4000 -> -1
+      end
 
     {coef, exp} = scale(value, (weight+1)*4, -scale)
     Decimal.new(sign, coef, exp)

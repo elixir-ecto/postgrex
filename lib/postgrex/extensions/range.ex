@@ -69,20 +69,20 @@ defmodule Postgrex.Extensions.Range do
   end
 
   defp decode_range(<<flags, rest::binary>>, oid, types) do
-    lower =
+    {lower, rest} =
       if (flags &&& @range_lb_inf) != 0 do
-        nil
+        {nil, rest}
       else
         <<size::int32, lower::binary(size), rest::binary>> = rest
-        Types.decode(oid, lower, types)
+        {Types.decode(oid, lower, types), rest}
       end
 
-    upper =
+    {upper, rest} =
       if (flags &&& @range_ub_inf) != 0 do
-        nil
+        {nil, rest}
       else
         <<size::int32, upper::binary(size), rest::binary>> = rest
-        Types.decode(oid, upper, types)
+        {Types.decode(oid, upper, types), rest}
       end
 
     "" = rest

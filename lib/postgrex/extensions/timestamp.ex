@@ -23,10 +23,12 @@ defmodule Postgrex.Extensions.Timestamp do
     usec = rem(microsecs, 1_000_000)
     {{year, month, day}, {hour, min, sec}} = :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
 
-    if year < 2000 and usec != 0 do
-      sec = sec - 1
-      usec = 1_000_000 + usec
-    end
+    {sec, usec} =
+      if year < 2000 and usec != 0 do
+        {sec - 1, 1_000_000 + usec}
+      else
+        {sec, usec}
+      end
 
     %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec}
   end

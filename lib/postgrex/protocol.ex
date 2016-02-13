@@ -727,12 +727,12 @@ defmodule Postgrex.Protocol do
     {command, nrows} = decode_tag(tag)
     %Query{columns: cols} = query
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
-    if is_nil(nrows) and command == :select do
-      nrows = length(rows)
-    end
-    if is_nil(cols) and rows == [] do
-      rows = nil
-    end
+    nrows =
+      if is_nil(nrows) and command == :select, do: length(rows), else: nrows
+
+    rows =
+      if is_nil(cols) and rows == [], do: nil, else: rows
+
     result = %Postgrex.Result{command: command, num_rows: nrows || 0,
                               rows: rows, columns: cols, connection_id: connection_id}
     sync_recv(s, status, query, result, buffer)
