@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.11.1 (2016-02-15)
+
+* Enhancements
+  * Support PgBouncer transaction/statement pooling
+  * Include more information in error messages
+  * Add support for built-in postgres point type
+  * Add `Postgrex.child_spec/1`
+  * Allow custom encoding/decoding of postgres' NULL on a per query basis
+
+* Bug fixes
+  * Correctly pad decimal digits during encoding
+
 ## v0.11.0 (2016-01-21)
 
 * Enhancements
