@@ -90,6 +90,17 @@ query("select nextval($1::text::regclass)", ["some_sequence"])
 query("select nextval($1)", [sequence_oid])
 ```
 
+## PgBouncer
+
+When using PgBouncer with transaction or statement pooling named prepared
+queries can not be used because the bouncer may route requests from the same
+postgrex connection to different PostgreSQL backend processes and discards named
+queries after the transactions closes. To force unnamed prepared queries:
+
+```elixir
+Postgrex.start_link(prepare: :unnamed)
+```
+
 ## Contributing
 
 To contribute you need to compile Postgrex from source and test it:

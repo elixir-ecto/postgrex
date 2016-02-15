@@ -3,8 +3,9 @@ defmodule QueryTest do
   import Postgrex.TestHelper
   alias Postgrex, as: P
 
-  setup do
-    opts = [ database: "postgrex_test", backoff_type: :stop ]
+  setup context do
+    opts = [ database: "postgrex_test", backoff_type: :stop,
+             prepare: context[:prepare] || :named]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
   end
@@ -504,7 +505,7 @@ defmodule QueryTest do
   end
 
   test "prepare query and execute different query with same name", context do
-    assert (%Postgrex.Query{} = query42) = prepare("select", "SELECT 42")
+    assert (%Postgrex.Query{name: "select"} = query42) = prepare("select", "SELECT 42")
     assert close(query42) == :ok
     assert %Postgrex.Query{} = prepare("select", "SELECT 41")
     assert %Postgrex.Error{postgres: %{code: :duplicate_prepared_statement}} =
@@ -524,6 +525,15 @@ defmodule QueryTest do
     assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
     assert :ok = close(query)
     assert :ok = close(query)
+  end
+
+  @tag prepare: :unnamed
+  test "prepare named is unnamed when named not allowed", context do
+    assert (%Postgrex.Query{name: ""} = query) = prepare("42", "SELECT 42")
+    assert [[42]] = execute(query, [])
+    assert [[42]] = execute(query, [])
+    assert :ok = close(query)
+    assert [[42]] = query("SELECT 42", [])
   end
 
   test "error codes are translated", context  do
