@@ -4,7 +4,7 @@ defmodule ErrorTest do
   alias Postgrex, as: P
 
   @tag min_pg_version: "9.3"
-  test "connection works after failure in executing state" do
+  test "encodes code, detail, table, constraint and more" do
     opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = P.start_link(opts)
 
