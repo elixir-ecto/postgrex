@@ -278,7 +278,7 @@ defmodule Postgrex do
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection;
+    `start_link/1`, see `DBConnection`;
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
 
