@@ -739,7 +739,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_command_complete(tag: tag), buffer} ->
         complete(s, status, query, rows, tag, buffer)
       {:ok, msg, buffer} ->
-        execute_recv(handle_msg(s, status, msg), status, query, buffer)
+        execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end

@@ -682,4 +682,16 @@ defmodule QueryTest do
     :timer.sleep(20)
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
   end
+
+  test "notices raised by functions do not reset rows", context do
+    assert :ok = query("""
+    CREATE FUNCTION raise_notice_and_return(what integer) RETURNS integer AS $$
+    BEGIN
+      RAISE NOTICE 'notice %', what;
+      RETURN what;
+    END;
+    $$ LANGUAGE plpgsql;
+    """, [])
+    assert [[1], [2]] = query("SELECT raise_notice_and_return(x) FROM generate_series(1, 2) AS x", [])
+  end
 end
