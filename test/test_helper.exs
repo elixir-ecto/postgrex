@@ -73,6 +73,8 @@ cmds =
                ~s(psql -U postgres -d postgrex_test -c "CREATE EXTENSION IF NOT EXISTS hstore;")]
     String.to_float(pg_version) == 9.0 ->
       cmds ++ [~s(psql -U postgres -d postgrex_test -f "#{pg_path}/contrib/hstore.sql")]
+    String.to_float(pg_version) < 9.0 ->
+      cmds ++ [~s(psql -U postgres -d postgrex_test -c "CREATE LANGUAGE plpgsql;")]
     true ->
       cmds
 end
