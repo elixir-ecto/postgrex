@@ -3,6 +3,7 @@ defmodule Postgrex.Protocol do
 
   alias Postgrex.Types
   alias Postgrex.Query
+  alias Postgrex.Stream
   import Postgrex.Messages
   import Postgrex.BinaryUtils
   require Logger
@@ -163,6 +164,7 @@ defmodule Postgrex.Protocol do
   def handle_execute(%Query{} = query, params, opts, s) do
     handle_execute(query, params, :sync, opts, s)
   end
+
   @spec handle_execute(Postgrex.Parameters.t, nil, Keyword.t, state) ::
     {:ok, %{binary => binary}, state} |
     {:error, Postgrex.Errpr.t, state}
@@ -173,6 +175,26 @@ defmodule Postgrex.Protocol do
         {:ok, parameters, s}
       :error ->
         {:error, %Postgrex.Error{message: "parameters not available"}, s}
+    end
+  end
+
+  @spec handle_execute(Postgrex.Stream.t, list, Keyword.t, state) ::
+    {:ok, Postgrex.Result.t, state} |
+    {:error, ArgumentError.t, state} |
+    {:error | :disconnect, Postgrex.Error.t, state}
+  def handle_execute( %Postgrex.Stream{ query: query } = stream, params, options, state ) do
+    %{buffer: buffer} = state
+    status = %{ notify: notify( options ), sync: :sync, prepare: :parse_execute }
+    case query_member?( state, query ) do
+      true ->
+        execute_send( state, status, stream, params, buffer )
+      false ->
+        case parse_describe_send( %{ state | buffer: nil }, %{ status | prepare: :parse_describe }, query, buffer ) do
+          { :ok, _, state } ->
+            execute_send( state, status, stream, params, buffer )
+          fail ->
+            fail
+        end
     end
   end
 
@@ -191,7 +213,7 @@ defmodule Postgrex.Protocol do
     handle_execute(query, params, :sync_close, opts, s)
   end
 
-  @spec handle_close(Postgrex.Query.t, Keyword.t, state) ::
+  @spec handle_close(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
@@ -563,22 +585,12 @@ defmodule Postgrex.Protocol do
       [msg_parse(name: name, statement: statement, type_oids: []),
        msg_describe(type: :statement, name: name),
        msg_flush()]
-    case msg_send(s, msgs, buffer) do
-      :ok ->
-        parse_recv(s, status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
+    send_and_recv( s, status, query, buffer, msgs, &parse_recv/4 )
   end
 
   defp describe_send(s, status, %Query{name: name} = query, buffer) do
     msgs = [msg_describe(type: :statement, name: name), msg_flush()]
-    case msg_send(s, msgs, buffer) do
-      :ok ->
-        describe_recv(s, status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
+    send_and_recv( s, status, query, buffer, msgs, &describe_recv/4 )
   end
 
   defp parse_recv(s, %{prepare: prepare} = status, query, buffer) do
@@ -624,7 +636,6 @@ defmodule Postgrex.Protocol do
   end
 
   ## execute
-
   defp handle_execute(query, params, sync, opts, s) do
     %{types: types, queries: queries, buffer: buffer} = s
     status = %{notify: notify(opts), sync: sync, prepare: :parse_execute}
@@ -654,18 +665,28 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp execute_send( s, status, %Stream{ state: :suspended, portal: portal, max_rows: max_rows, query: query } = stream, _params, buffer ) do
+    %Query{ name: name } = query
+    messages = [ msg_execute(name_port: portal, max_rows: max_rows) | sync_msgs( status, name ) ]
+    send_and_recv( s, status, stream, buffer, messages, &execute_recv/4 )
+  end
+
+  defp execute_send( s, status, %Stream{ portal: portal, max_rows: max_rows, query: query } = stream, params, buffer ) do
+    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
+    messages = [
+      msg_bind(name_port: portal, name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
+      msg_execute(name_port: portal, max_rows: max_rows) | sync_msgs( status, name )
+    ]
+    send_and_recv( s, status, stream, buffer, messages, &bind_recv/4 )
+  end
+
   defp execute_send(s, status, query, params, buffer) do
     %Query{param_formats: pfs, result_formats: rfs, name: name} = query
     msgs = [
       msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
       msg_execute(name_port: "", max_rows: 0) |
       sync_msgs(status, name)]
-    case msg_send(s, msgs, buffer) do
-      :ok ->
-        bind_recv(s, status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
+    send_and_recv( s, status, query, buffer, msgs, &bind_recv/4 )
   end
 
   defp parse_execute_send(s, status, query, params, buffer) do
@@ -675,9 +696,13 @@ defmodule Postgrex.Protocol do
       msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
       msg_execute(name_port: "", max_rows: 0) |
       sync_msgs(status, name)]
-    case msg_send(s, msgs, buffer) do
+    send_and_recv( s, status, query, buffer, msgs, &parse_recv/4 )
+  end
+
+  defp send_and_recv( s, status, query, buffer, messages, recv ) do
+    case msg_send(s, messages, buffer) do
       :ok ->
-        parse_recv(s, status, query, buffer)
+        recv.(s, status, query, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -738,6 +763,8 @@ defmodule Postgrex.Protocol do
         execute_recv(s, status, query, [values | rows], buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
         complete(s, status, query, rows, tag, buffer)
+      {:ok, msg_portal_suspend(), buffer} ->
+        complete(s, status, query, rows, :suspended, buffer)
       {:ok, msg, buffer} ->
         execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
@@ -745,6 +772,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp complete(s, status, %Postgrex.Stream{ query: query } = stream, rows, tag, buffer) do
+    case complete( s, status, query, rows, tag, buffer ) do
+      {:ok, result, state } -> { :ok, %Postgrex.Stream{ stream | result: result, state: decode_stream_state( tag ) }, state }
+      err -> err
+    end
+  end
   defp complete(%{connection_id: connection_id} = s, status, query, rows, tag, buffer) do
     {command, nrows} = decode_tag(tag)
     %Query{columns: cols} = query
@@ -760,20 +793,30 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, query, result, buffer)
   end
 
-  ## close
+  defp decode_stream_state( :suspended ), do: :suspended
+  defp decode_stream_state( _ ),          do: :done
 
+  ## close
   defp close(s, status, %Query{name: name} = query, result, buffer) do
-    msgs = [
+    messages = [
       msg_close(type: :statement, name: name),
       msg_flush() ]
-    case msg_send(s, msgs, buffer) do
+    close( s, status, query, buffer, result, messages )
+  end
+  defp close(s, status, %Stream{portal: portal} = stream, result, buffer) do
+    messages = [
+      msg_close(type: :portal, name: portal),
+      msg_flush() ]
+    close( s, status, stream, buffer, result, messages )
+  end
+  defp close( s, status, query, buffer, result, messages ) do
+    case msg_send(s, messages, buffer) do
       :ok ->
         close_recv(s, status, query, result, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
-
   defp close_recv(s, status, query, result, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_close_complete(), buffer} ->
@@ -789,7 +832,6 @@ defmodule Postgrex.Protocol do
   end
 
   ## sync
-
   defp sync(s, status, result, buffer) do
     case msg_send(s, msg_sync(), buffer) do
       :ok                       -> sync_recv(s, status, nil, result, buffer)
@@ -964,6 +1006,8 @@ defmodule Postgrex.Protocol do
     do: {:commit, nil}
   defp decode_tag("ROLLBACK"),
     do: {:rollback, nil}
+  defp decode_tag( :suspended ),
+    do: {:select, nil}
   defp decode_tag(tag),
     do: decode_tag(tag, "")
 
@@ -1237,8 +1281,9 @@ defmodule Postgrex.Protocol do
   end
   defp unnamed_query_delete(_, _), do: :ok
 
-  defp query_delete(%{queries: nil}, _), do: :ok
-  defp query_delete(%{queries: queries}, %Query{name: name}) do
+  defp query_delete( %{queries: nil}, _ ), do: :ok
+  defp query_delete( _, %Stream{} ),       do: :ok
+  defp query_delete( %{queries: queries}, %Query{name: name}) do
     try do
       :ets.delete(queries, name)
     rescue
