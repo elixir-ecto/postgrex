@@ -46,6 +46,13 @@ defmodule Postgrex do
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
     implementing the `Postgrex.Extension` behaviour and `opts` are the
     extension options;
+    * `:decode_binary` - Either `:copy` to copy binary values when decoding with
+    default extensions that return binaries or `:reference` to use a reference
+    counted binary of the binary received from the socket. Referencing a
+    potentially larger binary can be more efficient if the binary value is going
+    to be garbaged collected soon because a copy is avoided. However the larger
+    binary can not be garbage collected until all references are garbage
+    collected (defaults to `:copy`);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:after_connect` - A function to run on connect, either a 1-arity fun

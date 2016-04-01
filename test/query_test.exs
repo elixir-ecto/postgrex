@@ -197,6 +197,28 @@ defmodule QueryTest do
     assert is_number(cmin) and is_number(cmax)
   end
 
+  @tag min_pg_version: "9.0"
+  test "decode_binary: :copy returns copied binary", context do
+    text = "hello world"
+    assert [[bin]] = query("SELECT $1::text", [text])
+    assert :binary.referenced_byte_size(bin) == byte_size(text)
+
+    assert [[%{"hello" => world}]] = query("SELECT $1::hstore", [%{"hello" => "world"}])
+    assert :binary.referenced_byte_size(world) == byte_size("world")
+  end
+
+  @tag min_pg_version: "9.0"
+  test "decode_binary: :reference returns reference counted binary" do
+    {:ok, pid} = P.start_link(database: "postgrex_test",
+                              decode_binary: :reference)
+    text = "hello world"
+    assert %{rows: [[bin]]} = P.query!(pid, "SELECT $1::text", [text])
+    assert :binary.referenced_byte_size(bin) > byte_size(text)
+
+    assert %{rows: [[%{"hello" => world}]]} = P.query!(pid, "SELECT $1::hstore", [%{"hello" => "world"}])
+    assert :binary.referenced_byte_size(world) > byte_size("world")
+  end
+
   test "encode oid and its aliases", context do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])

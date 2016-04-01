@@ -11,6 +11,8 @@ defmodule Postgrex.BinaryExtension do
       def matching(_), do: unquote(matching)
 
       def format(_), do: :binary
+
+      defoverridable [init: 2]
     end
   end
 end
