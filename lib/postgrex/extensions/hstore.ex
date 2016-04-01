@@ -3,14 +3,16 @@ defmodule Postgrex.Extensions.HStore do
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, type: "hstore"
 
+  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+
   def encode(_, map, _, _) when is_map(map),
     do: encode_hstore(map)
   def encode(type_info, value, _, _) do
     raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a map")
   end
 
-  def decode(_, bin, _, _),
-    do: decode_hstore(bin)
+  def decode(_, bin, _, mode),
+    do: decode_hstore(bin, mode)
 
   ## Helpers
 
@@ -38,22 +40,40 @@ defmodule Postgrex.Extensions.HStore do
     <<value_byte_size::int32>> <> value
   end
 
-  def decode_hstore(<<_length::int32, pairs::binary>>) do
-    decode_hstore_payload(pairs, %{})
+  def decode_hstore(<<_length::int32, pairs::binary>>, :reference) do
+    decode_hstore_ref(pairs, %{})
+  end
+  def decode_hstore(<<_length::int32, pairs::binary>>, :copy) do
+    decode_hstore_copy(pairs, %{})
   end
 
-  defp decode_hstore_payload(<<>>, acc) do
+  defp decode_hstore_ref(<<>>, acc) do
     acc
   end
 
   # in the case of a NULL value, there won't be a length
-  defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
-                             -1::int32, rest::binary>>, acc) do
-    decode_hstore_payload(rest, Map.put(acc, key, nil))
+  defp decode_hstore_ref(<<key_length::int32, key::binary(key_length),
+                                 -1::int32, rest::binary>>, acc) do
+    decode_hstore_ref(rest, Map.put(acc, key, nil))
   end
 
-  defp decode_hstore_payload(<<key_length::int32, key::binary(key_length),
+  defp decode_hstore_ref(<<key_length::int32, key::binary(key_length),
                         value_length::int32, value::binary(value_length), rest::binary>>, acc) do
-    decode_hstore_payload(rest, Map.put(acc, key, value))
+    decode_hstore_ref(rest, Map.put(acc, key, value))
+  end
+
+  defp decode_hstore_copy(<<>>, acc) do
+    acc
+  end
+
+  # in the case of a NULL value, there won't be a length
+  defp decode_hstore_copy(<<key_length::int32, key::binary(key_length),
+                                 -1::int32, rest::binary>>, acc) do
+    decode_hstore_copy(rest, Map.put(acc, :binary.copy(key), nil))
+  end
+
+  defp decode_hstore_copy(<<key_length::int32, key::binary(key_length),
+                        value_length::int32, value::binary(value_length), rest::binary>>, acc) do
+    decode_hstore_copy(rest, Map.put(acc, :binary.copy(key), :binary.copy(value)))
   end
 end
