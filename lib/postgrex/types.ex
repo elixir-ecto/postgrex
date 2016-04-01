@@ -89,11 +89,11 @@ defmodule Postgrex.Types do
 
       %TypeInfo{
         oid: oid,
-        type: type,
-        send: send,
-        receive: receive,
-        output: output,
-        input: input,
+        type: :binary.copy(type),
+        send: :binary.copy(send),
+        receive: :binary.copy(receive),
+        output: :binary.copy(output),
+        input: :binary.copy(input),
         array_elem: array_oid,
         base_type: base_oid,
         comp_elems: comp_oids}
