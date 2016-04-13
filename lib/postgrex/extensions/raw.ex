@@ -2,8 +2,8 @@ defmodule Postgrex.Extensions.Raw do
   @moduledoc false
   use Postgrex.BinaryExtension,
     [send: "bpcharsend", send: "textsend", send: "varcharsend",
-      send: "byteasend", send: "enum_send", send: "unknownsend",
-      type: "citext"]
+     send: "byteasend", send: "enum_send", send: "unknownsend",
+     type: "citext"]
 
   def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
 

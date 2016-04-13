@@ -115,7 +115,7 @@ defmodule QueryTest do
   end
 
   test "encode point", context do
-    assert [[%Postgrex.Point{x: -97, y: 100}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
+    assert [[%Postgrex.Point{x: -97.0, y: 100.0}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
   end
 
   test "decode record", context do
