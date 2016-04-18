@@ -42,11 +42,11 @@ defmodule Postgrex.Types do
     FROM pg_type AS t
     #{join_range}
     WHERE
-      t.typname::text = ANY ((#{sql_array(m.type)})::text[]) OR
-      t.typsend::text = ANY ((#{sql_array(m.send)})::text[]) OR
-      t.typreceive::text = ANY ((#{sql_array(m.receive)})::text[]) OR
-      t.typoutput::text = ANY ((#{sql_array(m.output)})::text[]) OR
-      t.typinput::text = ANY ((#{sql_array(m.input)})::text[])
+      t.typname::text = ANY (#{sql_array(m.type)}::text[]) OR
+      t.typsend::text = ANY (#{sql_array(m.send)}::text[]) OR
+      t.typreceive::text = ANY (#{sql_array(m.receive)}::text[]) OR
+      t.typoutput::text = ANY (#{sql_array(m.output)}::text[]) OR
+      t.typinput::text = ANY (#{sql_array(m.input)}::text[])
     """
   end
 
