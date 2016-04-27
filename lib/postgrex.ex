@@ -347,7 +347,7 @@ defmodule Postgrex do
   """
   @spec child_spec(Keyword.t) :: Supervisor.Spec.spec
   def child_spec(opts) do
-    opts = Postgrex.Utils.default_opts(opts)
+    opts = [types: true] ++ Postgrex.Utils.default_opts(opts)
     DBConnection.child_spec(Postgrex.Protocol, opts)
   end
 
