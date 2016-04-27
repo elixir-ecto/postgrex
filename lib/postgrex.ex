@@ -116,11 +116,13 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    case DBConnection.query(conn, query, params, defaults(opts)) do
+    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+      {:ok, _, result} ->
+        {:ok, result}
       {:error, %ArgumentError{} = err} ->
         raise err
-      other ->
-        other
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -131,7 +133,8 @@ defmodule Postgrex do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query!(conn, query, params, defaults(opts))
+    {_, result} = DBConnection.prepare_execute!(conn, query, params, defaults(opts))
+    result
   end
 
   @doc """
