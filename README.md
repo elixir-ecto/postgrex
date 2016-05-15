@@ -26,7 +26,7 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
   * User defined extensions for encoding and decoding any PostgresSQL type
   * Supports transactions, prepared queries and multiple pools via [DBConnection](https://github.com/fishcakez/db_connection)
-  * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, and 9.4 (hstore is not supported on 8.4)
+  * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, 9.4, and 9.5 (hstore is not supported on 8.4)
 
 ## Data representation
 
