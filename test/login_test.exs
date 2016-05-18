@@ -137,18 +137,21 @@ defmodule LoginTest do
     assert_receive {:ok, %Postgrex.Result{}}
   end
 
-  test "translates port to integer" do
-    opts = []
+  test "translates provided port number to integer" do
+    assert 123 == P.Utils.default_opts(port: "123")[:port]
+  end
+
+  test "defaults to PGPORT if no port number is provided" do
     previous_port = System.get_env("PGPORT")
     try do
       set_port_number("12345")
-      assert 12345 == P.Utils.default_opts(opts)[:port]
+      assert 12345 == P.Utils.default_opts([])[:port]
     after
       set_port_number(previous_port)
     end
   end
 
-  test "ignores pgport if non existent" do
+  test "ignores PGPORT if non existent" do
     opts = []
     previous_port = System.get_env("PGPORT")
     try do
