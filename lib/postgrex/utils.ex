@@ -52,15 +52,12 @@ defmodule Postgrex.Utils do
     |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
     |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
-    |> Keyword.put_new(:port, parse_port_number(System.get_env("PGPORT")))
+    |> Keyword.update(:port, normalize_port(System.get_env("PGPORT")), &normalize_port/1)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
   end
 
-  defp parse_port_number(nil), do: nil
-
-  defp parse_port_number(port) when is_binary(port) do
-    String.to_integer(port)
-  end
+  defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
+  defp normalize_port(port), do: port
 
   @doc """
   List all default extensions.
