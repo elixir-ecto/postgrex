@@ -13,13 +13,31 @@ defmodule TypeServerTest do
     assert TS.unlock(ref) == :ok
   end
 
+  test "fetches and done" do
+    key = make_ref()
+    assert {:lock, ref, table} = TS.fetch(key)
+    assert TS.done(ref) == :ok
+    assert {:lock, _, table2} = TS.fetch(key)
+    assert table != table2, "same table after lock/done"
+  end
+
   test "blocks on fetch until lock is returned" do
     key = make_ref()
     {:lock, ref, table} = TS.fetch(key)
 
     task = Task.async fn -> TS.fetch(key) end
     TS.unlock(ref)
-    assert Task.await(task) == {:ok, table}
+    assert {:go, _, ^table} = Task.await(task)
+  end
+
+  test "blocks on fetch until done is returned" do
+    key = make_ref()
+    {:lock, ref, table} = TS.fetch(key)
+
+    task = Task.async fn -> TS.fetch(key) end
+    TS.done(ref)
+    assert {:lock, _, table2} = Task.await(task)
+    assert table != table2, "same table after lock/done"
   end
 
   test "fetches existing table" do
@@ -28,7 +46,7 @@ defmodule TypeServerTest do
     TS.unlock(ref)
 
     task = Task.async(fn -> TS.fetch(key) end)
-    assert Task.await(task) == {:ok, table}
+    assert {:go, _, ^table} = Task.await(task)
   end
 
   test "fetches existing table even if parent crashes" do
@@ -43,7 +61,7 @@ defmodule TypeServerTest do
     wait_until_dead(task.pid)
 
     task = Task.async(fn -> TS.fetch(key) end)
-    assert Task.await(task) == {:ok, table}
+    assert {:go, _, ^table} = Task.await(task)
   end
 
   test "fetches existing table even if other processes crashes" do
@@ -52,9 +70,9 @@ defmodule TypeServerTest do
     {:lock, ref, table} = TS.fetch(key)
     TS.unlock(ref)
 
-    assert Task.async(fn -> TS.fetch(key) end) |> Task.await() == {:ok, table}
-    assert Task.async(fn -> TS.fetch(key) end) |> Task.await() == {:ok, table}
-    assert Task.async(fn -> TS.fetch(key) end) |> Task.await() == {:ok, table}
+    assert {:go, _, ^table} = Task.async(fn -> TS.fetch(key) end) |> Task.await()
+    assert {:go, _, ^table} = Task.async(fn -> TS.fetch(key) end) |> Task.await()
+    assert {:go, _, ^table} = Task.async(fn -> TS.fetch(key) end) |> Task.await()
   end
 
   test "does not fetch existing table if parent crashes and timeout passes" do

@@ -22,7 +22,7 @@ defmodule Postgrex.TypeServer do
   we wait until the entries are available or the other process
   crashes.
   """
-  @spec fetch(key :: term) :: {:ok, table} | {:lock, reference, table}
+  @spec fetch(key :: term) :: {:lock | :go, reference, table}
   def fetch(key) do
     GenServer.call(@name, {:fetch, key}, 60_000)
   end
@@ -33,6 +33,15 @@ defmodule Postgrex.TypeServer do
   @spec unlock(reference) :: :ok | :error
   def unlock(ref) do
     GenServer.call(@name, {:unlock, ref})
+  end
+
+  @doc """
+  Inform the type server that the types are no longer needed by the owner of the
+  reference.
+  """
+  @spec done(reference) :: :ok
+  def done(ref) do
+    GenServer.cast(@name, {:done, ref})
   end
 
   ## Callbacks
@@ -48,14 +57,14 @@ defmodule Postgrex.TypeServer do
       {:ready, counter, timer, table} ->
         cancel_timer(timer)
         tables = Map.put(tables, key, {:ready, counter + 1, nil, table})
-        {:reply, {:ok, table}, {tables, conns}}
+        {:reply, {:go, ref, table}, {tables, conns}}
 
       {:waiting, owner_ref, waiting, table} ->
         tables = Map.put(tables, key, {:waiting, owner_ref, [{ref, from}|waiting], table})
         {:noreply, {tables, conns}}
 
       :missing ->
-        table = :ets.new(:postgrex_type_server, [:set, :public, read_concurrency: true])
+        table = types_table()
         tables = Map.put(tables, key, {:waiting, ref, [], table})
         {:reply, {:lock, ref, table}, {tables, conns}}
     end
@@ -65,7 +74,7 @@ defmodule Postgrex.TypeServer do
     case HashDict.fetch(conns, ref) do
       {:ok, key} ->
         {:waiting, ^ref, waiting, table} = Map.fetch!(tables, key)
-        for {_ref, from} <- waiting, do: GenServer.reply(from, {:ok, table})
+        for {ref, from} <- waiting, do: GenServer.reply(from, {:go, ref, table})
         tables = Map.put(tables, key, {:ready, 1 + length(waiting), nil, table})
         {:reply, :ok, {tables, conns}}
 
@@ -74,7 +83,37 @@ defmodule Postgrex.TypeServer do
     end
   end
 
-  def handle_info({:DOWN, ref, _, _, _}, {tables, conns}) do
+  def handle_cast({:done, ref}, state) do
+    Process.demonitor(ref, [:flush])
+    done(ref, state)
+  end
+
+  def handle_info({:DOWN, ref, _, _, _}, state) do
+    done(ref, state)
+  end
+
+  def handle_info({:drop, ref, key}, {tables, conns}) do
+    tables =
+      case Map.fetch!(tables, key) do
+        {:ready, 0, {^ref, _timer}, table} ->
+          :ets.delete(table)
+          Map.delete(tables, key)
+        _ ->
+          tables
+      end
+
+    {:noreply, {tables, conns}}
+  end
+
+  def handle_info(_other, state) do
+    {:noreply, state}
+  end
+
+  defp types_table() do
+    :ets.new(:postgrex_type_server, [:set, :public, read_concurrency: true])
+  end
+
+  defp done(ref, {tables, conns}) do
     {key, conns} = HashDict.pop(conns, ref)
 
     tables =
@@ -97,10 +136,13 @@ defmodule Postgrex.TypeServer do
           Map.delete(tables, key)
 
         # The process responsible for creating the table crashed
-        # and others are waiting
+        # and others are waiting, use new table as might be writes
+        # to table
         {:waiting, ^ref, [{owner_ref, from}|waiting], table} ->
-          GenServer.reply(from, {:lock, owner_ref, table})
-          Map.put(tables, key, {:waiting, owner_ref, waiting, table})
+          :ets.delete(table)
+          new_table = types_table()
+          GenServer.reply(from, {:lock, owner_ref, new_table})
+          Map.put(tables, key, {:waiting, owner_ref, waiting, new_table})
 
         # One process in the waiting list crashed
         {:waiting, owner_ref, waiting, table} ->
@@ -109,23 +151,6 @@ defmodule Postgrex.TypeServer do
       end
 
     {:noreply, {tables, conns}}
-  end
-
-  def handle_info({:drop, ref, key}, {tables, conns}) do
-    tables =
-      case Map.fetch!(tables, key) do
-        {:ready, 0, {^ref, _timer}, table} ->
-          :ets.delete(table)
-          Map.delete(tables, key)
-        _ ->
-          tables
-      end
-
-    {:noreply, {tables, conns}}
-  end
-
-  def handle_info(_other, state) do
-    {:noreply, state}
   end
 
   defp add_connection(pid, key, conns) do

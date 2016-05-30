@@ -10,8 +10,8 @@ defmodule Postgrex.Protocol do
   @timeout 5000
   @sock_opts [packet: :raw, mode: :binary, active: false]
 
-  defstruct [sock: nil, connection_id: nil, types: nil, null: nil,
-             timeout: nil, parameters: %{}, queries: nil,
+  defstruct [sock: nil, connection_id: nil, types_ref: nil, types: nil,
+             null: nil, timeout: nil, parameters: %{}, queries: nil,
              postgres: :idle, buffer: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
@@ -65,30 +65,16 @@ defmodule Postgrex.Protocol do
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
                types_table: nil, extensions: extensions, extension_info: nil,
-               prepare: prepare}
+               prepare: prepare, ssl: ssl?}
     case connect(host, port, sock_opts ++ @sock_opts, s) do
-      {:ok, s} when ssl?  -> s |> ssl(status) |> connected()
-      {:ok, s}            -> s |> startup(status) |> connected()
+      {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
     end
   end
 
-  defp connected({:ok, %{parameters: parameters} = s}) do
-    ref = Postgrex.Parameters.insert(parameters)
-    {:ok, %{s | parameters: ref}}
-  end
-  defp connected({:disconnect, err, s}) do
-    disconnect(err, s)
-    {:error, err}
-  end
-
   @spec disconnect(Exception.t, state) :: :ok
-  def disconnect(err, %{types: ref}) when is_reference(ref) do
-    # Don't handle the case where connection failure occurs during bootstrap
-    # (hard to test and "unlikely" given auth just succeeded)
-    raise err
-  end
   def disconnect(_, s) do
+    done_types(s)
     sock_close(s)
     _ = recv_buffer(s)
     delete_parameters(s)
@@ -313,6 +299,26 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  ## handshake
+
+  defp handshake(%{timeout: timeout, sock: {:gen_tcp, sock}} = s,status) do
+    {:ok, timer} = :timer.apply_after(timeout, :gen_tcp, :shutdown,
+                                      [sock, :read_write])
+    case do_handshake(s, status) do
+      {:ok, %{parameters: parameters} = s} ->
+        {:ok, _} = :timer.cancel(timer)
+        ref = Postgrex.Parameters.insert(parameters)
+        {:ok, %{s | parameters: ref}}
+      {:disconnect, err, s} ->
+        {:ok, _} = :timer.cancel(timer)
+        disconnect(err, s)
+        {:error, err}
+    end
+  end
+
+  defp do_handshake(s, %{ssl: true} = status), do: ssl(s, status)
+  defp do_handshake(s, %{ssl: false} = status), do: startup(s, status)
+
   ## ssl
 
   defp ssl(s, status) do
@@ -322,8 +328,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp ssl_recv(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status) do
-    case :gen_tcp.recv(sock, 1, timeout) do
+  defp ssl_recv(%{sock: {:gen_tcp, sock}} = s, status) do
+    case :gen_tcp.recv(sock, 1, :infinity) do
       {:ok, <<?S>>} ->
         ssl_connect(s, status)
       {:ok, <<?N>>} ->
@@ -359,8 +365,8 @@ defmodule Postgrex.Protocol do
 
   ## auth
 
-  defp auth_recv(%{timeout: timeout} = s, status, buffer) do
-    case msg_recv(s, timeout, buffer) do
+  defp auth_recv(s, status, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_auth(type: :ok), buffer} ->
         init_recv(s, status, buffer)
       {:ok, msg_auth(type: :cleartext), buffer} ->
@@ -399,8 +405,8 @@ defmodule Postgrex.Protocol do
 
   ## init
 
-  defp init_recv(%{timeout: timeout} = s, status, buffer) do
-    case msg_recv(s, timeout, buffer) do
+  defp init_recv(s, status, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_backend_key(pid: pid), buffer} ->
         init_recv(%{s | connection_id: pid}, status, buffer)
       {:ok, msg_ready(), buffer} ->
@@ -420,12 +426,11 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
-    case Postgrex.TypeServer.fetch(types_key) do
-      {:ok, table} ->
-        reserve_send(%{s | types: table}, status, buffer)
-      {:lock, ref, table} ->
-        status = %{status | types_ref: ref, types_table: table}
-        bootstrap_send(%{s | types: ref}, status, buffer)
+    {result, ref, table} = Postgrex.TypeServer.fetch(types_key)
+    s = %{s | types_ref: ref, types: table}
+    case result do
+      :go   -> reserve_send(s, status, buffer)
+      :lock -> bootstrap_send(s, status, buffer)
     end
   end
 
@@ -447,8 +452,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_recv(%{timeout: timeout} = s, status, buffer) do
-    case msg_recv(s, timeout, buffer) do
+  defp bootstrap_recv(s, status, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(), buffer} ->
         bootstrap_recv(s, status, [], buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -460,8 +465,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_recv(%{timeout: timeout} = s, status, rows, buffer) do
-    case msg_recv(s, timeout, buffer) do
+  defp bootstrap_recv(s, status, rows, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_data_row(values: values), buffer} ->
         bootstrap_recv(s, status, [row_decode(values) | rows], buffer)
       {:ok, msg_command_complete(), buffer} ->
@@ -475,16 +480,17 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_types(s, %{types_table: table} = status, rows, buffer) do
-    %{types_ref: ref, extension_info: {extension_keys, extension_opts}} = status
+  defp bootstrap_types(s, status, rows, buffer) do
+    %{types_ref: ref, types: table} = s
+    %{extension_info: {extension_keys, extension_opts}} = status
     types = Types.build_types(rows)
     Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
     Postgrex.TypeServer.unlock(ref)
-    bootstrap_sync_recv(%{s | types: table}, status, buffer)
+    bootstrap_sync_recv(s, status, buffer)
   end
 
-  defp bootstrap_sync_recv(%{timeout: timeout} = s, status, buffer) do
-    case msg_recv(s, timeout, buffer) do
+  defp bootstrap_sync_recv(s, status, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(status: :idle), buffer} ->
         reserve_send(s, status, buffer)
       {:ok, msg_ready(status: postgres), buffer} ->
@@ -515,8 +521,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reserve_recv(%{timeout: timeout} = s, status, buffer) do
-    case msg_recv(s, timeout, buffer) do
+  defp reserve_recv(s, status, buffer) do
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_parse_complete(), buffer} ->
         reserve_recv(s, status, buffer)
       {:ok, msg_ready(status: :idle), buffer} ->
@@ -1202,6 +1208,11 @@ defmodule Postgrex.Protocol do
 
   defp setopts(:gen_tcp, sock, opts), do: :inet.setopts(sock, opts)
   defp setopts(:ssl, sock, opts), do: :ssl.setopts(sock, opts)
+
+  defp done_types(%{types_ref: ref}) when is_reference(ref) do
+    Postgrex.TypeServer.done(ref)
+  end
+  defp done_types(_), do: :ok
 
   defp sock_close(%{sock: {mod, sock}}), do: mod.close(sock)
 
