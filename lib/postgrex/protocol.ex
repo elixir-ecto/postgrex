@@ -64,8 +64,8 @@ defmodule Postgrex.Protocol do
 
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
-               types_table: nil, extensions: extensions, extension_info: nil,
-               prepare: prepare, ssl: ssl?}
+               types_table: nil, extensions: extensions, prepare: prepare,
+               ssl: ssl?}
     case connect(host, port, sock_opts ++ @sock_opts, s) do
       {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
@@ -435,17 +435,11 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_send(%{parameters: parameters} = s, status, buffer) do
-    %{extensions: extensions} = status
-
-    extension_keys = Enum.map(extensions, &elem(&1, 0))
-    extension_opts = Types.prepare_extensions(extensions, parameters)
-    matchers = Types.extension_matchers(extension_keys, extension_opts)
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    statement = Types.bootstrap_query(matchers, version)
+    statement = Types.bootstrap_query(version)
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
-        status = %{status | extension_info: {extension_keys, extension_opts}}
         bootstrap_recv(s, status, buffer)
       {:disconnect, _, _} = dis ->
         dis
@@ -481,8 +475,10 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_types(s, status, rows, buffer) do
-    %{types_ref: ref, types: table} = s
-    %{extension_info: {extension_keys, extension_opts}} = status
+    %{types_ref: ref, types: table, parameters: parameters} = s
+    %{extensions: extensions} = status
+    extension_keys = Enum.map(extensions, &elem(&1, 0))
+    extension_opts = Types.prepare_extensions(extensions, parameters)
     types = Types.build_types(rows)
     Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
     Postgrex.TypeServer.unlock(ref)

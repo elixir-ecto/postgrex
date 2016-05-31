@@ -22,7 +22,7 @@ defmodule Postgrex.Types do
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
   @doc false
-  def bootstrap_query(m, version) do
+  def bootstrap_query(version) do
     {rngsubtype, join_range} =
       if version >= {9, 2, 0} do
         {"coalesce(r.rngsubtype, 0)",
@@ -41,12 +41,6 @@ defmodule Postgrex.Types do
     )
     FROM pg_type AS t
     #{join_range}
-    WHERE
-      t.typname::text = ANY ((#{sql_array(m.type)})::text[]) OR
-      t.typsend::text = ANY ((#{sql_array(m.send)})::text[]) OR
-      t.typreceive::text = ANY ((#{sql_array(m.receive)})::text[]) OR
-      t.typoutput::text = ANY ((#{sql_array(m.output)})::text[]) OR
-      t.typinput::text = ANY ((#{sql_array(m.input)})::text[])
     """
   end
 
@@ -55,19 +49,6 @@ defmodule Postgrex.Types do
     Enum.into(extensions, HashDict.new, fn {extension, opts} ->
       {extension, extension.init(parameters, opts)}
     end)
-  end
-
-  @doc false
-  def extension_matchers(extensions, extension_opts) do
-    map = %{type: [], send: [], receive: [], output: [], input: []}
-    map =
-      Enum.reduce(extensions, map, fn extension, map ->
-        opts = HashDict.fetch!(extension_opts, extension)
-        Enum.reduce(extension.matching(opts), map, fn {key, value}, map ->
-          Map.update!(map, key, &[value|&1])
-        end)
-      end)
-    Map.update!(map, :send, &(@higher_types ++ &1))
   end
 
   @doc false
@@ -108,8 +89,8 @@ defmodule Postgrex.Types do
       :ets.insert(table, {extension, opts})
     end
 
-    for type_info <- types,
-        extension = find_extension(type_info, extensions, extension_opts, oid_types) do
+    for type_info <- types, type_info != nil do
+      extension = find_extension(type_info, extensions, extension_opts, oid_types)
       :ets.insert(table, {type_info.oid, type_info, extension})
     end
 
@@ -203,11 +184,6 @@ defmodule Postgrex.Types do
     end
   end
 
-  defp sql_array(list) do
-    list = Enum.uniq(list)
-    "ARRAY[" <> Enum.map_join(list, ", ", &("'" <> &1 <> "'")) <> "]"
-  end
-
   ### TYPE FORMAT ###
 
   @doc false
@@ -292,10 +268,12 @@ defmodule Postgrex.Types do
 
   defp fetch!(table, oid) do
     case :ets.lookup(table, oid) do
+      [{_, info, nil}] ->
+        raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
       [value] ->
         value
       [] ->
-        raise ArgumentError, message: "no extension found for oid `#{oid}`"
+        raise ArgumentError, "no extension found for oid `#{oid}`"
     end
   end
 
