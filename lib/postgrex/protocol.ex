@@ -1007,7 +1007,7 @@ defmodule Postgrex.Protocol do
   defp decode_tag("ROLLBACK"),
     do: {:rollback, nil}
   defp decode_tag( :suspended ),
-    do: {:select, nil}
+    do: {:stream, nil}
   defp decode_tag(tag),
     do: decode_tag(tag, "")
 
