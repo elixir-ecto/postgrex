@@ -350,7 +350,7 @@ defmodule Postgrex do
 
   ### options
 
-    * `:max_rows` - maximum numbers of rows backend will result ( default to `#{ @max_rows } )
+    * `:max_rows` - maximum numbers of rows backend will result ( default to `#{ @max_rows }` )
     * `:portal` -  Name of then underlying portal that will hold results, it will be generated unless provided
     * `:pool_timeout` - Time to wait in the queue for the connection (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`)
