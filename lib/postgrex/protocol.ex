@@ -11,9 +11,8 @@ defmodule Postgrex.Protocol do
   @timeout 5000
   @sock_opts [packet: :raw, mode: :binary, active: false]
 
-  defstruct [sock: nil, connection_id: nil, types_ref: nil, types: nil,
-             null: nil, timeout: nil, parameters: %{}, queries: nil,
-             postgres: :idle, buffer: nil]
+  defstruct [sock: nil, connection_id: nil, types: nil, null: nil, timeout: nil,
+             parameters: %{}, queries: nil, postgres: :idle, buffer: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
                              connection_id: pos_integer,
@@ -75,7 +74,6 @@ defmodule Postgrex.Protocol do
 
   @spec disconnect(Exception.t, state) :: :ok
   def disconnect(_, s) do
-    done_types(s)
     sock_close(s)
     _ = recv_buffer(s)
     delete_parameters(s)
@@ -448,11 +446,11 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
-    {result, ref, table} = Postgrex.TypeServer.fetch(types_key)
-    s = %{s | types_ref: ref, types: table}
-    case result do
-      :go   -> reserve_send(s, status, buffer)
-      :lock -> bootstrap_send(s, status, buffer)
+    case Postgrex.TypeServer.fetch(types_key) do
+      {:lock, ref, table} ->
+        bootstrap_send(%{s | types: table}, %{status | types_ref: ref}, buffer)
+      {:go, table} ->
+        reserve_send(%{s | types: table}, status, buffer)
     end
   end
 
@@ -463,8 +461,8 @@ defmodule Postgrex.Protocol do
     case msg_send(s, msg, buffer) do
       :ok ->
         bootstrap_recv(s, status, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
+      {:disconnect, err, s} ->
+        bootstrap_fail(s, err, status)
     end
   end
 
@@ -473,11 +471,12 @@ defmodule Postgrex.Protocol do
       {:ok, msg_row_desc(), buffer} ->
         bootstrap_recv(s, status, [], buffer)
       {:ok, msg_error(fields: fields), buffer} ->
-        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+        err = Postgrex.Error.exception(postgres: fields)
+        bootstrap_fail(s, err, status, buffer)
       {:ok, msg, buffer} ->
         bootstrap_recv(handle_msg(s, status, msg), status, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
+      {:disconnect, err, s} ->
+        bootstrap_fail(s, err, status)
     end
   end
 
@@ -488,17 +487,18 @@ defmodule Postgrex.Protocol do
       {:ok, msg_command_complete(), buffer} ->
         bootstrap_types(s, status, rows, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
-        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+        err = Postgrex.Error.exception(postgres: fields)
+        bootstrap_fail(s, err, status, buffer)
       {:ok, msg, buffer} ->
         bootstrap_recv(handle_msg(s, status, msg), status, rows, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
+      {:disconnect, err, s} ->
+        bootstrap_fail(s, err, status)
     end
   end
 
   defp bootstrap_types(s, status, rows, buffer) do
-    %{types_ref: ref, types: table, parameters: parameters} = s
-    %{extensions: extensions} = status
+    %{types: table, parameters: parameters} = s
+    %{extensions: extensions, types_ref: ref} = status
     extension_keys = Enum.map(extensions, &elem(&1, 0))
     extension_opts = Types.prepare_extensions(extensions, parameters)
     types = Types.build_types(rows)
@@ -518,6 +518,15 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = dis ->
         dis
     end
+  end
+
+  defp bootstrap_fail(s, err, %{types_ref: ref}) do
+    Postgrex.TypeServer.fail(ref)
+    {:disconnect, err, s}
+  end
+
+  defp bootstrap_fail(s, err, status, buffer) do
+    bootstrap_fail(%{s | buffer: buffer}, err, status)
   end
 
   defp reserve_send(s, %{prepare: :unnamed}, buffer) do
@@ -1258,11 +1267,6 @@ defmodule Postgrex.Protocol do
 
   defp setopts(:gen_tcp, sock, opts), do: :inet.setopts(sock, opts)
   defp setopts(:ssl, sock, opts), do: :ssl.setopts(sock, opts)
-
-  defp done_types(%{types_ref: ref}) when is_reference(ref) do
-    Postgrex.TypeServer.done(ref)
-  end
-  defp done_types(_), do: :ok
 
   defp sock_close(%{sock: {mod, sock}}), do: mod.close(sock)
 
