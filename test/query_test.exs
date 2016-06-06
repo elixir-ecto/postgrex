@@ -716,4 +716,18 @@ defmodule QueryTest do
     """, [])
     assert [[1], [2]] = query("SELECT raise_notice_and_return(x) FROM generate_series(1, 2) AS x", [])
   end
+
+  test "too many parameters query disconnects", context do
+    Process.flag(:trap_exit, true)
+    params = 1..0x10000
+    query = ["INSERT INTO uniques VALUES (0)" |
+      (for n <- params, do: [", ($", to_string(n), "::int4)"])]
+    params = Enum.into(params, [])
+
+    capture_log fn ->
+      assert %Postgrex.Error{message: "postgresql protocol can not handle 65536 parameters, the maximum is 65535"} = query(query, params)
+      pid = context[:pid]
+      assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
+    end
+  end
 end

@@ -30,6 +30,7 @@ defmodule Postgrex.Messages do
   defrecord :msg_close, [:type, :name]
   defrecord :msg_parse_complete, []
   defrecord :msg_parameter_desc, [:type_oids]
+  defrecord :msg_too_many_parameters, [:len, :max_len]
   defrecord :msg_row_desc, [:fields]
   defrecord :msg_no_data, []
   defrecord :msg_notify, [:pg_pid, :channel, :payload]
@@ -88,6 +89,16 @@ defmodule Postgrex.Messages do
   def parse(<<len :: uint16, rest :: binary(len, 32)>>, ?t, _size) do
     oids = for <<oid :: size(32) <- rest>>, do: oid
     msg_parameter_desc(type_oids: oids)
+  end
+
+  def parse(<<overflow_len :: uint16, _ :: binary>>, ?t, size) do
+    len = div(size-2, 4)
+    case <<len ::uint16>> do
+      <<^overflow_len :: uint16>> ->
+        msg_too_many_parameters(len: len, max_len: 0xFFFF)
+      _ ->
+        raise "invalid parameter description"
+    end
   end
 
   # row_desc

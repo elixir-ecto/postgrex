@@ -622,6 +622,10 @@ defmodule Postgrex.Protocol do
         query = %Query{query | types: s.types, null: s.null,
                                columns: col_names, decoders: col_oids}
         ok(s, query, buffer)
+      {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
+        msg = "postgresql protocol can not handle #{len} parameters, " <>
+          "the maximum is #{max}"
+        disconnect(s, Postgrex.Error.exception(message: msg), buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
