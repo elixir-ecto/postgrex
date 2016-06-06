@@ -58,7 +58,9 @@ defmodule Postgrex do
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:after_connect` - A function to run on connect, either a 1-arity fun
     called with a connection reference, `{module, function, args}` with the
-    connection reference prepended to `args` or `nil`, (default: `nil`)
+    connection reference prepended to `args` or `nil`, (default: `nil`);
+    * `:idle` - Either `:active` to asynchronously detect TCP disconnects when
+    idle or `:passive` not to (default: `false`);
     * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
     (default: `#{@idle_timeout}`)
     * `:backoff_start` - The first backoff interval when reconnecting (default:
@@ -69,9 +71,9 @@ defmodule Postgrex do
     backoff and to stop (see `:backoff`, default: `:jitter`)
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
-    * `:pool` - The pool module to use, see `DBConnection`, it must be
-    included with all requests if not the default (default:
-    `DBConnection.Connection`);
+    * `:pool` - The pool module to use, see `DBConnection` for pool dependent
+    options, this option must be included with all requests contacting the pool
+    if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding (default: `nil`);
   """

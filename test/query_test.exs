@@ -727,7 +727,7 @@ defmodule QueryTest do
     capture_log fn ->
       assert %Postgrex.Error{message: "postgresql protocol can not handle 65536 parameters, the maximum is 65535"} = query(query, params)
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
+      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{}}}
     end
   end
 end

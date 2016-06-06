@@ -15,7 +15,7 @@ defmodule ClientTest do
     capture_log fn ->
       assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
 
-      assert_receive {:EXIT, ^conn, {:shutdown, :disconnect}}
+      assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end
   end
 
@@ -43,7 +43,7 @@ defmodule ClientTest do
     Process.flag(:trap_exit, true)
     capture_log fn ->
       Process.exit(pid, :shutdown)
-      assert_receive {:EXIT, ^conn, {:shutdown, :disconnect}}
+      assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end
   end
 
