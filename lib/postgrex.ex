@@ -342,28 +342,27 @@ defmodule Postgrex do
   end
 
   @doc """
-  Returns a stream on a prepared query
+  Returns a stream on a prepared query.
 
-  Stream consumes memory in chunks of size `max_rows` at most ( see options )
+  Stream consumes memory in chunks of size `max_rows` at most (see Options).
 
-  This is useful for processing _large_ datasets
+  This is useful for processing _large_ datasets.
 
-  ### options
+  ### Options
 
-    * `:max_rows` - maximum numbers of rows backend will result ( default to `#{ @max_rows }` )
-    * `:portal` -  Name of then underlying portal that will hold results, it will be generated unless provided
+    * `:max_rows` - Maximum numbers of rows backend will result (default to `#{@max_rows}`)
+    * `:portal` - Name of then underlying portal that will hold results, it will be generated unless provided
     * `:pool_timeout` - Time to wait in the queue for the connection (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`)
   """
-  @spec stream( conn, Postgrex.Query.t, list, Keyword.t ) :: Postgrex.Stream.t
-  def stream( conn, query, params, options \\ [] )  do
-	  max_rows = options[ :max_rows ] || @max_rows
-    %Postgrex.Stream{ conn: conn, max_rows: max_rows, options: options, params: params, portal: options[ :portal ], query: query }
+  @spec stream(conn, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
+  def stream(conn, query, params, options \\ [])  do
+    max_rows = options[:max_rows] || @max_rows
+    %Postgrex.Stream{conn: conn, max_rows: max_rows, options: options, params: params, portal: options[:portal], query: query}
   end
 
   ## Helpers
   defp defaults(opts) do
     Keyword.put_new(opts, :timeout, @timeout)
   end
-
 end

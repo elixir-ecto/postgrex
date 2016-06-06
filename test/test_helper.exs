@@ -134,14 +134,9 @@ defmodule Postgrex.TestHelper do
     end
   end
 
-  @doc"""
-  transaction is required when N = number of rows > max_rows
-  otherwise underlying portal dies after execute
-  when N <= max_rows, we CAN skip transaction
-  """
   defmacro stream(query, params, opts \\ []) do
     quote do
-      Postgrex.stream( var!(context)[:pid], unquote(query), unquote(params), unquote(opts) )
+      Postgrex.stream(var!(context)[:pid], unquote(query), unquote(params), unquote(opts))
     end
   end
 
