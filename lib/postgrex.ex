@@ -348,6 +348,8 @@ defmodule Postgrex do
 
   This is useful for processing _large_ datasets.
 
+  A stream SHOULD be wrapped in a transaction or it will fail on the __second__ chunk.
+
   ### Options
 
     * `:max_rows` - Maximum numbers of rows backend will result (default to `#{@max_rows}`)
