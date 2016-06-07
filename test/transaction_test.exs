@@ -389,4 +389,29 @@ defmodule TransactionTest do
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
   end
+
+  @tag mode: :transaction
+  test "read only transaction mode", context do
+    assert transaction(fn(conn) ->
+      assert {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
+       P.query(conn, "insert into uniques values (1), (1);", [])
+     assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+       P.query(conn, "SELECT 42", [])
+      :hi
+    end, [read_only: true]) == {:ok, :hi}
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  @tag prepare: :unnamed
+  test "read only transaction mode with unnamed queries", context do
+    assert transaction(fn(conn) ->
+      assert {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
+       P.query(conn, "insert into uniques values (1), (1);", [])
+     assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+       P.query(conn, "SELECT 42", [])
+      :hi
+    end, [read_only: true]) == {:ok, :hi}
+    assert [[42]] = query("SELECT 42", [])
+  end
 end

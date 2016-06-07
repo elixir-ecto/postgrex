@@ -302,7 +302,18 @@ defmodule Postgrex do
     `start_link/1`, see `DBConnection`;
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
-
+    * `:isolation` - Set the isolation level of the transaction (when the outter
+    transaction and `:mode` is `:transaction`), one of ``:serializable`,
+    `:repeatable_read`, `:read_comitted`, `:read_uncommitted`
+    or `nil`, where `nil` does not set the isolation level (default: `nil`);
+    * `:read_only` - Set whether the transaction is read only (when the outter
+    transaction and `:mode` is `:transaction`): `true` for read only, `false`
+    for read and write or `nil`, where `nil` does not set the read or write
+    access of the transaction (default: `nil`)
+    * `:deferrable` - Set whether the transaction is deferrable (when the outter
+    transaction and `:mode` is `:transaction`): `true` for deferrable,
+    `false` for not deferrable or `nil`, where `nil` does set whether the
+    transaction is deferrable (default: `nil`);
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
