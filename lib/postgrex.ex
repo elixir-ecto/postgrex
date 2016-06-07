@@ -24,6 +24,7 @@ defmodule Postgrex do
   @pool_timeout 5000
   @timeout 5000
   @idle_timeout 5000
+  @max_rows 500
 
   ### PUBLIC API ###
 
@@ -347,8 +348,29 @@ defmodule Postgrex do
     DBConnection.child_spec(Postgrex.Protocol, opts)
   end
 
-  ## Helpers
+  @doc """
+  Returns a stream on a prepared query.
 
+  Stream consumes memory in chunks of size `max_rows` at most (see Options).
+
+  This is useful for processing _large_ datasets.
+
+  A stream SHOULD be wrapped in a transaction or it will fail on the __second__ chunk.
+
+  ### Options
+
+    * `:max_rows` - Maximum numbers of rows backend will result (default to `#{@max_rows}`)
+    * `:portal` - Name of then underlying portal that will hold results, it will be generated unless provided
+    * `:pool_timeout` - Time to wait in the queue for the connection (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`)
+  """
+  @spec stream(conn, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
+  def stream(conn, query, params, options \\ [])  do
+    max_rows = options[:max_rows] || @max_rows
+    %Postgrex.Stream{conn: conn, max_rows: max_rows, options: options, params: params, portal: options[:portal], query: query}
+  end
+
+  ## Helpers
   defp defaults(opts) do
     Keyword.put_new(opts, :timeout, @timeout)
   end

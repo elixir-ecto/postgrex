@@ -134,6 +134,12 @@ defmodule Postgrex.TestHelper do
     end
   end
 
+  defmacro stream(query, params, opts \\ []) do
+    quote do
+      Postgrex.stream(var!(context)[:pid], unquote(query), unquote(params), unquote(opts))
+    end
+  end
+
   defmacro close(query, opts \\ []) do
     quote do
       case Postgrex.close(var!(context)[:pid], unquote(query),
