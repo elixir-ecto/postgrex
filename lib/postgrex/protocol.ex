@@ -236,11 +236,13 @@ defmodule Postgrex.Protocol do
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error | :disconnect, Postgrex.Error.t, state}
-  def handle_commit(opts, s) do
+  def handle_commit(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction ->
         statement = "COMMIT"
         handle_transaction(statement, :idle, :commit, opts, s)
+      :savepoint when postgres == :failed ->
+        handle_rollback(opts, s)
       :savepoint ->
         statement = "RELEASE SAVEPOINT postgrex_savepoint"
         handle_savepoint([statement, :sync], :release, opts, s)
