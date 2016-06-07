@@ -9,7 +9,7 @@ defmodule TransactionTest do
         :transaction -> :strict
         :savepoint   -> :naive
       end
-    opts = [ database: "postgrex_test", transactions: transactions,
+    opts = [ database: "postgrex_test", transactions: transactions, idle: :active,
              backoff_type: :stop, prepare: context[:prepare] || :named]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
@@ -44,10 +44,10 @@ defmodule TransactionTest do
     Process.flag(:trap_exit, true)
 
     capture_log fn ->
-      assert (%Postgrex.Error{message: "unexpected postgres status: transaction"}) = query("BEGIN", [])
+      assert (%Postgrex.Error{message: "unexpected postgres status: transaction"} = err) = query("BEGIN", [])
 
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
+      assert_receive {:EXIT, ^pid, {:shutdown, ^err}}
     end
   end
 
@@ -57,11 +57,11 @@ defmodule TransactionTest do
 
     assert transaction(fn(conn) ->
       capture_log fn ->
-        assert {:error, %Postgrex.Error{message: "unexpected postgres status: idle"}} =
+        assert {:error, %Postgrex.Error{message: "unexpected postgres status: idle"} = err} =
           P.query(conn, "ROLLBACK", [])
 
         pid = context[:pid]
-        assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
+        assert_receive {:EXIT, ^pid, {:shutdown, ^err}}
       end
       :hi
     end) == {:error, :rollback}
@@ -77,7 +77,11 @@ defmodule TransactionTest do
         %{conn | mod_state: %{mod | state: %{state | postgres: :transaction}}}
       end)
     capture_log fn ->
-      assert {{:shutdown, :disconnect}, _} = catch_exit(query("SELECT 42", []))
+      assert {{:shutdown,
+          %Postgrex.Error{message: "unexpected postgres status: transaction"} = err}, _} =
+        catch_exit(query("SELECT 42", []))
+
+      assert_receive {:EXIT, ^pid, {:shutdown, ^err}}
     end
   end
 
@@ -94,7 +98,8 @@ defmodule TransactionTest do
         fn(%{mod_state: %{state: state} = mod} = conn) ->
           %{conn | mod_state: %{mod | state: %{state | postgres: :transaction}}}
         end)
-      assert_receive {:EXIT, ^pid, {:shutdown, :disconnect}}
+      assert_receive {:EXIT, ^pid, {:shutdown,
+          %Postgrex.Error{message: "unexpected postgres status: transaction"}}}
     end
   end
 

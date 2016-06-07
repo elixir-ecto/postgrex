@@ -26,7 +26,7 @@ defmodule Postgrex.Mixfile do
     [{:ex_doc, "~> 0.11", only: :dev},
      {:earmark, "~> 0.1", only: :dev},
      {:decimal, "~> 1.0"},
-     {:db_connection, "~> 0.2"},
+     {:db_connection, "~> 1.0.0-dev", github: "fishcakez/db_connection", branch: "master"},
      {:connection, "~> 1.0"}]
   end
 

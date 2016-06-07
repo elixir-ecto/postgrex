@@ -58,7 +58,9 @@ defmodule Postgrex do
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:after_connect` - A function to run on connect, either a 1-arity fun
     called with a connection reference, `{module, function, args}` with the
-    connection reference prepended to `args` or `nil`, (default: `nil`)
+    connection reference prepended to `args` or `nil`, (default: `nil`);
+    * `:idle` - Either `:active` to asynchronously detect TCP disconnects when
+    idle or `:passive` not to (default: `false`);
     * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
     (default: `#{@idle_timeout}`)
     * `:backoff_start` - The first backoff interval when reconnecting (default:
@@ -69,9 +71,9 @@ defmodule Postgrex do
     backoff and to stop (see `:backoff`, default: `:jitter`)
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
-    * `:pool` - The pool module to use, see `DBConnection`, it must be
-    included with all requests if not the default (default:
-    `DBConnection.Connection`);
+    * `:pool` - The pool module to use, see `DBConnection` for pool dependent
+    options, this option must be included with all requests contacting the pool
+    if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding (default: `nil`);
   """
@@ -116,11 +118,13 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    case DBConnection.query(conn, query, params, defaults(opts)) do
+    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+      {:ok, _, result} ->
+        {:ok, result}
       {:error, %ArgumentError{} = err} ->
         raise err
-      other ->
-        other
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -131,7 +135,8 @@ defmodule Postgrex do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    DBConnection.query!(conn, query, params, defaults(opts))
+    {_, result} = DBConnection.prepare_execute!(conn, query, params, defaults(opts))
+    result
   end
 
   @doc """
@@ -344,7 +349,7 @@ defmodule Postgrex do
   """
   @spec child_spec(Keyword.t) :: Supervisor.Spec.spec
   def child_spec(opts) do
-    opts = Postgrex.Utils.default_opts(opts)
+    opts = [types: true] ++ Postgrex.Utils.default_opts(opts)
     DBConnection.child_spec(Postgrex.Protocol, opts)
   end
 
