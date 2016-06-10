@@ -81,6 +81,9 @@ defmodule Postgrex.Protocol do
 
   @spec ping(state) ::
     {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+  def ping(%{postgres: :transaction, transactions: :strict} = s) do
+    sync_error(s, :transaction)
+  end
   def ping(%{buffer: buffer} = s) do
     status = %{notify: notify([]), mode: :transaction}
     s = %{s | buffer: nil}
