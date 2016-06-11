@@ -689,10 +689,10 @@ defmodule QueryTest do
 
   test "raise when trying to prepare or close reserved query", context do
     assert_raise ArgumentError, ~r/uses reserved name/,
-      fn -> prepare("POSTGREX BEGIN", "COMMIT") end
+      fn -> prepare("POSTGREX_BEGIN", "COMMIT") end
 
     query = prepare("BEGIN", "BEGIN")
-    query = %Postgrex.Query{query | name: "POSTGREX BEGIN"}
+    query = %Postgrex.Query{query | name: "POSTGREX_BEGIN"}
 
     assert_raise ArgumentError, ~r/uses reserved name/, fn -> close(query) end
   end

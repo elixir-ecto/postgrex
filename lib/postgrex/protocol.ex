@@ -28,7 +28,16 @@ defmodule Postgrex.Protocol do
                              buffer: nil | binary | :active_once}
   @type notify :: ((binary, binary) -> any)
 
-  @reserved_prefix "POSTGREX "
+  @reserved_prefix "POSTGREX_"
+  @reserved_queries ["BEGIN",
+                     "COMMIT",
+                     "ROLLBACK",
+                     "SAVEPOINT postgrex_savepoint",
+                     "RELEASE SAVEPOINT postgrex_savepoint",
+                     "ROLLBACK TO SAVEPOINT postgrex_savepoint",
+                     "SAVEPOINT postgrex_query",
+                     "RELEASE SAVEPOINT postgrex_query",
+                     "ROLLBACK TO SAVEPOINT postgrex_query"]
 
   @spec connect(Keyword.t) ::
     {:ok, state} | {:error, Postgrex.Error.t}
@@ -202,7 +211,8 @@ defmodule Postgrex.Protocol do
   def handle_begin(opts, s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction ->
-        handle_transaction(begin_statement(opts), :transaction, :begin, opts, s)
+        statement = "BEGIN"
+        handle_transaction(statement, :transaction, :begin, opts, s)
       :savepoint   ->
         statement = "SAVEPOINT postgrex_savepoint"
         handle_savepoint([statement, :sync], :savepoint, opts, s)
@@ -518,8 +528,7 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
   defp reserve_send(s, %{prepare: :named} = status, buffer) do
-    %{parameters: parameters} = s
-    case msg_send(s, reserve_msgs(parameters) ++ [msg_sync()], buffer) do
+    case msg_send(s, reserve_msgs() ++ [msg_sync()], buffer) do
       :ok ->
         reserve_recv(s, status, buffer)
       {:disconnect, _, _} = dis ->
@@ -527,9 +536,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reserve_msgs(parameters) do
-    for statement <- transaction_statements(parameters) do
-      name = [@reserved_prefix | statement]
+  defp reserve_msgs() do
+    for statement <- @reserved_queries do
+      name = @reserved_prefix <> statement
       msg_parse(name: name, statement: statement, type_oids: [])
     end
   end
@@ -911,69 +920,6 @@ defmodule Postgrex.Protocol do
   end
 
   ## transaction
-
-  defp transaction_statements(parameters) do
-    begin_statements(parameters) ++
-    ["COMMIT",
-     "ROLLBACK",
-     "SAVEPOINT postgrex_savepoint",
-     "RELEASE SAVEPOINT postgrex_savepoint",
-     "ROLLBACK TO SAVEPOINT postgrex_savepoint",
-     "SAVEPOINT postgrex_query",
-     "RELEASE SAVEPOINT postgrex_query",
-     "ROLLBACK TO SAVEPOINT postgrex_query"]
-  end
-
-  defp begin_statements(parameters) do
-    isolations = [:serializable, :repeatable_read, :read_committed,
-                  :read_uncommitted, nil]
-    for deferrable <- defferable_modes(parameters),
-        isolation <- isolations,
-        read_only <- [true, false, nil] do
-          opts = [deferrable: deferrable, isolation: isolation,
-                  read_only: read_only]
-          begin_statement(opts)
-    end
-  end
-
-  defp defferable_modes(parameters) do
-    version = Postgrex.Utils.parse_version(parameters["server_version"])
-    if version >= {9, 1, 0} do
-      [true, false, nil]
-    else
-      [nil]
-    end
-  end
-
-  defp begin_statement(opts) do
-    ["BEGIN", isolation_mode(opts), read_mode(opts) | deferrable_mode(opts)]
-  end
-
-  defp isolation_mode(opts) do
-    case opts[:isolation] do
-      :serializable     -> " ISOLATION LEVEL SERIALIZABLE"
-      :repeatable_read  -> " ISOLATION LEVEL REPEATABLE READ"
-      :read_committed   -> " ISOLATION LEVEL READ COMMITTED"
-      :read_uncommitted -> " ISOLATION LEVEL READ UNCOMMITTED"
-      nil               -> ""
-    end
-  end
-
-  defp read_mode(opts) do
-    case opts[:read_only] do
-      true  -> " READ ONLY";
-      false -> " READ WRITE";
-      nil   -> ""
-    end
-  end
-
-  defp deferrable_mode(opts) do
-    case opts[:deferrable] do
-      true  -> " DEFERRABLE"
-      false -> " NOT DEFERRABLE"
-      nil   -> ""
-    end
-  end
 
   defp handle_transaction(name, next_postgres, cmd, opts, s) do
     %{connection_id: connection_id, buffer: buffer} = s
