@@ -756,4 +756,20 @@ defmodule QueryTest do
       assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
     end
   end
+
+  test "COPY FROM STDIN returns error", context do
+    assert %Postgrex.Error{postgres: %{code: :query_canceled}} =
+      query("COPY uniques FROM STDIN", [])
+  end
+
+  test "COPY TO STDOUT raises", context do
+    Process.flag(:trap_exit, true)
+
+    capture_log fn() ->
+      assert_raise ArgumentError, ~r"trying to copy but it is not supported",
+        fn() -> query("COPY uniques TO STDOUT", []) end
+      pid = context[:pid]
+      assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
+    end
+  end
 end
