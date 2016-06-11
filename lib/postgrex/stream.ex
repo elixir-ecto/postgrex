@@ -19,16 +19,24 @@ defimpl Enumerable, for: Postgrex.Stream do
   defp next(%Postgrex.Stream{state: :done} = stream) do
     {:halt, stream}
   end
-  defp next(%Postgrex.Stream{conn: conn, params: params, options: options} = stream) do
-    %Postgrex.Stream{result: result} = stream = Postgrex.execute!(conn, stream, params, options)
-    emit_or_next(stream, result)
-  end
-  defp close(%Postgrex.Stream{conn: conn} = stream) do
-    DBConnection.close(conn, stream)
+  defp next(stream) do
+    %Postgrex.Stream{conn: conn, params: params, options: options,
+                     state: state} = stream
+    case Postgrex.execute!(conn, stream, params, options) do
+      %Postgrex.Result{command: :stream} = result when state == nil ->
+        {[result], %Postgrex.Stream{stream | state: :suspended}}
+      %Postgrex.Result{command: :stream} = result when state == :suspended ->
+        {[result], stream}
+      %Postgrex.Result{rows: []} ->
+        {:halt, %Postgrex.Stream{stream | state: :done}}
+      %Postgrex.Result{} = result ->
+        {[result], %Postgrex.Stream{stream | state: :done}}
+    end
   end
 
-  defp emit_or_next(stream, %Postgrex.Result{rows: []}), do: next(stream)
-  defp emit_or_next(stream, result),                     do: {[result], stream}
+  defp close(%Postgrex.Stream{conn: conn, options: options} = stream) do
+    DBConnection.close(conn, stream, options)
+  end
 
   defp maybe_generate_portal(%Postgrex.Stream{portal: nil} = stream),
     do: %Postgrex.Stream{stream | portal: :erlang.ref_to_list(make_ref())}
@@ -37,12 +45,12 @@ defimpl Enumerable, for: Postgrex.Stream do
 end
 
 defimpl DBConnection.Query, for: Postgrex.Stream do
-  def parse(_query, _opts) do
-    raise "can not prepare stream"
+  def parse(stream, _) do
+    raise "can not prepare #{inspect stream}"
   end
 
-  def describe(%Postgrex.Stream{query: query} = stream, opts) do
-    %Postgrex.Stream{stream | query: DBConnection.Query.describe(query, opts)}
+  def describe(stream, _) do
+    raise "can not describe #{inspect stream}"
   end
 
   def encode(%Postgrex.Stream{query: query, state: nil}, params, opts) do
@@ -53,9 +61,8 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
     params
   end
 
-  def decode(%Postgrex.Stream{query: query}, %Postgrex.Stream{result: result} = stream, opts) do
-    result = DBConnection.Query.decode(query, result, opts)
-    %Postgrex.Stream{stream | result: result}
+  def decode(%Postgrex.Stream{query: query}, result, opts) do
+    DBConnection.Query.decode(query, result, opts)
   end
 end
 

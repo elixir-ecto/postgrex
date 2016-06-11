@@ -28,23 +28,24 @@ defmodule StreamTest do
     end)
   end
 
-  # this happens when number_of_rows % max_rows == 0
-  # last chunk is empty
-  #
-  test "latest empty chunk is not emitted", context do
-    query = prepare("", "SELECT * FROM generate_series(1, 3)")
+  test "results contain num rows and no final chunk with empty rows", context do
+    query = prepare("", "SELECT * FROM generate_series(1, 2)")
     transaction(fn(conn) ->
-           assert [[[1]], [[2]], [[3]]] = Postgrex.stream(conn, query, [], max_rows: 1)
-        |> Stream.map(fn(%Result{rows: rows}) -> rows end)
+      assert [%{command: :stream, rows: [[1]], num_rows: 1},
+              %{command: :stream, rows: [[2]], num_rows: 1}] =
+        Postgrex.stream(conn, query, [], max_rows: 1)
+        |> Enum.to_list()
+
+      assert [%{command: :stream, rows: [[1], [2]], num_rows: 2}] =
+        Postgrex.stream(conn, query, [], max_rows: 2)
+        |> Enum.to_list()
+
+      assert [%{command: :select, rows: [[1], [2]], num_rows: 2}] =
+        Postgrex.stream(conn, query, [], max_rows: 3)
         |> Enum.to_list()
     end)
   end
 
-  # actual characterization
-  # see [50.2.3. Extended Query](http://www.postgresql.org/docs/9.5/static/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY)
-  # >
-  # > Named portals must be explicitly closed before they can be redefined by another Bind message
-  # >
   test "rebind named portal fails", context do
     query = prepare("", "SELECT 42")
     transaction(fn(conn) ->

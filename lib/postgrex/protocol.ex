@@ -858,7 +858,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_command_complete(tag: tag), buffer} ->
         complete(s, status, query, rows, tag, buffer)
       {:ok, msg_portal_suspend(), buffer} ->
-        complete(s, status, query, rows, :suspended, buffer)
+        suspend(s, status, query, rows, buffer)
       {:ok, msg, buffer} ->
         execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
@@ -866,14 +866,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp complete(s, status, %Postgrex.Stream{query: query} = stream, rows, tag, buffer) do
-    case complete(s, status, query, rows, tag, buffer) do
-      {:ok, result, state} -> {:ok, %Postgrex.Stream{stream |
-        result: result, state: decode_stream_state(tag)}, state}
-      err -> err
-    end
-  end
-  defp complete(%{connection_id: connection_id} = s, status, query, rows, tag, buffer) do
+  defp complete(s, status, %Query{} = query, rows, tag, buffer) do
+    %{connection_id: connection_id} = s
     {command, nrows} = decode_tag(tag)
     %Query{columns: cols} = query
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
@@ -887,9 +881,20 @@ defmodule Postgrex.Protocol do
                               rows: rows, columns: cols, connection_id: connection_id}
     sync_recv(s, status, result, buffer)
   end
+  defp complete(s, status, stream, rows, tag, buffer) do
+    %Postgrex.Stream{query: query} = stream
+    complete(s, status, query, rows, tag, buffer)
+  end
 
-  defp decode_stream_state(:suspended), do: :suspended
-  defp decode_stream_state(_),          do: :done
+  defp suspend(s, status, stream, rows, buffer) do
+    %{connection_id: connection_id} = s
+    %Postgrex.Stream{query: %Query{columns: cols}} = stream
+
+    result = %Postgrex.Result{command: :stream, num_rows: length(rows),
+                              rows: rows, columns: cols,
+                              connection_id: connection_id}
+    sync_recv(s, status, result, buffer)
+  end
 
   defp copy_fail_send(s, status, err, buffer) do
     msg = Exception.message(err)
@@ -1130,8 +1135,6 @@ defmodule Postgrex.Protocol do
     do: {:commit, nil}
   defp decode_tag("ROLLBACK"),
     do: {:rollback, nil}
-  defp decode_tag(:suspended),
-    do: {:stream, nil}
   defp decode_tag(tag),
     do: decode_tag(tag, "")
 
