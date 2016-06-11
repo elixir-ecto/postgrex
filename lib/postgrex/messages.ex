@@ -44,6 +44,12 @@ defmodule Postgrex.Messages do
   defrecord :msg_data_row, [:values]
   defrecord :msg_command_complete, [:tag]
   defrecord :msg_empty_query, []
+  defrecord :msg_copy_data, [:data]
+  defrecord :msg_copy_done, []
+  defrecord :msg_copy_fail, [:message]
+  defrecord :msg_copy_in_response, [:format, :columns]
+  defrecord :msg_copy_both_response, [:format, :columns]
+  defrecord :msg_copy_out_response, [:format, :columns]
   defrecord :msg_terminate, []
   defrecord :msg_ssl_request, []
 
@@ -174,6 +180,39 @@ defmodule Postgrex.Messages do
     msg_empty_query()
   end
 
+  # msg_copy_data
+  def parse(data, ?d, _size) do
+    msg_copy_data(data: data)
+  end
+
+  # msg_copy_done
+  def parse(_rest, ?c, _size) do
+    msg_copy_done()
+  end
+
+  # msg_copy_fail
+  def parse(message, ?f, _size) do
+    msg_copy_fail(message: message)
+  end
+
+  # msg_copy_in_response
+  def parse(rest, ?G, _size) do
+    {format, columns} = decode_copy(rest)
+    msg_copy_in_response(format: format, columns: columns)
+  end
+
+  # msg_copy_out_response
+  def parse(rest, ?H, _size) do
+    {format, columns} = decode_copy(rest)
+    msg_copy_out_response(format: format, columns: columns)
+  end
+
+  # msg_copy_both_response
+  def parse(rest, ?W, _size) do
+    {format, columns} = decode_copy(rest)
+    msg_copy_both_response(format: format, columns: columns)
+  end
+
   ### encoders ###
 
   def encode_msg(msg) do
@@ -269,6 +308,11 @@ defmodule Postgrex.Messages do
     {nil, <<1234 :: int16, 5679 :: int16>>}
   end
 
+  # copy_fail
+  defp encode(msg_copy_fail(message: msg)) do
+    {?f, [msg, 0]}
+  end
+
   ### encode helpers ###
 
   defp format(:text),   do: 0
@@ -315,4 +359,13 @@ defmodule Postgrex.Messages do
     def decode_field_type(unquote(char)), do: unquote(field)
   end)
   def decode_field_type(_), do: :unknown
+
+  defp decode_format(0), do: :text
+  defp decode_format(1), do: :binary
+
+  defp decode_copy(<<format::int8, len::uint16, rest::binary(len, 16)>>) do
+    format = decode_format(format)
+    columns = for <<column::uint16 <- rest>>, do: decode_format(column)
+    {format, columns}
+  end
 end

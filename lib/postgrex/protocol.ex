@@ -836,6 +836,14 @@ defmodule Postgrex.Protocol do
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
+      {:ok, msg_copy_in_response(), buffer} ->
+        msg = "query #{inspect query} is trying to copying but it is not supported"
+        err = ArgumentError.exception(msg)
+        copy_fail_send(s, status, err, buffer)
+      {:ok, msg_copy_out_response(), buffer} ->
+        copy_out_disconnect(s, query, buffer)
+      {:ok, msg_copy_both_response(), buffer} ->
+        copy_out_disconnect(s, query, buffer)
       {:ok, msg, buffer} ->
         execute_recv(handle_msg(s, status, msg), status, query, buffer)
       {:disconnect, _, _} = dis ->
@@ -882,6 +890,30 @@ defmodule Postgrex.Protocol do
 
   defp decode_stream_state(:suspended), do: :suspended
   defp decode_stream_state(_),          do: :done
+
+  defp copy_fail_send(s, status, err, buffer) do
+    msg = Exception.message(err)
+    messages = [msg_copy_fail(message: msg), msg_sync()]
+    send_and_recv(s, status, err, buffer, messages, &copy_fail_recv/4)
+  end
+
+  defp copy_fail_recv(s, status, err, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        do_sync_recv(s, status, err, buffer)
+      {:ok, msg, buffer} ->
+        copy_fail_recv(handle_msg(s, status, msg), status, err, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp copy_out_disconnect(s, query, buffer) do
+    msg = "query #{inspect query} is trying to copy but it is not supported"
+    err = ArgumentError.exception(msg)
+    {:disconnect, err, %{s | buffer: buffer}}
+  end
 
   ## close
   defp close(s, status, %Query{name: name} = query, result, buffer) do
