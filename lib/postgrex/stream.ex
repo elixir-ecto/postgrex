@@ -45,8 +45,12 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
     %Postgrex.Stream{stream | query: DBConnection.Query.describe(query, opts)}
   end
 
-  def encode(%Postgrex.Stream{query: query}, params, opts) do
+  def encode(%Postgrex.Stream{query: query, state: nil}, params, opts) do
     DBConnection.Query.encode(query, params, opts)
+  end
+
+  def encode(%Postgrex.Stream{state: :suspended}, params, _) do
+    params
   end
 
   def decode(%Postgrex.Stream{query: query}, %Postgrex.Stream{result: result} = stream, opts) do
