@@ -701,7 +701,7 @@ defmodule QueryTest do
     query = prepare("", "BEGIN")
 
     assert_raise ArgumentError, ~r/uses reserved name/,
-      fn -> execute(%{query | name: "POSTGREX COMMIT"}, []) end
+      fn -> execute(%{query | name: "POSTGREX_COMMIT"}, []) end
   end
 
   test "query struct interpolates to statement" do

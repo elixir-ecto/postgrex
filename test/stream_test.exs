@@ -165,7 +165,7 @@ defmodule StreamTest do
     query = prepare("", "BEGIN")
 
     assert_raise ArgumentError, ~r/uses reserved name/,
-      fn -> stream(%{query | name: "POSTGREX COMMIT"}, []) |> Enum.take(1) end
+      fn -> stream(%{query | name: "POSTGREX_COMMIT"}, []) |> Enum.take(1) end
   end
 
   test "stream struct interpolates to statement", context do
