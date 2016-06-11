@@ -633,7 +633,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, " <>
           "the maximum is #{max}"
-        disconnect(s, Postgrex.Error.exception(message: msg), buffer)
+        err = ArgumentError.exception(message: msg)
+        {:disconnect, err, %{s | buffer: buffer}}
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->

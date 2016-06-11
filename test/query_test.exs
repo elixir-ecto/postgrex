@@ -749,9 +749,11 @@ defmodule QueryTest do
     params = Enum.into(params, [])
 
     capture_log fn ->
-      assert %Postgrex.Error{message: "postgresql protocol can not handle 65536 parameters, the maximum is 65535"} = query(query, params)
+      assert_raise ArgumentError,
+        "postgresql protocol can not handle 65536 parameters, the maximum is 65535",
+        fn() -> query(query, params) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{}}}
+      assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
     end
   end
 end
