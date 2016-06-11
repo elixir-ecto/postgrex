@@ -11,22 +11,20 @@ defmodule StreamTest do
   end
 
   test "MAY take part of stream", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q} = Postgrex.prepare(conn, "", "SELECT * FROM generate_series(1, 3)")
-
-      assert [[[1]]] == Postgrex.stream(conn, q, [], max_rows: 1)
-        |> Stream.map(fn (%Result{rows: rows}) -> rows end)
+    query = prepare("", "SELECT * FROM generate_series(1, 3)")
+    transaction(fn(conn) ->
+      assert [[[1]]] = Postgrex.stream(conn, query, [], max_rows: 1)
+        |> Stream.map(fn(%Result{rows: rows}) -> rows end)
         |> Enum.take(1)
     end)
   end
 
   test "streams query in chunks", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q} = Postgrex.prepare(conn, "", "SELECT * FROM generate_series(1, 3)")
-
-      assert [[[1], [2]], [[3]]] == Postgrex.stream(conn, q, [], max_rows: 2)
-        |> Stream.map(fn (%{rows: rows}) -> rows end)
-        |> Enum.to_list
+    query = prepare("", "SELECT * FROM generate_series(1, 3)")
+    transaction(fn(conn) ->
+      assert [[[1], [2]], [[3]]] = Postgrex.stream(conn, query, [], max_rows: 2)
+        |> Stream.map(fn(%Result{rows: rows}) -> rows end)
+        |> Enum.to_list()
     end)
   end
 
@@ -34,12 +32,11 @@ defmodule StreamTest do
   # last chunk is empty
   #
   test "latest empty chunk is not emitted", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q} = Postgrex.prepare(conn, "", "SELECT * FROM generate_series(1, 3)")
-
-      assert [[[1]], [[2]], [[3]]] == Postgrex.stream(conn, q, [], max_rows: 1)
-        |> Stream.map(fn (%{rows: rows}) -> rows end)
-        |> Enum.to_list
+    query = prepare("", "SELECT * FROM generate_series(1, 3)")
+    transaction(fn(conn) ->
+           assert [[[1]], [[2]], [[3]]] = Postgrex.stream(conn, query, [], max_rows: 1)
+        |> Stream.map(fn(%Result{rows: rows}) -> rows end)
+        |> Enum.to_list()
     end)
   end
 
@@ -49,105 +46,148 @@ defmodule StreamTest do
   # > Named portals must be explicitly closed before they can be redefined by another Bind message
   # >
   test "rebind named portal fails", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q} = Postgrex.prepare(conn, "", "SELECT 42")
-      stream = %Postgrex.Stream{portal: "E2MANY", query: q}
+    query = prepare("", "SELECT 42")
+    transaction(fn(conn) ->
+      stream = Postgrex.stream(conn, query, [])
+      stream = %Postgrex.Stream{stream | portal: "E2MANY"}
 
-      assert {:ok, _} = Postgrex.execute(conn, stream, [])
-      assert {:error, %{postgres: %{code: :duplicate_cursor}}} = Postgrex.execute(conn, stream, [])
+      _ = for _ <- stream do
+        assert_raise Postgrex.Error, ~r"ERROR \(duplicate_cursor\)",
+          fn() -> Enum.take(stream, 1) end
+      end
     end)
   end
 
-  # TODO fragile test
-  # the portal name is hidden in stream state, there is no function to act on it (ie `execute(portal, 500)`)
-  # code may use a unique name and still not close the portal
-  #
-  # I added a test seam in stream : when given a portal name, it will use it
-  # otherwise, stream generate an _unique_ name
-  #
-  # another option would be to pass the portal to emitted result AND be able to
-  test "stream closes named portal", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q} = Postgrex.prepare(conn, "", "SELECT 42")
-      stream = Postgrex.stream(conn, q, [], portal: "P")
+  test "stream closes named portal ", context do
+    query = prepare("", "SELECT 42")
 
-      assert [%{rows: [[42]]}] = stream |> Enum.take(1)
-      assert [%{rows: [[42]]}] = stream |> Enum.take(1)
+    transaction(fn(conn) ->
+      stream = Postgrex.stream(conn, query, [])
+      stream = %Postgrex.Stream{stream | portal: "CLOSES"}
+
+      assert [%Result{rows: [[42]]}] = stream |> Enum.take(1)
+      assert [%Result{rows: [[42]]}] = stream |> Enum.take(1)
     end)
   end
 
-  test "stream a closed query is ok (parse again)", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q42} = Postgrex.prepare(conn, "S42", "SELECT 42")
-      assert Postgrex.close(conn, q42) == :ok
-
-      assert [%{rows: [[42]]}] = Postgrex.stream(conn, q42, []) |> Enum.take(1)
+  test "prepare, stream and close", context do
+    query = prepare("S42", "SELECT 42")
+    transaction(fn(conn) ->
+      assert [%Result{rows: [[42]]}] = Postgrex.stream(conn, query, []) |> Enum.take(1)
+      assert [%Result{rows: [[42]]}] = Postgrex.stream(conn, query, []) |> Enum.take(1)
+      assert Postgrex.close(conn, query) == :ok
     end)
   end
 
-  test "stream a reopened statement raises", context do
-    assert {:ok, _} = transaction(fn(conn) ->
-      assert {:ok, q42} = Postgrex.prepare(conn, "ENOENT", "SELECT 42")
-      assert Postgrex.close(conn, q42) == :ok
-
-      assert {:ok, _} = Postgrex.prepare(conn, "ENOENT", "SELECT 41")
-
-      err = assert_raise(Postgrex.Error, fn -> Postgrex.stream(conn, q42, []) |> Enum.take(1) end)
-      assert %Postgrex.Error{postgres: %{code: :duplicate_prepared_statement}} = err
-
+  test "prepare query and stream different query with same name raises", context do
+    query = prepare("ENOENT", "SELECT 42")
+    :ok = close(query)
+    _ = prepare("ENOENT", "SELECT 41")
+    transaction(fn(conn) ->
+      assert_raise Postgrex.Error, ~r"ERROR \(duplicate_prepared_statement\)",
+        fn -> Postgrex.stream(conn, query, []) |> Enum.take(1) end
     end)
   end
 
-  test "can stream prepared query on another connection", context do
-    q = prepare("S42", "SELECT 42")
+  test "prepare, close and stream", context do
+    query = prepare("S42", "SELECT 42")
+    :ok = close(query)
+    transaction(fn(conn) ->
+      assert [%Result{rows: [[42]]}] = Postgrex.stream(conn, query, []) |> Enum.take(1)
+    end)
+  end
+
+  @tag prepare: :unnamed
+  test "stream named is unnamed when named not allowed", context do
+    assert (%Postgrex.Query{name: ""} = query) = prepare("42", "SELECT 42")
+    assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
+    assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
+    assert :ok = close(query)
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "stream query prepared query on another connection", context do
+    query = prepare("S42", "SELECT 42")
 
     {:ok, pid2} = Postgrex.start_link(context[:options])
-    assert [%{rows: [[42]]}] = Postgrex.stream(pid2, q, []) |> Enum.take(1)
+    assert [%Result{rows: [[42]]}] = Postgrex.stream(pid2, query, []) |> Enum.take(1)
+    assert {:ok, %Result{rows: [[41]]}} = Postgrex.query(pid2, "SELECT 41", [])
+  end
+
+  test "raise when executing prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++ context[:options])
+
+    assert_raise ArgumentError, ~r"invalid types for the connection",
+      fn() -> Postgrex.stream(pid2, query, []) |> Enum.take(1) end
   end
 
   test "connection works after failure in binding state", context do
-    q = prepare("S42", "insert into uniques values (CAST($1::text AS int))")
+    query = prepare("", "insert into uniques values (CAST($1::text AS int))")
 
-    err = assert_raise(Postgrex.Error, fn -> stream(q, ["EBADF"]) |> Enum.take(1) end)
-    assert %Postgrex.Error{postgres: %{code: :invalid_text_representation}} = err
+    assert_raise Postgrex.Error, ~r"ERROR \(invalid_text_representation\)",
+      fn -> stream(query, ["EBADF"]) |> Enum.take(1) end
 
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "prepared query q1 is reusable after execution of q2", context do
-    q = prepare("41", "SELECT 41")
+  test "connection works after failure in executing state", context do
+    query = prepare("", "insert into uniques values (1), (1)")
+
+    assert_raise Postgrex.Error, ~r"ERROR \(unique_violation\)",
+      fn -> stream(query, []) |> Enum.take(1) end
+
     assert [[42]] = query("SELECT 42", [])
-    assert [%{rows: [[41]]}] = stream(q, []) |> Enum.take(1)
   end
 
-  test "connection reuses prepared query after failure in executing state", context do
-    q1 = prepare("41", "SELECT 41")
-    q2 = prepare(  "", "insert into uniques values (1), (1)")
-
-    err = assert_raise(Postgrex.Error, fn -> stream(q2, []) |> Enum.take(1) end)
-    assert %Postgrex.Error{postgres: %{code: :unique_violation}} = err
-
-    assert [%{rows: [[41]]}] = stream(q1, []) |> Enum.take(1)
+  test "connection reuses prepared query after query", context do
+    query = prepare("", "SELECT 41")
+    assert [[42]] = query("SELECT 42", [])
+    assert [%Result{rows: [[41]]}] = stream(query, []) |> Enum.take(1)
   end
 
-  test "prepares unnamed query again when statement changed", context do
-		q1 = prepare("", "SELECT 41")
-    q2 = prepare("", "SELECT 42")
-    assert [%{rows: [[42]]}] = stream(q2, []) |> Enum.take(1)
-    assert [%{rows: [[41]]}] = stream(q1, []) |> Enum.take(1)
+  test "connection forces prepare on stream after prepare of same name", context do
+    query41 = prepare("", "SELECT 41")
+    query42 = prepare("", "SELECT 42")
+    assert [[42]] = execute(query42, [])
+    assert [%Result{rows: [[41]]}] = stream(query41, []) |> Enum.take(1)
   end
 
-  test "connection describes query when already prepared", context do
-    prepare("", "SELECT 41")
-    q = prepare("", "SELECT 41")
-    assert [%{rows: [[41]]}] = stream(q, []) |> Enum.take(1)
-  end
-
-  test "raise on unprepared query", context do
-    q = %Postgrex.Query{name: "ENOENT", statement: "SELECT 42"}
+  test "raise when trying to stream unprepared query", context do
+    query = %Postgrex.Query{name: "ENOENT", statement: "SELECT 42"}
 
     assert_raise ArgumentError, ~r/has not been prepared/,
-      fn -> stream(q, []) |> Enum.take(1) end
+      fn -> stream(query, []) |> Enum.take(1) end
+  end
+
+  test "raise when trying to stream reserved query", context do
+    query = prepare("", "BEGIN")
+
+    assert_raise ArgumentError, ~r/uses reserved name/,
+      fn -> stream(%{query | name: "POSTGREX COMMIT"}, []) |> Enum.take(1) end
+  end
+
+  test "stream struct interpolates to statement", context do
+    query = prepare("", "BEGIN")
+    assert "#{stream(query, [])}" == "BEGIN"
+  end
+
+  test "connection_id", context do
+    query = prepare("", "SELECT pg_backend_pid()")
+    assert [%Result{connection_id: connection_id, rows: [[backend_pid]]}] =
+      stream(query, []) |> Enum.take(1)
+    assert is_integer(connection_id)
+    assert connection_id == backend_pid
+
+    query = prepare("", "insert into uniques values (1), (1)")
+
+    try do
+      stream(query, []) |> Enum.take(1)
+    rescue
+      err ->
+        assert %Postgrex.Error{connection_id: ^connection_id} = err
+    end
   end
 
   defp range(pid, name, x, y) do
@@ -170,8 +210,13 @@ defmodule StreamTest do
     assert {:ok, [[1], [1, 2]]} = range_x_range(context.pid, "S1", "S2", 1, 2)
   end
 
-  test "streams MAY BE be nested using unnamed queries", context do
-    assert {:ok, [[1], [1, 2]]} = range_x_range(context.pid,   "",   "", 1, 2)
+  test "streams can be nested using unnamed queries", context do
+    assert {:ok, [[1], [1, 2]]} = range_x_range(context.pid, "", "", 1, 2)
+  end
+
+  @tag prepare: :unnamed
+  test "streams can be nested using named queries when names not allowed", context do
+    assert {:ok, [[1], [1, 2]]} = range_x_range(context.pid, "S1", "S2", 1, 2)
   end
 
   defp range_x_cast(pid, name1, name2) do
@@ -187,11 +232,16 @@ defmodule StreamTest do
     end)
   end
 
-  test "named queries, transaction with nested stream", context do
-    assert {:ok, [1, 2]} == range_x_cast(context.pid , "S1", "S2")
+  test "transaction with nested named stream", context do
+    assert {:ok, [1, 2]} == range_x_cast(context.pid, "S1", "S2")
   end
 
-  test "unnamed queries, transaction with nested stream", context do
-    assert {:ok, [1, 2]} == range_x_cast(context.pid ,   "",   "")
+  test "transaction with nested unnamed stream", context do
+    assert {:ok, [1, 2]} == range_x_cast(context.pid, "", "")
+  end
+
+  @tag prepare: :unnamed
+  test "transaction with nested named stream when names not allowed", context do
+    assert {:ok, [1, 2]} == range_x_cast(context.pid, "S1", "S2")
   end
 end

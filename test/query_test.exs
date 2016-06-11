@@ -7,7 +7,7 @@ defmodule QueryTest do
     opts = [ database: "postgrex_test", backoff_type: :stop,
              prepare: context[:prepare] || :named]
     {:ok, pid} = P.start_link(opts)
-    {:ok, [pid: pid]}
+    {:ok, [pid: pid, options: opts]}
   end
 
   test "iodata", context do
@@ -526,7 +526,7 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "prepare query and execute different query with same name", context do
+  test "prepare query and execute different query with same name raise", context do
     assert (%Postgrex.Query{name: "select"} = query42) = prepare("select", "SELECT 42")
     assert close(query42) == :ok
     assert %Postgrex.Query{} = prepare("select", "SELECT 41")
@@ -556,6 +556,23 @@ defmodule QueryTest do
     assert [[42]] = execute(query, [])
     assert :ok = close(query)
     assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "execute prepared query on another connection", context do
+    query = prepare("S42", "SELECT 42")
+
+    {:ok, pid2} = Postgrex.start_link(context[:options])
+    assert {:ok, %Postgrex.Result{rows: [[42]]}} = Postgrex.execute(pid2, query, [])
+    assert {:ok, %Postgrex.Result{rows: [[41]]}} = Postgrex.query(pid2, "SELECT 41", [])
+  end
+
+  test "raise when executing prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++ context[:options])
+
+    assert_raise ArgumentError, ~r"invalid types for the connection",
+      fn() -> Postgrex.execute(pid2, query, []) end
   end
 
   test "error codes are translated", context  do
@@ -678,6 +695,13 @@ defmodule QueryTest do
     query = %Postgrex.Query{query | name: "POSTGREX BEGIN"}
 
     assert_raise ArgumentError, ~r/uses reserved name/, fn -> close(query) end
+  end
+
+  test "raise when trying to execute reserved query", context do
+    query = prepare("", "BEGIN")
+
+    assert_raise ArgumentError, ~r/uses reserved name/,
+      fn -> execute(%{query | name: "POSTGREX COMMIT"}, []) end
   end
 
   test "query struct interpolates to statement" do
