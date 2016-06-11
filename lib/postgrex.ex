@@ -362,25 +362,27 @@ defmodule Postgrex do
   end
 
   @doc """
-  Returns a stream on a prepared query.
+  Returns a stream for a prepared query on a connection.
 
-  Stream consumes memory in chunks of size `max_rows` at most (see Options).
+  Stream consumes memory in chunks of at most `max_rows` rows (see Options).
 
   This is useful for processing _large_ datasets.
 
-  A stream SHOULD be wrapped in a transaction or it will fail on the __second__ chunk.
+  A stream must be wrapped in a transaction.
 
   ### Options
 
-    * `:max_rows` - Maximum numbers of rows backend will result (default to `#{@max_rows}`)
-    * `:portal` - Name of then underlying portal that will hold results, it will be generated unless provided
-    * `:pool_timeout` - Time to wait in the queue for the connection (default: `#{@pool_timeout}`)
-    * `:queue` - Whether to wait for connection in a queue (default: `true`)
+    * `:max_rows` - Maximum numbers of rows in a result (default to `#{@max_rows}`)
+    * `:decode_mapper` - Fun to map each row in the result to a term after
+    decoding, (default: `fn x -> x end`);
+    * `:mode` - set to `:savepoint` to use a savepoint to rollback to before an
+    execute on error, otherwise set to `:transaction` (default: `:transaction`);
   """
-  @spec stream(conn, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
-  def stream(conn, query, params, options \\ [])  do
+  @spec stream(DBConnection.t, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
+  def stream(%DBConnection{} = conn, query, params, options \\ [])  do
     max_rows = options[:max_rows] || @max_rows
-    %Postgrex.Stream{conn: conn, max_rows: max_rows, options: options, params: params, portal: options[:portal], query: query}
+    %Postgrex.Stream{conn: conn, max_rows: max_rows, options: options,
+                     params: params, query: query}
   end
 
   ## Helpers
