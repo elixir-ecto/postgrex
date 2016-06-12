@@ -1,11 +1,10 @@
 defmodule Postgrex.Stream do
-  defstruct [:conn, :options, :params, :portal, :query, :state, :result, max_rows: 500]
+  defstruct [:conn, :options, :params, :portal, :query, :ref, state: :bind, max_rows: 500]
 end
 
 defimpl Enumerable, for: Postgrex.Stream do
   def reduce(stream, acc, fun) do
-    start = fn -> maybe_generate_portal(stream) end
-    Stream.resource(start, &next/1, &close/1).(acc, fun)
+    Stream.resource(fn() -> start(stream) end, &next/1, &close/1).(acc, fun)
   end
 
   def member?(_, _) do
@@ -16,6 +15,13 @@ defimpl Enumerable, for: Postgrex.Stream do
     {:error, __MODULE__}
   end
 
+  defp start(stream) do
+    %Postgrex.Stream{conn: conn, params: params, options: options} = stream
+    stream = maybe_generate_portal(stream)
+    _ = Postgrex.execute!(conn, stream, params, options)
+    %Postgrex.Stream{stream | state: :out}
+  end
+
   defp next(%Postgrex.Stream{state: :done} = stream) do
     {:halt, stream}
   end
@@ -23,14 +29,18 @@ defimpl Enumerable, for: Postgrex.Stream do
     %Postgrex.Stream{conn: conn, params: params, options: options,
                      state: state} = stream
     case Postgrex.execute!(conn, stream, params, options) do
-      %Postgrex.Result{command: :stream} = result when state == nil ->
+      %Postgrex.Result{command: :stream} = result when state == :out ->
         {[result], %Postgrex.Stream{stream | state: :suspended}}
       %Postgrex.Result{command: :stream} = result when state == :suspended ->
         {[result], stream}
-      %Postgrex.Result{rows: []} ->
-        {:halt, %Postgrex.Stream{stream | state: :done}}
-      %Postgrex.Result{} = result ->
+      %Postgrex.Result{command: :copy_stream} = result when state == :out ->
+        {[result], %Postgrex.Stream{stream | state: :copy_out}}
+      %Postgrex.Result{command: :copy_stream} = result when state == :copy_out ->
+        {[result], stream}
+      %Postgrex.Result{rows: [_|_]} = result ->
         {[result], %Postgrex.Stream{stream | state: :done}}
+      %Postgrex.Result{} ->
+        {:halt, %Postgrex.Stream{stream | state: :done}}
     end
   end
 
@@ -38,10 +48,13 @@ defimpl Enumerable, for: Postgrex.Stream do
     DBConnection.close(conn, stream, options)
   end
 
-  defp maybe_generate_portal(%Postgrex.Stream{portal: nil} = stream),
-    do: %Postgrex.Stream{stream | portal: :erlang.ref_to_list(make_ref())}
-  defp maybe_generate_portal(stream),
-    do: stream
+  defp maybe_generate_portal(%Postgrex.Stream{portal: nil} = stream) do
+    ref = make_ref()
+    %Postgrex.Stream{stream | portal: inspect(ref), ref: ref}
+  end
+  defp maybe_generate_portal(stream) do
+    %Postgrex.Stream{stream | ref: make_ref()}
+  end
 end
 
 defimpl DBConnection.Query, for: Postgrex.Stream do
@@ -53,14 +66,18 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
     raise "can not describe #{inspect stream}"
   end
 
-  def encode(%Postgrex.Stream{query: query, state: nil}, params, opts) do
+  def encode(%Postgrex.Stream{query: query, state: :bind}, params, opts) do
     DBConnection.Query.encode(query, params, opts)
   end
 
-  def encode(%Postgrex.Stream{state: :suspended}, params, _) do
+  def encode(%Postgrex.Stream{state: state}, params, _)
+      when state in [:out, :suspended, :copy_out] do
     params
   end
 
+  def decode(%Postgrex.Stream{state: :bind}, result, _) do
+    result
+  end
   def decode(%Postgrex.Stream{query: query}, result, opts) do
     DBConnection.Query.decode(query, result, opts)
   end

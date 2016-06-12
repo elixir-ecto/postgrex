@@ -273,4 +273,79 @@ defmodule StreamTest do
   test "transaction with nested named stream when names not allowed", context do
     assert {:ok, [1, 2]} == range_x_cast(context.pid, "S1", "S2")
   end
+
+  test "COPY empty TO STDOUT", context do
+    query = prepare("", "COPY uniques TO STDOUT")
+    transaction(fn(conn) ->
+      assert [] = stream(query, []) |> Enum.to_list()
+    end)
+  end
+
+  test "COPY TO STDOUT", context do
+    query1 = prepare("", "COPY (VALUES (1, 2)) TO STDOUT")
+    query2 = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1}] =
+        stream(query1, []) |> Enum.to_list()
+
+      assert [%Postgrex.Result{rows: ["1\t2\n", "3\t4\n"], num_rows: 2}] =
+        stream(query2, [], [max_rows: 0]) |> Enum.to_list()
+    end)
+  end
+
+  test "COPY TO STDOUT with decoder_mapper", context do
+    query2 = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{rows: [["1","2"], ["3","4"]]}] =
+        stream(query2, [], [decode_mapper: &String.split/1]) |> Enum.to_list()
+    end)
+  end
+
+  test "COPY TO STDOUT with max_rows splitting", context do
+    query1 = prepare("", "COPY (VALUES (1, 2)) TO STDOUT")
+    query2 = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1}] =
+        stream(query1, [], [max_rows: 1]) |> Enum.to_list()
+
+      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1},
+              %Postgrex.Result{rows: ["3\t4\n"], num_rows: 1}] =
+        stream(query2, [], [max_rows: 1]) |> Enum.to_list()
+
+      assert [%Postgrex.Result{rows: ["1\t2\n", "3\t4\n"], num_rows: 2}] =
+        stream(query2, [], [max_rows: 2]) |> Enum.to_list()
+    end)
+  end
+
+  test "COPY TO STDOUT with stream halting before copy done", context do
+    Process.flag(:trap_exit, true)
+    query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
+    capture_log fn ->
+      transaction(fn(conn) ->
+        assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1}] =
+          stream(query, [], [max_rows: 1]) |> Enum.take(1)
+      end)
+      pid = context[:pid]
+      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
+    end
+  end
+
+  test "COPY TO STDOUT locks connection", context do
+    query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1},
+              %Postgrex.Result{rows: ["3\t4\n"], num_rows: 1}] =
+        stream(query, [], [max_rows: 1])
+        |> Stream.map(fn(result) ->
+          assert_raise RuntimeError, ~r"connection is locked",
+            fn() -> Postgrex.prepare(conn, "", "BEGIN") end
+          assert_raise RuntimeError, ~r"connection is locked",
+            fn() -> Postgrex.execute(conn, query, []) end
+          assert_raise RuntimeError, ~r"connection is locked",
+            fn() -> Postgrex.close(conn, query, []) end
+          result
+          end)
+        |> Enum.to_list()
+    end)
+  end
 end
