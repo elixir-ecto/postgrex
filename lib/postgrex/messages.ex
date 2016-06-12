@@ -308,6 +308,16 @@ defmodule Postgrex.Messages do
     {nil, <<1234 :: int16, 5679 :: int16>>}
   end
 
+  # copy_data
+  defp encode(msg_copy_data(data: data)) do
+    {?d, data}
+  end
+
+  # copy_done
+  defp encode(msg_copy_done()) do
+    {?c, ""}
+  end
+
   # copy_fail
   defp encode(msg_copy_fail(message: msg)) do
     {?f, [msg, 0]}

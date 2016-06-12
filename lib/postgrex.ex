@@ -379,11 +379,18 @@ defmodule Postgrex do
   Stream consumes memory in chunks of at most `max_rows` rows (see Options).
   This is useful for processing _large_ datasets.
 
-  A stream must be wrapped in a transaction and may be used as an `Enumerable`.
+  A stream must be wrapped in a transaction and may be used as an `Enumerable`
+  or a `Collectable`.
 
   When used as an `Enumerable` with a `COPY .. TO STDOUT` SQL query no other
   queries or streams can be interspersed until the copy has finished. Otherwise
   it is possible to intersperse enumerable streams and queries.
+
+  When used as a `Collectable` it is assumed that the enumerable inserting into
+  the stream is inserting `iodata()` as part of a `COPY .. FROM STDIN` SQL
+  query. The query will be repeated for each piece of data inserted into the
+  stream. Therefore when used with other SQL queries the query is executed for
+  each item in the enumerable but the data and result are ignored.
 
   ### Options
 
@@ -397,8 +404,12 @@ defmodule Postgrex do
 
       Postgrex.transaction(pid, fn(conn) ->
         query = Postgrex.prepare!(conn, "COPY posts TO STDOUT")
-        stream = Postgrex.stream(conn, query, [])
-        Enum.into(stream, File.stream!("posts"))
+        Enum.into(Postgrex.stream(conn, query, []), File.stream!("posts"))
+      end)
+
+      Postgrex.transaction(pid, fn(conn) ->
+        query = Postgrex.prepare!(conn, "COPY posts FROM STDIN")
+        Enum.into(File.stream!("posts"), Postgrex.stream(conn, query, []))
       end)
   """
   @spec stream(DBConnection.t, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t

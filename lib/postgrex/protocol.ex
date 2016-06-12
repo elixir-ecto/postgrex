@@ -191,6 +191,10 @@ defmodule Postgrex.Protocol do
         execute_send(s, status, stream, buffer)
       {:copy_out, stream} ->
         copy_out(s, status, stream, buffer)
+      {:bind_copy, stream, query} ->
+        bind_copy_send(s, status, stream, query, params, buffer)
+      {:parse_copy, stream, query} ->
+        parse_copy_send(s, status, stream, query, params, buffer)
       {kind, _, _} = error when kind in [:error, :disconnect] ->
         error
     end
@@ -722,10 +726,20 @@ defmodule Postgrex.Protocol do
     lock_error(s, :execute, stream)
   end
   defp execute(s, %Stream{query: query, state: state} = stream)
-      when state in [:out, :suspended] do
+      when state in [:execute, :suspended] do
     case execute(s, query) do
       {execute, _} when execute in [:bind_execute, :parse_execute] ->
         {:execute, stream}
+      {:error, _, _} = error ->
+        error
+    end
+  end
+  defp execute(s, %Stream{query: query, state: :copy_in} = stream) do
+    case execute(s, query) do
+      {:bind_execute, _} ->
+        {:bind_copy, stream, query}
+      {:parse_execute, _} ->
+        {:parse_copy, stream, query}
       {:error, _, _} = error ->
         error
     end
@@ -745,6 +759,33 @@ defmodule Postgrex.Protocol do
     %Stream{portal: portal, max_rows: max_rows} = stream
     messages = [msg_execute(name_port: portal, max_rows: max_rows)]
     send_and_recv(s, status, stream, buffer, messages, &execute_recv/4)
+  end
+
+  defp bind_copy_send(s, status, stream, query, [data | params], buffer) do
+    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
+    messages = [
+      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
+      msg_execute(name_port: "", max_rows: 0),
+      msg_copy_data(data: data),
+      msg_copy_done()]
+    copy_in_recv = &copy_in_recv/4
+    recv = &bind_recv(&1, &2, &3, &4, copy_in_recv)
+    send_and_recv(s, status, stream, buffer, messages, recv)
+  end
+
+  defp parse_copy_send(s, status, stream, query, [data | params], buffer) do
+    %Query{name: name, statement: statement, param_formats: pfs, result_formats: rfs} = query
+    messages = [
+      msg_parse(name: name, statement: statement, type_oids: []),
+      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
+      msg_execute(name_port: "", max_rows: 1), # limit rows to error quicker
+      msg_copy_data(data: data),
+      msg_copy_done()]
+    bind_recv = fn(s, status, _query, buffer) ->
+      bind_recv(s, status, stream, buffer, &copy_in_recv/4)
+    end
+    recv = &parse_recv(&1, &2, &3, &4, bind_recv)
+    send_and_recv(s, status, query, buffer, messages, recv)
   end
 
   defp bind_send(s, status, stream, query, params, buffer) do
@@ -905,7 +946,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_copy_out_response(), buffer} ->
         copy_out(s, status, query, buffer)
       {:ok, msg_copy_both_response(), buffer} ->
-        copy_out_disconnect(s, query, buffer)
+        copy_both_disconnect(s, query, buffer)
       {:ok, msg, buffer} ->
         execute_recv(handle_msg(s, status, msg), status, query, buffer)
       {:disconnect, _, _} = dis ->
@@ -1027,8 +1068,32 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp copy_out_disconnect(s, query, buffer) do
-    msg = "query #{inspect query} is trying to copy but it is not supported"
+  defp copy_in_recv(s, status, stream, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_copy_in_response(), buffer} ->
+        copy_in_recv(s, status, stream, buffer)
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        complete(s, status, stream, [], tag, buffer)
+      {:ok, msg_data_row(values: values), buffer} ->
+        execute_recv(s, status, stream, [values], buffer)
+      {:ok, msg_empty_query(), buffer} ->
+        sync_recv(s, status, %Postgrex.Result{}, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg_copy_out_response(), buffer} ->
+        copy_out_recv(s, status, stream, :infinity, [], 0, buffer)
+      {:ok, msg_copy_both_response(), buffer} ->
+        copy_both_disconnect(s, stream, buffer)
+      {:ok, msg, buffer} ->
+        copy_in_recv(handle_msg(s, status, msg), status, stream, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp copy_both_disconnect(s, query, buffer) do
+    msg = "copying to and from database is not supported for #{inspect query}"
     err = ArgumentError.exception(msg)
     {:disconnect, err, %{s | buffer: buffer}}
   end
