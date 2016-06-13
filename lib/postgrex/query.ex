@@ -11,6 +11,8 @@ defmodule Postgrex.Query do
     * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
     * `null` - Atom to use as a stand in for postgres' `NULL`;
+    * `copy_data` - Whether the query should send the final parameter as data to
+    copy to the database;
   """
 
   @type t :: %__MODULE__{
@@ -22,25 +24,29 @@ defmodule Postgrex.Query do
     result_formats: [:binary | :text] | nil,
     decoders:       [Postgrex.Types.oid] | [(binary -> term)] | nil,
     types:          Postgrex.TypeServer.table | nil,
-    null:           atom}
+    null:           atom,
+    copy_data:      boolean}
 
   defstruct [:name, :statement, :param_formats, :encoders, :columns,
-    :result_formats, :decoders, :types, :null]
+    :result_formats, :decoders, :types, :null, :copy_data]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
   import Postgrex.BinaryUtils
+  require Postgrex.Messages
 
-  def parse(%{name: name, statement: statement} = query, _) do
+  def parse(%{name: name, statement: statement} = query, opts) do
+    copy_data? = opts[:copy_data] || false
     # for query table to match on two identical statements they must be equal
     %{query | name: IO.iodata_to_binary(name),
-      statement: IO.iodata_to_binary(statement)}
+      statement: IO.iodata_to_binary(statement), copy_data: copy_data?}
   end
 
   def describe(query, opts) do
     %Postgrex.Query{encoders: poids, decoders: roids,
-                    types: types, null: conn_null} = query
+                    types: types, null: conn_null, copy_data: data?} = query
     {pfs, encoders} = encoders(poids, types)
+    encoders = if data?, do: encoders ++ [:copy_data], else: encoders
     {rfs, decoders} = decoders(roids, types)
 
     null = case Keyword.fetch(opts, :null) do
@@ -57,11 +63,16 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
-  def encode(%Postgrex.Query{encoders: encoders, null: null} = query, params, _) do
+  def encode(query, params, _) do
+    %Postgrex.Query{encoders: encoders, null: null, copy_data: data?} = query
     case do_encode(params || [], encoders, null, []) do
+      :error when data? ->
+        raise ArgumentError,
+          "parameters must be of length #{length encoders}" <>
+          " with copy data as final parameter for query #{inspect query}"
       :error ->
         raise ArgumentError,
-        "parameters must be of length #{length encoders} for query #{inspect query}"
+          "parameters must be of length #{length encoders} for query #{inspect query}"
       params ->
        params
     end
@@ -100,6 +111,18 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     |> :lists.unzip()
   end
 
+  defp do_encode([copy_data | params], [:copy_data | encoders], null, encoded) do
+    try do
+      Postgrex.Messages.encode_msg(Postgrex.Messages.msg_copy_data(data: copy_data))
+    else
+      packet ->
+        do_encode(params, encoders, null, [packet | encoded])
+    rescue
+      ArgumentError ->
+        raise ArgumentError,
+          "expected iodata to copy to database, got: " <> inspect(copy_data)
+    end
+  end
   defp do_encode([null | params], [_encoder | encoders], null, encoded) do
     do_encode(params, encoders, null, [<<-1::int32>> | encoded])
   end
