@@ -757,20 +757,26 @@ defmodule QueryTest do
     end
   end
 
-  test "COPY FROM STDIN returns error", context do
+  test "COPY FROM STDIN with copy_data: false returns error", context do
     assert %Postgrex.Error{postgres: %{code: :query_canceled}} =
       query("COPY uniques FROM STDIN", [])
   end
 
-  test "COPY TO STDOUT raises", context do
-    Process.flag(:trap_exit, true)
+  test "COPY FROM STDIN with copy_data: true but no copy data raises", context do
+    assert_raise ArgumentError,
+      ~r"parameters must be of length 1 with copy data as final parameter for query",
+      fn -> query("COPY uniques FROM STDIN", [], [copy_data: true]) end
+  end
 
-    capture_log fn() ->
-      assert_raise ArgumentError, ~r"trying to copy but it is not supported",
-        fn() -> query("COPY uniques TO STDOUT", []) end
-      pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
-    end
+  test "COPY TO STDOUT", context do
+    assert [] = query("COPY uniques TO STDOUT", [])
+    assert ["1\t2\n"] = query("COPY (VALUES (1, 2)) TO STDOUT", [])
+    assert ["1\t2\n", "3\t4\n"] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [])
+  end
+
+  test "COPY TO STDOUT with decoder_mapper", context do
+    opts = [decode_mapper: &String.split/1]
+    assert [["1","2"], ["3","4"]] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [], opts)
   end
 
   test "receive packet with remainder greater than 64MB", context do

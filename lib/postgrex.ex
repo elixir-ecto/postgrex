@@ -105,6 +105,9 @@ defmodule Postgrex do
     and decoding;
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
+    * `:copy_data` - Whether to add copy data as a final parameter for use
+    with `COPY .. FROM STDIN` queries, if the query is not copying to the
+    database the data is sent but silently discarded (default: `false`);
 
   ## Examples
 
@@ -116,6 +119,9 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
+      Postgrex.query(conn, "COPY posts TO STDOUT", [])
+
+      Postgrex.query(conn, "COPY ints FROM STDIN", ["1\n2\n"], [copy_data: true])
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
@@ -124,6 +130,8 @@ defmodule Postgrex do
       {:ok, _, result} ->
         {:ok, result}
       {:error, %ArgumentError{} = err} ->
+        raise err
+      {:error, %RuntimeError{} = err} ->
         raise err
       {:error, _} = error ->
         error
@@ -160,6 +168,9 @@ defmodule Postgrex do
     and decoding;
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
+    * `:copy_data` - Whether to add copy data as the final parameter for use
+    with `COPY .. FROM STDIN` queries, if the query is not copying to the
+    database then the data is sent but ignore (default: `false`);
 
   ## Examples
 
@@ -170,6 +181,8 @@ defmodule Postgrex do
     query = %Query{name: name, statement: statement}
     case DBConnection.prepare(conn, query, defaults(opts)) do
       {:error, %ArgumentError{} = err} ->
+        raise err
+      {:error, %RuntimeError{} = err} ->
         raise err
       other ->
         other
@@ -220,6 +233,8 @@ defmodule Postgrex do
     case DBConnection.execute(conn, query, params, defaults(opts)) do
       {:error, %ArgumentError{} = err} ->
         raise err
+      {:error, %RuntimeError{} = err} ->
+        raise err
       other ->
         other
     end
@@ -263,6 +278,10 @@ defmodule Postgrex do
         :ok
       {:error, %ArgumentError{} = err} ->
         raise err
+      {:error, %RuntimeError{} = err} ->
+        raise err
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -365,10 +384,21 @@ defmodule Postgrex do
   Returns a stream for a prepared query on a connection.
 
   Stream consumes memory in chunks of at most `max_rows` rows (see Options).
-
   This is useful for processing _large_ datasets.
 
-  A stream must be wrapped in a transaction.
+  A stream must be wrapped in a transaction and may be used as an `Enumerable`
+  or a `Collectable`.
+
+  When used as an `Enumerable` with a `COPY .. TO STDOUT` SQL query no other
+  queries or streams can be interspersed until the copy has finished. Otherwise
+  it is possible to intersperse enumerable streams and queries.
+
+  When used as a `Collectable` the query must have been prepared with
+  `copy_data: true`, otherwise it will raise. Instead of using an extra
+  parameter for the copy data, the data from the enumerable is copied to the
+  database. No other queries or streams can be interspersed until the copy has
+  finished. If the query is not copying to the database the copy data will still
+  be sent but is silently discarded.
 
   ### Options
 
@@ -377,6 +407,20 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before an
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
+
+  ## Examples
+
+      Postgrex.transaction(pid, fn(conn) ->
+        query = Postgrex.prepare!(conn, "COPY posts TO STDOUT")
+        stream = Postgrex.stream(conn, query, [])
+        Enum.into(stream, File.stream!("posts"))
+      end)
+
+      Postgrex.transaction(pid, fn(conn) ->
+        query = Postgrex.prepare!(conn, "COPY posts FROM STDIN", [copy_data: true])
+        stream = Postgrex.stream(conn, query, [])
+        Enum.into(File.stream!("posts"), stream)
+      end)
   """
   @spec stream(DBConnection.t, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
