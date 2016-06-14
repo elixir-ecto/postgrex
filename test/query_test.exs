@@ -772,4 +772,11 @@ defmodule QueryTest do
       assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
     end
   end
+
+  test "receive packet with remainder greater than 64MB", context do
+    # to ensure remainder is more than 64MB use 64MBx2+1
+    big_binary = :binary.copy(<<1>>, 128*1024*1024+1)
+    assert [[binary]] = query("SELECT $1::bytea;", [big_binary])
+    assert byte_size(binary) == 128 * 1024 * 1024 + 1
+  end
 end

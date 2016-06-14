@@ -11,6 +11,7 @@ defmodule Postgrex.Protocol do
 
   @timeout 5000
   @sock_opts [packet: :raw, mode: :binary, active: false]
+  @max_packet 64 * 1024 * 1024 # max raw receive length
 
   defstruct [sock: nil, connection_id: nil, types: nil, null: nil, timeout: nil,
              parameters: %{}, queries: nil, postgres: :idle,
@@ -1183,11 +1184,15 @@ defmodule Postgrex.Protocol do
   end
 
   defp msg_recv(%{sock: {mod, sock}} = s, timeout, buffer, more) do
-    case mod.recv(sock, more, timeout) do
-      {:ok, data} ->
+    case mod.recv(sock, min(more, @max_packet), timeout) do
+      {:ok, data} when byte_size(data) < more ->
+        msg_recv(s, timeout, [buffer | data], more - byte_size(data))
+      {:ok, data} when is_binary(buffer) ->
         msg_recv(s, timeout, buffer <> data)
+      {:ok, data} when is_list(buffer) ->
+        msg_recv(s, timeout, IO.iodata_to_binary([buffer | data]))
       {:error, reason} ->
-        disconnect(s, tag(mod), "recv", reason, buffer)
+        disconnect(s, tag(mod), "recv", reason, IO.iodata_to_binary(buffer))
     end
   end
 
