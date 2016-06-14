@@ -762,15 +762,15 @@ defmodule QueryTest do
       query("COPY uniques FROM STDIN", [])
   end
 
-  test "COPY TO STDOUT raises", context do
-    Process.flag(:trap_exit, true)
+  test "COPY TO STDOUT", context do
+    assert [] = query("COPY uniques TO STDOUT", [])
+    assert ["1\t2\n"] = query("COPY (VALUES (1, 2)) TO STDOUT", [])
+    assert ["1\t2\n", "3\t4\n"] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [])
+  end
 
-    capture_log fn() ->
-      assert_raise ArgumentError, ~r"trying to copy but it is not supported",
-        fn() -> query("COPY uniques TO STDOUT", []) end
-      pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
-    end
+  test "COPY TO STDOUT with decoder_mapper", context do
+    opts = [decode_mapper: &String.split/1]
+    assert [["1","2"], ["3","4"]] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [], opts)
   end
 
   test "receive packet with remainder greater than 64MB", context do

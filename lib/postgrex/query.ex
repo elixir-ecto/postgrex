@@ -67,7 +67,15 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     end
   end
 
-  def decode(%Postgrex.Query{decoders: nil}, res, _), do: res
+  def decode(%Postgrex.Query{decoders: nil}, res, opts) do
+    case res do
+      %Postgrex.Result{command: copy, rows: rows}
+          when copy in [:copy, :copy_stream] and rows != nil ->
+        %Postgrex.Result{res | rows: decode_copy(rows, opts)}
+      _ ->
+        res
+    end
+  end
   def decode(%Postgrex.Query{decoders: decoders, null: null}, res, opts) do
     mapper = opts[:decode_mapper] || fn x -> x end
     %Postgrex.Result{rows: rows} = res
@@ -118,6 +126,20 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     decode_row(rest, decoders, null, [decode.(value) | decoded])
   end
   defp decode_row(<<>>, [], _, decoded), do: Enum.reverse(decoded)
+
+  defp decode_copy(data, opts) do
+    case opts[:decode_mapper] do
+      nil    -> Enum.reverse(data)
+      mapper -> decode_copy(data, mapper, [])
+    end
+  end
+
+  defp decode_copy([row | data], mapper, decoded) do
+    decode_copy(data, mapper, [mapper.(row) | decoded])
+  end
+  defp decode_copy([], _, decoded) do
+    decoded
+  end
 end
 
 defimpl String.Chars, for: Postgrex.Query do

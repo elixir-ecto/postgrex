@@ -116,6 +116,8 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
+      Postgrex.query(conn, "COPY posts TO STDOUT", [])
+
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
@@ -124,6 +126,8 @@ defmodule Postgrex do
       {:ok, _, result} ->
         {:ok, result}
       {:error, %ArgumentError{} = err} ->
+        raise err
+      {:error, %RuntimeError{} = err} ->
         raise err
       {:error, _} = error ->
         error
@@ -170,6 +174,8 @@ defmodule Postgrex do
     query = %Query{name: name, statement: statement}
     case DBConnection.prepare(conn, query, defaults(opts)) do
       {:error, %ArgumentError{} = err} ->
+        raise err
+      {:error, %RuntimeError{} = err} ->
         raise err
       other ->
         other
@@ -220,6 +226,8 @@ defmodule Postgrex do
     case DBConnection.execute(conn, query, params, defaults(opts)) do
       {:error, %ArgumentError{} = err} ->
         raise err
+      {:error, %RuntimeError{} = err} ->
+        raise err
       other ->
         other
     end
@@ -263,6 +271,10 @@ defmodule Postgrex do
         :ok
       {:error, %ArgumentError{} = err} ->
         raise err
+      {:error, %RuntimeError{} = err} ->
+        raise err
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -365,10 +377,20 @@ defmodule Postgrex do
   Returns a stream for a prepared query on a connection.
 
   Stream consumes memory in chunks of at most `max_rows` rows (see Options).
-
   This is useful for processing _large_ datasets.
 
-  A stream must be wrapped in a transaction.
+  A stream must be wrapped in a transaction and may be used as an `Enumerable`
+  or a `Collectable`.
+
+  When used as an `Enumerable` with a `COPY .. TO STDOUT` SQL query no other
+  queries or streams can be interspersed until the copy has finished. Otherwise
+  it is possible to intersperse enumerable streams and queries.
+
+  When used as a `Collectable` it is assumed that the enumerable inserting into
+  the stream is inserting `iodata()` as part of a `COPY .. FROM STDIN` SQL
+  query. The query will be repeated for each piece of data inserted into the
+  stream. Therefore when used with other SQL queries the query is executed for
+  each item in the enumerable but the data and result are ignored.
 
   ### Options
 
@@ -377,6 +399,18 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before an
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
+
+  ## Examples
+
+      Postgrex.transaction(pid, fn(conn) ->
+        query = Postgrex.prepare!(conn, "COPY posts TO STDOUT")
+        Enum.into(Postgrex.stream(conn, query, []), File.stream!("posts"))
+      end)
+
+      Postgrex.transaction(pid, fn(conn) ->
+        query = Postgrex.prepare!(conn, "COPY posts FROM STDIN")
+        Enum.into(File.stream!("posts"), Postgrex.stream(conn, query, []))
+      end)
   """
   @spec stream(DBConnection.t, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
