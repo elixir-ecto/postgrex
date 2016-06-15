@@ -17,13 +17,12 @@ defmodule Postgrex do
   A connection process name, pid or reference.
 
   A connection reference is used when making multiple requests to the same
-  connection, see `transaction/3` and `:after_connect` in `start_link/1`.
+  connection, see `transaction/3`.
   """
   @type conn :: DBConnection.conn
 
   @pool_timeout 5000
-  @timeout 5000
-  @idle_timeout 5000
+  @timeout 15_000
   @max_rows 500
 
   ### PUBLIC API ###
@@ -43,7 +42,6 @@ defmodule Postgrex do
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:socket_options` - Options to be given to the underlying socket;
-    * `:sync_connect` - Block in `start_link/1` until connection is set up (default: `false`)
     * `:extensions` - A list of `{module, opts}` pairs where `module` is
     implementing the `Postgrex.Extension` behaviour and `opts` are the
     extension options;
@@ -56,19 +54,6 @@ defmodule Postgrex do
     collected (defaults to `:copy`);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
-    * `:after_connect` - A function to run on connect, either a 1-arity fun
-    called with a connection reference, `{module, function, args}` with the
-    connection reference prepended to `args` or `nil`, (default: `nil`);
-    * `:idle` - Either `:active` to asynchronously detect TCP disconnects when
-    idle or `:passive` not to (default: `false`);
-    * `:idle_timeout` - Idle timeout to ping postgres to maintain a connection
-    (default: `#{@idle_timeout}`)
-    * `:backoff_start` - The first backoff interval when reconnecting (default:
-    `200`);
-    * `:backoff_max` - The maximum backoff interval when reconnecting (default:
-    `15_000`);
-    * `:backoff_type` - The backoff strategy when reconnecting, `:stop` for no
-    backoff and to stop (see `:backoff`, default: `:jitter`)
     * `:transactions` - Set to `:strict` to error on unexpected transaction
     state, otherwise set to `naive` (default: `:naive`);
     * `:pool` - The pool module to use, see `DBConnection` for pool dependent
@@ -76,6 +61,9 @@ defmodule Postgrex do
     if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding (default: `nil`);
+
+  `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
+  options. See `DBConnection` for more information.
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
@@ -170,7 +158,7 @@ defmodule Postgrex do
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
     * `:copy_data` - Whether to add copy data as the final parameter for use
     with `COPY .. FROM STDIN` queries, if the query is not copying to the
-    database then the data is sent but ignore (default: `false`);
+    database then the data is sent but ignored (default: `false`);
 
   ## Examples
 
