@@ -1,9 +1,9 @@
 defmodule Postgrex.Stream do
-  defstruct [:conn, :options, :params, :portal, :query, :ref, state: :bind, max_rows: 500]
+  defstruct [:conn, :options, :params, :portal, :query, :ref, state: :bind, num_rows: 0, max_rows: 500]
 end
 
 defmodule Postgrex.CopyData do
-  defstruct [:query, :ref]
+  defstruct [:query, :params, :ref]
 end
 
 defimpl Enumerable, for: Postgrex.Stream do
@@ -31,20 +31,19 @@ defimpl Enumerable, for: Postgrex.Stream do
   end
   defp next(stream) do
     %Postgrex.Stream{conn: conn, params: params, options: options,
-                     state: state} = stream
+                     state: state, num_rows: num_rows} = stream
     case Postgrex.execute!(conn, stream, params, options) do
-      %Postgrex.Result{command: :stream} = result when state == :out ->
-        {[result], %Postgrex.Stream{stream | state: :suspended}}
-      %Postgrex.Result{command: :stream} = result when state == :suspended ->
+      %Postgrex.Result{command: :stream, rows: rows} = result
+          when state in [:out, :suspended] ->
+        stream =  %Postgrex.Stream{stream | state: :suspended,
+                                            num_rows: num_rows + length(rows)}
         {[result], stream}
       %Postgrex.Result{command: :copy_stream} = result when state == :out ->
         {[result], %Postgrex.Stream{stream | state: :copy_out}}
       %Postgrex.Result{command: :copy_stream} = result when state == :copy_out ->
         {[result], stream}
-      %Postgrex.Result{rows: [_|_]} = result ->
+      %Postgrex.Result{} = result ->
         {[result], %Postgrex.Stream{stream | state: :done}}
-      %Postgrex.Result{} ->
-        {:halt, %Postgrex.Stream{stream | state: :done}}
     end
   end
 
@@ -71,19 +70,20 @@ defimpl Collectable, for: Postgrex.Stream do
   end
 
   defp make_into(copy_stream, stream) do
-    %Postgrex.Stream{conn: conn, ref: ref, options: options} = copy_stream
-    copy = %Postgrex.CopyData{ref: ref}
+    %Postgrex.Stream{conn: conn, query: query, params: params, ref: ref,
+                     options: options} = copy_stream
+    copy = %Postgrex.CopyData{query: query, params: params, ref: ref}
     fn
       :ok, {:cont, data} ->
         _ = Postgrex.execute!(conn, copy, data, options)
         :ok
       :ok, :done ->
         done_stream = %Postgrex.Stream{copy_stream | state: :copy_done}
-        Postgrex.close!(conn, done_stream, options)
+        Postgrex.execute!(conn, done_stream, params, options)
         stream
       :ok, :halt ->
         fail_stream = %Postgrex.Stream{copy_stream | state: :copy_fail}
-        Postgrex.close(conn, fail_stream, options)
+        Postgrex.execute(conn, fail_stream, params, options)
     end
   end
 end
@@ -117,7 +117,7 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
   end
 
   def encode(%Postgrex.Stream{state: state}, params, _)
-      when state in [:out, :suspended, :copy_out] do
+      when state in [:out, :suspended, :copy_out, :copy_done, :copy_fail] do
     params
   end
 

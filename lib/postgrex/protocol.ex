@@ -202,6 +202,8 @@ defmodule Postgrex.Protocol do
         copy_out(s, status, stream, buffer)
       :copy_data ->
         copy_data(s, status, params, buffer)
+      {:copy_in_stop, stream, msg} ->
+        copy_in_stop(s, status, stream, buffer, msg)
       {kind, _, _} = error when kind in [:error, :disconnect] ->
         error
     end
@@ -211,19 +213,11 @@ defmodule Postgrex.Protocol do
     {:ok, Postgrex.Result.t, state} |
     {:error, ArgumentError.t, state} |
     {:error | :disconnect, RuntimeError.t | Postgrex.Error.t, state}
-  def handle_close(%Stream{ref: ref, state: state} = stream, opts, %{postgres: {_, ref}} = s) do
-    case state do
-      :copy_done ->
-        copy_in_close(s, stream, msg_copy_done(), opts)
-      :copy_failed ->
-        msg = "copying to database halted"
-        copy_in_close(s, stream, msg_copy_fail(message: msg), opts)
-      _ ->
-        msg = "postgresql protocol can not halt copying from database for " <>
-        inspect(stream)
-        err = RuntimeError.exception(message: msg)
-        {:disconnect, err, s}
-    end
+  def handle_close(%Stream{ref: ref} = stream, _, %{postgres: {_, ref}} = s) do
+    msg = "postgresql protocol can not halt copying from database for " <>
+      inspect(stream)
+    err = RuntimeError.exception(message: msg)
+    {:disconnect, err, s}
   end
   def handle_close(query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :close, query)
@@ -740,11 +734,20 @@ defmodule Postgrex.Protocol do
   defp execute(s, %Query{} = query) do
     query_error(s, "query #{inspect query} has invalid types for the connection")
   end
-  defp execute(%{postgres: {_, ref}}, %Stream{state: :copy_out, ref: ref} = stream) do
-    {:copy_out, stream}
+  defp execute(%{postgres: {_, ref}}, %Stream{ref: ref, state: state} = stream) do
+    case state do
+      :copy_out ->
+        {:copy_out, stream}
+      :copy_done ->
+        {:copy_in_stop, stream, msg_copy_done()}
+      :copy_fail ->
+        msg = "copying to database halted"
+        {:copy_in_stop, stream, msg_copy_fail(message: msg)}
+    end
   end
-  defp execute(s, %Stream{state: :copy_out} = stream) do
-    msg = "connection lost lock for copying from the database and " <>
+  defp execute(s, %Stream{state: state} = stream)
+      when state in [:copy_out, :copy_done, :copy_fail] do
+    msg = "connection lost lock for copying to or from the database and " <>
       "can not execute #{inspect stream}"
     {:disconnect, RuntimeError.exception(msg), s}
   end
@@ -995,7 +998,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_command_complete(tag: tag), buffer} ->
         complete(s, status, query, [], tag, buffer)
       {:ok, msg_empty_query(), buffer} ->
-        sync_recv(s, status, %Postgrex.Result{}, buffer)
+        sync_recv(s, status, %Postgrex.Result{num_rows: 0}, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
@@ -1045,15 +1048,30 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, result, buffer)
   end
   defp complete(s, status, stream, rows, tag, buffer) do
-    %Postgrex.Stream{query: query} = stream
-    complete(s, status, query, rows, tag, buffer)
+    %Postgrex.Stream{query: query, num_rows: previous_nrows} = stream
+    %{connection_id: connection_id} = s
+    {command, nrows} = decode_tag(tag)
+    %Query{columns: cols} = query
+    # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
+    nrows =
+      if is_nil(nrows) and command == :select, do: length(rows), else: nrows
+
+    nrows =
+      if command == :select, do: nrows + previous_nrows, else: nrows
+
+    rows =
+      if is_nil(cols) and rows == [] and command != :copy, do: nil, else: rows
+
+    result = %Postgrex.Result{command: command, num_rows: nrows || 0,
+                              rows: rows, columns: cols, connection_id: connection_id}
+    sync_recv(s, status, result, buffer)
   end
 
   defp suspend(s, status, stream, rows, buffer) do
     %{connection_id: connection_id} = s
     %Postgrex.Stream{query: %Query{columns: cols}} = stream
 
-    result = %Postgrex.Result{command: :stream, num_rows: length(rows),
+    result = %Postgrex.Result{command: :stream, num_rows: :stream,
                               rows: rows, columns: cols,
                               connection_id: connection_id}
     sync_recv(s, status, result, buffer)
@@ -1098,7 +1116,7 @@ defmodule Postgrex.Protocol do
   defp copy_out_recv(s, _, stream, max_rows, acc, max_rows, buffer) do
     %Stream{ref: ref} = stream
     %{postgres: postgres, connection_id: connection_id} = s
-    result = %Postgrex.Result{command: :copy_stream, num_rows: max_rows,
+    result = %Postgrex.Result{command: :copy_stream, num_rows: :copy_stream,
       rows: acc, columns: nil, connection_id: connection_id}
     ok(s, result, {postgres, ref}, buffer)
   end
@@ -1107,7 +1125,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_copy_data(data: data), buffer} ->
         copy_out_recv(s, status, query, max_rows, [data | acc], nrows+1, buffer)
       {:ok, msg_copy_done(), buffer} ->
-        copy_out_done(s, status, acc, nrows, buffer)
+        copy_out_done(s, status, query, acc, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
@@ -1119,19 +1137,16 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp copy_out_done(s, status, acc, nrows, buffer) do
+  defp copy_out_done(s, status, query, acc, buffer) do
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_command_complete(), buffer} ->
-        %{connection_id: connection_id} = s
-        result = %Postgrex.Result{command: :copy, num_rows: nrows,
-          rows: acc, columns: nil, connection_id: connection_id}
-        sync_recv(s, status, result, buffer)
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        complete(s, status, query, acc, tag, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
       {:ok, msg, buffer} ->
         s = handle_msg(s, status, msg)
-        copy_out_done(s, status, acc, nrows, buffer)
+        copy_out_done(s, status, query, acc, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1146,7 +1161,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_data_row(values: values), buffer} ->
         execute_recv(s, status, query, [values], buffer)
       {:ok, msg_empty_query(), buffer} ->
-        sync_recv(s, status, %Postgrex.Result{}, buffer)
+        sync_recv(s, status, %Postgrex.Result{num_rows: 0}, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
@@ -1196,8 +1211,8 @@ defmodule Postgrex.Protocol do
 
   defp copy_in_ready(s, _status, stream, buffer) do
     %{connection_id: connection_id, postgres: postgres} = s
-    result = %Postgrex.Result{connection_id: connection_id, command: :stream,
-                              rows: nil, num_rows: 0}
+    result = %Postgrex.Result{connection_id: connection_id, command: :copy_stream,
+                              rows: nil, num_rows: :copy_stream}
     %Stream{ref: ref} = stream
     ok(s, result, {postgres, ref}, buffer)
   end
@@ -1208,32 +1223,25 @@ defmodule Postgrex.Protocol do
         %{connection_id: connection_id, postgres: postgres} = s
         result = %Postgrex.Result{connection_id: connection_id,
                                   command: :copy_stream, rows: nil,
-                                  num_rows: 0}
+                                  num_rows: :copy_stream}
         ok(s, result, postgres, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp copy_in_close(s, stream, msg, opts) do
-    %{postgres: {postgres, _}, buffer: buffer} = s
-    s = %{s | buffer: nil, postgres: postgres}
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    copy_in_close(s, status, stream, buffer, msg)
-  end
-
-  defp copy_in_close(s, %{mode: :transaction} = status, stream, buffer, msg) do
+  defp copy_in_stop(s, %{mode: :transaction} = status, stream, buffer, msg) do
     msgs = [msg, msg_sync()]
-    copy_in_close_send(s, status, stream, buffer, msgs)
+    copy_in_stop_send(s, status, stream, buffer, msgs)
   end
 
-  defp copy_in_close(s, %{mode: :savepoint} = status, stream, buffer, msg) do
+  defp copy_in_stop(s, %{mode: :savepoint} = status, stream, buffer, msg) do
     release = transaction_msgs(s, ["RELEASE SAVEPOINT postgrex_query", :sync])
     msgs = [msg | release]
-    copy_in_close_send(s, status, stream, buffer, msgs)
+    copy_in_stop_send(s, status, stream, buffer, msgs)
   end
 
-  defp copy_in_close_send(s, status, stream, buffer, msgs) do
+  defp copy_in_stop_send(s, status, stream, buffer, msgs) do
     case msg_send(s, msgs, buffer) do
       :ok ->
         copy_in_recv(s, status, stream, buffer)

@@ -719,6 +719,11 @@ defmodule QueryTest do
     assert is_integer(connection_id)
   end
 
+  test "empty query", context do
+    assert %Postgrex.Result{command: nil, rows: nil, num_rows: 0} =
+      Postgrex.query!(context[:pid], "", [])
+  end
+
   test "query before and after idle ping" do
     opts = [ database: "postgrex_test", backoff_type: :stop, idle_timeout: 1]
     {:ok, pid} = P.start_link(opts)

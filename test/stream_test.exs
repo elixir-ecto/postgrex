@@ -31,12 +31,14 @@ defmodule StreamTest do
   test "results contain num rows and no final chunk with empty rows", context do
     query = prepare("", "SELECT * FROM generate_series(1, 2)")
     transaction(fn(conn) ->
-      assert [%{command: :stream, rows: [[1]], num_rows: 1},
-              %{command: :stream, rows: [[2]], num_rows: 1}] =
+      assert [%{command: :stream, rows: [[1]], num_rows: :stream},
+              %{command: :stream, rows: [[2]], num_rows: :stream},
+              %{command: :select, rows: [], num_rows: 2}] =
         stream(query, [], max_rows: 1)
         |> Enum.to_list()
 
-      assert [%{command: :stream, rows: [[1], [2]], num_rows: 2}] =
+      assert [%{command: :stream, rows: [[1], [2]], num_rows: :stream},
+              %{command: :select, rows: [], num_rows: 2}] =
         stream(query, [], max_rows: 2)
         |> Enum.to_list()
 
@@ -223,28 +225,33 @@ defmodule StreamTest do
   # nest two ranges in a transaction, first query has name1, second has name2
   #
   defp range_x_range(conn, name1, name2, x, y) do
+    map =
+      fn
+        [x] -> range(conn, name2, 1, x) |> Enum.flat_map(&(&1))
+        []  -> []
+      end
     conn
     |> range(name1, x, y)
-    |> Stream.map(fn([x]) -> range(conn, name2, 1, x) |> Enum.flat_map(&(&1)) end)
+    |> Stream.map(map)
     |> Enum.to_list
   end
 
   test "streams can be nested using named queries", context do
     transaction(fn(conn) ->
-      assert [[1], [1, 2]] = range_x_range(conn, "S1", "S2", 1, 2)
+      assert [[1], [1, 2], []] = range_x_range(conn, "S1", "S2", 1, 2)
     end)
   end
 
   test "streams can be nested using unnamed queries", context do
     transaction(fn(conn) ->
-      assert [[1], [1, 2]] = range_x_range(conn, "", "", 1, 2)
+      assert [[1], [1, 2], []] = range_x_range(conn, "", "", 1, 2)
     end)
   end
 
   @tag prepare: :unnamed
   test "streams can be nested using named queries when names not allowed", context do
     transaction(fn(conn) ->
-      assert [[1], [1, 2]] = range_x_range(conn, "S1", "S2", 1, 2)
+      assert [[1], [1, 2], []] = range_x_range(conn, "S1", "S2", 1, 2)
     end)
   end
 
@@ -253,9 +260,15 @@ defmodule StreamTest do
     q2 = Postgrex.prepare!(pid, name2, "SELECT CAST($1 as int)")
 
     Postgrex.transaction(pid, fn(conn) ->
+      map =
+        fn
+          %{rows: [[x]]} ->
+          stream(q2, [x], max_rows: 1) |> Enum.flat_map(fn res -> res.rows end)
+          %{rows: []} ->
+            []
+        end
       stream(q1, [], max_rows: 1)
-      |> Stream.map(fn %{rows: [[x]]} -> x end)
-      |> Stream.map(fn x -> stream(q2, [x], max_rows: 1) |> Enum.flat_map(fn res -> res.rows end) end)
+      |> Stream.map(map)
       |> Enum.to_list
       |> :lists.flatten
     end)
@@ -277,7 +290,8 @@ defmodule StreamTest do
   test "COPY empty TO STDOUT", context do
     query = prepare("", "COPY uniques TO STDOUT")
     transaction(fn(conn) ->
-      assert [] = stream(query, []) |> Enum.to_list()
+      assert [%Postgrex.Result{command: :copy, rows: [], num_rows: 0}] =
+        stream(query, []) |> Enum.to_list()
     end)
   end
 
@@ -305,15 +319,21 @@ defmodule StreamTest do
     query1 = prepare("", "COPY (VALUES (1, 2)) TO STDOUT")
     query2 = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
     transaction(fn(conn) ->
-      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream},
+              %{command: :copy, rows: [], num_rows: 1}] =
         stream(query1, [], [max_rows: 1]) |> Enum.to_list()
 
-      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1},
-              %Postgrex.Result{rows: ["3\t4\n"], num_rows: 1}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream},
+              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: :copy_stream},
+              %{command: :copy, rows: [], num_rows: 2}] =
         stream(query2, [], [max_rows: 1]) |> Enum.to_list()
 
-      assert [%Postgrex.Result{rows: ["1\t2\n", "3\t4\n"], num_rows: 2}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n", "3\t4\n"], num_rows: :copy_stream},
+              %{command: :copy, rows: [], num_rows: 2}] =
         stream(query2, [], [max_rows: 2]) |> Enum.to_list()
+
+      assert [%{command: :copy, rows: ["1\t2\n", "3\t4\n"], num_rows: 2}] =
+        stream(query2, [], [max_rows: 3]) |> Enum.to_list()
     end)
   end
 
@@ -322,7 +342,7 @@ defmodule StreamTest do
     query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
     capture_log fn ->
       transaction(fn(conn) ->
-        assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1}] =
+        assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream}] =
           stream(query, [], [max_rows: 1]) |> Enum.take(1)
       end)
       pid = context[:pid]
@@ -333,18 +353,25 @@ defmodule StreamTest do
   test "COPY TO STDOUT locks connection", context do
     query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
     transaction(fn(conn) ->
-      assert [%Postgrex.Result{rows: ["1\t2\n"], num_rows: 1},
-              %Postgrex.Result{rows: ["3\t4\n"], num_rows: 1}] =
+      map =
+        fn
+          %{command: :copy_stream}= result ->
+            assert_raise RuntimeError, ~r"connection is locked",
+              fn() -> Postgrex.prepare(conn, "", "BEGIN") end
+            assert_raise RuntimeError, ~r"connection is locked",
+              fn() -> Postgrex.execute(conn, query, []) end
+            assert_raise RuntimeError, ~r"connection is locked",
+              fn() -> Postgrex.close(conn, query, []) end
+            result
+          %{command: :copy} = result ->
+            result
+        end
+
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream},
+              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: :copy_stream},
+              %{command: :copy, rows: [], num_rows: 2}] =
         stream(query, [], [max_rows: 1])
-        |> Stream.map(fn(result) ->
-          assert_raise RuntimeError, ~r"connection is locked",
-            fn() -> Postgrex.prepare(conn, "", "BEGIN") end
-          assert_raise RuntimeError, ~r"connection is locked",
-            fn() -> Postgrex.execute(conn, query, []) end
-          assert_raise RuntimeError, ~r"connection is locked",
-            fn() -> Postgrex.close(conn, query, []) end
-          result
-          end)
+        |> Stream.map(map)
         |> Enum.to_list()
     end)
   end
@@ -364,7 +391,22 @@ defmodule StreamTest do
     transaction(fn(conn) ->
       stream = stream(query, [])
       assert Enum.into(["2\n", "3\n4\n"], stream) == stream
+
+      stream = stream(query, [], [log: &send(self(), &1)])
       assert Enum.into(["5\n"], stream) == stream
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query
+      assert {:ok, %{command: :copy, rows: nil, num_rows: 1}} = entry.result
+
       assert %Postgrex.Result{rows: [[2], [3], [4], [5]]} =
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
       Postgrex.rollback(conn, :done)
@@ -573,6 +615,92 @@ defmodule StreamTest do
         fn() -> Enum.into(["42\n"], stream) end
 
       assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
+    end)
+  end
+
+  test "empty query", context do
+    query_out = prepare("out", "")
+    query_in = prepare("in", "", [copy_data: true])
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{command: nil, rows: nil, num_rows: 0}] =
+        stream(query_out, []) |> Enum.to_list()
+
+      stream = stream(query_in, [], [log: &send(self(), &1)])
+
+      assert Enum.into(["2\n3\n"], stream) == stream
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: nil, rows: nil, num_rows: 0}} = entry.result
+    end)
+  end
+
+  test "savepoint query", context do
+    query_out = prepare("out", "SAVEPOINT streaming_test")
+    query_in = prepare("in", query_out.statement, [copy_data: true])
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{command: :savepoint, rows: nil, num_rows: 0}] =
+        stream(query_out, []) |> Enum.to_list()
+
+      stream = stream(query_in, [], [log: &send(self(), &1)])
+
+      assert Enum.into(["2\n3\n"], stream) == stream
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :savepoint, rows: nil, num_rows: 0}} = entry.result
+    end)
+  end
+
+  test "INSERT .. RETURNING", context do
+    query_out = prepare("out", "INSERT INTO uniques (a) VALUES (2), (3) RETURNING a")
+    query_in = prepare("in", query_out.statement, [copy_data: true])
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{command: :insert, rows: [[2], [3]], num_rows: 2}] =
+        stream(query_out, [], [max_rows: 3]) |> Enum.to_list()
+      Postgrex.rollback(conn, :done)
+    end)
+
+    transaction(fn(conn) ->
+      assert [%{command: :stream, rows: [[2], [3]], num_rows: :stream},
+              %{command: :insert, rows: [], num_rows: 2}] =
+        stream(query_out, [], [max_rows: 2]) |> Enum.to_list()
+      Postgrex.rollback(conn, :done)
+    end)
+
+    transaction(fn(conn) ->
+      stream = stream(query_in, [], log: &send(self(), &1))
+      assert Enum.into(["2\n3\n"], stream) == stream
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+
+      assert_received %DBConnection.LogEntry{} = entry
+      assert (entry.query).query == query_in
+      assert {:ok, %{command: :insert, rows: [[2], [3]], num_rows: 2}} = entry.result
+
+      Postgrex.rollback(conn, :done)
     end)
   end
 end
