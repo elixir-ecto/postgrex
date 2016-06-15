@@ -413,6 +413,29 @@ defmodule StreamTest do
     end)
   end
 
+  test "COPY FROM STDIN failure", context do
+    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    transaction(fn(conn) ->
+      _ = Postgrex.query!(conn, "SAVEPOINT bad_copy", [])
+
+      stream = stream(query, [])
+      map =
+        fn
+          "3\n" -> raise "hello"
+          other -> other
+        end
+      assert_raise RuntimeError, "hello",
+        fn() -> Enum.into(Stream.map(["2\n", "3\n"], map), stream) end
+      assert_raise Postgrex.Error, ~r"\(in_failed_sql_transaction\)",
+        fn() -> Postgrex.query!(conn, "SELECT * FROM uniques", []) end
+
+      _ = Postgrex.query!(conn, "ROLLBACK TO SAVEPOINT bad_copy", [])
+
+      assert %Postgrex.Result{rows: []} =
+        Postgrex.query!(conn, "SELECT * FROM uniques", [])
+    end)
+  end
+
   test "COPY FROM STDIN with savepoint", context do
     query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
     transaction(fn(conn) ->
@@ -420,6 +443,23 @@ defmodule StreamTest do
       assert Enum.into(["2\n", "3\n4\n"], stream) == stream
       assert Enum.into(["5\n"], stream) == stream
       assert %Postgrex.Result{rows: [[2], [3], [4], [5]]} =
+        Postgrex.query!(conn, "SELECT * FROM uniques", [])
+      Postgrex.rollback(conn, :done)
+    end)
+  end
+
+  test "COPY FROM STDIN failure with savepoint", context do
+    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    transaction(fn(conn) ->
+      stream = stream(query, [], [mode: :savepoint])
+      map =
+        fn
+          "3\n" -> raise "hello"
+          other -> other
+        end
+      assert_raise RuntimeError, "hello",
+        fn() -> Enum.into(Stream.map(["2\n", "3\n"], map), stream) end
+      assert %Postgrex.Result{rows: []} =
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
       Postgrex.rollback(conn, :done)
     end)
