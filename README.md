@@ -1,6 +1,6 @@
 # Postgrex
 
-[![Build Status](https://travis-ci.org/ericmj/postgrex.svg?branch=master)](https://travis-ci.org/ericmj/postgrex)
+[![Build Status](https://travis-ci.org/ericmj/postgrex.svg?branch=master)](https://travis-ci.org/elixir-ecto/postgrex)
 
 PostgreSQL driver for Elixir.
 
@@ -25,7 +25,7 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
   * User defined extensions for encoding and decoding any PostgresSQL type
-  * Supports transactions, prepared queries and multiple pools via [DBConnection](https://github.com/fishcakez/db_connection)
+  * Supports transactions, prepared queries and multiple pools via [DBConnection](https://github.com/elixir-ecto/db_connection)
   * Supports PostgreSQL 8.4, 9.0, 9.1, 9.2, 9.3, 9.4, and 9.5 (hstore is not supported on 8.4)
 
 ## Data representation
@@ -53,13 +53,13 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
 
 \* [Decimal](http://github.com/ericmj/decimal)
 
-Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, suport new types, or change how any of the types above are encoded/decoded, you can use extensions.
+Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, support new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
 ## Extensions
 
 Extensions are used to extend Postgrex' built-in type encoding/decoding.
 
-Here is a [JSON extension](https://github.com/ericmj/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the Postgres' JSON type.
+Here is a [JSON extension](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the Postgres' JSON type.
 
 To use the extension pass it to the connection as seen below:
 
@@ -106,7 +106,7 @@ Postgrex.start_link(prepare: :unnamed)
 To contribute you need to compile Postgrex from source and test it:
 
 ```
-$ git clone https://github.com/ericmj/postgrex.git
+$ git clone https://github.com/elixir-ecto/postgrex.git
 $ cd postgrex
 $ mix test
 ```

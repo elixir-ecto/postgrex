@@ -250,7 +250,7 @@ defmodule QueryTest do
 
   test "encoding oids as binary fails with a helpful error message", context do
     assert %Postgrex.Error{message: message} = catch_error(query("select $1::regclass;", ["pg_type"]))
-    assert message =~ "See https://github.com/ericmj/postgrex#oid-type-encoding"
+    assert message =~ "See https://github.com/elixir-ecto/postgrex#oid-type-encoding"
   end
 
   test "fail on encoding wrong value", context do

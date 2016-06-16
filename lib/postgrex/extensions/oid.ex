@@ -13,7 +13,7 @@ defmodule Postgrex.Extensions.OID do
   def encode(%Postgrex.TypeInfo{send: sender}, value, _, _) when is_binary(value) do
     raise Postgrex.Error, message: """
     you tried to use a binary instead for an oid type (#{sender}) when an
-    integer was expected. See https://github.com/ericmj/postgrex#oid-type-encoding
+    integer was expected. See https://github.com/elixir-ecto/postgrex#oid-type-encoding
     """
   end
   def encode(type_info, value, _, _) do

@@ -9,7 +9,7 @@ defmodule Postgrex.Mixfile do
      elixir: "~> 1.0",
      deps: deps,
      name: "Postgrex",
-     source_url: "https://github.com/ericmj/postgrex",
+     source_url: "https://github.com/elixir-ecto/postgrex",
      docs: [source_ref: "v#{@version}", main: "readme", extras: ["README.md"]],
      description: description,
      package: package]
@@ -36,6 +36,6 @@ defmodule Postgrex.Mixfile do
   defp package do
     [maintainers: ["Eric Meadows-Jönsson", "James Fish"],
      licenses: ["Apache 2.0"],
-     links: %{"Github" => "https://github.com/ericmj/postgrex"}]
+     links: %{"Github" => "https://github.com/elixir-ecto/postgrex"}]
   end
 end
