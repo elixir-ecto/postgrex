@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.11.2 (2016-06-16)
+
+* Enhancements
+  * Add support for COPY TO STDOUT and COPY FROM STDIN
+  * Support packets bigger than 64MB
+  * Introduce `mode: :savepoint` for prepare/execute/close that allows wrapping a request in a savepoint so that an error does not fail the transaction
+  * Introduce streaming queries
+  * Add `:decode_binary` option which is either `:copy` (default) or `:reference`.
+
+* Bug fixes
+  * Consistently convert the port number to integer
+  * Remove type server entry on disconnect
+
 ## v0.11.1 (2016-02-15)
 
 * Enhancements

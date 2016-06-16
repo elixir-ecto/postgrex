@@ -1,7 +1,7 @@
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
-  @version "0.11.1"
+  @version "0.11.2"
 
   def project do
     [app: :postgrex,
@@ -26,7 +26,7 @@ defmodule Postgrex.Mixfile do
     [{:ex_doc, "~> 0.11", only: :dev},
      {:earmark, "~> 0.1", only: :dev},
      {:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.0.0-dev", github: "fishcakez/db_connection", branch: "master"},
+     {:db_connection, "~> 1.0-rc"},
      {:connection, "~> 1.0"}]
   end
 
