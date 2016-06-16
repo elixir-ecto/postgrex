@@ -3,7 +3,7 @@ defmodule TypeServerTest do
   alias Postgrex.TypeServer, as: TS
 
   test "does not unlock unknown references" do
-    assert TS.unlock(make_ref) == :error
+    assert TS.unlock(make_ref()) == :error
   end
 
   test "fetches and unlocks" do

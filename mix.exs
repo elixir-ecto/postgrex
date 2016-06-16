@@ -7,12 +7,12 @@ defmodule Postgrex.Mixfile do
     [app: :postgrex,
      version: @version,
      elixir: "~> 1.0",
-     deps: deps,
+     deps: deps(),
      name: "Postgrex",
      source_url: "https://github.com/elixir-ecto/postgrex",
      docs: [source_ref: "v#{@version}", main: "readme", extras: ["README.md"]],
-     description: description,
-     package: package]
+     description: description(),
+     package: package()]
   end
 
   # Configuration for the OTP application

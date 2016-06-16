@@ -668,7 +668,7 @@ defmodule QueryTest do
   end
 
   test "async test", context do
-    self_pid = self
+    self_pid = self()
     Enum.each(1..10, fn _ ->
       spawn_link fn ->
         send self_pid, query("SELECT pg_sleep(0.05)", [])

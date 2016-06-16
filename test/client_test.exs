@@ -32,7 +32,7 @@ defmodule ClientTest do
   end
 
   test "active client DOWN", context do
-    self_pid = self
+    self_pid = self()
     conn = context[:pid]
 
     pid = spawn fn ->
@@ -48,7 +48,7 @@ defmodule ClientTest do
   end
 
   test "queued client cancel", context do
-    self_pid = self
+    self_pid = self()
     Enum.each(1..10, fn _ ->
       spawn_link fn ->
         send self_pid, query("SELECT pg_sleep(0.1)", [])
@@ -69,7 +69,7 @@ defmodule ClientTest do
   end
 
   test "queued client DOWN", context do
-    self_pid = self
+    self_pid = self()
     Enum.each(1..10, fn _ ->
       spawn_link fn ->
         send self_pid, query("SELECT pg_sleep(0.1)", [])
