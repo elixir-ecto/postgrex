@@ -1,6 +1,6 @@
 # Postgrex
 
-[![Build Status](https://travis-ci.org/ericmj/postgrex.svg?branch=master)](https://travis-ci.org/elixir-ecto/postgrex)
+[![Build Status](https://travis-ci.org/elixir-ecto/postgrex.svg?branch=master)](https://travis-ci.org/elixir-ecto/postgrex)
 
 PostgreSQL driver for Elixir.
 
