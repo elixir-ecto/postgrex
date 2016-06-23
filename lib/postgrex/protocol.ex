@@ -356,18 +356,30 @@ defmodule Postgrex.Protocol do
   ## handshake
 
   defp handshake(%{timeout: timeout, sock: {:gen_tcp, sock}} = s,status) do
-    {:ok, timer} = :timer.apply_after(timeout, :gen_tcp, :shutdown,
-                                      [sock, :read_write])
+    timer = start_handshake_timer(timeout, sock)
     case do_handshake(s, status) do
       {:ok, %{parameters: parameters} = s} ->
-        {:ok, _} = :timer.cancel(timer)
+        cancel_handshake_timer(timer)
         ref = Postgrex.Parameters.insert(parameters)
         {:ok, %{s | parameters: ref}}
       {:disconnect, err, s} ->
-        {:ok, _} = :timer.cancel(timer)
+        cancel_handshake_timer(timer)
         disconnect(err, s)
         {:error, err}
     end
+  end
+
+  defp start_handshake_timer(:infinity, _), do: :infinity
+  defp start_handshake_timer(timeout, sock) do
+    {:ok, tref} = :timer.apply_after(timeout, :gen_tcp, :shutdown,
+                                     [sock, :read_write])
+    {:timer, tref}
+  end
+
+  def cancel_handshake_timer(:infinity), do: :ok
+  def cancel_handshake_timer({:timer, tref}) do
+    {:ok, _} = :timer.cancel(tref)
+    :ok
   end
 
   defp do_handshake(s, %{ssl: true} = status), do: ssl(s, status)

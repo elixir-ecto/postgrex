@@ -73,6 +73,15 @@ defmodule LoginTest do
     assert "postgrex" == P.parameters(pid)["application_name"]
   end
 
+  test "infinity timeout" do
+    opts = [ hostname: "localhost", username: "postgres",
+             password: "postgres", database: "postgrex_test",
+             timeout: :infinity ]
+
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
   @tag :ssl
   test "ssl" do
     opts = [ hostname: "localhost", username: "postgres",
