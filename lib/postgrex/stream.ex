@@ -1,5 +1,6 @@
 defmodule Postgrex.Stream do
   defstruct [:conn, :options, :params, :portal, :query, :ref, state: :bind, num_rows: 0, max_rows: 500]
+  @type t :: %Postgrex.Stream{}
 end
 
 defmodule Postgrex.CopyData do
