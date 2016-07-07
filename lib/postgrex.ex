@@ -109,7 +109,7 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
 
-      Postgrex.query(conn, "COPY ints FROM STDIN", ["1\n2\n"], [copy_data: true])
+      Postgrex.query(conn, "COPY ints FROM STDIN", ["1\\n2\\n"], [copy_data: true])
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
@@ -399,13 +399,13 @@ defmodule Postgrex do
   ## Examples
 
       Postgrex.transaction(pid, fn(conn) ->
-        query = Postgrex.prepare!(conn, "COPY posts TO STDOUT")
+        query = Postgrex.prepare!(conn, "", "COPY posts TO STDOUT")
         stream = Postgrex.stream(conn, query, [])
         Enum.into(stream, File.stream!("posts"))
       end)
 
       Postgrex.transaction(pid, fn(conn) ->
-        query = Postgrex.prepare!(conn, "COPY posts FROM STDIN", [copy_data: true])
+        query = Postgrex.prepare!(conn, "", "COPY posts FROM STDIN", [copy_data: true])
         stream = Postgrex.stream(conn, query, [])
         Enum.into(File.stream!("posts"), stream)
       end)
