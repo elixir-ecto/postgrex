@@ -1,6 +1,8 @@
 defmodule Postgrex.Error do
   defexception [:message, :postgres, :connection_id]
 
+  @type t :: %Postgrex.Error{}
+
   @nonposix_errors [:closed, :timeout]
   @metadata [:table, :column, :constraint]
 
