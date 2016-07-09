@@ -43,9 +43,6 @@ CREATE TABLE composite1 (a int, b text);
 DROP TABLE IF EXISTS composite2;
 CREATE TABLE composite2 (a int, b int, c int);
 
-DROP TYPE IF EXISTS enum1;
-CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
-
 CREATE TABLE uniques (a int UNIQUE);
 """
 
@@ -57,8 +54,8 @@ CREATE SCHEMA test;
 cmds = [
   ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test;"),
   ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"),
-  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
-  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
+  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8';"),
+  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8';"),
   ~s(psql -U postgres -d postgrex_test -c "#{sql}"),
   ~s(psql -U postgres -d postgrex_test_with_schemas -c "#{sql_with_schemas}")
 ]
