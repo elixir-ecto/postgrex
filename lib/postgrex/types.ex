@@ -169,6 +169,10 @@ defmodule Postgrex.Types do
     end)
   end
 
+  defp parse_oids(nil) do
+    []
+  end
+
   defp parse_oids("{}") do
     []
   end
