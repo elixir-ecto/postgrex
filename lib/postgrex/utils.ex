@@ -13,6 +13,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Int8,
     Postgrex.Extensions.Interval,
     Postgrex.Extensions.MACADDR,
+    Postgrex.Extensions.Name,
     Postgrex.Extensions.Network,
     Postgrex.Extensions.Numeric,
     Postgrex.Extensions.OID,
