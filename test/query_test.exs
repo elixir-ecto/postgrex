@@ -118,6 +118,14 @@ defmodule QueryTest do
     assert [[%Postgrex.Point{x: -97.0, y: 100.0}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
   end
 
+  test "decode name", context do
+    assert [["test"]] == query("SELECT 'test'::name", [])
+  end
+
+  test "encode name", context do
+    assert [["test"]] == query("SELECT $1::name", ["test"])
+  end
+
   test "decode record", context do
     assert [[{1, "2"}]] = query("SELECT (1, '2')::composite1", [])
     assert [[[{1, "2"}]]] = query("SELECT ARRAY[(1, '2')::composite1]", [])
