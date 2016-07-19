@@ -593,12 +593,42 @@ defmodule Postgrex.Protocol do
     ## simple queries here are only done by Postgrex.Notifications processes
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, %Query{}, [], tag, buffer)
+        simple_complete(s, status, tag, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
+        simple_sync_recv(s, status, err, buffer)
       {:ok, msg, buffer} ->
         simple_recv(handle_msg(s, status, msg), status, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp simple_complete(s, status, tag, buffer) do
+    %{connection_id: connection_id} = s
+    {command, nrows} = decode_tag(tag)
+    result = %Postgrex.Result{command: command, num_rows: nrows || 0,
+                              rows: nil, columns: nil,
+                              connection_id: connection_id}
+    simple_sync_recv(s, status, result, buffer)
+  end
+
+  defp simple_sync_recv(s, status, res, buffer) do
+    %{postgres: postgres, transactions: transactions, timeout: timeout} = s
+    case msg_recv(s, timeout, buffer) do
+      {:ok, msg_ready(status: :idle), buffer}
+      when postgres == :transaction and transactions == :strict ->
+        sync_error(s, :idle, buffer)
+      {:ok, msg_ready(status: :transaction), buffer}
+      when postgres == :idle and transactions == :strict ->
+        sync_error(s, :transaction, buffer)
+      {:ok, msg_ready(status: :failed), buffer}
+      when postgres == :idle and transactions == :strict ->
+        sync_error(s, :failed, buffer)
+      {:ok, msg_ready(status: postgres), buffer} ->
+        ok(s, res, postgres, buffer)
+      {:ok, msg, buffer} ->
+        simple_sync_recv(handle_msg(s, status, msg), status, res, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1676,9 +1706,6 @@ defmodule Postgrex.Protocol do
     {:error, err, s}
   end
 
-  # Query has completed so ok to use state timeout as message should either be
-  # buffer or in flight. sync_recv/4 used by simple queries so can't use
-  # :infinity.
   defp sync_recv(s, %{mode: :savepoint} = status, res, buffer) do
     case res do
       %Postgrex.Error{} ->
@@ -1700,8 +1727,8 @@ defmodule Postgrex.Protocol do
   end
 
   defp do_sync_recv(s, status, res, buffer) do
-    %{postgres: postgres, transactions: transactions, timeout: timeout} = s
-    case msg_recv(s, timeout, buffer) do
+    %{postgres: postgres, transactions: transactions} = s
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(status: :idle), buffer}
       when postgres == :transaction and transactions == :strict ->
         sync_error(s, :idle, buffer)
