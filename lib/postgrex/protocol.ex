@@ -128,8 +128,8 @@ defmodule Postgrex.Protocol do
 
   @spec handle_prepare(Postgrex.Query.t, Keyword.t, state) ::
     {:ok, Postgrex.Query.t, state} |
-    {:error, %ArgumentError{} | %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Query.t, state}
+    {:error, %ArgumentError{}, state} |
+    {:error | :disconnect, Postgrex.Query.t | %RuntimeError{}, state}
   def handle_prepare(query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :prepare, query)
   end
@@ -167,7 +167,7 @@ defmodule Postgrex.Protocol do
   @spec handle_execute(Postgrex.Stream.t | Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, %RuntimeError{}, Postgrex.Error.t, state}
+    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
   def handle_execute(req, params, opts, s) do
     status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
     case execute(s, req) do
@@ -183,7 +183,7 @@ defmodule Postgrex.Protocol do
   @spec handle_close(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, %RuntimeError{} | Postgrex.Error.t, state}
+    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
   def handle_close(%Stream{ref: ref} = stream, _, %{postgres: {_, ref}} = s) do
     msg = "postgresql protocol can not halt copying from database for " <>
       inspect(stream)
@@ -205,8 +205,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_begin(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:disconnect, %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
@@ -223,8 +222,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:disconnect, %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
@@ -243,8 +241,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_rollback(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:disconnect, %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
   def handle_rollback(_, %{postgres: {_, _}} = s) do
     lock_error(s, :rollback)
   end
@@ -664,7 +661,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, " <>
           "the maximum is #{max}"
-        err = ArgumentError.exception(message: msg)
+        err = RuntimeError.exception(message: msg)
         {:disconnect, err, %{s | buffer: buffer}}
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
