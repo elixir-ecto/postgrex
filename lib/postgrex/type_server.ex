@@ -47,7 +47,7 @@ defmodule Postgrex.TypeServer do
 
   def init([]) do
     _ = Process.flag(:trap_exit, true)
-    {:ok, {%{}, %{}, HashDict.new}}
+    {:ok, {%{}, %{}, Map.new}}
   end
 
   def handle_call({:fetch, key}, {pid, _} = from, {tables, monitors, conns}) do
@@ -80,12 +80,12 @@ defmodule Postgrex.TypeServer do
         Process.demonitor(ref, [:flush])
         Process.link(pid)
         monitors = Map.delete(monitors, ref)
-        conns = HashDict.put(conns, pid, key)
+        conns = Map.put(conns, pid, key)
         go = fn({pid2, ref2, from2}, {monitors, conns}) ->
           Process.demonitor(ref2, [:flush])
           Process.link(pid2)
           GenServer.reply(from2, {:go, table})
-          {Map.delete(monitors, ref2), HashDict.put(conns, pid2, key)}
+          {Map.delete(monitors, ref2), Map.put(conns, pid2, key)}
         end
         {monitors, conns} = Enum.reduce(waiting, {monitors, conns}, go)
         tables = Map.put(tables, key, {:ready, 1 + length(waiting), nil, table})
@@ -106,7 +106,7 @@ defmodule Postgrex.TypeServer do
   end
 
   def handle_info({:EXIT, pid, _}, {tables, monitors, conns}) do
-    {key, conns} = HashDict.pop(conns, pid)
+    {key, conns} = Map.pop(conns, pid)
 
     tables =
       case Map.get(tables, key, :missing) do
@@ -183,7 +183,7 @@ defmodule Postgrex.TypeServer do
         (key2) ->
           raise "#{inspect pid} key #{inspect key} does not match #{inspect key2}"
       end
-    HashDict.update(conns, pid, key, update)
+    Map.update(conns, pid, key, update)
   end
 
   defp cancel_timer(nil), do: :ok

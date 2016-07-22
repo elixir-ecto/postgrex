@@ -12,7 +12,7 @@ defmodule Postgrex.Notifications do
   @timeout 5000
 
   defstruct protocol: nil, parameters: nil,
-            listeners: HashDict.new(), listener_channels: HashDict.new()
+            listeners: Map.new(), listener_channels: Map.new()
 
   ## PUBLIC API ##
 
@@ -102,11 +102,10 @@ defmodule Postgrex.Notifications do
     ref = Process.monitor(pid)
 
     s = put_in(s.listeners[ref], {channel, pid})
-    s = update_in(s.listener_channels[channel], &((&1 || HashSet.new()) |> HashSet.put(ref)))
-
+    s = update_in(s.listener_channels[channel], &((&1 || Map.new()) |> Map.put(ref, pid)))
     # If this is the first listener for the given channel, we need to actually
     # issue the LISTEN query.
-    if HashSet.size(s.listener_channels[channel]) == 1 do
+    if Map.size(s.listener_channels[channel]) == 1 do
       listener_query("LISTEN #{channel}", {:ok, ref}, from, s)
     else
       {:reply, {:ok, ref}, s}
@@ -114,7 +113,7 @@ defmodule Postgrex.Notifications do
   end
 
   def handle_call({:unlisten, ref}, from, s) do
-    case HashDict.fetch(s.listeners, ref) do
+    case Map.fetch(s.listeners, ref) do
       :error ->
         {:reply, {:error, %ArgumentError{}}, s}
       {:ok, {channel, _pid}} ->
@@ -124,8 +123,8 @@ defmodule Postgrex.Notifications do
 
         # If no listeners remain for `channel`, then let's actually issue an
         # UNLISTEN query.
-        if HashSet.size(s.listener_channels[channel]) == 0 do
-          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
+        if Map.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &Map.delete(&1, channel))
           listener_query("UNLISTEN #{channel}", :ok, from, s)
         else
           {:reply, :ok, s}
@@ -134,14 +133,14 @@ defmodule Postgrex.Notifications do
   end
 
   def handle_info({:DOWN, ref, :process, _, _}, s) do
-    case HashDict.fetch(s.listeners, ref) do
+    case Map.fetch(s.listeners, ref) do
       :error ->
         {:noreply, s}
       {:ok, {channel, _pid}} ->
         s = remove_monitored_listener(s, ref, channel)
 
-        if HashSet.size(s.listener_channels[channel]) == 0 do
-          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
+        if Map.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &Map.delete(&1, channel))
           listener_query("UNLISTEN #{channel}", :ok, nil, s)
         else
           {:noreply, s}
@@ -176,8 +175,8 @@ defmodule Postgrex.Notifications do
   end
 
   defp notify_listeners(channels, listeners, channel, payload) do
-    Enum.each (HashDict.get(channels, channel) || []), fn ref ->
-      {_, pid} = HashDict.fetch!(listeners, ref)
+    Enum.each (Map.get(channels, channel) || []), fn {ref, _pid} ->
+      {_, pid} = Map.fetch!(listeners, ref)
       send(pid, {:notification, self(), ref, channel, payload})
     end
   end
@@ -199,7 +198,7 @@ defmodule Postgrex.Notifications do
   end
 
   defp remove_monitored_listener(s, ref, channel) do
-    s = update_in(s.listeners, &HashDict.delete(&1, ref))
-    update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+    s = update_in(s.listeners, &Map.delete(&1, ref))
+    update_in(s.listener_channels[channel], &Map.delete(&1, ref))
   end
 end

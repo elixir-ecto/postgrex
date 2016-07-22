@@ -53,7 +53,7 @@ defmodule Postgrex.Types do
 
   @doc false
   def prepare_extensions(extensions, parameters) do
-    Enum.into(extensions, HashDict.new, fn {extension, opts} ->
+    Enum.into(extensions, Map.new, fn {extension, opts} ->
       {extension, extension.init(parameters, opts)}
     end)
   end
@@ -90,7 +90,7 @@ defmodule Postgrex.Types do
 
   @doc false
   def associate_extensions_with_types(table, extensions, extension_opts, types) do
-    oid_types = Enum.into(types, HashDict.new, &{&1.oid, &1})
+    oid_types = Enum.into(types, Map.new, &{&1.oid, &1})
 
     for {extension, opts} <- extension_opts do
       :ets.insert(table, {extension, opts})
@@ -106,14 +106,14 @@ defmodule Postgrex.Types do
 
   @doc false
   def associate_extensions_with_types(table, types) do
-    oid_types = Enum.into(types, HashDict.new, &{&1.oid, &1})
+    oid_types = Enum.into(types, Map.new, &{&1.oid, &1})
 
     extension_opts =
       table
       |> :ets.select([{{:_, :_}, [], [:"$_"]}])
-      |> Enum.into(HashDict.new)
+      |> Enum.into(Map.new)
 
-    extensions = HashDict.keys(extension_opts)
+    extensions = Map.keys(extension_opts)
 
     for type_info <- types, type_info != nil do
       extension = find_extension(type_info, extensions, extension_opts, oid_types)
@@ -129,7 +129,7 @@ defmodule Postgrex.Types do
 
   defp find_extension(type_info, extensions, extension_opts, types) do
     Enum.find(extensions, fn extension ->
-      opts = HashDict.fetch!(extension_opts, extension)
+      opts = Map.fetch!(extension_opts, extension)
       match_extension_against_type(extension, opts, type_info)
     end)
     || find_superextension_for_type(type_info, extensions, extension_opts, types)
@@ -175,7 +175,7 @@ defmodule Postgrex.Types do
   defp binary_format?(oid, extensions, extension_opts, types) when is_integer(oid) do
     # TODO: Support text
     if extension = find_extension(types[oid], extensions, extension_opts, types) do
-      opts = HashDict.fetch!(extension_opts, extension)
+      opts = Map.fetch!(extension_opts, extension)
       extension.format(opts) == :binary
     end
   end
@@ -189,7 +189,7 @@ defmodule Postgrex.Types do
     |> Enum.map(&find_extension(types[&1], extensions, extension_opts, types))
     |> Enum.all?(fn extension ->
         if extension do
-           opts = HashDict.fetch!(extension_opts, extension)
+           opts = Map.fetch!(extension_opts, extension)
            extension.format(opts) == :binary
         end
     end)
