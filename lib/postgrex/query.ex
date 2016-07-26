@@ -4,9 +4,11 @@ defmodule Postgrex.Query do
 
     * `name` - The name of the prepared statement;
     * `statement` - The prepared statement;
+    * `param_oids` - List of oids for each parameter;
     * `param_formats` - List of formats for each parameters encoded to;
     * `encoders` - List of anonymous functions to encode each parameter;
     * `columns` - The column names;
+    * `result_oids` - List of oids for each column;
     * `result_formats` - List of formats for each column is decoded from;
     * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
@@ -18,32 +20,34 @@ defmodule Postgrex.Query do
   @type t :: %__MODULE__{
     name:           iodata,
     statement:      iodata,
+    param_oids:     [Postgrex.Types.oid] | nil,
     param_formats:  [:binary | :text] | nil,
-    encoders:       [Postgrex.Types.oid] | [(term -> iodata)] | nil,
+    encoders:       [(term -> iodata)] | nil,
     columns:        [String.t] | nil,
+    result_oids:    [Postgrex.Types.oid] | nil,
     result_formats: [:binary | :text] | nil,
-    decoders:       [Postgrex.Types.oid] | [(binary -> term)] | nil,
+    decoders:       [(binary -> term)] | nil,
     types:          Postgrex.TypeServer.table | nil,
     null:           atom,
     copy_data:      boolean}
 
-  defstruct [:name, :statement, :param_formats, :encoders, :columns,
-    :result_formats, :decoders, :types, :null, :copy_data]
+  defstruct [:ref, :name, :statement, :param_oids, :param_formats, :encoders,
+    :columns, :result_oids, :result_formats, :decoders, :types, :null,
+    :copy_data]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
   import Postgrex.BinaryUtils
   require Postgrex.Messages
 
-  def parse(%{name: name, statement: statement} = query, opts) do
+  def parse(%{name: name} = query, opts) do
     copy_data? = opts[:copy_data] || false
-    # for query table to match on two identical statements they must be equal
-    %{query | name: IO.iodata_to_binary(name),
-      statement: IO.iodata_to_binary(statement), copy_data: copy_data?}
+    # for query table to match names must be equal
+    %{query | name: IO.iodata_to_binary(name), copy_data: copy_data?}
   end
 
   def describe(query, opts) do
-    %Postgrex.Query{encoders: poids, decoders: roids,
+    %Postgrex.Query{param_oids: poids, result_oids: roids,
                     types: types, null: conn_null, copy_data: data?} = query
     {pfs, encoders} = encoders(poids, types)
     encoders = if data?, do: encoders ++ [:copy_data], else: encoders

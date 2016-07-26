@@ -83,12 +83,13 @@ defmodule StreamTest do
   end
 
   test "prepare query and stream different query with same name raises", context do
-    query = prepare("ENOENT", "SELECT 42")
-    :ok = close(query)
-    _ = prepare("ENOENT", "SELECT 41")
+    query42 = prepare("DUPLICATE", "SELECT 42")
+    :ok = close(query42)
+    query41 = prepare("DUPLICATE", "SELECT 41")
     transaction(fn(conn) ->
-      assert_raise Postgrex.Error, ~r"ERROR \(duplicate_prepared_statement\)",
-        fn -> stream(query, []) |> Enum.take(1) end
+      assert [%Result{rows: [[42]]}] = stream(query42, []) |> Enum.take(1)
+
+      assert [%Result{rows: [[41]]}] = stream(query41, []) |> Enum.take(1)
     end)
   end
 
@@ -465,27 +466,33 @@ defmodule StreamTest do
     end)
   end
 
-  test "prepare query and stream into different query with same name raises", context do
-    query = prepare("ENOENT", "COPY uniques FROM STDIN", [copy_data: true])
-    :ok = close(query)
-    _ = prepare("ENOENT", "SELECT 41")
+  test "prepare query and stream into different queries with same name", context do
+    query42 = prepare("DUPLICATE", "COPY uniques FROM STDIN", [copy_data: true])
+    :ok = close(query42)
+    query41 = prepare("DUPLICATE", "COPY uniques FROM STDIN WITH DELIMITER AS '\s'", [copy_data: true])
     transaction(fn(conn) ->
-      stream = stream(query, [])
-      assert_raise Postgrex.Error, ~r"ERROR \(duplicate_prepared_statement\)",
-        fn -> Enum.into(["1\n"], stream) end
+      stream42 = stream(query42, [])
+      assert Enum.into(["1\n"], stream42) == stream42
+
+      stream41 = stream(query41, [])
+      assert Enum.into(["2\n"], stream41) == stream41
+
+      Postgrex.rollback(conn, :done)
     end)
   end
 
-  test "prepare query and stream into different query with same name and savepoint raises", context do
-    query = prepare("ENOENT", "COPY uniques FROM STDIN", [copy_data: true])
-    :ok = close(query)
-    _ = prepare("ENOENT", "SELECT 41")
+  test "prepare query and stream into different queries with same name and savepoint", context do
+    query42 = prepare("DUPLICATE", "COPY uniques FROM STDIN", [copy_data: true])
+    :ok = close(query42)
+    query41 = prepare("DUPLICATE", "COPY uniques FROM STDIN WITH DELIMITER AS '\s'", [copy_data: true])
     transaction(fn(conn) ->
-      stream = stream(query, [], [mode: :savepoint])
-      assert_raise Postgrex.Error, ~r"ERROR \(duplicate_prepared_statement\)",
-        fn -> Enum.into(["1\n"], stream) end
-      assert %Postgrex.Result{rows: [[42]]} =
-        Postgrex.query!(conn, "SELECT 42", [])
+      stream42 = stream(query42, [], [mode: :savepoint])
+      assert Enum.into(["1\n"], stream42) == stream42
+
+      stream41 = stream(query41, [], [mode: :savepoint])
+      assert Enum.into(["2\n"], stream41) == stream41
+
+      Postgrex.rollback(conn, :done)
     end)
   end
 

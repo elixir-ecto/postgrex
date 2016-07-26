@@ -534,12 +534,11 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "prepare query and execute different query with same name raise", context do
+  test "prepare query and execute different queries with same name", context do
     assert (%Postgrex.Query{name: "select"} = query42) = prepare("select", "SELECT 42")
     assert close(query42) == :ok
     assert %Postgrex.Query{} = prepare("select", "SELECT 41")
-    assert %Postgrex.Error{postgres: %{code: :duplicate_prepared_statement}} =
-      execute(query42, [])
+    assert [[42]] = execute(query42, [])
 
     assert [[42]] = query("SELECT 42", [])
   end
@@ -762,11 +761,11 @@ defmodule QueryTest do
     params = Enum.into(params, [])
 
     capture_log fn ->
-      assert_raise ArgumentError,
+      assert_raise RuntimeError,
         "postgresql protocol can not handle 65536 parameters, the maximum is 65535",
         fn() -> query(query, params) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
+      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
     end
   end
 
