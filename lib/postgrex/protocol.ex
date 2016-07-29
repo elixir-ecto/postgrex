@@ -137,12 +137,14 @@ defmodule Postgrex.Protocol do
     reserved_error(query, s)
   end
   def handle_prepare(%Query{types: nil} = query, opts, %{queries: nil, buffer: buffer} = s) do
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    parse_describe(%{s | buffer: nil}, status, unnamed(query), buffer)
+    {sync, next} = prepare(opts)
+    status = %{notify: notify(opts), mode: mode(opts), sync: sync}
+    parse_describe(%{s | buffer: nil}, status, unnamed(query), buffer, next)
   end
   def handle_prepare(%Query{types: nil} = query, opts, %{buffer: buffer} = s) do
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    close_parse_describe(%{s | buffer: nil}, status, query, buffer)
+    {sync, next} = prepare(opts)
+    status = %{notify: notify(opts), mode: mode(opts), sync: sync}
+    close_parse_describe(%{s | buffer: nil}, status, query, buffer, next)
   end
   def handle_prepare(%Query{types: types} = query, _, %{types: types} = s) do
     query_error(s, "query #{inspect query} has already been prepared")
@@ -189,6 +191,12 @@ defmodule Postgrex.Protocol do
       inspect(stream)
     err = RuntimeError.exception(message: msg)
     {:disconnect, err, s}
+  end
+  def handle_close(%Query{ref: ref} = query, opts, %{postgres: {postgres, ref}} = s) do
+    %{connection_id: connection_id, buffer: buffer} = s
+    status = %{notify: notify(opts), mode: mode(opts), sync: :flushed_sync}
+    res = %Postgrex.Result{command: :close, connection_id: connection_id}
+    close(%{s | postgres: postgres, buffer: nil}, status, query, res, buffer)
   end
   def handle_close(query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :close, query)
@@ -636,7 +644,15 @@ defmodule Postgrex.Protocol do
 
   ## prepare
 
-  defp parse_describe(s, status, query, buffer, next \\ &sync_recv/4) do
+  defp prepare(opts) do
+    # TODO: Use fetch!/2 once version ">= 0.12"
+    case Keyword.get(opts, :function, :prepare) do
+      :prepare         -> {:sync, &sync_recv/4}
+      :prepare_execute -> {:flush, &execute_ready/4}
+    end
+  end
+
+  defp parse_describe(s, status, query, buffer, next) do
     %Query{name: name, statement: statement} = query
     msgs =
       [msg_parse(name: name, statement: statement, type_oids: []),
@@ -646,7 +662,7 @@ defmodule Postgrex.Protocol do
     send_and_recv(s, status, query, buffer, msgs, recv)
   end
 
-  defp close_parse_describe(s, status, query, buffer, next \\ &sync_recv/4) do
+  defp close_parse_describe(s, status, query, buffer, next) do
     %Query{name: name, statement: statement} = query
     msgs =
       [msg_close(type: :statement, name: name),
@@ -769,6 +785,11 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp execute_ready(%{postgres: postgres} = s, _, query, buffer) do
+    %Query{ref: ref} = query
+    ok(s, query, {postgres, ref}, buffer)
+  end
+
   ## execute
 
   defp query_error(s, msg) do
@@ -787,6 +808,18 @@ defmodule Postgrex.Protocol do
     {:error, RuntimeError.exception(msg), s}
   end
 
+  defp execute(%{postgres: {postgres, ref}}, %Query{ref: ref} = query) do
+    fn(s, status, params, buffer) ->
+      s = %{s | postgres: postgres}
+      status = %{status | sync: :flushed_sync}
+      case query do
+        %Query{copy_data: true} ->
+          bind_copy_in(s, status, query, params, buffer)
+        _ ->
+          bind_execute(s, status, query, params, buffer)
+      end
+    end
+  end
   defp execute(%{postgres: {_, _ref}} = s, %Query{} = query) do
     lock_error(s, :execute, query)
   end

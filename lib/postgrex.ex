@@ -114,7 +114,11 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+    opts =
+      opts
+      |> defaults()
+      |> Keyword.put(:function, :prepare_execute)
+    case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} ->
         {:ok, result}
       {:error, %ArgumentError{} = err} ->
@@ -133,7 +137,11 @@ defmodule Postgrex do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    {_, result} = DBConnection.prepare_execute!(conn, query, params, defaults(opts))
+    opts =
+      opts
+      |> defaults()
+      |> Keyword.put(:function, :prepare_execute)
+    {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
     result
   end
 
@@ -167,7 +175,11 @@ defmodule Postgrex do
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    case DBConnection.prepare(conn, query, defaults(opts)) do
+    opts =
+      opts
+      |> defaults()
+      |> Keyword.put(:function, :prepare)
+    case DBConnection.prepare(conn, query, opts) do
       {:error, %ArgumentError{} = err} ->
         raise err
       {:error, %RuntimeError{} = err} ->
@@ -183,7 +195,11 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, Keyword.t) :: Postgrex.Query.t
   def prepare!(conn, name, statement, opts \\ []) do
-    DBConnection.prepare!(conn, %Query{name: name, statement: statement}, defaults(opts))
+    opts =
+      opts
+      |> defaults()
+      |> Keyword.put(:function, :prepare)
+    DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
