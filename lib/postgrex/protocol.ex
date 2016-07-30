@@ -1160,6 +1160,9 @@ defmodule Postgrex.Protocol do
         complete(s, status, query, rows, tag, buffer)
       {:ok, msg_portal_suspend(), buffer} ->
         suspend(s, status, query, rows, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
       {:ok, msg, buffer} ->
         execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
