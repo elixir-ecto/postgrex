@@ -52,6 +52,7 @@ defmodule Postgrex.Messages do
   defrecord :msg_copy_out_response, [:format, :columns]
   defrecord :msg_terminate, []
   defrecord :msg_ssl_request, []
+  defrecord :msg_cancel_request, [:pid, :key]
 
   defrecord :row_field, [:name, :table_oid, :column, :type_oid, :type_size,
                          :type_mod, :format]
@@ -306,6 +307,11 @@ defmodule Postgrex.Messages do
   # ssl_request
   defp encode(msg_ssl_request()) do
     {nil, <<1234 :: int16, 5679 :: int16>>}
+  end
+
+  # cancel_request
+  defp encode(msg_cancel_request(pid: pid, key: key)) do
+    {nil, <<1234 :: int16, 5678 :: int16, pid :: int32, key :: int32>>}
   end
 
   # copy_data
