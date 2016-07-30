@@ -232,6 +232,40 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  test "savepoint query does not rollback on savepoint error", context do
+    assert transaction(fn(conn) ->
+      assert {:ok, _} = P.query(conn, "SAVEPOINT postgrex_query", [])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+        P.query(conn, "INSERT INTO uniques VALUES (1), (1)", [])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [], [mode: :savepoint])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [])
+
+      P.rollback(conn, :oops)
+    end) == {:error, :oops}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  test "savepoint query handles release savepoint error", context do
+    assert transaction(fn(conn) ->
+      assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
+        P.query(conn, "RELEASE SAVEPOINT postgrex_query", [], [mode: :savepoint])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [])
+      P.rollback(conn, :oops)
+    end) == {:error, :oops}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
   test "savepoint query rolls back and releases savepoint in transaction", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =

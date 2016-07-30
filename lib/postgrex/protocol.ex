@@ -1057,7 +1057,8 @@ defmodule Postgrex.Protocol do
         recv.(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
-        do_sync_recv(s, status, err, buffer)
+        # Failed with savepoints can only await ready message and return error
+        sync_recv(s, %{status | mode: :transaction}, err, buffer)
       {:ok, msg, buffer} ->
         s = handle_msg(s, status, msg)
         savepoint_recv(s, status, query, buffer, recv)
