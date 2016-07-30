@@ -897,6 +897,11 @@ defmodule Postgrex.Protocol do
     when types != types2 do
     query_error(s, "query #{inspect query} has invalid types for the connection")
   end
+  defp execute(_, %Stream{state: :out, query: %Query{copy_data: true}} = stream) do
+    fn(s, status, copy_data, buffer) ->
+      copy_in_portal(s, status, stream, copy_data, buffer)
+    end
+  end
   defp execute(_, %Stream{state: state} = stream)
       when state in [:out, :suspended] do
     fn(s, status, _params, buffer) ->
@@ -940,6 +945,14 @@ defmodule Postgrex.Protocol do
   end
   defp execute(%{postgres: {_, _ref}} = s, %Postgrex.CopyData{} = copy_data) do
     lock_error(s, :execute, copy_data)
+  end
+
+  defp copy_in_portal(s, status, stream, copy_data_msg, buffer) do
+    %Stream{portal: portal, max_rows: max_rows} = stream
+    messages = [msg_execute(name_port: portal, max_rows: max_rows),
+      copy_data_msg,
+      msg_copy_done()]
+    send_and_recv(s, status, stream, buffer, messages, &copy_in_recv/4)
   end
 
   defp execute_portal(s, status, stream, buffer) do
@@ -1138,7 +1151,7 @@ defmodule Postgrex.Protocol do
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
       {:ok, msg_copy_in_response(), buffer} ->
-        msg = "query #{inspect query} is trying to copying but it is not supported"
+        msg = "query #{inspect query} is trying to copying but no copy data to send"
         err = ArgumentError.exception(msg)
         copy_fail(s, status, err, buffer)
       {:ok, msg_copy_out_response(), buffer} ->

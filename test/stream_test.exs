@@ -377,6 +377,15 @@ defmodule StreamTest do
     end)
   end
 
+  test "stream from COPY FROM STDIN", context do
+    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    transaction(fn(conn) ->
+      assert [%Postgrex.Result{command: :copy, rows: nil, num_rows: 1}] =
+        stream(query, ["2\n"]) |> Enum.to_list()
+      Postgrex.rollback(conn, :done)
+    end)
+  end
+
   test "COPY empty FROM STDIN", context do
     query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
     transaction(fn(conn) ->

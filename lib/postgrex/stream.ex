@@ -61,7 +61,6 @@ defimpl Enumerable, for: Postgrex.Stream do
   end
 end
 
-
 defimpl Collectable, for: Postgrex.Stream do
   def into(stream) do
     %Postgrex.Stream{conn: conn, params: params, options: options} = stream
@@ -90,6 +89,8 @@ defimpl Collectable, for: Postgrex.Stream do
 end
 
 defimpl DBConnection.Query, for: Postgrex.Stream do
+  require Postgrex.Messages
+
   def parse(stream, _) do
     raise "can not prepare #{inspect stream}"
   end
@@ -103,7 +104,31 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
   end
 
   def encode(%Postgrex.Stream{query: query, state: :bind}, params, opts) do
-    DBConnection.Query.encode(query, params, opts)
+    case query do
+      %Postgrex.Query{encoders: [_|_] = encoders, copy_data: true} ->
+        {encoders, [:copy_data]} = Enum.split(encoders, -1)
+        {params, _} = Enum.split(params, -1)
+        query = %Postgrex.Query{query | encoders: encoders}
+        DBConnection.Query.encode(query, params, opts)
+      %Postgrex.Query{} = query ->
+        DBConnection.Query.encode(query, params, opts)
+    end
+  end
+
+  def encode(%Postgrex.Stream{state: :out, query: query}, params, _) do
+    case query do
+      %Postgrex.Query{copy_data: true} ->
+        {_, [copy_data]} = Enum.split(params, -1)
+        try do
+          Postgrex.Messages.encode_msg(Postgrex.Messages.msg_copy_data(data: copy_data))
+        rescue
+          ArgumentError ->
+            raise ArgumentError,
+            "expected iodata to copy to database, got: " <> inspect(copy_data)
+        end
+      _ ->
+        []
+    end
   end
 
   def encode(%Postgrex.Stream{query: query, state: :copy_in}, params, opts) do
@@ -117,9 +142,9 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
     end
   end
 
-  def encode(%Postgrex.Stream{state: state}, params, _)
-      when state in [:out, :suspended, :copy_out, :copy_done, :copy_fail] do
-    params
+  def encode(%Postgrex.Stream{state: state}, _, _)
+      when state in [:suspended, :copy_out, :copy_done, :copy_fail] do
+    []
   end
 
   def decode(%Postgrex.Stream{state: state}, result, _)
