@@ -5,18 +5,26 @@ defmodule ClientTest do
   setup do
     opts = [ database: "postgrex_test", backoff_type: :stop ]
     {:ok, pid} = Postgrex.start_link(opts)
-    {:ok, [pid: pid]}
+    {:ok, [pid: pid, options: opts]}
   end
 
  test "active client timeout", context do
     conn = context[:pid]
 
+    %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(conn, "SELECT 42", [])
+
     Process.flag(:trap_exit, true)
     capture_log fn ->
-      assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
+      assert [[^connection_id]] =
+        query("SELECT pid FROM pg_stat_activity WHERE pid=$1", [connection_id])
+      assert %Postgrex.Error{} = query("SELECT pg_sleep(1)", [], [timeout: 50])
 
       assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end
+
+    {:ok, pid} = Postgrex.start_link(context[:options])
+    assert %Postgrex.Result{rows: []} =
+      Postgrex.query!(pid, "SELECT pid FROM pg_stat_activity WHERE pid=$1", [connection_id])
   end
 
   test "active client cancel", context do
