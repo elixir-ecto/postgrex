@@ -353,7 +353,7 @@ defmodule TransactionTest do
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
@@ -369,7 +369,7 @@ defmodule TransactionTest do
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
@@ -384,7 +384,7 @@ defmodule TransactionTest do
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
