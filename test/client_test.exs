@@ -16,11 +16,12 @@ defmodule ClientTest do
     Process.flag(:trap_exit, true)
     capture_log fn ->
       assert [[_]] = query("SELECT pg_stat_get_activity($1)", [connection_id])
-      assert %Postgrex.Error{} = query("SELECT pg_sleep(1)", [], [timeout: 50])
+      assert %Postgrex.Error{} = query("SELECT pg_sleep(10)", [], [timeout: 50])
 
       assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end
 
+    :timer.sleep(500)
     {:ok, pid} = Postgrex.start_link(context[:options])
     assert %Postgrex.Result{rows: []} =
       Postgrex.query!(pid, "SELECT pg_stat_get_activity($1)", [connection_id])
