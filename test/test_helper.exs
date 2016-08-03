@@ -48,7 +48,9 @@ CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 
 CREATE TABLE uniques (a int UNIQUE);
 
-CREATE TABLE altering (a int2)
+CREATE TABLE altering (a int2);
+
+CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);
 """
 
 sql_with_schemas = """
