@@ -417,7 +417,8 @@ defmodule Postgrex do
       Postgrex.transaction(pid, fn(conn) ->
         query = Postgrex.prepare!(conn, "", "COPY posts TO STDOUT")
         stream = Postgrex.stream(conn, query, [])
-        Enum.into(stream, File.stream!("posts"))
+        result_to_iodata = fn(%Postgrex.Result{rows: rows}) -> rows end
+        Enum.into(stream, File.stream!("posts"), result_to_iodata)
       end)
 
       Postgrex.transaction(pid, fn(conn) ->
