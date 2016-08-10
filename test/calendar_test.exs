@@ -5,12 +5,8 @@ if Code.ensure_loaded?(Calendar) do
     alias Postgrex, as: P
 
     setup do
-      extensions = [{Postgrex.Extensions.Calendar.Time, []},
-                    {Postgrex.Extensions.Calendar.Date, []},
-                    {Postgrex.Extensions.Calendar.NaiveDateTime, []},
-                    {Postgrex.Extensions.Calendar.DateTime, []}]
       opts = [database: "postgrex_test", backoff_type: :stop,
-              extensions: extensions]
+              extensions: [{Postgrex.Extensions.Calendar, []}]]
       {:ok, pid} = P.start_link(opts)
       {:ok, [pid: pid]}
     end
