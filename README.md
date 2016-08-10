@@ -41,8 +41,8 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
     bytea           <<42>>
     numeric         #Decimal<42.0> *
     date            %Postgrex.Date{year: 2013, month: 10, day: 12}
-    time            %Postgrex.Time{hour: 0, min: 37, sec: 14, usec: 0}
-    timestamp(tz)   %Postgrex.Timestamp{year: 2013 month: 10, day: 12, hour: 0, min: 37, sec: 14, usec: 0}
+    time(tz)        %Postgrex.Time{hour: 0, min: 37, sec: 14, usec: 0} **
+    timestamp(tz)   %Postgrex.Timestamp{year: 2013 month: 10, day: 12, hour: 0, min: 37, sec: 14, usec: 0} **
     interval        %Postgrex.Interval{months: 14, days: 40, secs: 10920}
     array           [1, 2, 3]
     composite type  {42, "title", "content"}
@@ -52,6 +52,8 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
     oid types       42
 
 \* [Decimal](http://github.com/ericmj/decimal)
+
+\*\* Timezones will always be normalized to UTC or assumed to be UTC when no information is available, either by PostgreSQL or Postgrex
 
 Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, support new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
