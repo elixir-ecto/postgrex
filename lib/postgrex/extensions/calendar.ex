@@ -19,7 +19,7 @@ if Code.ensure_loaded?(Calendar) do
     alias Postgrex.TypeInfo
     use Postgrex.BinaryExtension,
       [send: "date_send", send: "timestamp_send", send: "timestamptz_send",
-       send: "time_send"]
+       send: "time_send", send: "timetz_send"]
 
     def encode(%TypeInfo{send: send} = type_info, value, _, _) do
       case send do
@@ -27,6 +27,7 @@ if Code.ensure_loaded?(Calendar) do
         "timestamp_send" -> encode_naive(type_info, value)
         "timestamptz_send" -> encode_datetime(type_info, value)
         "time_send" -> encode_time(type_info, value)
+        "timetz_send" -> encode_timetz(type_info, value)
       end
     end
 
@@ -36,6 +37,7 @@ if Code.ensure_loaded?(Calendar) do
         "timestamp_send" -> decode_naive(value)
         "timestamptz_send" -> decode_datetime(value)
         "time_send" -> decode_time(value)
+        "timetz_send" -> decode_timetz(value)
       end
     end
 
@@ -132,25 +134,64 @@ if Code.ensure_loaded?(Calendar) do
 
     # Time
 
-    defp encode_time(_, %Time{microsecond: {microsec, _}} = time) do
+    defp encode_time(type_info, value) do
+      case time_to_microseconds(value) do
+        microsec when is_integer(microsec) ->
+          <<microsec :: int64>>
+        :error ->
+          raise ArgumentError,
+          Postgrex.Utils.encode_msg(type_info, value, Time)
+      end
+    end
+
+    defp time_to_microseconds(%Time{microsecond: {microsec, _}} = time) do
       sec =
         time
         |> Time.to_erl()
         |> :calendar.time_to_seconds()
 
-      <<sec * 1_000_000 + microsec :: int64>>
-    end
-    defp encode_time(type_info, value) do
-      raise ArgumentError,
-        Postgrex.Utils.encode_msg(type_info, value, Time)
+      sec * 1_000_000 + microsec
     end
 
     defp decode_time(<<microsec :: int64>>) do
+      microseconds_to_time(microsec)
+    end
+
+    defp microseconds_to_time(microsec) do
       sec = div(microsec, 1_000_000)
       microsec = rem(microsec, 1_000_000)
       sec
       |> :calendar.seconds_to_time()
       |> Time.from_erl!(microsec)
+    end
+
+    # Time with time zone
+
+    @dms_max (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000
+
+    defp encode_timetz(type_info, value) do
+      case time_to_microseconds(value) do
+        microsec when is_integer(microsec) ->
+          <<microsec :: int64, 0 :: int32>>
+        :error ->
+          raise ArgumentError,
+          Postgrex.Utils.encode_msg(type_info, value, Time)
+      end
+    end
+
+    defp decode_timetz(<<microsec :: int64, tz :: int32>>) do
+      microsec
+      |> adjust_microseconds(tz)
+      |> microseconds_to_time()
+    end
+
+    defp adjust_microseconds(microsec, tz) do
+      case microsec + tz * 1_000_000 do
+        adjusted_microsec when adjusted_microsec < 0 ->
+          @dms_max + adjusted_microsec
+        adjusted_microsec ->
+          adjusted_microsec
+      end
     end
   end
 end

@@ -22,6 +22,30 @@ if Code.ensure_loaded?(Calendar) do
       assert [[~T[01:02:03.123456]]] = query("SELECT time '01:02:03.123456'", [])
     end
 
+    test "decode timetz", context do
+      assert [[~T[00:00:00.000000]]] = query("SELECT time with time zone '00:00:00 UTC'", [])
+      assert [[~T[01:02:03.000000]]] = query("SELECT time with time zone '01:02:03 UTC'", [])
+      assert [[~T[23:00:00.000000]]] = query("SELECT time with time zone '00:00:00+1'", [])
+
+      assert :ok = query("SET SESSION TIME ZONE UTC", [])
+
+      assert [[~T[23:59:59.000000]]] = query("SELECT time with time zone '23:59:59'", [])
+      assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06 PST'", [])
+
+      assert [[~T[00:00:00.123000]]] = query("SELECT time with time zone '00:00:00.123'", [])
+      assert [[~T[00:00:00.123456]]] = query("SELECT time with time zone '00:00:00.123456 UTC'", [])
+      assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '01:02:03.123456'", [])
+
+      assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '16:01:03.123456+1459'", [])
+
+      assert [[~T[16:01:03.123456]]] = query("SELECT time with time zone '01:02:03.123456-1459'", [])
+
+      assert :ok = query("SET SESSION TIME ZONE +1", [])
+
+      assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06 PST'", [])
+      assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '01:02:03.123456 UTC'", [])
+    end
+
     test "decode date", context do
       assert [[~D[0001-01-01]]] = query("SELECT date '0001-01-01'", [])
       assert [[~D[0001-02-03]]] = query("SELECT date '0001-02-03'", [])
@@ -82,6 +106,19 @@ if Code.ensure_loaded?(Calendar) do
       assert [["01:02:03"]] = query("SELECT $1::time::text", [~T[01:02:03]])
       assert [["23:59:59"]] = query("SELECT $1::time::text", [~T[23:59:59]])
       assert [["04:05:06.123456"]] = query("SELECT $1::time::text", [~T[04:05:06.123456]])
+    end
+
+    test "encode timetz", context do
+      assert :ok = query("SET SESSION TIME ZONE UTC", [])
+
+      assert [["00:00:00+00"]] = query("SELECT $1::timetz::text", [~T[00:00:00.0000]])
+      assert [["01:02:03+00"]] = query("SELECT $1::timetz::text", [~T[01:02:03]])
+      assert [["23:59:59+00"]] = query("SELECT $1::timetz::text", [~T[23:59:59]])
+      assert [["04:05:06.123456+00"]] = query("SELECT $1::timetz::text", [~T[04:05:06.123456]])
+
+      assert :ok = query("SET SESSION TIME ZONE +1", [])
+
+      assert [["04:05:06.123456+00"]] = query("SELECT $1::timetz::text", [~T[04:05:06.123456]])
     end
 
     test "encode date", context do
