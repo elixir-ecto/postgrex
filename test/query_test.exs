@@ -75,6 +75,10 @@ defmodule QueryTest do
 
     assert [[%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}]] =
            query("SELECT timetz '04:05:06+02'", [])
+    assert [[%Postgrex.Time{hour: 22, min: 5, sec: 6, usec: 0}]] =
+           query("SELECT timetz '00:05:06+02'", [])
+    assert [[%Postgrex.Time{hour: 1, min: 5, sec: 6, usec: 0}]] =
+           query("SELECT timetz '23:05:06-02'", [])
   end
 
   test "decode date", context do

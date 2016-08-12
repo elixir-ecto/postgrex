@@ -108,14 +108,14 @@ if Code.ensure_loaded?(Calendar) do
 
     @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
     @us_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
-    @ums_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+    @uus_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
     @us_max :calendar.datetime_to_gregorian_seconds({{294277, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
-    @ums_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+    @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
 
     defp encode_datetime(_, %DateTime{utc_offset: 0, std_offset: 0} = date_time) do
       case DateTime.to_unix(date_time, :microseconds) do
-        microsecs when microsecs < @ums_max ->
-          <<microsecs - @ums_epoch :: int64>>
+        microsecs when microsecs < @uus_max ->
+          <<microsecs - @uus_epoch :: int64>>
         _ ->
           raise ArgumentError, "#{inspect date_time} is beyond the maximum year 294276"
       end
@@ -129,7 +129,7 @@ if Code.ensure_loaded?(Calendar) do
     end
 
     defp decode_datetime(<<microsecs :: int64>>) do
-      DateTime.from_unix!(microsecs + @ums_epoch, :microseconds)
+      DateTime.from_unix!(microsecs + @uus_epoch, :microseconds)
     end
 
     # Time
@@ -167,7 +167,7 @@ if Code.ensure_loaded?(Calendar) do
 
     # Time with time zone
 
-    @dms_max (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000
+    @dus_max (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000
 
     defp encode_timetz(type_info, value) do
       case time_to_microseconds(value) do
@@ -188,9 +188,11 @@ if Code.ensure_loaded?(Calendar) do
     defp adjust_microseconds(microsec, tz) do
       case microsec + tz * 1_000_000 do
         adjusted_microsec when adjusted_microsec < 0 ->
-          @dms_max + adjusted_microsec
-        adjusted_microsec ->
+          @dus_max + adjusted_microsec
+        adjusted_microsec when adjusted_microsec < @dus_max ->
           adjusted_microsec
+        adjusted_microsec ->
+          adjusted_microsec - @dus_max
       end
     end
   end

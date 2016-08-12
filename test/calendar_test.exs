@@ -28,6 +28,7 @@ if Code.ensure_loaded?(Calendar) do
       assert [[~T[00:00:00.000000]]] = query("SELECT time with time zone '00:00:00 UTC'", [])
       assert [[~T[01:02:03.000000]]] = query("SELECT time with time zone '01:02:03 UTC'", [])
       assert [[~T[23:00:00.000000]]] = query("SELECT time with time zone '00:00:00+1'", [])
+      assert [[~T[01:00:00.000000]]] = query("SELECT time with time zone '23:00:00-2'", [])
 
       assert :ok = query("SET SESSION TIME ZONE UTC", [])
 
