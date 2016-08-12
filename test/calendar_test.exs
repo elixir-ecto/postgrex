@@ -16,6 +16,8 @@ if Code.ensure_loaded?(Calendar) do
       assert [[~T[01:02:03.000000]]] = query("SELECT time '01:02:03'", [])
       assert [[~T[23:59:59.000000]]] = query("SELECT time '23:59:59'", [])
       assert [[~T[04:05:06.000000]]] = query("SELECT time '04:05:06 PST'", [])
+      assert [[~T[04:05:06.000000]]] = query("SELECT time '04:05:06-8'", [])
+      assert [[~T[04:05:06.000000]]] = query("SELECT time '04:05:06-8'", [])
 
       assert [[~T[00:00:00.123000]]] = query("SELECT time '00:00:00.123'", [])
       assert [[~T[00:00:00.123456]]] = query("SELECT time '00:00:00.123456'", [])
@@ -31,6 +33,7 @@ if Code.ensure_loaded?(Calendar) do
 
       assert [[~T[23:59:59.000000]]] = query("SELECT time with time zone '23:59:59'", [])
       assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06 PST'", [])
+      assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06-8'", [])
 
       assert [[~T[00:00:00.123000]]] = query("SELECT time with time zone '00:00:00.123'", [])
       assert [[~T[00:00:00.123456]]] = query("SELECT time with time zone '00:00:00.123456 UTC'", [])
@@ -43,6 +46,7 @@ if Code.ensure_loaded?(Calendar) do
       assert :ok = query("SET SESSION TIME ZONE +1", [])
 
       assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06 PST'", [])
+      assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06-8'", [])
       assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '01:02:03.123456 UTC'", [])
     end
 
@@ -62,6 +66,9 @@ if Code.ensure_loaded?(Calendar) do
 
       assert [[~N[2013-09-23 14:04:37.000000]]] =
         query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
+
+      assert [[~N[2013-09-23 14:04:37.000000]]] =
+        query("SELECT timestamp '2013-09-23 14:04:37-8'", [])
 
       assert :ok = query("SET SESSION TIME ZONE +1", [])
       assert [[~N[2013-09-23 14:04:37.000000]]] =
@@ -87,6 +94,10 @@ if Code.ensure_loaded?(Calendar) do
                          second: 37, microsecond: {0, 6},
                          time_zone: "Etc/UTC", utc_offset: 0}]] =
       query("SELECT timestamp with time zone '2013-09-23 14:04:37 PST'", [])
+      assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 22, minute: 4,
+                         second: 37, microsecond: {0, 6},
+                         time_zone: "Etc/UTC", utc_offset: 0}]] =
+      query("SELECT timestamp with time zone '2013-09-23 14:04:37-8'", [])
 
       assert :ok = query("SET SESSION TIME ZONE +1", [])
 
@@ -94,6 +105,10 @@ if Code.ensure_loaded?(Calendar) do
                          second: 37, microsecond: {0, 6},
                          time_zone: "Etc/UTC", utc_offset: 0}]] =
         query("SELECT timestamp with time zone '2013-09-23 14:04:37 PST'", [])
+      assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 22, minute: 4,
+                         second: 37, microsecond: {0, 6},
+                         time_zone: "Etc/UTC", utc_offset: 0}]] =
+        query("SELECT timestamp with time zone '2013-09-23 14:04:37-8'", [])
 
       assert [[%DateTime{year: 1980, month: 1, day: 1, hour: 0, minute: 0,
                          second: 0, microsecond: {123456, 6},
@@ -169,7 +184,7 @@ if Code.ensure_loaded?(Calendar) do
           query("SELECT $1::timestamp with time zone::text",
               [%DateTime{year: 2013, month: 9, day: 23, hour: 14, minute: 4,
                          second: 37, microsecond: {123000, 6},
-                         time_zone: "PST", zone_abbr: "PST", utc_offset: 8,
+                         time_zone: "PST", zone_abbr: "PST", utc_offset: -8,
                          std_offset: 0}])
         end
 
