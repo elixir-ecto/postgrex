@@ -48,6 +48,9 @@ CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 
 CREATE TABLE uniques (a int UNIQUE);
 
+DROP TABLE IF EXISTS missing_oid;
+DROP TYPE IF EXISTS missing;
+
 CREATE TABLE altering (a int2);
 
 CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);

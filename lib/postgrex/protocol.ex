@@ -42,8 +42,7 @@ defmodule Postgrex.Protocol do
                      "RELEASE SAVEPOINT postgrex_query",
                      "ROLLBACK TO SAVEPOINT postgrex_query"]
 
-  @spec connect(Keyword.t) ::
-    {:ok, state} | {:error, Postgrex.Error.t}
+  @spec connect(Keyword.t) :: {:ok, state} | {:error, Postgrex.Error.t}
   def connect(opts) do
     host       = Keyword.fetch!(opts, :hostname) |> to_char_list
     port       = opts[:port] || 5432
@@ -474,15 +473,17 @@ defmodule Postgrex.Protocol do
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
     case Postgrex.TypeServer.fetch(types_key) do
       {:lock, ref, table} ->
-        bootstrap_send(%{s | types: table}, %{status | types_ref: ref}, buffer)
+        status = %{status | types_ref: ref}
+        bootstrap_send(%{s | types: table}, status, [], buffer)
       {:go, table} ->
-        reserve_send(%{s | types: table}, status, buffer)
+        oids = Postgrex.Types.oids(table)
+        bootstrap_send(%{s | types: table}, status, oids, buffer)
     end
   end
 
-  defp bootstrap_send(%{parameters: parameters} = s, status, buffer) do
+  defp bootstrap_send(%{parameters: parameters} = s, status, oids, buffer) do
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    statement = Types.bootstrap_query(version)
+    statement = Types.bootstrap_query(version, oids)
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
@@ -522,6 +523,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp bootstrap_types(s, %{types_ref: nil} = status, rows, buffer) do
+    %{types: table} = s
+    types = Types.build_types(rows)
+    Types.associate_extensions_with_types(table, types)
+    bootstrap_sync_recv(s, status, buffer)
+  end
   defp bootstrap_types(s, status, rows, buffer) do
     %{types: table, parameters: parameters} = s
     %{extensions: extensions, types_ref: ref} = status
@@ -547,7 +554,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_fail(s, err, %{types_ref: ref}) do
-    Postgrex.TypeServer.fail(ref)
+    is_nil(ref) || Postgrex.TypeServer.fail(ref)
     {:disconnect, err, s}
   end
 
@@ -700,14 +707,9 @@ defmodule Postgrex.Protocol do
         query_put(s, query)
         next.(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
-        query = %Query{query | param_oids: param_oids}
-        describe_recv(s, status, query, buffer, next)
+        describe_params(s, status, query, param_oids, buffer, next)
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {result_oids, col_names} = columns(fields)
-        query = %Query{query | ref: make_ref(), types: s.types, null: s.null,
-                               columns: col_names, result_oids: result_oids}
-        query_put(s, query)
-        next.(s, status, query, buffer)
+        describe_result(s, status, query, fields, buffer, next)
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, " <>
           "the maximum is #{max}"
@@ -723,19 +725,23 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_recv(s, status, query, buffer, next) do
-    %Query{param_oids: param_oids, result_oids: result_oids} = query
+    %Query{param_info: param_info, result_info: result_info} = query
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_no_data(), buffer} when is_nil(result_oids) ->
+      {:ok, msg_no_data(), buffer} when is_nil(result_info) ->
         query_put(s, query)
         next.(s, status, query, buffer)
-      {:ok, msg_no_data(), buffer} when is_list(result_oids) ->
+      {:ok, msg_no_data(), buffer} when is_list(result_info) ->
         describe_error(s, status, query, buffer)
-      {:ok, msg_parameter_desc(type_oids: ^param_oids), buffer} ->
-        describe_recv(s, status, query, buffer, next)
-      {:ok, msg_parameter_desc(), buffer} ->
-        describe_error(s, status, query, buffer)
+      {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
+        case (for {oid, _, _} <- param_info, do: oid) do
+          ^param_oids ->
+            describe_recv(s, status, query, buffer, next)
+          _ ->
+            describe_error(s, status, query, buffer)
+        end
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        case column_oids(fields) do
+        result_oids = column_oids(fields)
+        case (for {oid, _, _} <- result_info, do: oid) do
           ^result_oids ->
             query_put(s, query)
             next.(s, status, query, buffer)
@@ -753,6 +759,46 @@ defmodule Postgrex.Protocol do
         describe_recv(handle_msg(s, status, msg), status, query, buffer, next)
       {:disconnect, _, _} = dis ->
         dis
+    end
+  end
+
+  defp describe_params(s, status, query, param_oids, buffer, next) do
+    %{types: types} = s
+    case fetch_type_info(param_oids, types) do
+      {:ok, param_info} ->
+        query = %Query{query | param_info: param_info}
+        describe_recv(s, status, query, buffer, next)
+      {:error, err} ->
+        {:disconnect, err, %{s | buffer: buffer}}
+    end
+  end
+
+  defp describe_result(s, status, query, fields, buffer, next) do
+    %{types: types, null: null} = s
+    {result_oids, col_names} = columns(fields)
+    case fetch_type_info(result_oids, types) do
+      {:ok, result_info} ->
+        query = %Query{query | ref: make_ref(), types: types, null: null,
+                       columns: col_names, result_info: result_info}
+        query_put(s, query)
+        next.(s, status, query, buffer)
+      {:error, err} ->
+        {:disconnect, err, %{s | buffer: buffer}}
+    end
+  end
+
+  defp fetch_type_info(oids, types, infos \\ [])
+
+  defp fetch_type_info([], _, infos) do
+    {:ok, Enum.reverse(infos)}
+  end
+  defp fetch_type_info([oid | oids], types, infos) do
+    case Postgrex.Types.fetch(types, oid) do
+      {:ok, info} ->
+        fetch_type_info(oids, types, [info | infos])
+      :error ->
+        msg = "oid `#{oid}` was not bootstrapped and lacks type information"
+        {:error, ArgumentError.exception(message: msg)}
     end
   end
 
