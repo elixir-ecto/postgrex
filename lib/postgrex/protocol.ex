@@ -798,7 +798,7 @@ defmodule Postgrex.Protocol do
         fetch_type_info(oids, types, [info | infos])
       :error ->
         msg = "oid `#{oid}` was not bootstrapped and lacks type information"
-        {:error, ArgumentError.exception(message: msg)}
+        {:error, RuntimeError.exception(message: msg)}
     end
   end
 

@@ -813,10 +813,10 @@ defmodule QueryTest do
     Process.flag(:trap_exit, true)
 
     capture_log fn ->
-      assert_raise ArgumentError, ~r"was not bootstrapped and lacks type info",
+      assert_raise RuntimeError, ~r"was not bootstrapped and lacks type info",
         fn -> query("SELECT a FROM missing_oid", []) end
 
-      assert_receive {:EXIT, _, {:shutdown, %ArgumentError{}}}
+      assert_receive {:EXIT, _, {:shutdown, %RuntimeError{}}}
     end
 
    {:ok, pid} = Postgrex.start_link(context[:options])
