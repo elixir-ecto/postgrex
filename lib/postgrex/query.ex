@@ -4,11 +4,11 @@ defmodule Postgrex.Query do
 
     * `name` - The name of the prepared statement;
     * `statement` - The prepared statement;
-    * `param_oids` - List of oids for each parameter;
+    * `param_info` - List of oids, type info and extension for each parameter;
     * `param_formats` - List of formats for each parameters encoded to;
     * `encoders` - List of anonymous functions to encode each parameter;
     * `columns` - The column names;
-    * `result_oids` - List of oids for each column;
+    * `result_info` - List of oid, type info and extension for each column;
     * `result_formats` - List of formats for each column is decoded from;
     * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
@@ -20,19 +20,19 @@ defmodule Postgrex.Query do
   @type t :: %__MODULE__{
     name:           iodata,
     statement:      iodata,
-    param_oids:     [Postgrex.Types.oid] | nil,
+    param_info:     [{Postgrex.Types.oid, Postgrex.TypeInfo.t, module | nil}] | nil,
     param_formats:  [:binary | :text] | nil,
     encoders:       [(term -> iodata)] | nil,
     columns:        [String.t] | nil,
-    result_oids:    [Postgrex.Types.oid] | nil,
+    result_info:    [{Postgrex.Types.oid, Postgrex.TypeInfo.t, module | nil}] | nil,
     result_formats: [:binary | :text] | nil,
     decoders:       [(binary -> term)] | nil,
     types:          Postgrex.TypeServer.table | nil,
     null:           atom,
     copy_data:      boolean}
 
-  defstruct [:ref, :name, :statement, :param_oids, :param_formats, :encoders,
-    :columns, :result_oids, :result_formats, :decoders, :types, :null,
+  defstruct [:ref, :name, :statement, :param_info, :param_formats, :encoders,
+    :columns, :result_info, :result_formats, :decoders, :types, :null,
     :copy_data]
 end
 
@@ -47,11 +47,11 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   end
 
   def describe(query, opts) do
-    %Postgrex.Query{param_oids: poids, result_oids: roids,
+    %Postgrex.Query{param_info: param_info, result_info: result_info,
                     types: types, null: conn_null, copy_data: data?} = query
-    {pfs, encoders} = encoders(poids, types)
+    {pfs, encoders} = encoders(param_info, types)
     encoders = if data?, do: encoders ++ [:copy_data], else: encoders
-    {rfs, decoders} = decoders(roids, types)
+    {rfs, decoders} = decoders(result_info, types)
 
     null = case Keyword.fetch(opts, :null) do
       {:ok, q_null} -> q_null

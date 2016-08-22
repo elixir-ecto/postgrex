@@ -22,13 +22,19 @@ defmodule Postgrex.Types do
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
   @doc false
-  def bootstrap_query(version) do
+  def bootstrap_query(version, oids) do
     {rngsubtype, join_range} =
       if version >= {9, 2, 0} do
         {"coalesce(r.rngsubtype, 0)",
          "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid"}
       else
         {"0", ""}
+      end
+
+    filter_oids =
+      case oids do
+        [] -> ""
+        _  -> "WHERE NOT t.oid = ANY(ARRAY[#{Enum.join(oids, ",")}])"
       end
 
     """
@@ -41,6 +47,7 @@ defmodule Postgrex.Types do
     )
     FROM pg_type AS t
     #{join_range}
+    #{filter_oids}
     """
   end
 
@@ -92,6 +99,25 @@ defmodule Postgrex.Types do
     for type_info <- types, type_info != nil do
       extension = find_extension(type_info, extensions, extension_opts, oid_types)
       :ets.insert(table, {type_info.oid, type_info, extension})
+    end
+
+    :ok
+  end
+
+  @doc false
+  def associate_extensions_with_types(table, types) do
+    oid_types = Enum.into(types, HashDict.new, &{&1.oid, &1})
+
+    extension_opts =
+      table
+      |> :ets.select([{{:_, :_}, [], [:"$_"]}])
+      |> Enum.into(HashDict.new)
+
+    extensions = HashDict.keys(extension_opts)
+
+    for type_info <- types, type_info != nil do
+      extension = find_extension(type_info, extensions, extension_opts, oid_types)
+      :ets.insert_new(table, {type_info.oid, type_info, extension})
     end
 
     :ok
@@ -184,18 +210,27 @@ defmodule Postgrex.Types do
     end
   end
 
+  @doc false
+  def oids(table) do
+    :ets.select(table,[{{:"$1", :_, :_}, [], [:"$1"]}])
+  end
+
   ### TYPE FORMAT ###
 
   @doc false
-  def encoder(oid, state) do
-    {_, info, extension} = fetch!(state, oid)
+  def encoder({oid, info, nil}, _state) do
+    raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
+  end
+  def encoder({_, info, extension}, state) do
     opts = fetch_opts(state, extension)
     {format(info, extension, state), &extension.encode(info, &1, state, opts)}
   end
 
   @doc false
-  def decoder(oid, state) do
-    {_, info, extension} = fetch!(state, oid)
+  def decoder({oid, info, nil}, _state) do
+    raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
+  end
+  def decoder({_oid, info, extension}, state) do
     opts = fetch_opts(state, extension)
     {format(info, extension, state), &extension.decode(info, &1, state, opts)}
   end
@@ -264,6 +299,16 @@ defmodule Postgrex.Types do
     {_oid, info, _extension} = fetch!(state, oid)
     opts = fetch_opts(state, extension)
     extension.decode(info, binary, state, opts)
+  end
+
+  @doc false
+  def fetch(table, oid) do
+    case :ets.lookup(table, oid) do
+      [value] ->
+        {:ok, value}
+      [] ->
+        :error
+    end
   end
 
   defp fetch!(table, oid) do
