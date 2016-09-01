@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.Raw do
   use Postgrex.BinaryExtension,
     [send: "bpcharsend", send: "textsend", send: "varcharsend",
      send: "byteasend", send: "enum_send", send: "unknownsend",
-     type: "citext"]
+     send: "citextsend"]
 
   def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
 
