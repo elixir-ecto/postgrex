@@ -12,6 +12,7 @@ defmodule Postgrex.Protocol do
   @timeout 5000
   @sock_opts [packet: :raw, mode: :binary, active: false]
   @max_packet 64 * 1024 * 1024 # max raw receive length
+  @nonposix_errors [:closed, :timeout]
 
   defstruct [sock: nil, connection_id: nil, connection_key: nil, peer: nil,
              types: nil, null: nil, timeout: nil, parameters: %{}, queries: nil,
@@ -42,7 +43,9 @@ defmodule Postgrex.Protocol do
                      "RELEASE SAVEPOINT postgrex_query",
                      "ROLLBACK TO SAVEPOINT postgrex_query"]
 
-  @spec connect(Keyword.t) :: {:ok, state} | {:error, Postgrex.Error.t}
+  @spec connect(Keyword.t) ::
+    {:ok, state} |
+    {:error, Postgrex.Error.t | %DBConnection.ConnectionError{}}
   def connect(opts) do
     host       = Keyword.fetch!(opts, :hostname) |> to_char_list
     port       = opts[:port] || 5432
@@ -92,7 +95,8 @@ defmodule Postgrex.Protocol do
   end
 
   @spec ping(state) ::
-    {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:disconnect, Postgrex.Error.t | %DBConnection.ConnectionError{}, state}
   def ping(%{postgres: :transaction, transactions: :strict} = s) do
     sync_error(s, :transaction)
   end
@@ -108,7 +112,8 @@ defmodule Postgrex.Protocol do
   end
 
   @spec checkout(state) ::
-    {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:disconnect, Postgrex.Error.t | %DBConnection.ConnectionError{}, state}
   def checkout(%{postgres: :transaction, transactions: :strict} = s) do
     sync_error(s, :transaction)
   end
@@ -120,7 +125,8 @@ defmodule Postgrex.Protocol do
   end
 
   @spec checkin(state) ::
-  {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:disconnect, Postgrex.Error.t | %DBConnection.ConnectionError{}, state}
   def checkin(%{postgres: :transaction, transactions: :strict} = s) do
     sync_error(s, :transaction)
   end
@@ -130,8 +136,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_prepare(Postgrex.Query.t, Keyword.t, state) ::
     {:ok, Postgrex.Query.t, state} |
-    {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, Postgrex.Query.t | %RuntimeError{}, state}
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_prepare(query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :prepare, query)
   end
@@ -170,8 +177,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_execute(Postgrex.Stream.t | Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_execute(req, params, opts, s) do
     status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
     case execute(s, req) do
@@ -186,8 +194,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_close(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_close(%Stream{ref: ref} = stream, _, %{postgres: {_, ref}} = s) do
     msg = "postgresql protocol can not halt copying from database for " <>
       inspect(stream)
@@ -215,7 +224,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_begin(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
+    {:error, Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
@@ -232,7 +243,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
+    {:error, Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
@@ -251,7 +264,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_rollback(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error | :disconnect, Postgrex.Error.t | %RuntimeError{}, state}
+    {:error, Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_rollback(_, %{postgres: {_, _}} = s) do
     lock_error(s, :rollback)
   end
@@ -270,37 +285,36 @@ defmodule Postgrex.Protocol do
 
   @spec handle_simple(String.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_simple(statement, opts, %{buffer: buffer} = s) do
     status = %{notify: notify(opts), mode: :transaction, sync: :sync}
     simple_send(%{s | buffer: nil}, status, statement, buffer)
   end
 
   @spec handle_info(any, Keyword.t, state) ::
-    {:ok, state} | {:error | :disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_info(msg, opts \\ [], s)
 
   def handle_info({:tcp, sock, data}, opts, %{sock: {:gen_tcp, sock}} = s) do
     handle_data(s, opts, data)
   end
   def handle_info({:tcp_closed, sock}, _, %{sock: {:gen_tcp, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :tcp, action: "async recv", reason: :closed)
-    {:disconnect, err, s}
+    disconnect(s, :tcp, "async recv", :closed)
   end
   def handle_info({:tcp_error, sock, reason}, _, %{sock: {:gen_tcp, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :tcp, action: "async recv", reason: reason)
-    {:disconnect, err, s}
+    disconnect(s, :tcp, "async recv", reason)
   end
   def handle_info({:ssl, sock, data}, opts, %{sock: {:ssl, sock}} = s) do
     handle_data(s, opts, data)
   end
   def handle_info({:ssl_closed, sock}, _, %{sock: {:ssl, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :ssl, action: "async recv", reason: :closed)
-    {:disconnect, err, s}
+    disconnect(s, :ssl, "async recv", :closed)
   end
   def handle_info({:ssl_error, sock, reason}, _, %{sock: {:ssl, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :ssl, action: "async recv", reason: reason)
-    {:disconnect, err, s}
+    disconnect(s, :ssl, "async recv", reason)
   end
   def handle_info(msg, _, s) do
     Logger.info(fn() -> [inspect(__MODULE__), ?\s, inspect(self()),
@@ -327,7 +341,7 @@ defmodule Postgrex.Protocol do
         :ok = :inet.setopts(sock, [buffer: buffer])
         {:ok, %{s | sock: {:gen_tcp, sock}}}
       {:error, reason} ->
-        {:error, Postgrex.Error.exception(tag: :tcp, action: "connect", reason: reason)}
+        {:error, conn_error(:tcp, "connect", reason)}
     end
   end
 
@@ -380,8 +394,7 @@ defmodule Postgrex.Protocol do
       {:ok, <<?N>>} ->
         disconnect(s, %Postgrex.Error{message: "ssl not available"}, "")
       {:error, reason} ->
-        err = Postgrex.Error.exception(tag: :tcp, action: "recv", reason: reason)
-        disconnect(s, err, "")
+        disconnect(s, :tcp, "recv", reason)
     end
   end
 
@@ -390,8 +403,7 @@ defmodule Postgrex.Protocol do
       {:ok, ssl_sock} ->
         startup(%{s | sock: {:ssl, ssl_sock}}, status)
       {:error, reason} ->
-        err = Postgrex.Error.exception(tag: :ssl, action: "connect", reason: reason)
-        disconnect(s, err, "")
+        disconnect(s, :ssl, "connect", reason)
     end
   end
 
@@ -751,7 +763,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, " <>
           "the maximum is #{max}"
-        err = ArgumentError.exception(message: msg)
+        err = RuntimeError.exception(message: msg)
         {:disconnect, err, %{s | buffer: buffer}}
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
@@ -1793,8 +1805,29 @@ defmodule Postgrex.Protocol do
   end
 
   defp disconnect(s, tag, action, reason, buffer) do
-    err = Postgrex.Error.exception(tag: tag, action: action, reason: reason)
-    disconnect(s, err, buffer)
+    disconnect(%{s | buffer: buffer}, tag, action, reason)
+  end
+
+  defp disconnect(s, tag, action, reason) do
+    {:disconnect, conn_error(tag, action, reason), s}
+  end
+
+  defp conn_error(mod, action, reason) when reason in @nonposix_errors do
+    conn_error("#{mod} #{action}: #{reason}")
+  end
+
+  defp conn_error(:tcp, action, reason) do
+    formatted_reason = :inet.format_error(reason)
+    conn_error("tcp #{action}: #{formatted_reason} - #{inspect(reason)}")
+  end
+
+  defp conn_error(:ssl, action, reason) do
+    formatted_reason = :ssl.format_error(reason)
+    conn_error("ssl #{action}: #{formatted_reason} - #{inspect(reason)}")
+  end
+
+  defp conn_error(message) do
+    DBConnection.ConnectionError.exception(message)
   end
 
   defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
@@ -1913,7 +1946,7 @@ defmodule Postgrex.Protocol do
       :ok ->
         :ok
       {:error, action, reason} ->
-        err = Postgrex.Error.exception([tag: :tcp, action: action, reason: reason])
+        err = conn_error(:tcp, action, reason)
         Logger.error fn() ->
           ["#{inspect __MODULE__} #{inspect self()} could not cancel backend: " |
             Exception.message(err)]

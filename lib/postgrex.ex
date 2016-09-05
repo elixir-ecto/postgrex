@@ -73,11 +73,15 @@ defmodule Postgrex do
 
   @doc """
   Runs an (extended) query and returns the result as `{:ok, %Postgrex.Result{}}`
-  or `{:error, %Postgrex.Error{}}` if there was an error. Parameters can be
-  set in the query as `$1` embedded in the query string. Parameters are given as
-  a list of elixir values. See the README for information on how Postgrex
+  or `{:error, %Postgrex.Error{}}` if there was a database error. Parameters can
+  be set in the query as `$1` embedded in the query string. Parameters are given
+  as a list of elixir values. See the README for information on how Postgrex
   encodes and decodes Elixir values by default. See `Postgrex.Result` for the
   result data.
+
+  This function may still raise an exception if there is an issue with types
+  (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
+  (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
 
   ## Options
 
@@ -121,12 +125,10 @@ defmodule Postgrex do
     case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} ->
         {:ok, result}
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      {:error, %RuntimeError{} = err} ->
-        raise err
-      {:error, _} = error ->
+      {:error, %Postgrex.Error{}} = error ->
         error
+      {:error, err} ->
+        raise err
     end
   end
 
@@ -151,6 +153,10 @@ defmodule Postgrex do
   error. Parameters can be set in the query as `$1` embedded in the query
   string. To execute the query call `execute/4`. To close the prepared query
   call `close/3`. See `Postgrex.Query` for the query data.
+
+  This function may still raise an exception if there is an issue with types
+  (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
+  (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
 
   ## Options
 
@@ -180,12 +186,12 @@ defmodule Postgrex do
       |> defaults()
       |> Keyword.put(:function, :prepare)
     case DBConnection.prepare(conn, query, opts) do
-      {:error, %ArgumentError{} = err} ->
+      {:ok, _} = ok ->
+        ok
+      {:error, %Postgrex.Error{}} = error ->
+        error
+      {:error, err} ->
         raise err
-      {:error, %RuntimeError{} = err} ->
-        raise err
-      other ->
-        other
     end
   end
 
@@ -209,6 +215,10 @@ defmodule Postgrex do
   See the README for information on how Postgrex encodes and decodes Elixir
   values by default. See `Postgrex.Query` for the query data and
   `Postgrex.Result` for the result data.
+
+  This function may still raise an exception if there is an issue with types
+  (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
+  (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
 
   ## Options
 
@@ -235,12 +245,12 @@ defmodule Postgrex do
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
     case DBConnection.execute(conn, query, params, defaults(opts)) do
-      {:error, %ArgumentError{} = err} ->
+      {:ok, _} = ok ->
+        ok
+      {:error, %Postgrex.Error{}} = error ->
+        error
+      {:error, err} ->
         raise err
-      {:error, %RuntimeError{} = err} ->
-        raise err
-      other ->
-        other
     end
   end
 
@@ -258,6 +268,10 @@ defmodule Postgrex do
   `{:error, %Postgrex.Error{}}` if there was an error. Closing a query releases
   any resources held by postgresql for a prepared query with that name. See
   `Postgrex.Query` for the query data.
+
+  This function may still raise an exception if there is an issue with types
+  (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
+  (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
 
   ## Options
 
@@ -280,12 +294,10 @@ defmodule Postgrex do
     case DBConnection.close(conn, query, defaults(opts)) do
       {:ok, _} ->
         :ok
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      {:error, %RuntimeError{} = err} ->
-        raise err
-      {:error, _} = error ->
+      {:error, %Postgrex.Error{}} = error ->
         error
+      {:error, err} ->
+        raise err
     end
   end
 
