@@ -16,7 +16,8 @@ defmodule ClientTest do
     Process.flag(:trap_exit, true)
     capture_log fn ->
       assert [[_]] = query("SELECT pg_stat_get_activity($1)", [connection_id])
-      assert %Postgrex.Error{} = query("SELECT pg_sleep(10)", [], [timeout: 50])
+      assert_raise DBConnection.ConnectionError, "tcp recv: closed",
+        fn() -> query("SELECT pg_sleep(10)", [], [timeout: 50]) end
 
       assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end

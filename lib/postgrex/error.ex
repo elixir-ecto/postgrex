@@ -3,7 +3,6 @@ defmodule Postgrex.Error do
 
   @type t :: %Postgrex.Error{}
 
-  @nonposix_errors [:closed, :timeout]
   @metadata [:table, :column, :constraint]
 
   def message(e) do
@@ -34,24 +33,6 @@ defmodule Postgrex.Error do
              |> Map.update!(:code, &Postgrex.ErrorCode.code_to_name/1)
 
     %Postgrex.Error{postgres: fields}
-  end
-
-  def exception([tag: :ssl, action: action, reason: :timeout]) do
-    %Postgrex.Error{message: "ssl #{action}: timeout"}
-  end
-
-  def exception([tag: :ssl, action: action, reason: reason]) do
-    formatted_reason = :ssl.format_error(reason)
-    %Postgrex.Error{message: "ssl #{action}: #{formatted_reason} - #{inspect(reason)}"}
-  end
-
-  def exception([tag: :tcp, action: action, reason: reason]) when not reason in @nonposix_errors do
-    formatted_reason = :inet.format_error(reason)
-    %Postgrex.Error{message: "tcp #{action}: #{formatted_reason} - #{inspect(reason)}"}
-  end
-
-  def exception([tag: :tcp, action: action, reason: reason]) do
-    %Postgrex.Error{message: "tcp #{action}: #{reason}"}
   end
 
   def exception(arg) do
