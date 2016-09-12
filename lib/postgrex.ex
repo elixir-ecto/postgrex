@@ -176,7 +176,7 @@ defmodule Postgrex do
 
   ## Examples
 
-      Postgrex.prepare(conn, "CREATE TABLE posts (id serial, title text)")
+      Postgrex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
@@ -235,10 +235,10 @@ defmodule Postgrex do
 
   ## Examples
 
-      query = Postgrex.prepare!(conn, "CREATE TABLE posts (id serial, title text)")
+      query = Postgrex.prepare!(conn, "", "CREATE TABLE posts (id serial, title text)")
       Postgrex.execute(conn, query, [])
 
-      query = Postgrex.prepare!(conn, "SELECT id FROM posts WHERE title like $1")
+      query = Postgrex.prepare!(conn, "", "SELECT id FROM posts WHERE title like $1")
       Postgrex.execute(conn, query, ["%my%"])
   """
   @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
@@ -286,7 +286,7 @@ defmodule Postgrex do
 
   ## Examples
 
-      query = Postgrex.prepare!(conn, "CREATE TABLE posts (id serial, title text)")
+      query = Postgrex.prepare!(conn, "", "CREATE TABLE posts (id serial, title text)")
       Postgrex.close(conn, query)
   """
   @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
