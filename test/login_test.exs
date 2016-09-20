@@ -97,6 +97,14 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
+  test "env var default db name" do
+    System.put_env("PGDATABASE", "postgrex_test")
+    opts = []
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+    System.delete_env("PGDATABASE")
+  end
+
   test "sync connect" do
     opts = [ database: "postgres", sync_connect: true ]
     assert {:ok, pid} = P.start_link(opts)

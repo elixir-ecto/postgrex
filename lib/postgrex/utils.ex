@@ -52,6 +52,7 @@ defmodule Postgrex.Utils do
     opts
     |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
+    |> Keyword.put_new(:database, System.get_env("PGDATABASE"))
     |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
     |> Keyword.update(:port, normalize_port(System.get_env("PGPORT")), &normalize_port/1)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
