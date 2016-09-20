@@ -1,7 +1,39 @@
 defmodule Postgrex.Extension do
   @moduledoc """
   An extension knows how to encode and decode Postgres types to and from Elixir
-  values.
+  values. Custom extensions can be enabled using the `:extension` option in
+  `Postgrex.start_link/1`.
+
+
+  For example to support label trees using the text encoding format:
+
+      defmodule MyApp.LTree do
+
+        @behaviour Postgrex.Extension
+
+        # It can be memory efficient to copy the decoded binary because a
+        # reference counted binary that points to a larger binary will be passed
+        # to the decode/4 callback. Copying the binary can allow the larger
+        # binary to be garbage collected sooner if the copy is going to be kept
+        # for a longer period of time. See `:binary.copy/1` for more
+        # information.
+        def init(_parameters, opts) when opts in [:reference, :copy], do: opts
+
+        # Use this extension when `type` from %Postgrex.TypeInfo{} is "ltree"
+        def matching(_opts), do: [type: "ltree"]
+
+        def format(_opts), do: :text
+
+        # Use a string that is the same as postgres's ltree text format
+        def encode(_type_info, bin, _types, _opts) when is_binary(bin), do: bin
+
+        def decode(_type_info, bin, _types, :reference), do: bin
+        def decode(_type_info, bin, _types, :copy),      do: :binary.copy(bin)
+
+      end
+
+  This example is enabled with
+  `Postgrex.start_link([extensions: [{MyApp.LTree, :copy}]])`.
   """
 
   alias Postgrex.Types
