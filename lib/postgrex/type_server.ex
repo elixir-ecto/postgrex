@@ -54,21 +54,22 @@ defmodule Postgrex.TypeServer do
     case Map.get(tables, key, :missing) do
       {:ready, counter, timer, table} ->
         cancel_timer(timer)
-        conns = add_connection(pid, key, conns)
-        tables = Map.put(tables, key, {:ready, counter + 1, nil, table})
-        {:reply, {:go, table}, {tables, monitors, conns}}
-
-      {:waiting, owner_ref, waiting, table} ->
         ref = Process.monitor(pid)
         monitors = Map.put(monitors, ref, key)
-        tables = Map.put(tables, key, {:waiting, owner_ref, [{pid, ref, from}|waiting], table})
+        tables = Map.put(tables, key, {:waiting, ref, counter, [], table})
+        {:reply, {:lock, ref, table}, {tables, monitors, conns}}
+
+      {:waiting, owner_ref, counter, waiting, table} ->
+        ref = Process.monitor(pid)
+        monitors = Map.put(monitors, ref, key)
+        tables = Map.put(tables, key, {:waiting, owner_ref, counter, [{pid, ref, from}|waiting], table})
         {:noreply, {tables, monitors, conns}}
 
       :missing ->
         table = types_table()
         ref = Process.monitor(pid)
         monitors = Map.put(monitors, ref, key)
-        tables = Map.put(tables, key, {:waiting, ref, [], table})
+        tables = Map.put(tables, key, {:waiting, ref, 0, [], table})
         {:reply, {:lock, ref, table}, {tables, monitors, conns}}
     end
   end
@@ -76,19 +77,17 @@ defmodule Postgrex.TypeServer do
   def handle_call({:unlock, ref}, {pid, _}, {tables, monitors, conns}) do
     case Map.fetch(monitors, ref) do
       {:ok, key} ->
-        {:waiting, ^ref, waiting, table} = Map.fetch!(tables, key)
-        Process.demonitor(ref, [:flush])
-        Process.link(pid)
-        monitors = Map.delete(monitors, ref)
-        conns = Map.put(conns, pid, key)
+        {:waiting, ^ref, counter, waiting, table} = Map.fetch!(tables, key)
+        conns_before = Map.size(conns)
+        conns = add_connection(conns, pid, ref, key)
         go = fn({pid2, ref2, from2}, {monitors, conns}) ->
-          Process.demonitor(ref2, [:flush])
-          Process.link(pid2)
           GenServer.reply(from2, {:go, table})
-          {Map.delete(monitors, ref2), Map.put(conns, pid2, key)}
+          {Map.delete(monitors, ref2), add_connection(conns, pid2, ref2, key)}
         end
         {monitors, conns} = Enum.reduce(waiting, {monitors, conns}, go)
-        tables = Map.put(tables, key, {:ready, 1 + length(waiting), nil, table})
+        new_conns = Map.size(conns) - conns_before
+        counter = counter + new_conns
+        tables = Map.put(tables, key, {:ready, counter, nil, table})
         {:reply, :ok, {tables, monitors, conns}}
 
       :error ->
@@ -112,13 +111,13 @@ defmodule Postgrex.TypeServer do
       case Map.get(tables, key, :missing) do
         # There will be no one left using the table
         {:ready, 1, nil, table} ->
-          ref     = make_ref()
-          timeout = Application.get_env(:postgrex, :type_server_reap_after)
-          timer   = Process.send_after(self(), {:drop, ref, key}, timeout)
-          Map.put(tables, key, {:ready, 0, {ref, timer}, table})
+          stale_table(tables, key, table)
         # Others are using the table
         {:ready, counter, nil, table} ->
           Map.put(tables, key, {:ready, counter - 1, nil, table})
+        # Others are using/updating/waiting on the table
+        {:waiting, ref, counter, waiting, table} ->
+          Map.put(tables, key, {:waiting, ref, counter-1, waiting, table})
         :missing ->
           tables
       end
@@ -151,31 +150,40 @@ defmodule Postgrex.TypeServer do
 
     tables =
       case Map.fetch!(tables, key) do
-        # The process responsible for creating the table crashed
+        # The process responsible for creating or updating the table crashed
         # and no one else is interested on it
-        {:waiting, ^ref, [], table} ->
-          :ets.delete(table)
-          Map.delete(tables, key)
+        {:waiting, ^ref, 0, [], table} ->
+          stale_table(tables, key, table)
 
-        # The process responsible for creating the table crashed
-        # and others are waiting, use new table as might be writes
-        # to table
-        {:waiting, ^ref, [{_, owner_ref, from}|waiting], table} ->
-          :ets.delete(table)
-          new_table = types_table()
-          GenServer.reply(from, {:lock, owner_ref, new_table})
-          Map.put(tables, key, {:waiting, owner_ref, waiting, new_table})
+        # The process responsible for updating the table crashed
+        # and no one else is waiting
+        {:waiting, ^ref, counter, [], table} ->
+          Map.put(tables, key, {:ready, counter, nil, table})
 
-        # Process is in the waiting list crashed
-        {:waiting, owner_ref, waiting, table} ->
+        # The process responsible for creating or updating the table crashed
+        # and others are waiting
+        {:waiting, ^ref, counter, [{_, owner_ref, from}|waiting], table} ->
+          GenServer.reply(from, {:lock, owner_ref, table})
+          Map.put(tables, key, {:waiting, owner_ref, counter, waiting, table})
+
+        # A process in the waiting list crashed
+        {:waiting, owner_ref, counter, waiting, table} ->
           waiting = List.keydelete(waiting, ref, 1)
-          Map.put(tables, key, {:waiting, owner_ref, waiting, table})
+          Map.put(tables, key, {:waiting, owner_ref, counter, waiting, table})
       end
 
     {:noreply, {tables, monitors, conns}}
   end
 
-  defp add_connection(pid, key, conns) do
+  defp stale_table(tables, key, table) do
+    ref     = make_ref()
+    timeout = Application.get_env(:postgrex, :type_server_reap_after)
+    timer   = Process.send_after(self(), {:drop, ref, key}, timeout)
+    Map.put(tables, key, {:ready, 0, {ref, timer}, table})
+  end
+
+  defp add_connection(conns, pid, ref, key) do
+    Process.demonitor(ref, [:flush])
     Process.link(pid)
     update =
       fn(key2) when key2 === key ->
