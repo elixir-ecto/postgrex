@@ -76,8 +76,8 @@ defmodule Postgrex.Protocol do
 
     types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
-               types_table: nil, extensions: extensions, prepare: prepare,
-               ssl: ssl?}
+               types_table: nil, build_types: nil, extensions: extensions,
+               prepare: prepare, ssl: ssl?}
     case connect(host, port, sock_opts ++ @sock_opts, s) do
       {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
@@ -486,10 +486,10 @@ defmodule Postgrex.Protocol do
     case Postgrex.TypeServer.fetch(types_key) do
       {:lock, ref, table} ->
         status = %{status | types_ref: ref}
-        bootstrap_send(%{s | types: table}, status, [], buffer)
-      {:go, table} ->
         oids = Postgrex.Types.oids(table)
         bootstrap_send(%{s | types: table}, status, oids, buffer)
+      {:go, table} ->
+        reserve_send(%{s | types: table}, status, buffer)
     end
   end
 
@@ -499,7 +499,8 @@ defmodule Postgrex.Protocol do
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
-        bootstrap_recv(s, status, buffer)
+        build_types = if oids == [], do: :create, else: :update
+        bootstrap_recv(s, %{status | build_types: build_types}, buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
@@ -535,24 +536,24 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_types(s, %{types_ref: nil} = status, rows, buffer) do
+  defp bootstrap_types(s, %{build_types: :update} = status, rows, buffer) do
     %{types: table} = s
     types = Types.build_types(rows)
     Types.associate_extensions_with_types(table, types)
     bootstrap_sync_recv(s, status, buffer)
   end
-  defp bootstrap_types(s, status, rows, buffer) do
+  defp bootstrap_types(s, %{build_types: :create} = status, rows, buffer) do
     %{types: table, parameters: parameters} = s
-    %{extensions: extensions, types_ref: ref} = status
+    %{extensions: extensions} = status
     extension_keys = Enum.map(extensions, &elem(&1, 0))
     extension_opts = Types.prepare_extensions(extensions, parameters)
     types = Types.build_types(rows)
     Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
-    Postgrex.TypeServer.unlock(ref)
     bootstrap_sync_recv(s, status, buffer)
   end
 
-  defp bootstrap_sync_recv(s, status, buffer) do
+  defp bootstrap_sync_recv(s, %{types_ref: ref} = status, buffer) do
+    Postgrex.TypeServer.unlock(ref)
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(status: :idle), buffer} ->
         reserve_send(s, status, buffer)
