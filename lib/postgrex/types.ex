@@ -106,18 +106,23 @@ defmodule Postgrex.Types do
 
   @doc false
   def associate_extensions_with_types(table, types) do
-    oid_types = Enum.into(types, Map.new, &{&1.oid, &1})
+    old_types =
+      table
+      |> :ets.select([{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+      |> Enum.into(%{})
+
+    oid_types = Enum.into(types, old_types, &{&1.oid, &1})
 
     extension_opts =
       table
       |> :ets.select([{{:_, :_}, [], [:"$_"]}])
-      |> Enum.into(Map.new)
+      |> Enum.into(%{})
 
     extensions = Map.keys(extension_opts)
 
     for type_info <- types, type_info != nil do
       extension = find_extension(type_info, extensions, extension_opts, oid_types)
-      :ets.insert_new(table, {type_info.oid, type_info, extension})
+      :ets.insert(table, {type_info.oid, type_info, extension})
     end
 
     :ok
