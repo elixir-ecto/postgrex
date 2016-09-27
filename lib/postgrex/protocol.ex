@@ -546,16 +546,16 @@ defmodule Postgrex.Protocol do
   end
   defp bootstrap_types(s, %{build_types: :create} = status, rows, buffer) do
     %{types: table, parameters: parameters} = s
-    %{extensions: extensions, types_ref: ref} = status
+    %{extensions: extensions} = status
     extension_keys = Enum.map(extensions, &elem(&1, 0))
     extension_opts = Types.prepare_extensions(extensions, parameters)
     types = Types.build_types(rows)
     Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
-    Postgrex.TypeServer.unlock(ref)
     bootstrap_sync_recv(s, status, buffer)
   end
 
-  defp bootstrap_sync_recv(s, status, buffer) do
+  defp bootstrap_sync_recv(s, %{types_ref: ref} = status, buffer) do
+    Postgrex.TypeServer.unlock(ref)
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(status: :idle), buffer} ->
         reserve_send(s, status, buffer)
