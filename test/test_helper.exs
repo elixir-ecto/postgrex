@@ -49,7 +49,8 @@ CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 CREATE TABLE uniques (a int UNIQUE);
 
 DROP TABLE IF EXISTS missing_oid;
-DROP TYPE IF EXISTS missing;
+DROP TYPE IF EXISTS missing_enum;
+DROP TYPE IF EXISTS missing_comp;
 
 CREATE TABLE altering (a int2);
 
