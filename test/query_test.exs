@@ -131,6 +131,14 @@ defmodule QueryTest do
     assert [["test"]] == query("SELECT $1::name", ["test"])
   end
 
+  test "decode \"char\"", context do
+    assert [["X"]] == query("SELECT 'X'::\"char\"", [])
+  end
+
+  test "encode \"char\"", context do
+    assert [["x"]] == query("SELECT $1::\"char\"", ["x"])
+  end
+
   test "decode record", context do
     assert [[{1, "2"}]] = query("SELECT (1, '2')::composite1", [])
     assert [[[{1, "2"}]]] = query("SELECT ARRAY[(1, '2')::composite1]", [])
