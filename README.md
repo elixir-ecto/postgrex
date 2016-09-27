@@ -50,10 +50,13 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
     uuid            <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
     hstore          %{"foo" => "bar"}
     oid types       42
+    enum            "ok" ***
 
 \* [Decimal](http://github.com/ericmj/decimal)
 
 \*\* Timezones will always be normalized to UTC or assumed to be UTC when no information is available, either by PostgreSQL or Postgrex
+
+\*\*\* Enumerated types (enum) are custom named database types with strings as values.
 
 Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, support new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
