@@ -97,6 +97,34 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
+  test "env var default db name" do
+    previous_db_name = System.get_env("PGDATABASE")
+    try do
+      set_db_name("postgrex_test")
+      opts = []
+      assert {:ok, pid} = P.start_link(opts)
+      assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+    after
+      set_db_name(previous_db_name)
+    end
+  end
+
+  test "env var default db name (no such database)" do
+    previous_db_name = System.get_env("PGDATABASE")
+    try do
+      set_db_name("doesntexist")
+      Process.flag(:trap_exit, true)
+
+      capture_log fn ->
+        opts = [ sync_connect: true, backoff_type: :stop ]
+        assert {:error, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}} =
+               P.start_link(opts)
+      end
+    after
+      set_db_name(previous_db_name)
+    end
+  end
+
   test "sync connect" do
     opts = [ database: "postgres", sync_connect: true ]
     assert {:ok, pid} = P.start_link(opts)
@@ -177,5 +205,13 @@ defmodule LoginTest do
 
   defp set_port_number(port) when is_binary(port) do
     System.put_env("PGPORT", port)
+  end
+
+  defp set_db_name(nil) do
+    System.delete_env("PGDATABASE")
+  end
+
+  defp set_db_name(db_name) when is_binary(db_name) do
+    System.put_env("PGDATABASE", db_name)
   end
 end

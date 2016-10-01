@@ -34,7 +34,7 @@ defmodule Postgrex do
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
-    * `:database` - Database (required);
+    * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password (default PGPASSWORD);
     * `:parameters` - Keyword list of connection parameters;
