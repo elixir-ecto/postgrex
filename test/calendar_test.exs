@@ -83,7 +83,7 @@ if Code.ensure_loaded?(Calendar) do
       assert [[%DateTime{year: 2001, month: 1, day: 1, hour: 0, minute: 0,
                          second: 0, microsecond: {0, 6},
                          time_zone: "Etc/UTC", utc_offset: 0}]] =
-       query("SELECT timestamp with time zone '2001-01-01 00:00:00'", [])
+       query("SELECT timestamp with time zone '2001-01-01 00:00:00 UTC'", [])
 
       assert :ok = query("SET SESSION TIME ZONE UTC", [])
       assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 14, minute: 4,

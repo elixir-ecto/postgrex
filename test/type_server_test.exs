@@ -17,36 +17,53 @@ defmodule TypeServerTest do
     key = make_ref()
     task = Task.async(fn() -> assert {:lock, _, _} = TS.fetch(key) end)
     {:lock, _, table} = Task.await(task)
-    assert {:lock, _, table2} = TS.fetch(key)
-    assert table != table2, "same table after lock/done"
+    assert {:lock, _, ^table} = TS.fetch(key)
   end
 
-  test "blocks on fetch until lock is returned" do
+  test "blocks on initial fetch until lock is returned" do
     key = make_ref()
     {:lock, ref, table} = TS.fetch(key)
 
     task = Task.async fn -> TS.fetch(key) end
+    :timer.sleep(100)
     TS.unlock(ref)
     assert {:go, ^table} = Task.await(task)
   end
 
-  test "blocks on fetch until fail is returned" do
+  test "blocks on later fetch until lock is returned" do
+    key = make_ref()
+    {:lock, ref, table} = TS.fetch(key)
+    TS.unlock(ref)
+
+    assert {:lock, ref, ^table} = TS.fetch(key)
+
+    task = Task.async fn -> TS.fetch(key) end
+    :timer.sleep(100)
+    TS.unlock(ref)
+    assert {:go, ^table} = Task.await(task)
+  end
+
+  test "blocks on initial fetch until fail is returned" do
     key = make_ref()
     {:lock, ref, table} = TS.fetch(key)
 
     task = Task.async fn -> TS.fetch(key) end
+    :timer.sleep(100)
     TS.fail(ref)
-    assert {:lock, _, table2} = Task.await(task)
-    assert table != table2, "same table after lock/done"
+    assert {:lock, _, ^table} = Task.await(task)
   end
 
-  test "fetches existing table" do
+  test "blocks on later fetch until fail is returned" do
     key = make_ref()
     {:lock, ref, table} = TS.fetch(key)
     TS.unlock(ref)
 
-    task = Task.async(fn -> TS.fetch(key) end)
-    assert {:go, ^table} = Task.await(task)
+    {:lock, ref, ^table} = TS.fetch(key)
+
+    task = Task.async fn -> TS.fetch(key) end
+    :timer.sleep(100)
+    TS.fail(ref)
+    assert {:lock, _, ^table} = Task.await(task)
   end
 
   test "fetches existing table even if parent crashes" do
@@ -61,18 +78,35 @@ defmodule TypeServerTest do
     wait_until_dead(task.pid)
 
     task = Task.async(fn -> TS.fetch(key) end)
-    assert {:go, ^table} = Task.await(task)
+    assert {:lock, _, ^table} = Task.await(task)
   end
 
-  test "fetches existing table even if other processes crashes" do
+  test "locks existing table even if other waiting processes crash" do
     key = make_ref()
 
     {:lock, ref, table} = TS.fetch(key)
     TS.unlock(ref)
 
-    assert {:go, ^table} = Task.async(fn -> TS.fetch(key) end) |> Task.await()
-    assert {:go, ^table} = Task.async(fn -> TS.fetch(key) end) |> Task.await()
-    assert {:go, ^table} = Task.async(fn -> TS.fetch(key) end) |> Task.await()
+    task =
+      fn() ->
+        case TS.fetch(key) do
+          {:lock, ref2, _} = result ->
+            :timer.sleep(100)
+            TS.unlock(ref2)
+            result
+          result ->
+            result
+        end
+      end
+
+    task1 = Task.async(task)
+    task2 = Task.async(task)
+    task3 = Task.async(task)
+
+    assert [{:go, ^table}, {:go, ^table}, {:lock, _, ^table}] =
+      Enum.sort([Task.await(task1), Task.await(task2), Task.await(task3)])
+
+    assert {:lock, _, ^table} = TS.fetch(key)
   end
 
   test "does not fetch existing table if parent crashes and timeout passes" do
@@ -107,12 +141,11 @@ defmodule TypeServerTest do
     key = make_ref()
 
     task = Task.async(fn -> TS.fetch(key) end)
-    assert {:lock, _ref, table1} = Task.await(task)
+    assert {:lock, _ref, table} = Task.await(task)
     wait_until_dead(task.pid)
 
-    assert {:lock, _ref, table2} =
+    assert {:lock, _ref, ^table} =
            Task.async(fn -> TS.fetch(key) end) |> Task.await
-    assert table1 != table2
   end
 
   test "gives lock to another process if original holder crashes after fetch" do

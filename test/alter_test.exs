@@ -168,20 +168,21 @@ defmodule AlterTest do
   end
 
   test "new oid causes disconnect but is added on reconnect", context do
-    assert :ok = query("CREATE TYPE missing AS ENUM ('missing')", []);
-    assert :ok = query("CREATE TABLE missing_oid (a missing)", []);
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", []);
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", []);
+    assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", []);
 
     Process.flag(:trap_exit, true)
 
     capture_log fn ->
       assert_raise RuntimeError, ~r"was not bootstrapped and lacks type info",
-        fn -> query("SELECT a FROM missing_oid", []) end
+        fn -> query("SELECT a, b FROM missing_oid", []) end
 
       assert_receive {:EXIT, _, {:shutdown, %RuntimeError{}}}
     end
 
    {:ok, pid} = Postgrex.start_link(context[:options])
-   assert %Postgrex.Result{num_rows: 1} = Postgrex.query!(pid, "INSERT INTO missing_oid VALUES ($1)", ["missing"])
-   assert %Postgrex.Result{rows: [["missing"]]} =Postgrex.query!(pid, "SELECT a FROM missing_oid", [])
+   assert %Postgrex.Result{num_rows: 1} = Postgrex.query!(pid, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1,2}])
+   assert %Postgrex.Result{rows: [["missing", {1,2}]]} = Postgrex.query!(pid, "SELECT a,b FROM missing_oid", [])
   end
 end
