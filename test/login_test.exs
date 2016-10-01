@@ -119,14 +119,6 @@ defmodule LoginTest do
         opts = [ sync_connect: true, backoff_type: :stop ]
         assert {:error, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}} =
                P.start_link(opts)
-
-        assert_receive {:EXIT, _, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
-      end
-
-      capture_log fn ->
-        opts = [ backoff_type: :stop ]
-        {:ok, pid} = P.start_link(opts)
-        assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
       end
     after
       set_db_name(previous_db_name)
