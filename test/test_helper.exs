@@ -55,6 +55,8 @@ DROP TYPE IF EXISTS missing_comp;
 CREATE TABLE altering (a int2);
 
 CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);
+
+CREATE TABLE bitstring_test (a bit(5), b bit(10))
 """
 
 sql_with_schemas = """
