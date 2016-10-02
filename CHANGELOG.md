@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.12.1 (2016-09-29)
+
+* Enchancements
+  * Support special "char" type
+
+* Bug fixes
+  * Limit re-bootstrap to one connection at a time
+  * Fix re-bootstrap of new composite types that use old types
+
 ## v0.12.0 (2016-09-06)
 
 * Enhancements
