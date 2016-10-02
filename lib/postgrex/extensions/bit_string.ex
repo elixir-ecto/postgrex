@@ -1,27 +1,35 @@
 defmodule Postgrex.Extensions.BitString do
   @moduledoc false
-
+  import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, [send: "bit_send",send: "varbit_send"]
-  
+
+  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+
   # encode is a straight binary encode plus padding to ensure full bytes
-  def encode(_, value, _, _) do
+  def encode(_, value, _, _) when is_binary(value) do
+    [<<bit_size(value)::uint32>> | value]
+  end
+  def encode(_, value, _, _) when is_bitstring(value) do
     bit_count = bit_size(value)
-    pad = 8 - rem(bit_count, 8)
-    << << bit_count :: size(32) >>, << value :: bits >>, << 0 :: size(pad) >> >>
+    last_pos = bit_count - rem(bit_count, 8)
+    <<binary::bits-size(last_pos), last::bits>> = value
+    pad = 8 - bit_size(last)
+    [<<bit_count::uint32>>, binary | <<last::bits, 0::size(pad)>>]
+  end
+  def encode(type_info, value, _, _) do
+    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a bitstring")
   end
 
-  # decode is a straight binary decode, except if the bit count is
-  # larger than the payload, in which case we pad with zeros
-  def decode(_, value, _, _) do
-    << bit_count :: size(32), bytes :: binary >> = value
-    got_count = bit_size(bytes)
+  # decode is a straight binary decode with any padding removed in last byte
+  def decode(_, value, _, state) do
+    decode(value, state)
+  end
 
-    if bit_count <= got_count do
-        << v :: size(bit_count), _ :: bits >> = bytes
-        << v :: size(bit_count) >>
-    else
-      pad = bit_count - got_count
-      << << bytes :: bits >>, << 0 :: size(pad) >> >>
-    end
+  defp decode(<<bit_count::uint32, bits::bits-size(bit_count), _::bits>>, :reference) do
+    bits
+  end
+  defp decode(<<bit_count::uint32, rest::binary>>, :copy) do
+    <<bits::bits-size(bit_count), _::bits>> = :binary.copy(rest)
+    bits
   end
 end
