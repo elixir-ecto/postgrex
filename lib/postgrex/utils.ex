@@ -26,7 +26,8 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Timestamp,
     Postgrex.Extensions.Interval,
     Postgrex.Extensions.UUID,
-    Postgrex.Extensions.Void]
+    Postgrex.Extensions.Void,
+    Postgrex.Extensions.BitString]
 
   @doc """
   Converts pg major.minor.patch (http://www.postgresql.org/support/versioning) version to an integer

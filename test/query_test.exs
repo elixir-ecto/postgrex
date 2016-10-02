@@ -240,6 +240,30 @@ defmodule QueryTest do
     assert :binary.referenced_byte_size(world) > byte_size("world")
   end
 
+  test "decode bit string", context do
+    assert [[<<1::1,0::1,1::1>>]] == query("SELECT bit '101'", [])
+    assert [[<<1::1,1::1,0::1>>]] == query("SELECT bit '110'", [])
+    assert [[<<1::1,1::1,0::1>>]] == query("SELECT bit '110' :: varbit", [])
+    assert [[<<1::1,0::1,1::1,1::1,0::1>>]] == query("SELECT bit '10110'", [])
+    assert [[<<1::1,0::1,1::1,0::1,0::1>>]] ==
+      query("SELECT bit '101' :: bit(5)", [])
+    assert [[<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '10000000101'", [])
+    assert [[<<0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '0000000000000000101'", [])
+    assert [[<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '1000000000000000101'", [])
+    assert [[<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,1::1,
+             1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '1000000110000000101'", [])
+  end
+
   test "encode oid and its aliases", context do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])
@@ -486,6 +510,33 @@ defmodule QueryTest do
            query("SELECT $1::cidr", [%Postgrex.CIDR{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}])
     assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
            query("SELECT $1::macaddr", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
+  end
+
+  test "encode bit string", context do
+    assert [["110"]] == query("SELECT $1::bit(3)::text", [<<1::1, 1::1, 0::1>>])
+    assert [["110"]] == query("SELECT $1::varbit::text", [<<1::1, 1::1, 0::1>>])
+    assert [["101"]] == query("SELECT $1::bit(3)::text", [<<1::1, 0::1, 1::1>>])
+    assert [["11010"]] ==
+      query("SELECT $1::bit(5)::text", [<<1::1, 1::1, 0::1, 1::1>>])
+    assert [["10000000101"]] ==
+      query("SELECT $1::bit(11)::text",
+        [<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+    assert [["0000000000000000101"]] ==
+      query("SELECT $1::bit(19)::text",
+        [<<0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+    assert [["1000000000000000101"]] ==
+      query("SELECT $1::bit(19)::text",
+        [<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+    assert [["1000000110000000101"]] ==
+      query("SELECT $1::bit(19)::text",
+        [<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,1::1,
+         1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
   end
 
   test "fail on encode arrays", context do

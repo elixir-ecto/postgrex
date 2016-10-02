@@ -1,7 +1,6 @@
 defmodule Postgrex.Extensions.BitString do
   use Postgrex.BinaryExtension,
-    [receive: "bit_recv", send: "bit_send", type: "bit",
-     receive: "varbit_recv", send: "varbit_send", type: "varbit"]
+    [send: "bit_send",send: "varbit_send"]
   
   def encode(_, value, _, _) do
     bit_count = bit_size(value)
