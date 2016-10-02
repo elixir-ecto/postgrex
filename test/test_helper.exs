@@ -56,7 +56,7 @@ CREATE TABLE altering (a int2);
 
 CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);
 
-CREATE TABLE bitstring_test (a bit(5), b bit(10))
+CREATE TABLE bitstring_test (a bit(5), b bit(10), c varbit)
 """
 
 sql_with_schemas = """

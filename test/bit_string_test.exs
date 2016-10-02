@@ -13,6 +13,7 @@ defmodule BitStringTest do
   test "decode bit string", context do
     assert [[<<1::1,0::1,1::1>>]] == query("SELECT bit '101'", [])
     assert [[<<1::1,1::1,0::1>>]] == query("SELECT bit '110'", [])
+    assert [[<<1::1,1::1,0::1>>]] == query("SELECT bit '110' :: varbit", [])
     assert [[<<1::1,0::1,1::1,1::1,0::1>>]] == query("SELECT bit '10110'", [])
     assert [[<<1::1,0::1,1::1,0::1,0::1>>]] ==
       query("SELECT bit '101' :: bit(5)", [])
@@ -35,6 +36,7 @@ defmodule BitStringTest do
 
   test "encode bit string", context do
     assert [["110"]] == query("SELECT $1::bit(3)::text", [<<1::1, 1::1, 0::1>>])
+    assert [["110"]] == query("SELECT $1::varbit::text", [<<1::1, 1::1, 0::1>>])
     assert [["101"]] == query("SELECT $1::bit(3)::text", [<<1::1, 0::1, 1::1>>])
     assert [["11010"]] ==
       query("SELECT $1::bit(5)::text", [<<1::1, 1::1, 0::1, 1::1>>])
@@ -64,10 +66,12 @@ defmodule BitStringTest do
     astring = "10110"
     b = << 1::1, 1::1, 0::1, 0::1, 0::1, 1::1, 1::1, 0::1, 0::1, 0::1 >>
     bstring = "1100011000"
-    assert :ok = query("INSERT INTO bitstring_test (a, b) VALUES ($1, $2)",
-      [a, b])
-    assert [[astring, bstring]] ==
-      query("SELECT a :: text, b :: text FROM bitstring_test", [])
-    assert [[a, b]] == query("SELECT a, b FROM bitstring_test", [])
+    c = << 1::1, 1::1, 0::1, 1::1 >>
+    cstring = "1101"
+    assert :ok = query("INSERT INTO bitstring_test (a, b, c) VALUES ($1, $2, $3)",
+      [a, b, c])
+    assert [[astring, bstring, cstring]] ==
+      query("SELECT a :: text, b :: text, c :: text FROM bitstring_test", [])
+    assert [[a, b, c]] == query("SELECT a, b,c FROM bitstring_test", [])
   end
 end
