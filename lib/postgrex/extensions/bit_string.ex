@@ -5,8 +5,8 @@ defmodule Postgrex.Extensions.BitString do
   
   def encode(_, value, _, _) do
     bit_count = bit_size(value)
-    out = encode_binary(value, [])
-    << << bit_count :: size(32) >>, << bits_to_binary(out) :: bits >> >>
+    out = encode_binary(value, <<>>)
+    << << bit_count :: size(32) >>, << out :: bits >> >>
   end
 
   def decode(_, value, _, _) do
@@ -26,17 +26,13 @@ defmodule Postgrex.Extensions.BitString do
     decode_binary(bytes_left - 1, so_far ++ bits8(int_value), rest)
   end
 
-  defp encode_binary(value, so_far) when bit_size(value) < 8 do
-    bits = bit_size(value)
-    << v :: size(bits) >> = value
-    out = Integer.digits(v, 2)
-    so_far ++ out ++ List.duplicate(0, 8 - length(out))
+  defp encode_binary(<< value :: 8, rest :: bits >>, so_far) do
+    encode_binary(rest, << << so_far :: bits >> , << value :: 8 >> >> )
   end
-  defp encode_binary(value, so_far) do
-    << v :: size(8), rest :: bits >> = value
-    out = Integer.digits(v, 2)
-    out = so_far ++ out ++ List.duplicate(0, 8 - length(out))
-    encode_binary(rest, out)
+  defp encode_binary(<< rest :: bits >>, so_far) do
+    bit_count = bit_size(rest)
+    pad = 8 - bit_count
+    << << so_far :: bits >>, << rest :: bits >>, << 0 :: size(pad) >> >>
   end
 
   defp bits8(x) do
