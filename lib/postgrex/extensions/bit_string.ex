@@ -11,19 +11,19 @@ defmodule Postgrex.Extensions.BitString do
 
   def decode(_, value, _, _) do
     << bit_count :: size(32), bytes :: binary >> = value
-    bits = decode_binary(byte_size(bytes), [], bytes)
-    |> fix_length(bit_count)
 
-    bits_to_binary(bits)
-  end
-
-  defp decode_binary(1, so_far, rest) do
-    << last :: 8 >> = rest
-    so_far ++ last_bits(last)
-  end
-  defp decode_binary(bytes_left, so_far, bytes) do
-    << int_value :: 8, rest :: binary >> = bytes
-    decode_binary(bytes_left - 1, so_far ++ bits8(int_value), rest)
+    got_count = bit_size(bytes)
+    cond do
+      bit_count > got_count ->
+        pad = bit_count - got_count
+        << << bytes :: bits >>, << 0 :: size(pad) >> >>
+      bit_count < got_count ->
+        pad = bit_count - got_count
+        << v :: size(bit_count), _ :: bits >> = bytes
+        << v :: size(bit_count) >>
+      true ->
+        bytes
+    end
   end
 
   defp encode_binary(<< value :: 8, rest :: bits >>, so_far) do
@@ -33,36 +33,5 @@ defmodule Postgrex.Extensions.BitString do
     bit_count = bit_size(rest)
     pad = 8 - bit_count
     << << so_far :: bits >>, << rest :: bits >>, << 0 :: size(pad) >> >>
-  end
-
-  defp bits8(x) do
-    digits = Integer.digits(x, 2)
-    List.duplicate(0, 8 - length(digits)) ++ digits
-  end
-
-  defp last_bits(x) do
-    x
-    |> Integer.digits(2)
-    |> Enum.reverse
-    |> Enum.drop_while(fn(b) -> b == 0 end)
-    |> Enum.reverse
-  end
-
-  defp fix_length(b, bit_count) when length(b) == bit_count, do: b
-  defp fix_length(b, bit_count) when length(b) < bit_count do
-    b ++ List.duplicate(0, bit_count - length(b))
-  end
-  defp fix_length(b, bit_count) when length(b) > bit_count do
-    Enum.slice(b, (0..bit_count))
-  end
-
-  defp bits_to_binary(bits) do
-    bits
-    |> Enum.chunk(8, 8, [])
-    |> Enum.map(fn(w) ->
-      len = length(w)
-      << Integer.undigits(w, 2) :: size(len) >>
-    end)
-    |> Enum.reduce(<<>>, fn(x, acc) -> << << acc :: bits >>, << x :: bits >> >> end)
   end
 end
