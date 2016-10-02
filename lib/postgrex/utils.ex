@@ -3,6 +3,7 @@ defmodule Postgrex.Utils do
 
   @extensions [
     Postgrex.Extensions.Array,
+    Postgrex.Extensions.BitString,
     Postgrex.Extensions.Bool,
     Postgrex.Extensions.Date,
     Postgrex.Extensions.Float4,

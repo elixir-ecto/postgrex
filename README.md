@@ -51,6 +51,8 @@ Postgrex is currently on 0.x beta releases. We are heading towards a stable rele
     hstore          %{"foo" => "bar"}
     oid types       42
     enum            "ok" ***
+    bit             << 1::1, 0::1 >>
+    varbit          << 1::1, 0::1 >>
 
 \* [Decimal](http://github.com/ericmj/decimal)
 
