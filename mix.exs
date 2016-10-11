@@ -6,7 +6,7 @@ defmodule Postgrex.Mixfile do
   def project do
     [app: :postgrex,
      version: @version,
-     elixir: "~> 1.0",
+     elixir: "~> 1.2",
      deps: deps(),
      name: "Postgrex",
      source_url: "https://github.com/elixir-ecto/postgrex",
@@ -25,7 +25,7 @@ defmodule Postgrex.Mixfile do
   defp deps do
     [{:ex_doc, "~> 0.12", only: :dev},
      {:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.0-rc.4"},
+     {:db_connection, "~> 1.0"},
      {:connection, "~> 1.0"}]
   end
 
