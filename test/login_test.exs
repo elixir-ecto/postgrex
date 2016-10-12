@@ -152,13 +152,13 @@ defmodule LoginTest do
 
   test "non-existent domain" do
     Process.flag(:trap_exit, true)
-    opts = [ hostname: "doesntexist", username: "postgrex_cleartext_pw",
+    opts = [ hostname: "doesntexist", port: 5432, username: "postgrex_cleartext_pw",
              password: "password", database: "postgres", backoff_type: :stop ]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
       assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{message: message}, [_|_]}}
-      assert message == "tcp connect: non-existing domain - :nxdomain"
+      assert message == "tcp connect (doesntexist:5432): non-existing domain - :nxdomain"
     end
   end
 
