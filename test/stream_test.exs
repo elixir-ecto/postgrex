@@ -55,7 +55,7 @@ defmodule StreamTest do
       stream = %Postgrex.Stream{stream | portal: "E2MANY"}
 
       _ = for _ <- stream do
-        assert_raise Postgrex.Error, ~r"ERROR \(duplicate_cursor\)",
+        assert_raise Postgrex.Error, ~r"\(duplicate_cursor\)",
           fn() -> Enum.take(stream, 1) end
       end
     end)
@@ -137,7 +137,7 @@ defmodule StreamTest do
     query = prepare("", "insert into uniques values (CAST($1::text AS int))")
 
     transaction(fn(conn) ->
-      assert_raise Postgrex.Error, ~r"ERROR \(invalid_text_representation\)",
+      assert_raise Postgrex.Error, ~r"\(invalid_text_representation\)",
         fn -> stream(query, ["EBADF"]) |> Enum.take(1) end
     end)
 
@@ -148,7 +148,7 @@ defmodule StreamTest do
     query = prepare("", "insert into uniques values (1), (1)")
 
     transaction(fn(conn) ->
-      assert_raise Postgrex.Error, ~r"ERROR \(unique_violation\)",
+      assert_raise Postgrex.Error, ~r"\(unique_violation\)",
         fn -> stream(query, []) |> Enum.take(1) end
     end)
 
@@ -637,7 +637,7 @@ defmodule StreamTest do
 
     transaction(fn(conn) ->
       stream = stream(query, ["EBADF"])
-      assert_raise Postgrex.Error, ~r"ERROR \(invalid_text_representation\)",
+      assert_raise Postgrex.Error, ~r"\(invalid_text_representation\)",
         fn() -> Enum.into(["42\n"], stream) end
     end)
 
@@ -645,7 +645,7 @@ defmodule StreamTest do
 
     transaction(fn(conn) ->
       stream = stream(query, ["EBADF"], [mode: :savepoint])
-      assert_raise Postgrex.Error, ~r"ERROR \(invalid_text_representation\)",
+      assert_raise Postgrex.Error, ~r"\(invalid_text_representation\)",
         fn() -> Enum.into(["42\n"], stream) end
 
       assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
@@ -659,7 +659,7 @@ defmodule StreamTest do
 
     transaction(fn(conn) ->
       stream = stream(query, [])
-      assert_raise Postgrex.Error, ~r"ERROR \(unique_violation\)",
+      assert_raise Postgrex.Error, ~r"\(unique_violation\)",
         fn() -> Enum.into(["42\n"], stream) end
     end)
 
@@ -667,7 +667,7 @@ defmodule StreamTest do
 
     transaction(fn(conn) ->
       stream = stream(query, [], [mode: :savepoint])
-      assert_raise Postgrex.Error, ~r"ERROR \(unique_violation\)",
+      assert_raise Postgrex.Error, ~r"\(unique_violation\)",
         fn() -> Enum.into(["42\n"], stream) end
 
       assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])

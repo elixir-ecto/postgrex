@@ -7,7 +7,7 @@ defmodule Postgrex.Error do
 
   def message(e) do
     if kw = e.postgres do
-      "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
+      "#{kw[:severity]} #{kw[:pg_code]} (#{kw[:code]}): #{kw[:message]}"
       <> build_metadata(kw)
       <> build_detail(kw)
     else
