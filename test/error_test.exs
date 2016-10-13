@@ -13,6 +13,6 @@ defmodule ErrorTest do
     assert message =~ "duplicate key value violates unique constraint"
     assert message =~ "table: uniques"
     assert message =~ "constraint: uniques_a_key"
-    assert message =~ ~r"\b\d{5}\b"
+    assert message =~ "ERROR 23505"
   end
 end
