@@ -63,7 +63,8 @@ defmodule Postgrex do
     and decoding (default: `nil`);
 
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
-  options. See `DBConnection` for more information.
+  options like `:idle`, `:after_connect` etc.
+  See `DBConnection.start_link/2` for more information.
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
