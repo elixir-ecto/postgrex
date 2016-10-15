@@ -68,16 +68,22 @@ defmodule Postgrex do
 
   ## Examples
 
-      iex> {:ok, conn} = Postgrex.start_link(database: "postgres")
+      iex> {:ok, pid} = Postgrex.start_link(database: "postgres")
       {:ok, #PID<0.69.0>}
 
   Run a query after connection has been established:
 
-      iex> {:ok, conn} = Postgrex.start_link(after_connect: &Postgrex.query!(&1, "SET TIME ZONE 'UTC';", []))
+      defmodule MyMod do
+        def set_timezone(pid) do
+          {:ok, _} = Postgrex.query(pid, "SET TIME ZONE 'UTC';", [])
+        end
+      end
+
+      iex> {:ok, pid} = Postgrex.start_link(database: "postgres", after_connect: &MyMod.set_timezone/1)
       {:ok, #PID<0.69.0>}
 
   """
-  @spec start_link(Keyword.t) :: {:ok, conn} | {:error, Postgrex.Error.t | term}
+  @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
     opts = [types: true] ++ Postgrex.Utils.default_opts(opts)
     DBConnection.start_link(Postgrex.Protocol, opts)
@@ -358,7 +364,7 @@ defmodule Postgrex do
 
   ## Example
 
-      {:ok, res} = Postgrex.transaction(conn, fn(conn) ->
+      {:ok, res} = Postgrex.transaction(pid, fn(conn) ->
         Postgrex.query!(conn, "SELECT title FROM posts", [])
       end)
   """
@@ -376,7 +382,7 @@ defmodule Postgrex do
 
   ## Example
 
-      {:error, :oops} = Postgrex.transaction(conn, fn(conn) ->
+      {:error, :oops} = Postgrex.transaction(pid, fn(conn) ->
         DBConnection.rollback(conn, :bar)
         IO.puts "never reaches here!"
       end)
@@ -438,14 +444,14 @@ defmodule Postgrex do
 
   ## Examples
 
-      Postgrex.transaction(conn, fn(conn) ->
+      Postgrex.transaction(pid, fn(conn) ->
         query = Postgrex.prepare!(conn, "", "COPY posts TO STDOUT")
         stream = Postgrex.stream(conn, query, [])
         result_to_iodata = fn(%Postgrex.Result{rows: rows}) -> rows end
         Enum.into(stream, File.stream!("posts"), result_to_iodata)
       end)
 
-      Postgrex.transaction(conn, fn(conn) ->
+      Postgrex.transaction(pid, fn(conn) ->
         query = Postgrex.prepare!(conn, "", "COPY posts FROM STDIN", [copy_data: true])
         stream = Postgrex.stream(conn, query, [])
         Enum.into(File.stream!("posts"), stream)
