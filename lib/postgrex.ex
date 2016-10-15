@@ -65,6 +65,23 @@ defmodule Postgrex do
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc.
   See `DBConnection.start_link/2` for more information.
+
+  ## Examples
+
+      iex> {:ok, pid} = Postgrex.start_link(database: "postgres")
+      {:ok, #PID<0.69.0>}
+
+  Run a query after connection has been established:
+
+      defmodule MyMod do
+        def set_timezone(pid) do
+          {:ok, _} = Postgrex.query(pid, "SET TIME ZONE 'UTC';", [])
+        end
+      end
+
+      iex> {:ok, pid} = Postgrex.start_link(database: "postgres", after_connect: &MyMod.set_timezone/1)
+      {:ok, #PID<0.69.0>}
+
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
