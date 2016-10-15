@@ -73,13 +73,7 @@ defmodule Postgrex do
 
   Run a query after connection has been established:
 
-      defmodule MyMod do
-        def set_timezone(pid) do
-          {:ok, _} = Postgrex.query(pid, "SET TIME ZONE 'UTC';", [])
-        end
-      end
-
-      iex> {:ok, pid} = Postgrex.start_link(database: "postgres", after_connect: &MyMod.set_timezone/1)
+      iex> {:ok, pid} = Postgrex.start_link(after_connect: &Postgrex.query!(&1, "SET TIME ZONE 'UTC';", []))
       {:ok, #PID<0.69.0>}
 
   """
