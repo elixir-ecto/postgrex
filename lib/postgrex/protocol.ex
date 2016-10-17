@@ -283,13 +283,17 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_simple(String.t, Keyword.t, state) ::
+  @spec handle_listener(String.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, Postgrex.Error.t, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_simple(statement, opts, %{buffer: buffer} = s) do
+  def handle_listener(statement, opts, s) do
+    %{buffer: buffer, timeout: timeout, sock: sock} = s
     status = %{notify: notify(opts), mode: :transaction, sync: :sync}
-    simple_send(%{s | buffer: nil}, status, statement, buffer)
+    timer = start_listener_timer(timeout, sock)
+    result = listener(%{s | buffer: nil}, status, statement, buffer)
+    cancel_listener_timer(timer)
+    result
   end
 
   @spec handle_info(any, Keyword.t, state) ::
@@ -613,59 +617,28 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## simple
+  ## listener
 
-  defp simple_send(s, status, statement, buffer) do
-    msg = msg_query(statement: statement)
-    case msg_send(s, msg, buffer) do
-      :ok                       -> simple_recv(s, status, buffer)
-      {:disconnect, _, _} = dis -> dis
-    end
+  defp listener(s, status, statement, buffer) do
+    msgs = [msg_parse(name: "", statement: statement, type_oids: []),
+            msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
+            msg_execute(name_port: "", max_rows: 0)]
+    query = %Query{name: "", statement: statement}
+    bind_recv = &bind_recv/4
+    recv = &parse_recv(&1, &2, &3, &4, bind_recv)
+    send_and_recv(s, status, query, buffer, msgs, recv)
   end
 
-  defp simple_recv(%{timeout: timeout} = s, status, buffer) do
-    ## simple queries here are only done by Postgrex.Notifications processes
-    case msg_recv(s, timeout, buffer) do
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        simple_complete(s, status, tag, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        simple_sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        simple_recv(handle_msg(s, status, msg), status, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
+  defp start_listener_timer(:infinity, _), do: :infinity
+  defp start_listener_timer(timeout, {mod, sock}) do
+    {:ok, tref} = :timer.apply_after(timeout, mod, :close, [sock])
+    {:timer, tref}
   end
 
-  defp simple_complete(s, status, tag, buffer) do
-    %{connection_id: connection_id} = s
-    {command, nrows} = decode_tag(tag)
-    result = %Postgrex.Result{command: command, num_rows: nrows || 0,
-                              rows: nil, columns: nil,
-                              connection_id: connection_id}
-    simple_sync_recv(s, status, result, buffer)
-  end
-
-  defp simple_sync_recv(s, status, res, buffer) do
-    %{postgres: postgres, transactions: transactions, timeout: timeout} = s
-    case msg_recv(s, timeout, buffer) do
-      {:ok, msg_ready(status: :idle), buffer}
-      when postgres == :transaction and transactions == :strict ->
-        sync_error(s, :idle, buffer)
-      {:ok, msg_ready(status: :transaction), buffer}
-      when postgres == :idle and transactions == :strict ->
-        sync_error(s, :transaction, buffer)
-      {:ok, msg_ready(status: :failed), buffer}
-      when postgres == :idle and transactions == :strict ->
-        sync_error(s, :failed, buffer)
-      {:ok, msg_ready(status: postgres), buffer} ->
-        ok(s, res, postgres, buffer)
-      {:ok, msg, buffer} ->
-        simple_sync_recv(handle_msg(s, status, msg), status, res, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
+  def cancel_listener_timer(:infinity), do: :ok
+  def cancel_listener_timer({:timer, tref}) do
+    {:ok, _} = :timer.cancel(tref)
+    :ok
   end
 
   ## prepare

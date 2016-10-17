@@ -164,12 +164,11 @@ defmodule Postgrex.Notifications do
     %{protocol: protocol, listener_channels: channels, listeners: listeners} = s
     opts = [notify: &notify_listeners(channels, listeners, &1, &2)]
 
-    case Protocol.handle_simple(statement, opts, protocol) do
+    case Protocol.handle_listener(statement, opts, protocol) do
       {:ok, %Postgrex.Result{}, protocol} ->
         if from, do: Connection.reply(from, result)
         checkin(protocol, s)
       {error, reason, protocol} when error in [:error, :disconnect] ->
-        Connection.reply(from, reason)
         {:stop, reason, %{s | protocol: protocol}}
     end
   end
