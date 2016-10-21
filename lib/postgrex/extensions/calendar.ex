@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Calendar) do
+if Code.ensure_loaded?(NaiveDateTime) do
   defmodule Postgrex.Extensions.Calendar do
     @moduledoc """
     An extension that supports the calendar structs introduced in Elixir 1.3.0:
