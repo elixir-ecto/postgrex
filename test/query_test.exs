@@ -836,15 +836,9 @@ defmodule QueryTest do
     end
   end
 
-  test "COPY FROM STDIN with copy_data: false returns error", context do
+  test "COPY FROM STDIN  returns error", context do
     assert %Postgrex.Error{postgres: %{code: :query_canceled}} =
       query("COPY uniques FROM STDIN", [])
-  end
-
-  test "COPY FROM STDIN with copy_data: true but no copy data raises", context do
-    assert_raise ArgumentError,
-      ~r"parameters must be of length 1 with copy data as final parameter for query",
-      fn -> query("COPY uniques FROM STDIN", [], [copy_data: true]) end
   end
 
   test "COPY TO STDOUT", context do

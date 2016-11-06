@@ -25,7 +25,7 @@ defmodule Postgrex.Mixfile do
   defp deps do
     [{:ex_doc, "~> 0.12", only: :dev},
      {:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.0"},
+     {:db_connection, "~> 1.0", github: "fishcakez/db_connection", branch: "jf-stream"},
      {:connection, "~> 1.0"}]
   end
 

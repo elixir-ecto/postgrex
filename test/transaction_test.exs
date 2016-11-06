@@ -425,21 +425,10 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
-  test "COPY FROM STDIN with copy_data: true", context do
-    transaction(fn(conn) ->
-      assert %Postgrex.Result{command: :copy, rows: nil, num_rows: 1} =
-        Postgrex.query!(conn, "COPY uniques FROM STDIN", ["2\n"], [copy_data: true])
-      assert %Postgrex.Result{rows: [[2]]} =
-        Postgrex.query!(conn, "SELECT * FROM uniques", [])
-      Postgrex.rollback(conn, :done)
-    end)
-  end
-
-  @tag mode: :transaction
   test "COPY FROM STDIN with copy_data: false, mode: :savepoint returns error", context do
     transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{}} =
-        Postgrex.query(conn, "COPY uniques FROM STDIN", [], [mode: :savepoint, copy_data: false])
+        Postgrex.query(conn, "COPY uniques FROM STDIN", [], [mode: :savepoint])
       assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
     end)
   end
