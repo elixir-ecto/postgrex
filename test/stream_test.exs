@@ -28,48 +28,23 @@ defmodule StreamTest do
     end)
   end
 
-  test "results contain num rows and no final chunk with empty rows", context do
+  test "results contain num rows", context do
     query = prepare("", "SELECT * FROM generate_series(1, 2)")
     transaction(fn(conn) ->
-      assert [%{command: :stream, rows: [[1]], num_rows: :stream},
-              %{command: :stream, rows: [[2]], num_rows: :stream},
-              %{command: :select, rows: [], num_rows: 2}] =
+      assert [%{command: :stream, rows: [[1]], num_rows: 1},
+              %{command: :stream, rows: [[2]], num_rows: 1},
+              %{command: :select, rows: [], num_rows: 0}] =
         stream(query, [], max_rows: 1)
         |> Enum.to_list()
 
-      assert [%{command: :stream, rows: [[1], [2]], num_rows: :stream},
-              %{command: :select, rows: [], num_rows: 2}] =
+      assert [%{command: :stream, rows: [[1], [2]], num_rows: 2},
+              %{command: :select, rows: [], num_rows: 0}] =
         stream(query, [], max_rows: 2)
         |> Enum.to_list()
 
       assert [%{command: :select, rows: [[1], [2]], num_rows: 2}] =
         stream(query, [], max_rows: 3)
         |> Enum.to_list()
-    end)
-  end
-
-  test "rebind named portal fails", context do
-    query = prepare("", "SELECT 42")
-    transaction(fn(conn) ->
-      stream = stream(query, [])
-      stream = %Postgrex.Stream{stream | portal: "E2MANY"}
-
-      _ = for _ <- stream do
-        assert_raise Postgrex.Error, ~r"\(duplicate_cursor\)",
-          fn() -> Enum.take(stream, 1) end
-      end
-    end)
-  end
-
-  test "stream closes named portal ", context do
-    query = prepare("", "SELECT 42")
-
-    transaction(fn(conn) ->
-      stream = stream(query, [])
-      stream = %Postgrex.Stream{stream | portal: "CLOSES"}
-
-      assert [%Result{rows: [[42]]}] = stream |> Enum.take(1)
-      assert [%Result{rows: [[42]]}] = stream |> Enum.take(1)
     end)
   end
 
@@ -320,17 +295,17 @@ defmodule StreamTest do
     query1 = prepare("", "COPY (VALUES (1, 2)) TO STDOUT")
     query2 = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
     transaction(fn(conn) ->
-      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream},
-              %{command: :copy, rows: [], num_rows: 1}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: 1},
+              %{command: :copy, rows: [], num_rows: 0}] =
         stream(query1, [], [max_rows: 1]) |> Enum.to_list()
 
-      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream},
-              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: :copy_stream},
-              %{command: :copy, rows: [], num_rows: 2}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: 1},
+              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: 1},
+              %{command: :copy, rows: [], num_rows: 0}] =
         stream(query2, [], [max_rows: 1]) |> Enum.to_list()
 
-      assert [%{command: :copy_stream, rows: ["1\t2\n", "3\t4\n"], num_rows: :copy_stream},
-              %{command: :copy, rows: [], num_rows: 2}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n", "3\t4\n"], num_rows: 2},
+              %{command: :copy, rows: [], num_rows: 0}] =
         stream(query2, [], [max_rows: 2]) |> Enum.to_list()
 
       assert [%{command: :copy, rows: ["1\t2\n", "3\t4\n"], num_rows: 2}] =
@@ -339,16 +314,20 @@ defmodule StreamTest do
   end
 
   test "COPY TO STDOUT with stream halting before copy done", context do
-    Process.flag(:trap_exit, true)
     query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
-    capture_log fn ->
-      transaction(fn(conn) ->
-        assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream}] =
-          stream(query, [], [max_rows: 1]) |> Enum.take(1)
-      end)
-      pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-    end
+    assert transaction(fn(conn) ->
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: 1}] =
+        stream(query, [], [max_rows: 1]) |> Enum.take(1)
+      :hi
+    end) == {:ok, :hi}
+
+    assert transaction(fn(conn) ->
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: 1}] =
+        stream(query, [], [max_rows: 1, mode: :savepoint]) |> Enum.take(1)
+      :hi
+    end) == {:ok, :hi}
+
+    assert [[42]] = query("SELECT 42", [])
   end
 
   test "COPY TO STDOUT locks connection", context do
@@ -368,9 +347,9 @@ defmodule StreamTest do
             result
         end
 
-      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: :copy_stream},
-              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: :copy_stream},
-              %{command: :copy, rows: [], num_rows: 2}] =
+      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: 1},
+              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: 1},
+              %{command: :copy, rows: [], num_rows: 0}] =
         stream(query, [], [max_rows: 1])
         |> Stream.map(map)
         |> Enum.to_list()
@@ -378,16 +357,22 @@ defmodule StreamTest do
   end
 
   test "stream from COPY FROM STDIN", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
-      assert [%Postgrex.Result{command: :copy, rows: nil, num_rows: 1}] =
-        stream(query, ["2\n"]) |> Enum.to_list()
+      assert_raise Postgrex.Error, ~r"\(query_canceled\)",
+        fn() -> stream(query, []) |> Enum.to_list() end
+      Postgrex.rollback(conn, :done)
+    end)
+
+    transaction(fn(conn) ->
+      assert_raise Postgrex.Error, ~r"\(protocol_violation\)",
+        fn() -> stream(query, [], [mode: :savepoint]) |> Enum.to_list() end
       Postgrex.rollback(conn, :done)
     end)
   end
 
   test "COPY empty FROM STDIN", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       stream = stream(query, [])
       assert Enum.into([], stream) == stream
@@ -397,7 +382,7 @@ defmodule StreamTest do
   end
 
   test "COPY FROM STDIN", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       stream = stream(query, [])
       assert Enum.into(["2\n", "3\n4\n"], stream) == stream
@@ -407,7 +392,7 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, %Postgrex.Copy{query: ^query}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query
@@ -423,8 +408,8 @@ defmodule StreamTest do
     end)
   end
 
-  test "COPY FROM STDIN failure", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+  test "COPY FROM STDIN halted", context do
+    query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       _ = Postgrex.query!(conn, "SAVEPOINT bad_copy", [])
 
@@ -436,18 +421,18 @@ defmodule StreamTest do
         end
       assert_raise RuntimeError, "hello",
         fn() -> Enum.into(Stream.map(["2\n", "3\n"], map), stream) end
-      assert_raise Postgrex.Error, ~r"\(in_failed_sql_transaction\)",
-        fn() -> Postgrex.query!(conn, "SELECT * FROM uniques", []) end
+      assert_raise RuntimeError, "hello",
+        fn() -> Enum.into(Stream.map(["3\n", "4\n"], map), stream) end
 
-      _ = Postgrex.query!(conn, "ROLLBACK TO SAVEPOINT bad_copy", [])
-
-      assert %Postgrex.Result{rows: []} =
+      assert %Postgrex.Result{rows: [[2]]} =
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
+
+      Postgrex.rollback(conn, :done)
     end)
   end
 
   test "COPY FROM STDIN with savepoint", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       stream = stream(query, [], [mode: :savepoint])
       assert Enum.into(["2\n", "3\n4\n"], stream) == stream
@@ -458,27 +443,10 @@ defmodule StreamTest do
     end)
   end
 
-  test "COPY FROM STDIN failure with savepoint", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
-    transaction(fn(conn) ->
-      stream = stream(query, [], [mode: :savepoint])
-      map =
-        fn
-          "3\n" -> raise "hello"
-          other -> other
-        end
-      assert_raise RuntimeError, "hello",
-        fn() -> Enum.into(Stream.map(["2\n", "3\n"], map), stream) end
-      assert %Postgrex.Result{rows: []} =
-        Postgrex.query!(conn, "SELECT * FROM uniques", [])
-      Postgrex.rollback(conn, :done)
-    end)
-  end
-
   test "prepare query and stream into different queries with same name", context do
-    query42 = prepare("DUPLICATE", "COPY uniques FROM STDIN", [copy_data: true])
+    query42 = prepare("DUPLICATE", "COPY uniques FROM STDIN")
     :ok = close(query42)
-    query41 = prepare("DUPLICATE", "COPY uniques FROM STDIN WITH DELIMITER AS '\s'", [copy_data: true])
+    query41 = prepare("DUPLICATE", "COPY uniques FROM STDIN WITH DELIMITER AS '\s'")
     transaction(fn(conn) ->
       stream42 = stream(query42, [])
       assert Enum.into(["1\n"], stream42) == stream42
@@ -491,9 +459,9 @@ defmodule StreamTest do
   end
 
   test "prepare query and stream into different queries with same name and savepoint", context do
-    query42 = prepare("DUPLICATE", "COPY uniques FROM STDIN", [copy_data: true])
+    query42 = prepare("DUPLICATE", "COPY uniques FROM STDIN")
     :ok = close(query42)
-    query41 = prepare("DUPLICATE", "COPY uniques FROM STDIN WITH DELIMITER AS '\s'", [copy_data: true])
+    query41 = prepare("DUPLICATE", "COPY uniques FROM STDIN WITH DELIMITER AS '\s'")
     transaction(fn(conn) ->
       stream42 = stream(query42, [], [mode: :savepoint])
       assert Enum.into(["1\n"], stream42) == stream42
@@ -506,7 +474,7 @@ defmodule StreamTest do
   end
 
   test "prepare, close and stream into COPY FROM", context do
-    query = prepare("copy", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("copy", "COPY uniques FROM STDIN")
     :ok = close(query)
     transaction(fn(conn) ->
       stream = stream(query, [])
@@ -520,7 +488,7 @@ defmodule StreamTest do
   @tag prepare: :unnamed
   test "stream named COPY FROM is unnamed when named not allowed", context do
     assert (%Postgrex.Query{name: ""} = query) =
-      prepare("copy", "COPY uniques FROM STDIN", [copy_data: true])
+      prepare("copy", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       stream = stream(query, [])
       assert Enum.into(["2\n", "3\n4\n"], stream) == stream
@@ -532,7 +500,7 @@ defmodule StreamTest do
   end
 
   test "COPY FROM prepared query on another connection", context do
-    query = prepare("copy", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("copy", "COPY uniques FROM STDIN")
     {:ok, pid2} = Postgrex.start_link(context[:options])
     Postgrex.transaction(pid2, fn(conn) ->
       stream = stream(query, [])
@@ -544,7 +512,7 @@ defmodule StreamTest do
   end
 
   test "raise when executing prepared COPY FROM on connection with different types", context do
-    query = prepare("copy", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("copy", "COPY uniques FROM STDIN")
 
     {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++
     context[:options])
@@ -556,7 +524,7 @@ defmodule StreamTest do
   end
 
   test "connection reuses prepared for COPY FROM after query", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       stream = stream(query, [])
       assert %Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
@@ -567,7 +535,7 @@ defmodule StreamTest do
 
   test "connection forces prepare on COPY FROM after prepare of same name", context do
     query_select = prepare("", "SELECT 42")
-    query_copy = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query_copy = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
       stream = stream(query_copy, [])
       assert %Result{rows: [[42]]} = Postgrex.execute!(conn, query_select, [])
@@ -584,8 +552,7 @@ defmodule StreamTest do
   end
 
   test "raise when trying to COPY FROM unprepared query", context do
-    query = %Postgrex.Query{name: "ENOENT", statement: "COPY uniques FROM STDIN",
-                            copy_data: true}
+    query = %Postgrex.Query{name: "ENOENT", statement: "COPY uniques FROM STDIN"}
 
     transaction(fn(conn) ->
       stream = stream(query, [])
@@ -595,7 +562,7 @@ defmodule StreamTest do
   end
 
   test "raise when trying to COPY FROM reserved query", context do
-    query = prepare("", "COPY uniques FROM STDIN", [copy_data: true])
+    query = prepare("", "COPY uniques FROM STDIN")
 
     transaction(fn(conn) ->
       stream = stream(%Postgrex.Query{query | name: "POSTGREX_BEGIN"}, [])
@@ -605,35 +572,35 @@ defmodule StreamTest do
   end
 
   test "stream into SELECT ignores data", context do
-    query = prepare("", "SELECT 42", [copy_data: true])
+    query = prepare("", "SELECT 42")
     transaction(fn(conn) ->
       stream = stream(query, [])
-      assert Enum.into(["42\n", "42\n"], stream) == stream
+      assert Enum.into(["42\n", "43\n"], stream) == stream
       assert %Result{rows: [[41]]} = Postgrex.query!(conn, "SELECT 41", [])
 
       stream = stream(query, [], [mode: :savepoint])
-      assert Enum.into(["42\n", "42\n"], stream) == stream
+      assert Enum.into(["42\n", "43\n"], stream) == stream
       assert %Result{rows: [[41]]} = Postgrex.query!(conn, "SELECT 41", [])
       Postgrex.rollback(conn, :done)
     end)
   end
 
   test "stream into COPY TO STDOUT ignores data", context do
-    query = prepare("", "COPY (VALUES (1), (2)) TO STDOUT", [copy_data: true])
+    query = prepare("", "COPY (VALUES (1), (2)) TO STDOUT")
     transaction(fn(conn) ->
       stream = stream(query, [])
-      assert Enum.into(["42\n", "42\n"], stream) == stream
+      assert Enum.into(["42\n", "43\n"], stream) == stream
       assert %Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
 
       stream = stream(query, [], [mode: :savepoint])
-      assert Enum.into(["42\n", "42\n"], stream) == stream
+      assert Enum.into(["42\n", "43\n"], stream) == stream
       assert %Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
       Postgrex.rollback(conn, :done)
     end)
   end
 
   test "connection works after stream into with failure in binding state", context do
-    query = prepare("", "insert into uniques values (CAST($1::text AS int))", [copy_data: true])
+    query = prepare("", "insert into uniques values (CAST($1::text AS int))")
 
     transaction(fn(conn) ->
       stream = stream(query, ["EBADF"])
@@ -655,7 +622,7 @@ defmodule StreamTest do
   end
 
   test "connection works after stream into failure in executing state", context do
-    query = prepare("", "insert into uniques values (1), (1)", [copy_data: true])
+    query = prepare("", "insert into uniques values (1), (1)")
 
     transaction(fn(conn) ->
       stream = stream(query, [])
@@ -676,7 +643,7 @@ defmodule StreamTest do
 
   test "empty query", context do
     query_out = prepare("out", "")
-    query_in = prepare("in", "", [copy_data: true])
+    query_in = prepare("in", "")
     transaction(fn(conn) ->
       assert [%Postgrex.Result{command: nil, rows: nil, num_rows: 0}] =
         stream(query_out, []) |> Enum.to_list()
@@ -687,7 +654,7 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
@@ -701,7 +668,7 @@ defmodule StreamTest do
 
   test "savepoint query", context do
     query_out = prepare("out", "SAVEPOINT streaming_test")
-    query_in = prepare("in", query_out.statement, [copy_data: true])
+    query_in = prepare("in", query_out.statement)
     transaction(fn(conn) ->
       assert [%Postgrex.Result{command: :savepoint, rows: nil, num_rows: 0}] =
         stream(query_out, []) |> Enum.to_list()
@@ -712,7 +679,7 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
@@ -726,7 +693,7 @@ defmodule StreamTest do
 
   test "INSERT .. RETURNING", context do
     query_out = prepare("out", "INSERT INTO uniques (a) VALUES (2), (3) RETURNING a")
-    query_in = prepare("in", query_out.statement, [copy_data: true])
+    query_in = prepare("in", query_out.statement)
     transaction(fn(conn) ->
       assert [%Postgrex.Result{command: :insert, rows: [[2], [3]], num_rows: 2}] =
         stream(query_out, [], [max_rows: 3]) |> Enum.to_list()
@@ -734,8 +701,8 @@ defmodule StreamTest do
     end)
 
     transaction(fn(conn) ->
-      assert [%{command: :stream, rows: [[2], [3]], num_rows: :stream},
-              %{command: :insert, rows: [], num_rows: 2}] =
+      assert [%{command: :stream, rows: [[2], [3]], num_rows: 2},
+              %{command: :insert, rows: [], num_rows: 0}] =
         stream(query_out, [], [max_rows: 2]) |> Enum.to_list()
       Postgrex.rollback(conn, :done)
     end)
@@ -746,7 +713,7 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
@@ -758,5 +725,23 @@ defmodule StreamTest do
 
       Postgrex.rollback(conn, :done)
     end)
+  end
+
+  test "stream prepares query", context do
+    assert transaction(fn(conn) ->
+      assert [%Postgrex.Result{command: :select, rows: [[42]], num_rows: 1}] =
+        stream("SELECT 42", []) |> Enum.to_list()
+      :hi
+    end) == {:ok, :hi}
+  end
+
+  test "stream prepares query but fails to encode", context do
+    assert transaction(fn(conn) ->
+      stream = stream("SELECT $1::integer", ["not_an_int"])
+      assert_raise ArgumentError, fn() -> Enum.to_list(stream) end
+      :hi
+    end) == {:ok, :hi}
+
+    assert [[42]] = query("SELECT 42", [])
   end
 end

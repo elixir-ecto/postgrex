@@ -109,9 +109,6 @@ defmodule Postgrex do
     and decoding;
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
-    * `:copy_data` - Whether to add copy data as a final parameter for use
-    with `COPY .. FROM STDIN` queries, if the query is not copying to the
-    database the data is sent but silently discarded (default: `false`);
 
   ## Examples
 
@@ -124,8 +121,6 @@ defmodule Postgrex do
       Postgrex.query(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
-
-      Postgrex.query(conn, "COPY ints FROM STDIN", ["1\\n2\\n"], [copy_data: true])
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def query(conn, statement, params, opts \\ []) do
@@ -182,9 +177,6 @@ defmodule Postgrex do
     and decoding;
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
-    * `:copy_data` - Whether to add copy data as the final parameter for use
-    with `COPY .. FROM STDIN` queries, if the query is not copying to the
-    database then the data is sent but ignored (default: `false`);
 
   ## Examples
 
@@ -451,11 +443,14 @@ defmodule Postgrex do
         Enum.into(File.stream!("posts"), stream)
       end)
   """
-  @spec stream(DBConnection.t, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Stream.t
+  @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, Keyword.t) ::
+    Postgrex.Stream.t
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
-    max_rows = options[:max_rows] || @max_rows
-    %Postgrex.Stream{conn: conn, max_rows: max_rows, options: options,
-                     params: params, query: query}
+    options =
+      options
+      |> defaults()
+      |> Keyword.put_new(:max_rows, @max_rows)
+    %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
   end
 
   ## Helpers
