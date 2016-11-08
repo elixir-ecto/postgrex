@@ -401,7 +401,7 @@ defmodule Postgrex do
   end
 
   @doc """
-  Returns a stream for a prepared query on a connection.
+  Returns a stream for a query on a connection.
 
   Stream consumes memory in chunks of at most `max_rows` rows (see Options).
   This is useful for processing _large_ datasets.
@@ -413,10 +413,8 @@ defmodule Postgrex do
   queries or streams can be interspersed until the copy has finished. Otherwise
   it is possible to intersperse enumerable streams and queries.
 
-  When used as a `Collectable` the query must have been prepared with
-  `copy_data: true`, otherwise it will raise. Instead of using an extra
-  parameter for the copy data, the data from the enumerable is copied to the
-  database. No other queries or streams can be interspersed until the copy has
+  When used as a `Collectable` the values are passed as copy data with the
+  query. No other queries or streams can be interspersed until the copy has
   finished. If the query is not copying to the database the copy data will still
   be sent but is silently discarded.
 
@@ -438,8 +436,7 @@ defmodule Postgrex do
       end)
 
       Postgrex.transaction(pid, fn(conn) ->
-        query = Postgrex.prepare!(conn, "", "COPY posts FROM STDIN", [copy_data: true])
-        stream = Postgrex.stream(conn, query, [])
+        stream = Postgrex.stream(conn, "COPY posts FROM STDIN", [])
         Enum.into(File.stream!("posts"), stream)
       end)
   """
