@@ -53,11 +53,12 @@ defimpl Collectable, for: Postgrex.Stream do
     %Stream{conn: conn, query: query, params: params, options: opts} = stream
     case query do
       %Query{} ->
-        copy = Postgrex.execute!(conn, stream, params, opts)
+        copy = DBConnection.execute!(conn, stream, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
       query ->
-        stream = %Stream{stream | query: %Query{name: "", statement: query}}
-        {_, copy} = DBConnection.prepare_execute!(conn, stream, params, opts)
+        internal = %Stream{stream | query: %Query{name: "", statement: query}}
+        opts = Keyword.put(opts, :function, :prepare_into)
+        {_, copy} = DBConnection.prepare_execute!(conn, internal, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
     end
   end
@@ -70,10 +71,11 @@ defimpl Collectable, for: Postgrex.Stream do
     fn
       :ok, {:cont, data} ->
         copy_data = %Postgrex.CopyData{ref: ref, data: data}
-        _ = Postgrex.execute!(conn, copy, copy_data, opts)
+        _ = DBConnection.execute!(conn, copy, copy_data, opts)
         :ok
       :ok, close when close in [:done, :halt] ->
-        Postgrex.execute!(conn, copy, %Postgrex.CopyDone{ref: ref}, opts)
+        copy_done = %Postgrex.CopyDone{ref: ref}
+        _ = DBConnection.execute!(conn, copy, copy_done, opts)
         stream
     end
   end

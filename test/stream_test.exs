@@ -406,6 +406,15 @@ defmodule StreamTest do
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
       Postgrex.rollback(conn, :done)
     end)
+
+    transaction(fn(conn) ->
+      stream = stream("COPY uniques FROM STDIN", [])
+      assert Enum.into(["2\n", "3\n4\n"], stream) == stream
+
+      assert %Postgrex.Result{rows: [[2], [3], [4]]} =
+        Postgrex.query!(conn, "SELECT * FROM uniques", [])
+      Postgrex.rollback(conn, :done)
+    end)
   end
 
   test "COPY FROM STDIN halted", context do

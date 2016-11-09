@@ -164,8 +164,13 @@ defmodule Postgrex.Protocol do
   def handle_prepare(%Query{} = query, _, s) do
     query_error(s, "query #{inspect query} has invalid types for the connection")
   end
-  def handle_prepare(%Stream{query: query}, opts, s) do
-    handle_prepare(query, opts, s)
+  def handle_prepare(%Stream{query: query} = stream, opts, s) do
+    case handle_prepare(query, opts, s) do
+      {:ok, %Query{} = query, s} ->
+        {:ok, %Stream{stream | query: query}, s}
+      {error, _, _} = other when error in [:error, :disconnect] ->
+        other
+    end
   end
 
   @spec handle_execute(Postgrex.Parameters.t, nil, Keyword.t, state) ::
@@ -757,11 +762,11 @@ defmodule Postgrex.Protocol do
   ## prepare
 
   defp prepare(opts) do
-    # TODO: Use fetch!/2 once version ">= 0.12"
-    case Keyword.get(opts, :function, :prepare) do
+    case Keyword.fetch!(opts, :function) do
       :prepare         -> {:sync, &sync_recv/4}
       :prepare_execute -> {:flush, &execute_ready/4}
       :prepare_open    -> {:flush, &execute_ready/4}
+      :prepare_into    -> {:flush, &execute_ready/4}
     end
   end
 
