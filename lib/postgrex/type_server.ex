@@ -22,7 +22,7 @@ defmodule Postgrex.TypeServer do
   we wait until the entries are available or the other process
   crashes.
   """
-  @spec fetch(key :: term) :: {:lock, reference, table} | {:go, table}
+  @spec fetch(key :: term) :: {:lock, reference, table} | {:go, table} | :error
   def fetch(key) do
     GenServer.call(@name, {:fetch, key}, 60_000)
   end
@@ -151,20 +151,16 @@ defmodule Postgrex.TypeServer do
     tables =
       case Map.fetch!(tables, key) do
         # The process responsible for creating or updating the table crashed
-        # and no one else is interested on it
-        {:waiting, ^ref, 0, [], table} ->
+        # and not tracking any processes
+        {:waiting, ^ref, 0, waiting, table} ->
+          failure(waiting)
           stale_table(tables, key, table)
 
         # The process responsible for updating the table crashed
-        # and no one else is waiting
-        {:waiting, ^ref, counter, [], table} ->
+        # and processes
+        {:waiting, ^ref, counter, waiting, table} ->
+          failure(waiting)
           Map.put(tables, key, {:ready, counter, nil, table})
-
-        # The process responsible for creating or updating the table crashed
-        # and others are waiting
-        {:waiting, ^ref, counter, [{_, owner_ref, from}|waiting], table} ->
-          GenServer.reply(from, {:lock, owner_ref, table})
-          Map.put(tables, key, {:waiting, owner_ref, counter, waiting, table})
 
         # A process in the waiting list crashed
         {:waiting, owner_ref, counter, waiting, table} ->
@@ -173,6 +169,15 @@ defmodule Postgrex.TypeServer do
       end
 
     {:noreply, {tables, monitors, conns}}
+  end
+
+  defp failure(waiting) do
+    _ =
+      for {_, ref, from} <- waiting do
+        Process.demonitor(ref, [:flush])
+        GenServer.reply(from, :error)
+      end
+    :ok
   end
 
   defp stale_table(tables, key, table) do
