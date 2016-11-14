@@ -5,7 +5,7 @@ defmodule QueryTest do
 
   setup context do
     opts = [ database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named]
+             prepare: context[:prepare] || :named, idle_timeout: 500 ]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -857,5 +857,19 @@ defmodule QueryTest do
     big_binary = :binary.copy(<<1>>, 128*1024*1024+1)
     assert [[binary]] = query("SELECT $1::bytea;", [big_binary])
     assert byte_size(binary) == 128 * 1024 * 1024 + 1
+  end
+
+  test "terminate backend", context do
+    Process.flag(:trap_exit, true)
+    assert {:ok, pid} = P.start_link(context[:options])
+
+    %Postgrex.Result{connection_id: connection_id} =
+      Postgrex.query!(pid, "SELECT 42", [])
+
+    capture_log(fn() ->
+      assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
+
+      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{postgres: %{code: :admin_shutdown}}}}
+    end)
   end
 end
