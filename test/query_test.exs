@@ -5,7 +5,7 @@ defmodule QueryTest do
 
   setup context do
     opts = [ database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named, idle_timeout: 500 ]
+             prepare: context[:prepare] || :named]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -861,7 +861,7 @@ defmodule QueryTest do
 
   test "terminate backend", context do
     Process.flag(:trap_exit, true)
-    assert {:ok, pid} = P.start_link(context[:options])
+    assert {:ok, pid} = P.start_link([idle_timeout: 10] ++ context[:options])
 
     %Postgrex.Result{connection_id: connection_id} =
       Postgrex.query!(pid, "SELECT 42", [])
