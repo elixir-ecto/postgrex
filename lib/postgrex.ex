@@ -38,7 +38,12 @@ defmodule Postgrex do
     * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password (default PGPASSWORD);
     * `:parameters` - Keyword list of connection parameters;
-    * `:timeout` - Connect timeout in milliseconds (default: `#{@timeout}`);
+    * `:timeout` - Socket receive timeout when idle in milliseconds (default:
+    `#{@timeout}`);
+    * `:connect_timeout` - Socket connect timeout in milliseconds (defaults to
+    `:timeout` value);
+    * `:handshake_timeout` - Connection handshake timeout in milliseconds
+    (defaults to `:timeout` value);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:socket_options` - Options to be given to the underlying socket;

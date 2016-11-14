@@ -45,12 +45,12 @@ defmodule TypeServerTest do
 
   test "blocks on initial fetch until fail is returned" do
     key = make_ref()
-    {:lock, ref, table} = TS.fetch(key)
+    {:lock, ref, _} = TS.fetch(key)
 
     task = Task.async fn -> TS.fetch(key) end
     :timer.sleep(100)
     TS.fail(ref)
-    assert {:lock, _, ^table} = Task.await(task)
+    assert :error = Task.await(task)
   end
 
   test "blocks on later fetch until fail is returned" do
@@ -62,8 +62,9 @@ defmodule TypeServerTest do
 
     task = Task.async fn -> TS.fetch(key) end
     :timer.sleep(100)
+    nil = Task.yield(task, 0)
     TS.fail(ref)
-    assert {:lock, _, ^table} = Task.await(task)
+    assert :error = Task.await(task)
   end
 
   test "fetches existing table even if parent crashes" do
@@ -148,7 +149,7 @@ defmodule TypeServerTest do
            Task.async(fn -> TS.fetch(key) end) |> Task.await
   end
 
-  test "gives lock to another process if original holder crashes after fetch" do
+  test "error waiting process if original holder crashes after fetch" do
     key = make_ref()
     top = self()
 
@@ -162,7 +163,7 @@ defmodule TypeServerTest do
 
     Process.exit(pid, :kill)
     wait_until_dead(pid)
-    assert {:lock, _, _} = Task.await(task)
+    assert :error = Task.await(task)
   end
 
   defp wait_until_dead(pid) do

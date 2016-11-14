@@ -81,7 +81,8 @@ defmodule Postgrex.Protocol do
     status = %{opts: opts, types_key: types_key, types_ref: nil,
                types_table: nil, build_types: nil, extensions: extensions,
                prepare: prepare, ssl: ssl?}
-    case connect(host, port, sock_opts ++ @sock_opts, s) do
+    connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
+    case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
       {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
     end
@@ -447,7 +448,7 @@ defmodule Postgrex.Protocol do
 
   ## connect
 
-  defp connect(host, port, sock_opts, %{timeout: timeout} = s) do
+  defp connect(host, port, sock_opts, timeout, s) do
     buffer? = Keyword.has_key?(sock_opts, :buffer)
     case :gen_tcp.connect(host, port, sock_opts ++ @sock_opts, timeout) do
       {:ok, sock} when buffer? ->
@@ -469,9 +470,11 @@ defmodule Postgrex.Protocol do
 
   ## handshake
 
-  defp handshake(%{timeout: timeout, sock: {:gen_tcp, sock}} = s,status) do
+  defp handshake(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status) do
     {:ok, peer} = :inet.peername(sock)
-    timer = start_handshake_timer(timeout, sock)
+    %{opts: opts} = status
+    handshake_timeout = Keyword.get(opts, :handshake_timeout, timeout)
+    timer = start_handshake_timer(handshake_timeout, sock)
     case do_handshake(%{s | peer: peer}, status) do
       {:ok, %{parameters: parameters} = s} ->
         cancel_handshake_timer(timer)
@@ -486,9 +489,19 @@ defmodule Postgrex.Protocol do
 
   defp start_handshake_timer(:infinity, _), do: :infinity
   defp start_handshake_timer(timeout, sock) do
-    {:ok, tref} = :timer.apply_after(timeout, :gen_tcp, :shutdown,
-                                     [sock, :read_write])
+    {:ok, tref} = :timer.apply_after(timeout, __MODULE__, :handshake_shutdown,
+                                     [timeout, self(), sock])
     {:timer, tref}
+  end
+
+  @doc false
+  def handshake_shutdown(timeout, pid, sock) do
+    Logger.error(fn() ->
+      [inspect(__MODULE__), " (", inspect(pid),
+        ") timed out because it was handshaking for longer than ",
+        to_string(timeout) | "ms"]
+    end)
+    :gen_tcp.shutdown(sock, :read_write)
   end
 
   def cancel_handshake_timer(:infinity), do: :ok
@@ -612,6 +625,10 @@ defmodule Postgrex.Protocol do
         bootstrap_send(%{s | types: table}, status, oids, buffer)
       {:go, table} ->
         reserve_send(%{s | types: table}, status, buffer)
+      :error ->
+        msg = "awaited on another connection that failed to bootstrap types"
+        err = RuntimeError.exception(message: msg)
+        {:disconnect, err, %{s | buffer: buffer}}
     end
   end
 
