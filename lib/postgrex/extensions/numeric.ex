@@ -109,18 +109,20 @@ defmodule Postgrex.Extensions.Numeric do
         0x4000 -> -1
       end
 
-    {coef, exp} = scale(value, (weight+1)*4, -scale)
-    Decimal.new(sign, coef, exp)
+    coef = scale(value, (weight + 1) * 4 + scale)
+    Decimal.new(sign, coef, -scale)
   end
 
-  defp scale(coef, exp, scale) when scale == exp,
-    do: {coef, exp}
+  defp scale(coef, 0), do: coef
+  defp scale(coef, diff) when diff < 0, do: div(coef, pow10(-diff))
+  defp scale(coef, diff) when diff > 0, do: coef * pow10(diff)
 
-  defp scale(coef, exp, scale) when scale > exp,
-    do: scale(div(coef, 10), exp+1, scale)
+  Enum.reduce 0..100, 1, fn x, acc ->
+    defp pow10(unquote(x)), do: unquote(acc)
+    acc * 10
+  end
 
-  defp scale(coef, exp, scale) when scale < exp,
-    do: scale(coef * 10, exp-1, scale)
+  defp pow10(num) when num > 100, do: pow10(100) * pow10(num-100)
 
   defp decode_numeric_int("", weight, acc), do: {acc, weight}
 
