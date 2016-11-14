@@ -17,11 +17,11 @@ defmodule Postgrex.Extensions.Numeric do
 
   ## Helpers
 
-  def encode_numeric(%Decimal{coef: coef}) when coef in [:qNaN, :sNaN] do
+  defp encode_numeric(%Decimal{coef: coef}) when coef in [:qNaN, :sNaN] do
     <<0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16>>
   end
 
-  def encode_numeric(%Decimal{sign: sign, coef: coef, exp: exp}) do
+  defp encode_numeric(%Decimal{sign: sign, coef: coef, exp: exp}) do
     sign = encode_sign(sign)
     scale = -exp
 
@@ -76,7 +76,7 @@ defmodule Postgrex.Extensions.Numeric do
     encode_digits(coef, [digit|digits])
   end
 
-  def decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
+  defp decode_numeric(<<ndigits :: int16, weight :: int16, sign :: uint16, scale :: int16, tail :: binary>>) do
     decode_numeric(ndigits, weight, sign, scale, tail)
   end
 
