@@ -33,8 +33,10 @@ defmodule Postgrex.Types do
 
     filter_oids =
       case oids do
-        [] -> ""
-        _  -> "WHERE NOT t.oid = ANY(ARRAY[#{Enum.join(oids, ",")}])"
+        [] ->
+          ""
+        _  ->
+          "WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))"
       end
 
     """
