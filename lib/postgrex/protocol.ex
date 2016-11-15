@@ -498,12 +498,14 @@ defmodule Postgrex.Protocol do
 
   @doc false
   def handshake_shutdown(timeout, pid, sock) do
-    Logger.error(fn() ->
-      [inspect(__MODULE__), " (", inspect(pid),
-        ") timed out because it was handshaking for longer than ",
-        to_string(timeout) | "ms"]
-    end)
-    :gen_tcp.shutdown(sock, :read_write)
+    if Process.alive?(pid) do
+      Logger.error(fn() ->
+        [inspect(__MODULE__), " (", inspect(pid),
+          ") timed out because it was handshaking for longer than ",
+          to_string(timeout) | "ms"]
+      end)
+      :gen_tcp.shutdown(sock, :read_write)
+    end
   end
 
   def cancel_handshake_timer(:infinity), do: :ok
