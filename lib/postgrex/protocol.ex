@@ -861,7 +861,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_no_data(), buffer} when is_list(result_info) ->
         describe_error(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
-        case (for {oid, _, _} <- param_info, do: oid) do
+        case (for {oid, _, _, _} <- param_info, do: oid) do
           ^param_oids ->
             describe_recv(s, status, query, buffer, next)
           _ ->
@@ -869,7 +869,7 @@ defmodule Postgrex.Protocol do
         end
       {:ok, msg_row_desc(fields: fields), buffer} ->
         result_oids = column_oids(fields)
-        case (for {oid, _, _} <- result_info, do: oid) do
+        case (for {oid, _, _, _} <- result_info, do: oid) do
           ^result_oids ->
             query_put(s, query)
             next.(s, status, query, buffer)

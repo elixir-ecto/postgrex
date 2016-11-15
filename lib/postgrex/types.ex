@@ -229,21 +229,21 @@ defmodule Postgrex.Types do
   ### TYPE FORMAT ###
 
   @doc false
-  def encoder({oid, info, nil}, _state) do
+  def param_opts({oid, info, nil}, _state) do
     raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
   end
-  def encoder({_, info, extension}, state) do
+  def param_opts({oid, info, extension}, state) do
     opts = fetch_opts(state, extension)
-    {format(info, extension, state), &extension.encode(info, &1, state, opts)}
+    {format(info, extension, state), {oid, info, extension, opts}}
   end
 
   @doc false
-  def decoder({oid, info, nil}, _state) do
+  def result_opts({oid, info, nil}, _state) do
     raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
   end
-  def decoder({_oid, info, extension}, state) do
+  def result_opts({oid, info, extension}, state) do
     opts = fetch_opts(state, extension)
-    {format(info, extension, state), &extension.decode(info, &1, state, opts)}
+    {format(info, extension, state), {oid, info, extension, opts}}
   end
 
   defp format(oid, state) do

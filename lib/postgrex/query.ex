@@ -4,13 +4,11 @@ defmodule Postgrex.Query do
 
     * `name` - The name of the prepared statement;
     * `statement` - The prepared statement;
-    * `param_info` - List of oids, type info and extension for each parameter;
+    * `param_info` - List of oids, type info, extension and options for each parameter;
     * `param_formats` - List of formats for each parameters encoded to;
-    * `encoders` - List of anonymous functions to encode each parameter;
     * `columns` - The column names;
-    * `result_info` - List of oid, type info and extension for each column;
+    * `result_info` - List of oid, type info, extension and options for each column;
     * `result_formats` - List of formats for each column is decoded from;
-    * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
     * `null` - Atom to use as a stand in for postgres' `NULL`;
   """
@@ -18,18 +16,20 @@ defmodule Postgrex.Query do
   @type t :: %__MODULE__{
     name:           iodata,
     statement:      iodata,
-    param_info:     [{Postgrex.Types.oid, Postgrex.TypeInfo.t, module | nil}] | nil,
+    param_info:     [type_info] | nil,
     param_formats:  [:binary | :text] | nil,
-    encoders:       [(term -> iodata)] | nil,
     columns:        [String.t] | nil,
-    result_info:    [{Postgrex.Types.oid, Postgrex.TypeInfo.t, module | nil}] | nil,
+    result_info:    [type_info] | nil,
     result_formats: [:binary | :text] | nil,
-    decoders:       [(binary -> term)] | nil,
     types:          Postgrex.TypeServer.table | nil,
     null:           atom}
 
-  defstruct [:ref, :name, :statement, :param_info, :param_formats, :encoders,
-    :columns, :result_info, :result_formats, :decoders, :types, :null]
+  @type type_info ::
+    {Postgrex.Types.oid, Postgrex.TypeInfo.t, module | nil} |
+    {Postgrex.Types.oid, Postgrex.TypeInfo.t, module, any}
+
+  defstruct [:ref, :name, :statement, :param_info, :param_formats, :columns,
+    :result_info, :result_formats, :types, :null]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
@@ -44,16 +44,16 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   def describe(query, opts) do
     %Postgrex.Query{param_info: param_info, result_info: result_info,
                     types: types, null: conn_null} = query
-    {pfs, encoders} = encoders(param_info, types)
-    {rfs, decoders} = decoders(result_info, types)
+    {pfs, param_info} = param_opts(param_info, types)
+    {rfs, result_info} = result_opts(result_info, types)
 
     null = case Keyword.fetch(opts, :null) do
       {:ok, q_null} -> q_null
       :error -> conn_null
     end
 
-    %Postgrex.Query{query | param_formats: pfs, encoders: encoders,
-                            result_formats: rfs, decoders: decoders,
+    %Postgrex.Query{query | param_formats: pfs, param_info: param_info,
+                            result_formats: rfs, result_info: result_info,
                             null: null}
   end
 
@@ -62,17 +62,17 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   end
 
   def encode(query, params, _) do
-    %Postgrex.Query{encoders: encoders, null: null} = query
-    case do_encode(params || [], encoders, null, []) do
+    %Postgrex.Query{param_info: param_info, null: null, types: types} = query
+    case do_encode(params || [], param_info, null, types, []) do
       params when is_list(params) ->
         params
       :error ->
         raise ArgumentError,
-          "parameters must be of length #{length encoders} for query #{inspect query}"
+          "parameters must be of length #{length param_info} for query #{inspect query}"
     end
   end
 
-  def decode(%Postgrex.Query{decoders: nil}, res, opts) do
+  def decode(%Postgrex.Query{result_info: nil}, res, opts) do
     case res do
       %Postgrex.Result{command: copy, rows: rows}
           when copy in [:copy, :copy_stream] and rows != nil ->
@@ -81,56 +81,57 @@ defimpl DBConnection.Query, for: Postgrex.Query do
         res
     end
   end
-  def decode(%Postgrex.Query{decoders: decoders, null: null}, res, opts) do
+  def decode(%Postgrex.Query{result_info: result_info, null: null, types: types}, res, opts) do
     mapper = opts[:decode_mapper] || fn x -> x end
     %Postgrex.Result{rows: rows} = res
-    rows = do_decode(rows, decoders, null, mapper, [])
+    rows = do_decode(rows, result_info, null, types, mapper, [])
     %Postgrex.Result{res | rows: rows}
   end
 
   ## helpers
 
-  defp encoders(oids, types) do
-    oids
-    |> Enum.map(&Postgrex.Types.encoder(&1, types))
+  defp param_opts(param_info, types) do
+    param_info
+    |> Enum.map(&Postgrex.Types.param_opts(&1, types))
     |> :lists.unzip()
   end
 
-  defp decoders(nil, _) do
+  defp result_opts(nil, _) do
     {[], nil}
   end
-  defp decoders(oids, types) do
-    oids
-    |> Enum.map(&Postgrex.Types.decoder(&1, types))
+  defp result_opts(result_info, types) do
+    result_info
+    |> Enum.map(&Postgrex.Types.result_opts(&1, types))
     |> :lists.unzip()
   end
 
-  defp do_encode([null | params], [_encoder | encoders], null, encoded) do
-    do_encode(params, encoders, null, [<<-1::int32>> | encoded])
+  defp do_encode([null | params], [_ | param_info], null, types, encoded) do
+    do_encode(params, param_info, null, types, [<<-1::int32>> | encoded])
   end
 
-  defp do_encode([param | params], [encoder | encoders], null, encoded) do
-    param = encoder.(param)
+  defp do_encode([param | params], [{_, info, ext, opts} | param_info], null, types, encoded) do
+    param = apply(ext, :encode, [info, param, types, opts])
     encoded = [[<<IO.iodata_length(param)::int32>> | param] | encoded]
-    do_encode(params, encoders, null, encoded)
+    do_encode(params, param_info, null, types, encoded)
   end
 
-  defp do_encode([], [], _, encoded), do: Enum.reverse(encoded)
-  defp do_encode(params, _, _, _) when is_list(params), do: :error
+  defp do_encode([], [], _, _, encoded), do: Enum.reverse(encoded)
+  defp do_encode(params, _, _, _, _) when is_list(params), do: :error
 
-  defp do_decode([row | rows], decoders, null, mapper, decoded) do
-    decoded = [mapper.(decode_row(row, decoders, null, [])) | decoded]
-    do_decode(rows, decoders, null, mapper, decoded)
+  defp do_decode([row | rows], result_info, null, types, mapper, decoded) do
+    decoded = [mapper.(decode_row(row, result_info, null, types, [])) | decoded]
+    do_decode(rows, result_info, null, types, mapper, decoded)
   end
-  defp do_decode([], _, _, _, decoded), do: decoded
+  defp do_decode([], _, _, _, _, decoded), do: decoded
 
-  defp decode_row(<<-1 :: int32, rest :: binary>>, [_ | decoders], null, decoded) do
-    decode_row(rest, decoders, null, [null | decoded])
+  defp decode_row(<<-1 :: int32, rest :: binary>>, [_ | result_info], null, types, decoded) do
+    decode_row(rest, result_info, null, types, [null | decoded])
   end
-  defp decode_row(<<len :: uint32, value :: binary(len), rest :: binary>>, [decode | decoders], null, decoded) do
-    decode_row(rest, decoders, null, [decode.(value) | decoded])
+  defp decode_row(<<len :: uint32, value :: binary(len), rest :: binary>>, [{_, info, ext, opts} | result_info], null, types, decoded) do
+    value = apply(ext, :decode, [info, value, types, opts])
+    decode_row(rest, result_info, null, types, [value | decoded])
   end
-  defp decode_row(<<>>, [], _, decoded), do: Enum.reverse(decoded)
+  defp decode_row(<<>>, [], _, _, decoded), do: Enum.reverse(decoded)
 
   defp decode_copy(data, opts) do
     case opts[:decode_mapper] do
