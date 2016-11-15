@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.0.0
+
+* Enchancements
+  * Fallback to `PGDATABASE` system env for the database
+  * Support `bit` and `varbit` types
+  * Add postgres error code to error messages
+  * Support unprepared when using a stream
+  * `:connect_timeout` and `:handshake_timeout` to configure tcp connect and handshake timeouts
+  * Improve numeric encode/decode
+
+* Bug fixes
+  * Quote channel on listen/unlisten
+  * Check datetime structs available before defining calendar extension
+  * Backoff all awaiting connections if a bootstrap fails to prevent timeout loop
+  * Handle idle admin shutdown of postgres backend
+  * Fix rebootstrap query to be O(Nlog(N)) instead of O(N^2)
+
+* Backwards incompatible change
+  * `:copy_data` query option is no longer supported and data can only be copied to the database using a collectable
+  * Query struct has removed encoders/decoders and changed param_info/result_info values
+
 ## v0.12.1 (2016-09-29)
 
 * Enchancements

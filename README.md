@@ -17,10 +17,6 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 %Postgrex.Result{command: :insert, columns: nil, rows: nil, num_rows: 1}}
 ```
 
-## Disclaimer
-
-Postgrex is currently on 0.x beta releases. We are heading towards a stable release soon. Please consult the issues tracker for more information and outstanding issues.
-
 ## Features
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
