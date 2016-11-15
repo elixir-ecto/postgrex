@@ -858,4 +858,18 @@ defmodule QueryTest do
     assert [[binary]] = query("SELECT $1::bytea;", [big_binary])
     assert byte_size(binary) == 128 * 1024 * 1024 + 1
   end
+
+  test "terminate backend", context do
+    Process.flag(:trap_exit, true)
+    assert {:ok, pid} = P.start_link([idle_timeout: 10] ++ context[:options])
+
+    %Postgrex.Result{connection_id: connection_id} =
+      Postgrex.query!(pid, "SELECT 42", [])
+
+    capture_log(fn() ->
+      assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
+
+      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{postgres: %{code: :admin_shutdown}}}}
+    end)
+  end
 end

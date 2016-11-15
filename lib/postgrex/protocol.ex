@@ -107,11 +107,13 @@ defmodule Postgrex.Protocol do
   def ping(%{buffer: buffer} = s) do
     status = %{notify: notify([]), mode: :transaction, sync: :sync}
     s = %{s | buffer: nil}
-    case buffer do
-      :active_once ->
-        sync(s, status, :active_once, buffer)
-      _ when is_binary(buffer) ->
-        sync(s, status, nil, buffer)
+    case msg_send(s, msg_sync(), buffer) do
+      :ok when buffer == :active_once ->
+        ping_recv(s, status, :active_once, buffer)
+      :ok when is_binary(buffer) ->
+        ping_recv(s, status, nil, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
     end
   end
 
@@ -1598,11 +1600,28 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## sync
-  defp sync(s, status, result, buffer) do
-    case msg_send(s, msg_sync(), buffer) do
-      :ok                       -> sync_recv(s, status, result, buffer)
-      {:disconnect, _, _} = dis -> dis
+  ## ping
+
+  defp ping_recv(s, status, res, buffer) do
+    %{timeout: timeout, postgres: postgres, transactions: transactions} = s
+    case msg_recv(s, timeout, buffer) do
+      {:ok, msg_ready(status: :idle), buffer}
+      when postgres == :transaction and transactions == :strict ->
+        sync_error(s, :idle, buffer)
+      {:ok, msg_ready(status: :transaction), buffer}
+      when postgres == :idle and transactions == :strict ->
+        sync_error(s, :transaction, buffer)
+      {:ok, msg_ready(status: :failed), buffer}
+      when postgres == :idle and transactions == :strict ->
+        sync_error(s, :failed, buffer)
+      {:ok, msg_ready(status: postgres), buffer} ->
+        ok(s, res, postgres, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        ping_recv(handle_msg(s, status, msg), status, res, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
     end
   end
 
