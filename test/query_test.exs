@@ -5,7 +5,8 @@ defmodule QueryTest do
 
   setup context do
     opts = [ database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named]
+             prepare: context[:prepare] || :named,
+             decode_binary: context[:decode_binary] || :copy]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -219,6 +220,7 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "9.0"
+  @tag decode_binary: :copy
   test "decode_binary: :copy returns copied binary", context do
     text = "hello world"
     assert [[bin]] = query("SELECT $1::text", [text])
@@ -229,14 +231,13 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "9.0"
-  test "decode_binary: :reference returns reference counted binary" do
-    {:ok, pid} = P.start_link(database: "postgrex_test",
-                              decode_binary: :reference)
+  @tag decode_binary: :reference
+  test "decode_binary: :reference returns reference counted binary", context do
     text = "hello world"
-    assert %{rows: [[bin]]} = P.query!(pid, "SELECT $1::text", [text])
+    assert [[bin]] = query("SELECT $1::text", [text])
     assert :binary.referenced_byte_size(bin) > byte_size(text)
 
-    assert %{rows: [[%{"hello" => world}]]} = P.query!(pid, "SELECT $1::hstore", [%{"hello" => "world"}])
+    assert [[%{"hello" => world}]] = query("SELECT $1::hstore", [%{"hello" => "world"}])
     assert :binary.referenced_byte_size(world) > byte_size("world")
   end
 
