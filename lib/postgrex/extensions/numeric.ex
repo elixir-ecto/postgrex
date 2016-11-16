@@ -25,7 +25,7 @@ defmodule Postgrex.Extensions.Numeric do
     sign = encode_sign(sign)
     scale = -exp
 
-    {integer, float} = split_parts(coef, scale)
+    {integer, float, scale} = split_parts(coef, scale)
     integer_digits = encode_digits(integer, [])
     float_digits = encode_float(float, scale)
     digits = integer_digits ++ float_digits
@@ -40,9 +40,13 @@ defmodule Postgrex.Extensions.Numeric do
   defp encode_sign(1), do: 0x0000
   defp encode_sign(-1), do: 0x4000
 
-  defp split_parts(coef, scale) do
+  defp split_parts(coef, scale) when scale >= 0 do
     integer_base = pow10(scale)
-    {div(coef, integer_base), rem(coef, integer_base)}
+    {div(coef, integer_base), rem(coef, integer_base), scale}
+  end
+  defp split_parts(coef, scale) when scale < 0 do
+    integer_base = pow10(-scale - 1)
+    {coef * integer_base, 0, 0}
   end
 
   defp encode_float(float, scale) do

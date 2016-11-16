@@ -360,6 +360,13 @@ defmodule QueryTest do
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
   end
 
+  test "encode custom numerics", context do
+    assert [[%Decimal{sign: 1, coef: 100, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 3)])
+    assert [[%Decimal{sign: 1, coef: 1000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 4)])
+    assert [[%Decimal{sign: 1, coef: 10000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 5)])
+    assert [[%Decimal{sign: 1, coef: 1, exp: -5}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, -5)])
+  end
+
   test "encode enforces bounds on integers", context do
     # int2's range is -32768 to +32767
     assert [[-32768]] = query("SELECT $1::int2", [-32768])
