@@ -5,7 +5,7 @@ defmodule NotificationTest do
   alias Postgrex.Notifications, as: PN
 
   setup do
-    opts = [ database: "postgrex_test" ]
+    opts = [ database: "postgrex_test", sync_connect: true ]
     {:ok, pid} = P.start_link(opts)
     {:ok, pid_ps} = PN.start_link(opts)
     {:ok, other_pid_ps} = PN.start_link(opts)
