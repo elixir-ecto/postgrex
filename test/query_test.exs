@@ -342,7 +342,8 @@ defmodule QueryTest do
       "1.111101",
       "1.1111111101",
       "1.11110001",
-      "NaN"
+      "NaN",
+      "-42"
     ]
 
     Enum.each(nums, fn num ->

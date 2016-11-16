@@ -38,7 +38,7 @@ defmodule Postgrex.Extensions.Numeric do
   end
 
   defp encode_sign(1), do: 0x0000
-  defp encode_sign(-11), do: 0x4000
+  defp encode_sign(-1), do: 0x4000
 
   defp split_parts(coef, scale) do
     integer_base = pow10(scale)
