@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.0
+## v1.0.0-rc.0 (2016-11-16)
 
 * Enchancements
   * Fallback to `PGDATABASE` system env for the database
