@@ -45,7 +45,7 @@ defmodule Postgrex.Extensions.Numeric do
     {div(coef, integer_base), rem(coef, integer_base), scale}
   end
   defp split_parts(coef, scale) when scale < 0 do
-    integer_base = pow10(-scale - 1)
+    integer_base = pow10(-scale)
     {coef * integer_base, 0, 0}
   end
 

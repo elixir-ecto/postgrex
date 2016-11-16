@@ -361,9 +361,13 @@ defmodule QueryTest do
   end
 
   test "encode custom numerics", context do
-    assert [[%Decimal{sign: 1, coef: 100, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 3)])
-    assert [[%Decimal{sign: 1, coef: 1000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 4)])
-    assert [[%Decimal{sign: 1, coef: 10000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 5)])
+    assert [[%Decimal{sign: 1, coef: 1500, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1500.0)])
+    assert [[%Decimal{sign: 1, coef: 1, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 0)])
+    assert [[%Decimal{sign: 1, coef: 10, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 1)])
+    assert [[%Decimal{sign: 1, coef: 100, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 2)])
+    assert [[%Decimal{sign: 1, coef: 1000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 3)])
+    assert [[%Decimal{sign: 1, coef: 10000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 4)])
+    assert [[%Decimal{sign: 1, coef: 100000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 5)])
     assert [[%Decimal{sign: 1, coef: 1, exp: -5}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, -5)])
   end
 
