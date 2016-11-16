@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.0-rc.1 (2016-11-16)
+
+* Bug fixes
+  * Fix encoding of numerical values
+
 ## v1.0.0-rc.0 (2016-11-16)
 
 * Enchancements
