@@ -14,13 +14,34 @@ defmodule Postgrex.Extensions.HStore do
   def decode(_, bin, _, mode),
     do: decode_hstore(bin, mode)
 
+  def inline(_type_info, _types, mode) do
+    {__MODULE__, inline_encode(), inline_decode(mode)}
+  end
+
+  defp inline_encode() do
+    quote location: :keep do
+      %{} = map ->
+        data = unquote(__MODULE__).encode_hstore(map)
+        [<<IO.iodata_length(data) :: int32>> | data]
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a map")
+    end
+  end
+
+  defp inline_decode(mode) do
+    quote do
+      <<len :: int32, data :: binary-size(len)>> ->
+        unquote(__MODULE__).decode_hstore(data, unquote(mode))
+    end
+  end
+
   ## Helpers
 
   defp encode_hstore(hstore_map) do
     keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
         [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end
-    :erlang.iolist_to_binary([<<Map.size(hstore_map)::int32>> | keys_and_values])
+    [<<Map.size(hstore_map)::int32>> | keys_and_values]
   end
 
   defp encode_hstore_key(key) when is_binary(key) do

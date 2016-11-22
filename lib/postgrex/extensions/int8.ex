@@ -14,4 +14,24 @@ defmodule Postgrex.Extensions.Int8 do
 
   def decode(_, <<n :: int64>>, _, _),
     do: n
+
+  def inline(_type_info, _types, _opts) do
+    {__MODULE__, inline_encode(), inline_decode()}
+  end
+
+  defp inline_encode() do
+    range = Macro.escape(@int8_range)
+    quote location: :keep do
+      int when is_integer(int) and int in unquote(range) ->
+        <<8 :: int32, int :: int64>>
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, unquote(range))
+    end
+  end
+
+  defp inline_decode() do
+    quote location: :keep do
+      <<8 :: int32, int :: int64>> -> int
+    end
+  end
 end

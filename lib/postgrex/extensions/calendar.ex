@@ -33,11 +33,31 @@ if Code.ensure_loaded?(NaiveDateTime) do
 
     def decode(%TypeInfo{send: send}, value, _, _) do
       case send do
-        "date_send" -> decode_date(value)
-        "timestamp_send" -> decode_naive(value)
-        "timestamptz_send" -> decode_datetime(value)
-        "time_send" -> decode_time(value)
-        "timetz_send" -> decode_timetz(value)
+        "date_send" ->
+          <<days :: int32>> = value
+          days_to_date(days)
+        "timestamp_send" ->
+          <<microsecs :: int64>> = value
+          decode_naive(microsecs)
+        "timestamptz_send" ->
+          <<microsecs :: int64>> = value
+          decode_datetime(microsecs)
+        "time_send" ->
+          <<microsecs :: int64>> = value
+          microseconds_to_time(microsecs)
+        "timetz_send" ->
+          <<microsecs :: int64, tz :: int32>> = value
+          microseconds_to_time(microsecs, tz)
+      end
+    end
+
+    def inline(%TypeInfo{send: send}, _, _) do
+      case send do
+        "date_send" -> inline_date()
+        "timestamp_send" -> inline_naive()
+        "timestamptz_send" -> inline_datetime()
+        "time_send" -> inline_time()
+        "timetz_send" -> inline_timetz()
       end
     end
 
@@ -47,6 +67,15 @@ if Code.ensure_loaded?(NaiveDateTime) do
     @gd_max :calendar.date_to_gregorian_days({5874898, 1, 1})
 
     defp encode_date(_, %Date{} = date) do
+      encode_date(date)
+    end
+    defp encode_date(type_info, value) do
+      raise ArgumentError,
+        Postgrex.Utils.encode_msg(type_info, value, Date)
+    end
+
+    @doc false
+    def encode_date(date) do
       days =
         date
         |> Date.to_erl()
@@ -57,15 +86,32 @@ if Code.ensure_loaded?(NaiveDateTime) do
         raise ArgumentError, "#{inspect date} is beyond the maximum year 5874987"
       end
     end
-    defp encode_date(type_info, value) do
-      raise ArgumentError,
-        Postgrex.Utils.encode_msg(type_info, value, Date)
-    end
 
-    defp decode_date(<<days :: int32>>) do
+    @doc false
+    def days_to_date(days) do
       days + @gd_epoch
       |> :calendar.gregorian_days_to_date()
       |> Date.from_erl!()
+    end
+
+    defp inline_date() do
+      {Date, inline_date_encode(), inline_date_decode()}
+    end
+
+    defp inline_date_encode() do
+      quote location: :keep do
+        %Date{} = date ->
+          [<<4 :: int32>> | unquote(__MODULE__).encode_date(data)]
+        other ->
+          raise ArgumentError, Postgrex.Utils.encode_msg(other, Date)
+      end
+    end
+
+    defp inline_date_decode() do
+      quote location: :keep do
+        <<4 :: int32, days :: int32>> ->
+          unquote(__MODULE__).days_to_date(days)
+      end
     end
 
     # NaiveDateTime
@@ -87,12 +133,13 @@ if Code.ensure_loaded?(NaiveDateTime) do
         Postgrex.Utils.encode_msg(type_info, value, NaiveDateTime)
     end
 
-    defp decode_naive(<<microsecs :: int64>>) when microsecs < 0 do
+    @doc false
+    def decode_naive(microsecs) when microsecs < 0 do
       secs = div(microsecs, 1_000_000) - 1
       microsecs = 1_000_000 + rem(microsecs, 1_000_000)
       to_naive(secs, microsecs)
     end
-    defp decode_naive(<<microsecs :: int64>>) do
+    def decode_naive(microsecs) do
       secs = div(microsecs, 1_000_000)
       microsecs = rem(microsecs, 1_000_000)
       to_naive(secs, microsecs)
@@ -102,6 +149,26 @@ if Code.ensure_loaded?(NaiveDateTime) do
       secs + @gs_epoch
       |> :calendar.gregorian_seconds_to_datetime()
       |> NaiveDateTime.from_erl!({microsecs, 6})
+    end
+
+    defp inline_naive() do
+      {NaiveDateTime, inline_naive_encode(), inline_naive_decode()}
+    end
+
+    defp inline_naive_encode() do
+      quote location: :keep do
+        %NaiveDateTime{} = naive ->
+          [<<8 :: int32>> | unquote(__MODULE__).encode_naive(naive)]
+        other ->
+          raise ArgumentError, Postgrex.Utils.encode_msg(other, NaiveDateTime)
+      end
+    end
+
+    defp inline_naive_decode() do
+      quote location: :keep do
+        <<8 :: int32, microsecs :: int64>> ->
+          unquote(__MODULE__).decode_naive(microsecs)
+      end
     end
 
     # DateTime
@@ -128,20 +195,42 @@ if Code.ensure_loaded?(NaiveDateTime) do
         Postgrex.Utils.encode_msg(type_info, value, DateTime)
     end
 
-    defp decode_datetime(<<microsecs :: int64>>) do
+    defp decode_datetime(microsecs) do
       DateTime.from_unix!(microsecs + @uus_epoch, :microseconds)
+    end
+
+    defp inline_datetime() do
+      {DateTime, inline_datetime_encode(), inline_datetime_decode()}
+    end
+
+    defp inline_datetime_encode() do
+      quote location: :keep do
+        %DateTime{} = datetime ->
+          [<<8 :: int32>> | unquote(__MODULE__).encode_datetime(datetime)]
+        other ->
+          raise ArgumentError, Postgrex.Utils.encode_msg(other, DateTime)
+      end
+    end
+
+    defp inline_datetime_decode() do
+      quote location: :keep do
+        <<8 :: int32, microsecs :: int64>> ->
+          unquote(__MODULE__).decode_datetime(microsecs)
+      end
     end
 
     # Time
 
+    defp encode_time(_, %Time{} = value) do
+      encode_time(value)
+    end
     defp encode_time(type_info, value) do
-      case time_to_microseconds(value) do
-        microsec when is_integer(microsec) ->
-          <<microsec :: int64>>
-        :error ->
-          raise ArgumentError,
-          Postgrex.Utils.encode_msg(type_info, value, Time)
-      end
+      raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, Time)
+    end
+
+    @doc false
+    def encode_time(time) do
+      <<time_to_microseconds(time) :: int64>>
     end
 
     defp time_to_microseconds(%Time{microsecond: {microsec, _}} = time) do
@@ -153,11 +242,8 @@ if Code.ensure_loaded?(NaiveDateTime) do
       sec * 1_000_000 + microsec
     end
 
-    defp decode_time(<<microsec :: int64>>) do
-      microseconds_to_time(microsec)
-    end
-
-    defp microseconds_to_time(microsec) do
+    @doc false
+    def microseconds_to_time(microsec) do
       sec = div(microsec, 1_000_000)
       microsec = rem(microsec, 1_000_000)
       sec
@@ -165,21 +251,44 @@ if Code.ensure_loaded?(NaiveDateTime) do
       |> Time.from_erl!(microsec)
     end
 
+    defp inline_time() do
+      {Time, inline_time_encode(), inline_time_decode()}
+    end
+
+    defp inline_time_encode() do
+      quote location: :keep do
+        %Time{} = time ->
+          [<<8 :: int32>> | unquote(__MODULE__).encode_time(time)]
+        other ->
+          raise ArgumentError, Postgrex.Utils.encode_msg(other, Time)
+      end
+    end
+
+    defp inline_time_decode() do
+      quote location: :keep do
+        <<8 :: int32, microsecs :: int64>> ->
+          unquote(__MODULE__).microseconds_to_time(microsecs)
+      end
+    end
+
     # Time with time zone
 
     @dus_max (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000
 
+    defp encode_timetz(_, %Time{} = value) do
+      encode_timetz(value)
+    end
     defp encode_timetz(type_info, value) do
-      case time_to_microseconds(value) do
-        microsec when is_integer(microsec) ->
-          <<microsec :: int64, 0 :: int32>>
-        :error ->
-          raise ArgumentError,
-          Postgrex.Utils.encode_msg(type_info, value, Time)
-      end
+      raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, Time)
     end
 
-    defp decode_timetz(<<microsec :: int64, tz :: int32>>) do
+    @doc false
+    def encode_timetz(time) do
+      <<time_to_microseconds(time) :: int64, 0 :: int32>>
+    end
+
+    @doc false
+    def microseconds_to_time(microsec, tz) do
       microsec
       |> adjust_microseconds(tz)
       |> microseconds_to_time()
@@ -193,6 +302,26 @@ if Code.ensure_loaded?(NaiveDateTime) do
           adjusted_microsec
         adjusted_microsec ->
           adjusted_microsec - @dus_max
+      end
+    end
+
+    defp inline_timetz() do
+      {TimeTZ, inline_timetz_encode(), inline_timetz_decode()}
+    end
+
+    defp inline_timetz_encode() do
+      quote location: :keep do
+        %Time{} = time ->
+          [<<12 :: int32>> | unquote(__MODULE__).encode_timetz(time)]
+        other ->
+          raise ArgumentError, Postgrex.Utils.encode_msg(other, Time)
+      end
+    end
+
+    defp inline_timetz_decode() do
+      quote location: :keep do
+        <<12 :: int32, microsecs :: int64, tz :: int32>> ->
+          unquote(__MODULE__).microseconds_to_time(microsecs, tz)
       end
     end
   end

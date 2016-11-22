@@ -12,4 +12,25 @@ defmodule Postgrex.Extensions.TID do
 
   def decode(_, <<block :: uint32, tuple :: uint16>>, _, _),
     do: {block, tuple}
+
+  def inline(_type_info, _types, _opts) do
+    {__MODULE__, inline_encode(), inline_decode()}
+  end
+
+  defp inline_encode() do
+    quote location: :keep do
+      {block, tuple} ->
+        <<6 :: int32, block :: uint32, tuple :: uint16>>
+      other ->
+        raise ArgumentError,
+          Postgrex.Utils.encode_msg(other, "a tuple of 2 integers")
+    end
+  end
+
+  defp inline_decode() do
+    quote location: :keep do
+      <<6 :: int32, block :: uint32, tuple :: uint16>> ->
+        {block, tuple}
+    end
+  end
 end
