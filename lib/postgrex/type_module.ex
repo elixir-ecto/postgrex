@@ -5,18 +5,6 @@ defmodule Postgrex.TypeModule do
                    Postgrex.Extensions.Range,
                    Postgrex.Extensions.Record]
 
-  defmacro __using__(opts) do
-    quote do
-      unquote(directives(opts))
-
-      unquote(fetch(opts))
-
-      unquote(encode(opts))
-
-      unquote(decode(opts))
-    end
-  end
-
   def define(module, parameters, type_infos, opts \\ []) do
     ^module = :ets.new(module, [:named_table])
     try do
@@ -36,9 +24,9 @@ defmodule Postgrex.TypeModule do
 
   ## Helpers
 
-  defp directives(opts) do
+  defp directives(types) do
     requires =
-      for {_, extension, _, _} <- Keyword.fetch!(opts, :types) do
+      for {_, extension, _, _} <- types do
         quote do: require unquote(extension)
       end
 
@@ -49,9 +37,9 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp fetch(opts) do
+  defp fetch(oids) do
     fetches =
-      for {oid, type, format} <- Keyword.fetch!(opts, :oids) do
+      for {oid, type, format} <- oids do
         quote do
           def fetch(unquote(oid)) do
             {:ok, {unquote(format), unquote(type)}}
@@ -65,16 +53,22 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp encode(opts) do
+  defp get_location([{:->, meta, _} | _]) do
+    {meta[:file] || "nofile", meta[:line] || 1}
+  end
+
+  defp encode(types) do
     encodes =
-      for {type, _, encode, _} <- Keyword.fetch!(opts, :types) do
+      for {type, _, encode, _} <- types do
+        location = get_location(encode)
         clauses = (quote do: (^null -> <<-1::int32>>)) ++ encode
         quote do
+          @file unquote(location)
           defp encode([param | params], [unquote(type) | types], null, acc) do
             encoded =
-            case param do
-              unquote(clauses)
-            end
+              case param do
+                unquote(clauses)
+              end
             encode(params, types, null, [encoded | acc])
           end
         end
@@ -86,26 +80,26 @@ defmodule Postgrex.TypeModule do
       end
 
       unquote(encodes)
+
       defp encode([], [], _, encoded), do: Enum.reverse(encoded)
       defp encode(params, _, _, _) when is_list(params), do: :error
     end
   end
 
-  defp decode(opts) do
+  defp decode(types) do
     decodes =
-      for {type, _, _, _} <- Keyword.fetch!(opts, :types) do
+      for {type, _, _, decode} <- types do
+        location = get_location(decode)
+        clauses = for clause <- decode, do: decode_type(type, clause, location)
         quote do
+          @file unquote(location)
           defp decode(<<rest::binary>>, [unquote(type) | types], null, acc) do
             unquote(type)(rest, types, null, acc)
           end
-        end
-      end
 
-    types =
-      for {type, _, _, decode} <- Keyword.fetch!(opts, :types) do
-        clauses = for clause <- decode, do: decode_type(type, clause)
-        quote do
           unquote(clauses)
+
+          @file unquote(location)
           defp unquote(type)(<<-1::int32, rest::binary>>, types, null, acc) do
             decode(rest, types, null, [null | acc])
           end
@@ -118,17 +112,17 @@ defmodule Postgrex.TypeModule do
       end
 
       unquote(decodes)
+
       defp decode(<<>>, [], _, decoded), do: Enum.reverse(decoded)
       defp decode(<<_::binary>>, _, _, _), do: :error
-
-      unquote(types)
     end
   end
 
-  defp decode_type(type, clause) do
+  defp decode_type(type, clause, location) do
     case split_decode(clause) do
       {pattern, guard, body} ->
         quote do
+          @file unquote(location)
           defp unquote(type)(<<unquote(pattern), rest::binary>>, types, null, acc)
               when unquote(guard) do
             decoded = unquote(body)
@@ -137,6 +131,7 @@ defmodule Postgrex.TypeModule do
         end
       {pattern, body} ->
         quote do
+          @file unquote(location)
           defp unquote(type)(<<unquote(pattern), rest::binary>>, types, null, acc) do
             decoded = unquote(body)
             decode(rest, types, null, [decoded | acc])
@@ -187,13 +182,8 @@ defmodule Postgrex.TypeModule do
   end
 
   defp define_inline(module, oids, types) do
-    quoted =
-      quote do
-        defmodule unquote(module) do
-          use unquote(__MODULE__), [oids: unquote(oids), types: unquote(types)]
-        end
-      end
-    Code.eval_quoted(quoted)
+    quoted = [directives(types), fetch(oids), encode(types), decode(types)]
+    Module.create(module, quoted, Macro.Env.location(__ENV__))
   end
 
   defp generate(module, parameters, types, opts) do
