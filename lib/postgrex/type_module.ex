@@ -76,7 +76,7 @@ defmodule Postgrex.TypeModule do
               end
             encode(params, types, null, [encoded | acc])
           end
-        end |> rewrite(encode)
+        end
       end
 
     quote do
@@ -95,17 +95,18 @@ defmodule Postgrex.TypeModule do
     decodes =
       for {type, _, _, decode} <- types do
         clauses = for clause <- decode, do: decode_type(type, clause)
+
         quote do
           defp decode(<<rest::binary>>, [unquote(type) | types], null, acc) do
             unquote(type)(rest, types, null, acc)
           end
 
-          unquote(clauses)
+          unquote(clauses |> rewrite(decode))
 
           defp unquote(type)(<<-1::int32, rest::binary>>, types, null, acc) do
             decode(rest, types, null, [null | acc])
           end
-        end |> rewrite(decode)
+        end
       end
 
     quote do
