@@ -53,17 +53,22 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp get_location([{:->, meta, _} | _]) do
-    {meta[:file] || "nofile", meta[:line] || 1}
+  defp rewrite(ast, [{:->, meta, _} | _original]) do
+    location = [file: meta[:file] || "nofile", line: meta[:keep] || 1]
+
+    Macro.prewalk(ast, fn
+      {left, meta, right} ->
+        {left, location ++ meta, right}
+      other ->
+        other
+    end)
   end
 
   defp encode(types) do
     encodes =
       for {type, _, encode, _} <- types do
-        location = get_location(encode)
         clauses = (quote do: (^null -> <<-1::int32>>)) ++ encode
         quote do
-          @file unquote(location)
           defp encode([param | params], [unquote(type) | types], null, acc) do
             encoded =
               case param do
@@ -71,7 +76,7 @@ defmodule Postgrex.TypeModule do
               end
             encode(params, types, null, [encoded | acc])
           end
-        end
+        end |> rewrite(encode)
       end
 
     quote do
@@ -89,21 +94,18 @@ defmodule Postgrex.TypeModule do
   defp decode(types) do
     decodes =
       for {type, _, _, decode} <- types do
-        location = get_location(decode)
-        clauses = for clause <- decode, do: decode_type(type, clause, location)
+        clauses = for clause <- decode, do: decode_type(type, clause)
         quote do
-          @file unquote(location)
           defp decode(<<rest::binary>>, [unquote(type) | types], null, acc) do
             unquote(type)(rest, types, null, acc)
           end
 
           unquote(clauses)
 
-          @file unquote(location)
           defp unquote(type)(<<-1::int32, rest::binary>>, types, null, acc) do
             decode(rest, types, null, [null | acc])
           end
-        end
+        end |> rewrite(decode)
       end
 
     quote do
@@ -118,11 +120,10 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode_type(type, clause, location) do
+  defp decode_type(type, clause) do
     case split_decode(clause) do
       {pattern, guard, body} ->
         quote do
-          @file unquote(location)
           defp unquote(type)(<<unquote(pattern), rest::binary>>, types, null, acc)
               when unquote(guard) do
             decoded = unquote(body)
@@ -131,7 +132,6 @@ defmodule Postgrex.TypeModule do
         end
       {pattern, body} ->
         quote do
-          @file unquote(location)
           defp unquote(type)(<<unquote(pattern), rest::binary>>, types, null, acc) do
             decoded = unquote(body)
             decode(rest, types, null, [decoded | acc])
