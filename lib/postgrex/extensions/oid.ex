@@ -10,12 +10,6 @@ defmodule Postgrex.Extensions.OID do
 
   def encode(_, n, _, _) when is_integer(n) and n in @oid_range,
     do: <<n :: uint32>>
-  def encode(%Postgrex.TypeInfo{send: sender}, value, _, _) when is_binary(value) do
-    raise Postgrex.Error, message: """
-    you tried to use a binary instead for an oid type (#{sender}) when an
-    integer was expected. See https://github.com/elixir-ecto/postgrex#oid-type-encoding
-    """
-  end
   def encode(type_info, value, _, _) do
     raise ArgumentError,
       Postgrex.Utils.encode_msg(type_info, value, @oid_range)
@@ -23,4 +17,24 @@ defmodule Postgrex.Extensions.OID do
 
   def decode(_, <<n :: uint32>>, _, _),
     do: n
+
+  def inline(_type_info, _types, _opts) do
+    {__MODULE__, inline_encode(), inline_decode()}
+  end
+
+  defp inline_encode() do
+    range = Macro.escape(@oid_range)
+    quote location: :keep do
+      oid when is_integer(oid) and oid in unquote(range) ->
+        <<4 :: int32, oid :: uint32>>
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, unquote(range))
+    end
+  end
+
+  defp inline_decode() do
+    quote location: :keep do
+      <<4 :: int32, oid :: uint32>> -> oid
+    end
+  end
 end

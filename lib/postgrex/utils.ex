@@ -80,6 +80,15 @@ defmodule Postgrex.Utils do
     "query or convert the value accordingly."
   end
 
+  @doc """
+  Return encode error message.
+  """
+  def encode_msg(observed, expected) do
+    "Postgrex expected #{to_desc(expected)}, got #{inspect observed}. " <>
+    "Please make sure the value you are passing matches the definition in " <>
+    "your table or in your query or convert the value accordingly."
+  end
+
   ## Helpers
 
   defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"

@@ -7,11 +7,8 @@ defmodule Postgrex.Extensions.Timestamp do
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
   @timestamp_max_year 294276
 
-  def encode(_, %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec}, _, _)
-  when year <= @timestamp_max_year and hour in 0..23 and min in 0..59 and sec in 0..59 and usec in 0..999_999 do
-    datetime = {{year, month, day}, {hour, min, sec}}
-    secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
-    <<secs * 1_000_000 + usec :: int64>>
+  def encode(_, %Postgrex.Timestamp{} = timestamp, _, _) do
+    encode_timestamp(timestamp)
   end
   def encode(type_info, value, _, _) do
     raise ArgumentError,
@@ -19,6 +16,21 @@ defmodule Postgrex.Extensions.Timestamp do
   end
 
   def decode(_, <<microsecs :: int64>>, _, _) do
+    decode_timestamp(microsecs)
+  end
+
+  def inline(_type_info, _types, _opts) do
+    {__MODULE__, inline_encode(), inline_decode()}
+  end
+
+  def encode_timestamp(%Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec})
+      when year <= @timestamp_max_year and hour in 0..23 and min in 0..59 and sec in 0..59 and usec in 0..999_999 do
+    datetime = {{year, month, day}, {hour, min, sec}}
+    secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
+    <<secs * 1_000_000 + usec :: int64>>
+  end
+
+  def decode_timestamp(microsecs) do
     secs = div(microsecs, 1_000_000)
     usec = rem(microsecs, 1_000_000)
     {{year, month, day}, {hour, min, sec}} = :calendar.gregorian_seconds_to_datetime(secs + @gs_epoch)
@@ -31,5 +43,22 @@ defmodule Postgrex.Extensions.Timestamp do
       end
 
     %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec}
+  end
+
+  defp inline_encode() do
+    quote location: :keep do
+      %Postgrex.Timestamp{} = timestamp ->
+        [<<8 :: int32>> | unquote(__MODULE__).encode_timestamp(timestamp)]
+      other ->
+        raise ArgumentError,
+          Postgrex.Utils.encode_msg(other, Postgrex.Timestamp)
+    end
+  end
+
+  defp inline_decode() do
+    quote location: :keep do
+      <<8 :: int32, microsecs :: int64>> ->
+        unquote(__MODULE__).decode_timestamp(microsecs)
+    end
   end
 end

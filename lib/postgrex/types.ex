@@ -226,7 +226,19 @@ defmodule Postgrex.Types do
     :ets.select(table,[{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
+  @doc false
+  def delete_unhandled_oids(table) do
+    :ets.match_delete(table, {:_, :_, nil})
+  end
+
   ### TYPE FORMAT ###
+
+  @doc false
+  def inline_opts(oid, state) do
+    {_, info, extension} = fetch!(state, oid)
+    format = format(oid, state)
+    {extension, format, info, fetch_opts(state, extension)}
+  end
 
   @doc false
   def param_opts({oid, info, nil}, _state) do

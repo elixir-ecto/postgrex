@@ -44,4 +44,59 @@ defmodule Postgrex.Extensions.JSON do
     do: library.decode!(json)
   def decode(%TypeInfo{type: "jsonb"}, <<1, json::binary>>, _state, {:copy, library}),
     do: json |> :binary.copy() |> library.decode!()
+
+  def inline(%TypeInfo{type: "json"}, _types, opts) do
+    {:json, inline_json_encode(opts), inline_json_decode(opts)}
+  end
+  def inline(%TypeInfo{type: "jsonb"}, _types, opts) do
+    {:jsonb, inline_jsonb_encode(opts), inline_jsonb_decode(opts)}
+  end
+
+  defp inline_json_encode({library, _}) do
+    quote location: :keep do
+      map ->
+        data = unquote(library).encode!(map)
+        [<<IO.iodata_length(data) :: int32>> | data]
+    end
+  end
+
+  defp inline_json_decode({library, :copy}) do
+    quote location: :keep do
+      <<len :: int32, json :: binary-size(len)>> ->
+        json
+        |> :binary.copy()
+        |> unquote(library).decode!()
+    end
+  end
+  defp inline_json_decode({library, :reference}) do
+    quote location: :keep do
+      <<len :: int32, json :: binary-size(len)>> ->
+        unquote(library).decode!(json)
+    end
+  end
+
+  defp inline_jsonb_encode({library, _}) do
+    quote location: :keep do
+      map ->
+        data = unquote(library).encode!(map)
+        [<<(IO.iodata_length(data)+1) :: int32, 1>> | data]
+    end
+  end
+
+  defp inline_jsonb_decode({library, :copy}) do
+    quote location: :keep do
+      <<len :: int32, data :: binary-size(len)>> ->
+        <<1, json :: binary>> = data
+        json
+        |> :binary.copy()
+        |> unquote(library).decode!()
+    end
+  end
+  defp inline_jsonb_decode({library, :reference}) do
+    quote location: :keep do
+      <<len :: int32, data :: binary-size(len)>> ->
+        <<1, json :: binary>> = data
+        unquote(library).decode!(json)
+    end
+  end
 end

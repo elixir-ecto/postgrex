@@ -24,4 +24,23 @@ defmodule Postgrex.Extensions.Void do
 
   def decode(_, "", _, _),
     do: :void
+
+  def inline(_type_info, _types, _format) do
+    {__MODULE__, inline_encode(), inline_decode()}
+  end
+
+  defp inline_encode() do
+    quote location: :keep do
+      :void ->
+        <<0 :: int32>>
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, "the atom :void")
+    end
+  end
+
+  defp inline_decode() do
+    quote location: :keep do
+      <<0 :: int32>> -> :void
+    end
+  end
 end
