@@ -119,7 +119,7 @@ defmodule Postgrex.TypeModule do
 
       unquote(decodes)
       defp decode(<<>>, [], _, decoded), do: Enum.reverse(decoded)
-      defp decode(row, _, _, _) when is_binary(row), do: :error
+      defp decode(<<_::binary>>, _, _, _), do: :error
 
       unquote(types)
     end
