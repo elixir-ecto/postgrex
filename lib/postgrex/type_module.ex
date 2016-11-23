@@ -6,13 +6,18 @@ defmodule Postgrex.TypeModule do
                    Postgrex.Extensions.Record]
 
   def define(module, parameters, type_infos, opts \\ []) do
+    opts =
+      opts
+      |> Keyword.put_new(:decode_binary, :copy)
+      |> Keyword.put_new(:null, nil)
     ^module = :ets.new(module, [:named_table])
     try do
       associate(module, parameters, type_infos, opts)
       prepare_inline(module)
     else
       {oids, types} ->
-        define_inline(module, oids, types)
+        null = Keyword.fetch!(opts, :null)
+        define_inline(module, oids, types, null)
     after
       :ets.delete(module)
     end
@@ -64,80 +69,149 @@ defmodule Postgrex.TypeModule do
     end)
   end
 
-  defp encode(types) do
+  defp encode(types, null) do
     encodes =
       for {type, _, encode, _} <- types do
-        clauses = (quote do: (^null -> <<-1::int32>>)) ++ encode
-        quote do
-          defp encode([param | params], [unquote(type) | types], null, acc) do
-            encoded =
-              case param do
-                unquote(clauses)
-              end
-            encode(params, types, null, [encoded | acc])
+        null_clause =
+          quote do
+            defp unquote(type)(unquote(null)), do: unquote(null)
           end
+
+        clauses = for clause <- encode, do: encode_type(type, clause)
+
+        clauses = [null_clause | clauses]
+
+        quote do
+          defp encode_params([param | params], [unquote(type) | types], acc) do
+            encoded = unquote(type)(param)
+            encode_params(params, types, [encoded | acc])
+          end
+
+          @compile {:inline, [{unquote(type), 1}]}
+
+          unquote(clauses |> rewrite(encode))
         end
       end
 
     quote do
-      def encode(params, types, null) do
-        encode(params, types, null, [])
+      def encode_params(params, types) do
+        encode_params(params, types, [])
       end
 
       unquote(encodes)
 
-      defp encode([], [], _, encoded), do: Enum.reverse(encoded)
-      defp encode(params, _, _, _) when is_list(params), do: :error
+      defp encode_params([], [], encoded), do: Enum.reverse(encoded)
+      defp encode_params(params, _, _) when is_list(params), do: :error
     end
   end
 
-  defp decode(types) do
+  defp encode_type(type, clause) do
+    case split_decode(clause) do
+      {pattern, guard, body} ->
+        encode_type(type, pattern, guard, body)
+      {pattern, body} ->
+        encode_type(type, pattern, body)
+    end
+  end
+
+  defp encode_type(type, pattern, guard, body) do
+    quote do
+      defp unquote(type)(unquote(pattern)) when unquote(guard) do
+        unquote(body)
+      end
+    end
+  end
+
+  defp encode_type(type, pattern, body) do
+    quote do
+      defp unquote(type)(unquote(pattern)) do
+        unquote(body)
+      end
+    end
+  end
+
+  defp decode(types, null) do
+    rest = quote do: rest
+    acc = quote do: acc
+
+    dispatch =
+      for {type, _, _, _} <- types do
+        [clause] =
+          quote do
+            [unquote(type) | types] ->
+              unquote(type)(unquote(rest), types, unquote(acc))
+          end
+        clause
+      end
+
+    decoded  = (quote do: ([] -> decoded_row(unquote(rest), unquote(acc))))
+    dispatch = dispatch ++ decoded
+
     decodes =
       for {type, _, _, decode} <- types do
-        clauses = for clause <- decode, do: decode_type(type, clause)
-
-        quote do
-          defp decode(<<rest::binary>>, [unquote(type) | types], null, acc) do
-            unquote(type)(rest, types, null, acc)
+        clauses =
+          for clause <- decode do
+            decode_type(type, clause, dispatch, rest, acc)
           end
 
+        quote do
           unquote(clauses |> rewrite(decode))
 
-          defp unquote(type)(<<-1::int32, rest::binary>>, types, null, acc) do
-            decode(rest, types, null, [null | acc])
+          defp unquote(type)(<<-1::int32, unquote(rest)::binary>>,
+                             types, acc) do
+            unquote(acc) = [unquote(null) | acc]
+            case types do
+              unquote(dispatch)
+            end
           end
         end
       end
 
     quote do
-      def decode(row, types, null) do
-        decode(row, types, null, [])
+      def decode_row(<<unquote(rest)::binary>>, types) do
+        unquote(acc) = []
+        case types do
+          unquote(dispatch)
+        end
       end
 
       unquote(decodes)
 
-      defp decode(<<>>, [], _, decoded), do: Enum.reverse(decoded)
-      defp decode(<<_::binary>>, _, _, _), do: :error
+      defp decoded_row(<<>>, acc), do: Enum.reverse(acc)
+      defp decoded_row(<<_::binary>>, _), do: :error
     end
   end
 
-  defp decode_type(type, clause) do
+  defp decode_type(type, clause, dispatch, rest, acc) do
     case split_decode(clause) do
       {pattern, guard, body} ->
-        quote do
-          defp unquote(type)(<<unquote(pattern), rest::binary>>, types, null, acc)
-              when unquote(guard) do
-            decoded = unquote(body)
-            decode(rest, types, null, [decoded | acc])
-          end
-        end
+        decode_type(type, pattern, guard, body, dispatch, rest, acc)
       {pattern, body} ->
-        quote do
-          defp unquote(type)(<<unquote(pattern), rest::binary>>, types, null, acc) do
-            decoded = unquote(body)
-            decode(rest, types, null, [decoded | acc])
-          end
+        decode_type(type, pattern, body, dispatch, rest, acc)
+    end
+  end
+
+  defp decode_type(type, pattern, guard, body, dispatch, rest, acc) do
+    quote do
+      defp unquote(type)(<<unquote(pattern), unquote(rest)::binary>>,
+                         types, acc) when unquote(guard) do
+        unquote(acc) = [unquote(body) | acc]
+        case types do
+          unquote(dispatch)
         end
+      end
+    end
+  end
+
+  defp decode_type(type, pattern, body, dispatch, rest, acc) do
+    quote do
+      defp unquote(type)(<<unquote(pattern), unquote(rest)::binary>>,
+                         types, acc) do
+        unquote(acc) = [unquote(body) | acc]
+        case types do
+          unquote(dispatch)
+        end
+      end
     end
   end
 
@@ -151,7 +225,6 @@ defmodule Postgrex.TypeModule do
   end
 
   defp associate(module, parameters, types, opts) do
-    opts = Keyword.put_new(opts, :decode_binary, :copy)
     extensions = Postgrex.Utils.default_extensions(opts)
     extension_keys = Enum.map(extensions, &elem(&1, 0))
     extension_opts = Types.prepare_extensions(extensions, parameters)
@@ -182,8 +255,9 @@ defmodule Postgrex.TypeModule do
     {:ets.tab2list(oids), :ets.tab2list(types)}
   end
 
-  defp define_inline(module, oids, types) do
-    quoted = [directives(types), fetch(oids), encode(types), decode(types)]
+  defp define_inline(module, oids, types, null) do
+    quoted = [directives(types), fetch(oids),
+              encode(types, null), decode(types, null)]
     Module.create(module, quoted, Macro.Env.location(__ENV__))
   end
 
