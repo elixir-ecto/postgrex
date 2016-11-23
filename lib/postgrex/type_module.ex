@@ -155,6 +155,11 @@ defmodule Postgrex.TypeModule do
           end
 
         quote do
+
+          def decode_elems(data, unquote(type)) do
+            unquote(type)(data, [])
+          end
+
           unquote(clauses |> rewrite(decode))
 
           defp unquote(type)(<<-1::int32, unquote(rest)::binary>>,
@@ -163,6 +168,14 @@ defmodule Postgrex.TypeModule do
             case types do
               unquote(dispatch)
             end
+          end
+
+          defp unquote(type)(<<-1::int32, rest::binary>>, acc) do
+            unquote(type)(rest, [unquote(null) | acc])
+          end
+
+          defp unquote(type)(<<>>, acc) do
+            acc
           end
         end
       end
@@ -200,6 +213,12 @@ defmodule Postgrex.TypeModule do
           unquote(dispatch)
         end
       end
+
+      defp unquote(type)(<<unquote(pattern), rest::binary>>, acc)
+           when unquote(guard) do
+        decoded = unquote(body)
+        unquote(type)(rest, [decoded | acc])
+      end
     end
   end
 
@@ -211,6 +230,11 @@ defmodule Postgrex.TypeModule do
         case types do
           unquote(dispatch)
         end
+      end
+
+      defp unquote(type)(<<unquote(pattern), rest::binary>>, acc) do
+        decoded = unquote(body)
+        unquote(type)(rest, [decoded | acc])
       end
     end
   end
