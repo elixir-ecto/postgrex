@@ -56,11 +56,11 @@ defmodule Postgrex.Protocol do
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     custom     = opts[:extensions] || []
     decode_bin = opts[:decode_binary] || :copy
-    ext_opts   = [decode_binary: decode_bin]
+    null       = opts[:null]
+    ext_opts   = [decode_binary: decode_bin, null: null]
     extensions = custom ++ Postgrex.Utils.default_extensions(ext_opts)
     ssl?       = opts[:ssl] || false
     types?     = Keyword.fetch!(opts, :types)
-    null       = opts[:null]
 
     transactions =
       case opts[:transactions] || :naive do
@@ -77,7 +77,7 @@ defmodule Postgrex.Protocol do
     s = %__MODULE__{timeout: timeout, postgres: :idle,
                     transactions: transactions, null: null}
 
-    types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, custom}
+    types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, null, custom}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
                types_table: nil, build_types: nil, extensions: extensions,
                prepare: prepare, ssl: ssl?}

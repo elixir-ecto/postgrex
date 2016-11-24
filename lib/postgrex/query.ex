@@ -41,20 +41,14 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     %{query | name: IO.iodata_to_binary(name)}
   end
 
-  def describe(query, opts) do
+  def describe(query, _) do
     %Postgrex.Query{param_info: param_info, result_info: result_info,
-                    types: types, null: conn_null} = query
+                    types: types} = query
     {pfs, param_info} = param_opts(param_info, types)
     {rfs, result_info} = result_opts(result_info, types)
 
-    null = case Keyword.fetch(opts, :null) do
-      {:ok, q_null} -> q_null
-      :error -> conn_null
-    end
-
     %Postgrex.Query{query | param_formats: pfs, param_info: param_info,
-                            result_formats: rfs, result_info: result_info,
-                            null: null}
+                            result_formats: rfs, result_info: result_info}
   end
 
   def encode(%Postgrex.Query{types: nil} = query, _params, _) do
