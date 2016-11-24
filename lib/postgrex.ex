@@ -110,8 +110,6 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
-    and decoding;
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -178,8 +176,6 @@ defmodule Postgrex do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
-    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
-    and decoding;
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
 
