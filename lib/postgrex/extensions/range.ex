@@ -12,27 +12,30 @@ defmodule Postgrex.Extensions.Range do
   @range_lb_inf  0x08
   @range_ub_inf  0x10
 
-  def encode(%TypeInfo{base_type: oid}, %Postgrex.Range{} = range, types, _),
-    do: encode_range(range, oid, types)
+  def init(_, opts), do: Keyword.fetch!(opts, :null)
+
+  def encode(%TypeInfo{base_type: oid}, %Postgrex.Range{} = range, types, null),
+    do: encode_range(range, oid, types, null)
   def encode(type_info, value, _, _) do
     raise ArgumentError,
       Postgrex.Utils.encode_msg(type_info, value, Postgrex.Range)
   end
 
-  def decode(%TypeInfo{base_type: oid}, bin, types, _),
-    do: decode_range(bin, oid, types)
+  def decode(%TypeInfo{base_type: oid}, bin, types, null),
+    do: decode_range(bin, oid, types, null)
 
   ## Helpers
 
-  defp encode_range(%Postgrex.Range{lower: nil, upper: nil}, _oid, _types) do
+  defp encode_range(%Postgrex.Range{lower: null, upper: null}, _oid, _types,
+                    null) do
     <<@range_empty>>
   end
 
-  defp encode_range(range, oid, types) do
+  defp encode_range(range, oid, types, null) do
     flags = 0
 
     {flags, bin} =
-      if range.lower == nil do
+      if range.lower == null do
         {flags ||| @range_lb_inf, ""}
       else
         data = Types.encode(oid, range.lower, types)
@@ -40,7 +43,7 @@ defmodule Postgrex.Extensions.Range do
       end
 
     {flags, bin} =
-    if range.upper == nil do
+    if range.upper == null do
       {flags ||| @range_ub_inf, bin}
     else
       data = Types.encode(oid, range.upper, types)
@@ -64,14 +67,15 @@ defmodule Postgrex.Extensions.Range do
     [flags|bin]
   end
 
-  defp decode_range(<<flags>>, _oid, _types) when (flags &&& @range_empty) != 0 do
-    %Postgrex.Range{}
+  defp decode_range(<<flags>>, _oid, _types, null)
+       when (flags &&& @range_empty) != 0 do
+    %Postgrex.Range{lower: null, upper: null}
   end
 
-  defp decode_range(<<flags, rest::binary>>, oid, types) do
+  defp decode_range(<<flags, rest::binary>>, oid, types, null) do
     {lower, rest} =
       if (flags &&& @range_lb_inf) != 0 do
-        {nil, rest}
+        {null, rest}
       else
         <<size::int32, lower::binary(size), rest::binary>> = rest
         {Types.decode(oid, lower, types), rest}
@@ -79,7 +83,7 @@ defmodule Postgrex.Extensions.Range do
 
     {upper, rest} =
       if (flags &&& @range_ub_inf) != 0 do
-        {nil, rest}
+        {null, rest}
       else
         <<size::int32, upper::binary(size), rest::binary>> = rest
         {Types.decode(oid, upper, types), rest}
