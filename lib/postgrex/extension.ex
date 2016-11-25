@@ -1,7 +1,7 @@
 defmodule Postgrex.Extension do
   @moduledoc """
   An extension knows how to encode and decode Postgres types to and from Elixir
-  values. Custom extensions can be enabled using the `:extension` option in
+  values. Custom extensions can be enabled using the `:extensions` option in
   `Postgrex.start_link/1`.
 
 
@@ -22,14 +22,37 @@ defmodule Postgrex.Extension do
         # Use this extension when `type` from %Postgrex.TypeInfo{} is "ltree"
         def matching(_opts), do: [type: "ltree"]
 
+        # Use the text format, "ltree" does not have a binary format.
         def format(_opts), do: :text
 
-        # Use a string that is the same as postgres's ltree text format
-        def encode(_type_info, bin, _types, _opts) when is_binary(bin), do: bin
+        # Use quoted expression to encode a string that is the same as
+        # postgresql's ltree text format. The quoted expression should contain
+        # clauses that match those of a `case` or `fn`. Encoding matches on the
+        # value and returns encoded `iodata()`. The first 4 bytes in the
+        # `iodata()` must be the byte size of the rest of the encoded data, as a
+        # signed 32bit big endian integer.
+        def encode(_opts) do
+          quote do
+            bin when is_binary(bin) ->
+              [<<byte_size(bin) :: signed-size(32)>> | bin]
+          end
+        end
 
-        def decode(_type_info, bin, _types, :reference), do: bin
-        def decode(_type_info, bin, _types, :copy),      do: :binary.copy(bin)
-
+        # Use quoted expression to decode the data to a string. Decoding matches
+        # on an encoded binary with the same signed 32bit big endian integer
+        # length header.
+        def decode(:reference) do
+          quote do
+            <<len::signed-size(32), bin::binary-size(len)>> ->
+              bin
+          end
+        end
+        def decode(:copy) do
+          quote do
+            <<len::signed-size(32), bin::binary-size(len)>> ->
+              :binary.copy(bin)
+          end
+        end
       end
 
   This example is enabled with
@@ -67,14 +90,31 @@ defmodule Postgrex.Extension do
   @callback format(opts) :: :binary | :text
 
   @doc """
-  Should encode an Elixir value to a binary in the specified Postgres protocol
-  format.
+  Returns a quoted list of clauses that encode an Elixir value to iodata with
+  a signed 32 bit big endian integer byte length header.
+
+      def encode(_) do
+        quote do
+          integer ->
+            <<8 :: signed-32, integer :: signed-64>>
+        end
+      end
+
   """
-  @callback encode(TypeInfo.t, term, Types.types, opts) :: iodata
+  @callback encode(opts) :: Macro.expr
 
   @doc """
-  Should decode a binary in the specified Postgres protocol format to an Elixir
-  value.
+  Returns a quoted list of clauses that decode a binary to an Elixir value. The
+  pattern must use binary syntax and decode a fixed length using the signed 32
+  bit big endian integer byte length header.
+
+      def decode(_) do
+        quote do
+          # length header is in bytes
+          <<len :: signed-32, integer :: signed-size(len)-unit(8)>> ->
+            integer
+        end
+      end
   """
-  @callback decode(TypeInfo.t, binary, Types.types, opts) :: term
+  @callback decode(opts) :: Macro.expr
 end

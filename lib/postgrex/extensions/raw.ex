@@ -7,22 +7,7 @@ defmodule Postgrex.Extensions.Raw do
 
   def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
 
-  def encode(_, bin, _, _) when is_binary(bin),
-    do: bin
-  def encode(type_info, value, _, _) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a binary")
-  end
-
-  def decode(_, bin, _, :reference),
-    do: bin
-  def decode(_, bin, _, :copy),
-    do: :binary.copy(bin)
-
-  def inline(_type_info, _types, opts) do
-    {__MODULE__, inline_encode(), inline_decode(opts)}
-  end
-
-  defp inline_encode() do
+  def encode(_) do
     quote location: :keep do
       bin when is_binary(bin) ->
         [<<byte_size(bin) :: int32>> | bin]
@@ -31,12 +16,12 @@ defmodule Postgrex.Extensions.Raw do
     end
   end
 
-  defp inline_decode(:copy) do
+  def decode(:copy) do
     quote location: :keep do
       <<len :: int32, value :: binary-size(len)>> -> :binary.copy(value)
     end
   end
-  defp inline_decode(:reference) do
+  def decode(:reference) do
     quote location: :keep do
       <<len :: int32, value :: binary-size(len)>> -> value
     end

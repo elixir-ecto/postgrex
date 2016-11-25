@@ -3,20 +3,22 @@ defmodule Postgrex.Extensions.Numeric do
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, send: "numeric_send"
 
-  def encode(_, n, _, _) when is_number(n),
-    do: encode_numeric(Decimal.new(n))
-  def encode(_, %Decimal{} = n, _, _),
-    do: encode_numeric(n)
-  def encode(type_info, value, _, _) do
-    raise ArgumentError,
-      Postgrex.Utils.encode_msg(type_info, value, {"a number", Decimal})
+  def encode(_) do
+    quote location: :keep do
+      %Decimal{} = decimal ->
+        data = unquote(__MODULE__).encode_numeric(decimal)
+        [<<IO.iodata_length(data)::int32>> | data]
+      n when is_number(n) ->
+        data = unquote(__MODULE__).encode_numeric(Decimal.new(n))
+        [<<IO.iodata_length(data)::int32>> | data]
+    end
   end
 
-  def decode(_, bin, _, _),
-    do: decode_numeric(bin)
-
-  def inline(_type_info, _types, _opts) do
-    {__MODULE__, inline_encode(), inline_decode()}
+  def decode(_) do
+    quote location: :keep do
+      <<len :: int32, data :: binary-size(len)>> ->
+        unquote(__MODULE__).decode_numeric(data)
+    end
   end
 
   ## Helpers
@@ -118,23 +120,5 @@ defmodule Postgrex.Extensions.Numeric do
   defp decode_numeric_int(<<digit :: int16, tail :: binary>>, weight, acc) do
     acc = (acc * 10000) + digit
     decode_numeric_int(tail, weight - 1, acc)
-  end
-
-  defp inline_encode() do
-    quote location: :keep do
-      %Decimal{} = decimal ->
-        data = unquote(__MODULE__).encode_numeric(decimal)
-        [<<IO.iodata_length(data)::int32>> | data]
-      n when is_number(n) ->
-        data = unquote(__MODULE__).encode_numeric(Decimal.new(n))
-        [<<IO.iodata_length(data)::int32>> | data]
-    end
-  end
-
-  defp inline_decode() do
-    quote location: :keep do
-      <<len :: int32, data :: binary-size(len)>> ->
-        unquote(__MODULE__).decode_numeric(data)
-    end
   end
 end

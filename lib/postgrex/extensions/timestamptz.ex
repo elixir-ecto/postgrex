@@ -1,11 +1,18 @@
-defmodule Postgrex.Extensions.Timestamp do
+defmodule Postgrex.Extensions.TimestampTZ do
   @moduledoc false
   import Postgrex.BinaryUtils
-  use Postgrex.BinaryExtension, [send: "timestamp_send"]
+  use Postgrex.BinaryExtension, [send: "timestamptz_send"]
 
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
   @max_year 294276
-  @gs_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}})
+
+  if Code.ensure_loaded?(DateTime) do
+    @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
+    @us_epoch @gs_epoch - @gs_unix_epoch
+    @uus_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+    @us_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
+    @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+  end
 
   def init(_, opts), do: Keyword.fetch!(opts, :date)
 
@@ -20,10 +27,10 @@ defmodule Postgrex.Extensions.Timestamp do
   end
   def encode(:elixir) do
     quote location: :keep do
-      %NaiveDateTime{} = naive ->
-        unquote(__MODULE__).encode_elixir(naive)
+      %DateTime{} = datetime ->
+        unquote(__MODULE__).encode_elixir(datetime)
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, NaiveDateTime)
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, DateTime)
     end
   end
 
@@ -71,20 +78,20 @@ defmodule Postgrex.Extensions.Timestamp do
   end
 
   if Code.ensure_loaded?(NativeDateTime) do
-    def encode_elixir(%NaiveDateTime{microsecond: {microsecs, _}} = naive) do
-      erl_datetime = NaiveDateTime.to_erl(naive)
-      case :calendar.datetime_to_gregorian_seconds(erl_datetime) - @gs_epoch do
-        sec when sec < @gs_max ->
-          <<8 :: int32, sec * 1_000_000 + microsecs :: int64>>
+    def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
+      case DateTime.to_unix(date_time, :microseconds) do
+        microsecs when microsecs < @uus_max ->
+          <<8 :: int32, microsecs - @uus_epoch :: int64>>
         _ ->
-          raise ArgumentError,
-            "#{inspect naive} is beyond the maximum year #{@max_year}"
+          raise ArgumentError, "#{inspect datetime} is beyond the maximum year 294276"
       end
+    end
+    defp encode_elixir(%DateTime{} = datetime) do
+      raise ArgumentError, "#{inspect datetime} is not in UTC"
     end
 
     def microsecond_to_elixir(microsecs) do
-      {erl_datetime, microsecs} = split(microsecs)
-      NaiveDateTime.from_erl!(erl_datetime, {microsecs, 6})
+      DateTime.from_unix!(microsecs + @uus_epoch, :microseconds)
     end
   end
 end

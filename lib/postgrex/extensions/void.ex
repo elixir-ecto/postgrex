@@ -15,21 +15,7 @@ defmodule Postgrex.Extensions.Void do
 
   def format(format), do: format
 
-  def encode(_, :void, _, _),
-    do: ""
-  def encode(type_info, value, _, _) do
-    raise ArgumentError,
-      Postgrex.Utils.encode_msg(type_info, value, "the atom :void")
-  end
-
-  def decode(_, "", _, _),
-    do: :void
-
-  def inline(_type_info, _types, _format) do
-    {__MODULE__, inline_encode(), inline_decode()}
-  end
-
-  defp inline_encode() do
+  def encode(_) do
     quote location: :keep do
       :void ->
         <<0 :: int32>>
@@ -38,7 +24,7 @@ defmodule Postgrex.Extensions.Void do
     end
   end
 
-  defp inline_decode() do
+  def decode(_) do
     quote location: :keep do
       <<0 :: int32>> -> :void
     end
