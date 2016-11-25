@@ -2,18 +2,19 @@ defmodule Postgrex.TypeModule do
   alias Postgrex.Types
   alias Postgrex.TypeInfo
 
-  def define(module, parameters, type_infos, opts \\ []) do
+  def define(module, parameters, type_infos, extensions, opts \\ []) do
     opts =
       opts
       |> Keyword.put_new(:decode_binary, :copy)
+      |> Keyword.put_new(:null, nil)
       |> Keyword.put_new(:date, :postgrex)
-    {type_infos, config} = associate(parameters, type_infos, opts)
+    {type_infos, config} = associate(parameters, type_infos, extensions, opts)
     null = Keyword.get(opts, :null)
     define_inline(module, type_infos, config, null)
   end
 
-  def write(file, module, parameters, type_infos, opts \\ []) do
-    File.write(file, generate(module, parameters, type_infos, opts))
+  def write(file, module, parameters, type_infos, extensions, opts \\ []) do
+    File.write(file, generate(module, parameters, type_infos, extensions, opts))
   end
 
   ## Helpers
@@ -33,7 +34,7 @@ defmodule Postgrex.TypeModule do
 
   defp attributes(null) do
     quote do
-      @compile :bin_opt_info
+      #@compile :bin_opt_info
       @compile {:inline, [encode_value: 2]}
       @null unquote(Macro.escape(null))
     end
@@ -59,6 +60,8 @@ defmodule Postgrex.TypeModule do
       end
 
     quote do
+      def type_infos(), do: unquote(Macro.escape(type_infos))
+
       unquote(fetches)
       def fetch(_), do: {:error, nil}
     end
@@ -585,10 +588,11 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp associate(parameters, type_infos, opts) do
-    extension_args = Postgrex.Utils.default_extensions(opts)
-    extensions = Enum.map(extension_args, &elem(&1, 0))
-    config = Types.configure(extension_args, parameters)
+  defp associate(parameters, type_infos, extension_opts, opts) do
+    defaults = Postgrex.Utils.default_extensions(opts)
+    extension_opts = extension_opts ++ defaults
+    extensions = for {extension, _} <- extension_opts, do: extension
+    config = Types.configure(parameters, extension_opts)
     {Types.associate_type_infos(type_infos, extensions, config), config}
   end
 
@@ -598,13 +602,15 @@ defmodule Postgrex.TypeModule do
     Module.create(module, quoted, Macro.Env.location(__ENV__))
   end
 
-  defp generate(module, parameters, types, opts) do
+  defp generate(module, parameters, types, extensions, opts) do
     ["parameters =\n",
      gen_inspect(parameters), ?\n,
-     "types =\n",
+     "type_infos =\n",
      gen_inspect(types), ?\n,
+     "extensions =\n",
+     gen_inspect(extensions), ?\n,
      gen_inspect(__MODULE__),
-      ".define(#{gen_inspect(module)}, parameters, types, ",
+      ".define(#{gen_inspect(module)}, parameters, type_infos, extensions, ",
       gen_inspect(opts), ")\n"]
   end
 

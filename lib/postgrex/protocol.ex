@@ -2,6 +2,7 @@ defmodule Postgrex.Protocol do
   @moduledoc false
 
   alias Postgrex.Types
+  alias Postgrex.TypeServer
   alias Postgrex.Query
   alias Postgrex.Cursor
   alias Postgrex.Stream
@@ -25,7 +26,7 @@ defmodule Postgrex.Protocol do
                              connection_id: nil | pos_integer,
                              connection_key: nil | pos_integer,
                              peer: nil | {:inet.ip_address, :inet.port_number},
-                             types: (nil | reference | Postgrex.TypeServer.table),
+                             types: nil | module,
                              null: atom,
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
@@ -54,11 +55,11 @@ defmodule Postgrex.Protocol do
     port       = opts[:port] || 5432
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
-    custom     = opts[:extensions] || []
+    extensions = opts[:extensions] || []
     decode_bin = opts[:decode_binary] || :copy
     null       = opts[:null]
-    ext_opts   = [decode_binary: decode_bin, null: null]
-    extensions = custom ++ Postgrex.Utils.default_extensions(ext_opts)
+    date       = opts[:date] || :postgrex
+    types_opts = [decode_binary: decode_bin, null: null, date: date]
     ssl?       = opts[:ssl] || false
     types?     = Keyword.fetch!(opts, :types)
 
@@ -75,11 +76,11 @@ defmodule Postgrex.Protocol do
       end
 
     s = %__MODULE__{timeout: timeout, postgres: :idle,
-                    transactions: transactions, null: null}
+                    transactions: transactions}
 
-    types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, null, custom}
+    types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), extensions, types_opts}
     status = %{opts: opts, types_key: types_key, types_ref: nil,
-               types_table: nil, build_types: nil, extensions: extensions,
+               types_opts: types_opts, types: nil, extensions: extensions,
                prepare: prepare, ssl: ssl?}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
     case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
@@ -622,13 +623,16 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
-    case Postgrex.TypeServer.fetch(types_key) do
-      {:lock, ref, table} ->
+    types = Postgrex.CodeServer.get(types_key)
+    case TypeServer.fetch(types) do
+      {:lock, ref} ->
         status = %{status | types_ref: ref}
-        oids = Postgrex.Types.oids(table)
-        bootstrap_send(%{s | types: table}, status, oids, buffer)
-      {:go, table} ->
-        reserve_send(%{s | types: table}, status, buffer)
+        type_infos = Types.type_infos(types)
+        bootstrap_send(%{s | types: types}, status, type_infos, buffer)
+      :go ->
+        reserve_send(%{s | types: types}, status, buffer)
+      :noproc ->
+        bootstrap(s, status, buffer)
       :error ->
         msg = "awaited on another connection that failed to bootstrap types"
         err = RuntimeError.exception(message: msg)
@@ -636,65 +640,42 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_send(%{parameters: parameters} = s, status, oids, buffer) do
+  defp bootstrap_send(s, status, type_infos, buffer) do
+    %{parameters: parameters} = s
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    statement = Types.bootstrap_query(version, oids)
+    statement = Types.bootstrap_query(version, type_infos)
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
-        build_types = if oids == [], do: :create, else: :update
-        bootstrap_recv(s, %{status | build_types: build_types}, buffer)
+        bootstrap_recv(s, status, type_infos, buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_recv(s, status, buffer) do
+  defp bootstrap_recv(s, status, type_infos, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(), buffer} ->
-        bootstrap_recv(s, status, [], buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        bootstrap_fail(s, err, status, buffer)
-      {:ok, msg, buffer} ->
-        bootstrap_recv(handle_msg(s, status, msg), status, buffer)
-      {:disconnect, err, s} ->
-        bootstrap_fail(s, err, status)
-    end
-  end
-
-  defp bootstrap_recv(s, status, rows, buffer) do
-    case msg_recv(s, :infinity, buffer) do
+        bootstrap_recv(s, status, type_infos, buffer)
       {:ok, msg_data_row(values: values), buffer} ->
-        bootstrap_recv(s, status, [row_decode(values) | rows], buffer)
+        type_infos = [Types.build_type_info(values) | type_infos]
+        bootstrap_recv(s, status, type_infos, buffer)
       {:ok, msg_command_complete(), buffer} ->
-        bootstrap_types(s, status, rows, buffer)
+        bootstrap_types(s, status, type_infos, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         bootstrap_fail(s, err, status, buffer)
       {:ok, msg, buffer} ->
-        bootstrap_recv(handle_msg(s, status, msg), status, rows, buffer)
+        bootstrap_recv(handle_msg(s, status, msg), status, type_infos, buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_types(s, %{build_types: :update} = status, rows, buffer) do
-    %{types: table} = s
-    %{types_ref: ref} = status
-    types = Types.build_types(rows)
-    Types.associate_extensions_with_types(table, types)
-    Postgrex.TypeServer.unlock(ref)
-    bootstrap_sync_recv(s, status, buffer)
-  end
-  defp bootstrap_types(s, %{build_types: :create} = status, rows, buffer) do
-    %{types: table, parameters: parameters} = s
-    %{extensions: extensions, types_ref: ref} = status
-    extension_keys = Enum.map(extensions, &elem(&1, 0))
-    extension_opts = Types.prepare_extensions(extensions, parameters)
-    types = Types.build_types(rows)
-    Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
-    Postgrex.TypeServer.unlock(ref)
+  defp bootstrap_types(s, status, type_infos, buffer) do
+    %{types: types, parameters: parameters} = s
+    %{extensions: extensions, types_opts: opts, types_ref: ref} = status
+    TypeServer.update(types, ref, parameters, type_infos, extensions, opts)
     bootstrap_sync_recv(s, status, buffer)
   end
 
@@ -711,8 +692,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_fail(s, err, %{types_ref: ref}) do
-    is_nil(ref) || Postgrex.TypeServer.fail(ref)
+  defp bootstrap_fail(%{types: types} = s, err, %{types_ref: ref}) do
+    is_nil(ref) || TypeServer.fail(types, ref)
     {:disconnect, err, s}
   end
 
@@ -831,7 +812,7 @@ defmodule Postgrex.Protocol do
   defp describe_recv(s, status, %Query{ref: nil} = query, buffer, next) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_no_data(), buffer} ->
-        query = %Query{query | ref: make_ref(), types: s.types, null: s.null}
+        query = %Query{query | ref: make_ref(), types: s.types}
         query_put(s, query)
         next.(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
@@ -853,23 +834,19 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_recv(s, status, query, buffer, next) do
-    %Query{param_info: param_info, result_info: result_info} = query
+    %Query{param_oids: param_oids, result_oids: result_oids} = query
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_no_data(), buffer} when is_nil(result_info) ->
+      {:ok, msg_no_data(), buffer} when is_nil(result_oids) ->
         query_put(s, query)
         next.(s, status, query, buffer)
-      {:ok, msg_no_data(), buffer} when is_list(result_info) ->
+      {:ok, msg_no_data(), buffer} when is_list(result_oids) ->
         describe_error(s, status, query, buffer)
-      {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
-        case (for {oid, _, _, _} <- param_info, do: oid) do
-          ^param_oids ->
-            describe_recv(s, status, query, buffer, next)
-          _ ->
-            describe_error(s, status, query, buffer)
-        end
+      {:ok, msg_parameter_desc(type_oids: ^param_oids), buffer} ->
+        describe_recv(s, status, query, buffer, next)
+      {:ok, msg_parameter_desc(type_oids: ^param_oids), buffer} ->
+        describe_error(s, status, query, buffer)
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        result_oids = column_oids(fields)
-        case (for {oid, _, _, _} <- result_info, do: oid) do
+        case column_oids(fields) do
           ^result_oids ->
             query_put(s, query)
             next.(s, status, query, buffer)
@@ -894,7 +871,9 @@ defmodule Postgrex.Protocol do
     %{types: types} = s
     case fetch_type_info(param_oids, types) do
       {:ok, param_info} ->
-        query = %Query{query | param_info: param_info}
+        {param_formats, param_types} = Enum.unzip(param_info)
+        query = %Query{query | param_formats: param_formats,
+                               param_types: param_types}
         describe_recv(s, status, query, buffer, next)
       {:error, err} ->
         {:disconnect, err, %{s | buffer: buffer}}
@@ -902,12 +881,15 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_result(s, status, query, fields, buffer, next) do
-    %{types: types, null: null} = s
+    %{types: types} = s
     {result_oids, col_names} = columns(fields)
     case fetch_type_info(result_oids, types) do
       {:ok, result_info} ->
-        query = %Query{query | ref: make_ref(), types: types, null: null,
-                       columns: col_names, result_info: result_info}
+        {result_formats, result_types} = Enum.unzip(result_info)
+        query = %Query{query | ref: make_ref(), types: types,
+                               columns: col_names,
+                               result_formats: result_formats,
+                               result_types: result_types}
         query_put(s, query)
         next.(s, status, query, buffer)
       {:error, err} ->
@@ -921,10 +903,13 @@ defmodule Postgrex.Protocol do
     {:ok, Enum.reverse(infos)}
   end
   defp fetch_type_info([oid | oids], types, infos) do
-    case Postgrex.Types.fetch(types, oid) do
+    case Postgrex.Types.fetch(oid, types) do
       {:ok, info} ->
         fetch_type_info(oids, types, [info | infos])
-      :error ->
+      {:error, %Postgrex.TypeInfo{type: type}} ->
+        msg = "type `#{type}` can not be handled by the configured extensions"
+        {:error, RuntimeError.exception(message: msg)}
+      {:error, nil} ->
         msg = "oid `#{oid}` was not bootstrapped and lacks type information"
         {:error, RuntimeError.exception(message: msg)}
     end
@@ -1880,14 +1865,6 @@ defmodule Postgrex.Protocol do
       _ ->
         {:more, size - byte_size(rest)}
     end
-  end
-
-  defp row_decode(<<>>), do: []
-  defp row_decode(<<-1::int32, rest::binary>>) do
-    [nil | row_decode(rest)]
-  end
-  defp row_decode(<<len::uint32, value::binary(len), rest::binary>>) do
-    [value | row_decode(rest)]
   end
 
   defp msg_send(s, msgs, buffer) when is_list(msgs) do

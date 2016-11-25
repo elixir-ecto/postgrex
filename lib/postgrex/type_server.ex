@@ -3,202 +3,153 @@ defmodule Postgrex.TypeServer do
 
   use GenServer
 
-  @name __MODULE__
-  @type table :: :ets.tab
+  defstruct [:module, :connections, :lock, :waiting]
 
   @doc """
-  Starts the type server.
+  Starts a type server.
   """
-  @spec start_link :: GenServer.on_start
-  def start_link do
-    GenServer.start_link(__MODULE__, [], name: @name)
+  @spec start_link(module, pid) :: GenServer.on_start
+  def start_link(module, starter) do
+    GenServer.start_link(__MODULE__, {module, starter}, [name: module])
   end
 
   @doc """
-  Fetches the cached type entry for the given pid.
+  Fetches a lock for the given module.
 
-  If one does not exist, we attempt to achieve a lock on key
-  for fetching the entries. If another process got the lock,
-  we wait until the entries are available or the other process
-  crashes.
+  We attempt to achieve a lock on the module for updating the entries.
+  If another process got the lock, we wait until the entries are available
+  or the other process crashes. If the module is unknown returns `:not_found`.
   """
-  @spec fetch(key :: term) :: {:lock, reference, table} | {:go, table} | :error
-  def fetch(key) do
-    GenServer.call(@name, {:fetch, key}, 60_000)
+  @spec fetch(module) ::
+    {:lock, reference} | :go | :not_found | :error
+  def fetch(module) do
+    try do
+      GenServer.call(module, :fetch, 60_000)
+    catch
+      # module timed out, pretend it did not exist.
+      :exit, {:normal, _} -> :noproc
+      :exit, {:noproc, _} -> :noproc
+    end
   end
 
   @doc """
-  Unlocks the given reference for a given key after types are loaded.
+  Update the module using the given reference and configuration.
   """
-  @spec unlock(reference) :: :ok | :error
-  def unlock(ref) do
-    GenServer.call(@name, {:unlock, ref})
+  @spec update(module, reference, %{String.t => String.t}, [TypeInfo.t],
+               [{module, term}], Keyword.t) :: :go
+  def update(module, ref, parameters, type_infos, extensions, opts) do
+    GenServer.call(module,
+                   {:update, ref, parameters, type_infos, extensions, opts})
   end
 
   @doc """
-  Unlocks the given reference for a given key after types failed to be loaded.
+  Unlocks the given reference for a given module after types query failed.
   """
-  @spec fail(reference) :: :ok
-  def fail(ref) do
-    GenServer.cast(@name, {:fail, ref})
+  @spec fail(module, reference) :: :ok
+  def fail(module, ref) do
+    GenServer.cast(module, {:fail, ref})
   end
 
   ## Callbacks
 
-  def init([]) do
+  def init({module, starter}) do
     _ = Process.flag(:trap_exit, true)
-    {:ok, {%{}, %{}, Map.new}}
+    Process.link(starter)
+    state = %__MODULE__{module: module, connections: MapSet.new([starter]),
+                        waiting: %{}}
+    {:ok, state}
   end
 
-  def handle_call({:fetch, key}, {pid, _} = from, {tables, monitors, conns}) do
-    case Map.get(tables, key, :missing) do
-      {:ready, counter, timer, table} ->
-        cancel_timer(timer)
-        ref = Process.monitor(pid)
-        monitors = Map.put(monitors, ref, key)
-        tables = Map.put(tables, key, {:waiting, ref, counter, [], table})
-        {:reply, {:lock, ref, table}, {tables, monitors, conns}}
-
-      {:waiting, owner_ref, counter, waiting, table} ->
-        ref = Process.monitor(pid)
-        monitors = Map.put(monitors, ref, key)
-        tables = Map.put(tables, key, {:waiting, owner_ref, counter, [{pid, ref, from}|waiting], table})
-        {:noreply, {tables, monitors, conns}}
-
-      :missing ->
-        table = types_table()
-        ref = Process.monitor(pid)
-        monitors = Map.put(monitors, ref, key)
-        tables = Map.put(tables, key, {:waiting, ref, 0, [], table})
-        {:reply, {:lock, ref, table}, {tables, monitors, conns}}
-    end
+  def handle_call(:fetch, from, %{lock: nil} = state) do
+    lock(state, from)
+  end
+  def handle_call(:fetch, from, %{lock: ref} = state) when is_reference(ref) do
+    wait(state, from)
+  end
+  def handle_call({:update, ref, parameters, type_infos, extensions, opts},
+                  from, %{lock: ref} = state) when is_reference(ref) do
+    load(state, from, parameters, type_infos, extensions, opts)
   end
 
-  def handle_call({:unlock, ref}, {pid, _}, {tables, monitors, conns}) do
-    case Map.fetch(monitors, ref) do
-      {:ok, key} ->
-        {:waiting, ^ref, counter, waiting, table} = Map.fetch!(tables, key)
-        conns_before = Map.size(conns)
-        conns = add_connection(conns, pid, ref, key)
-        go = fn({pid2, ref2, from2}, {monitors, conns}) ->
-          GenServer.reply(from2, {:go, table})
-          {Map.delete(monitors, ref2), add_connection(conns, pid2, ref2, key)}
-        end
-        {monitors, conns} = Enum.reduce(waiting, {monitors, conns}, go)
-        new_conns = Map.size(conns) - conns_before
-        counter = counter + new_conns
-        tables = Map.put(tables, key, {:ready, counter, nil, table})
-        {:reply, :ok, {tables, monitors, conns}}
-
-      :error ->
-        {:reply, :error, {tables, monitors, conns}}
-    end
-  end
-
-  def handle_cast({:fail, ref}, state) do
+  def handle_cast({:fail, ref}, %{lock: ref} = state) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
-    failure(ref, state)
+    failure(state)
   end
 
+  def handle_info({:DOWN, ref, _, _, _}, %{lock: ref} = state)
+      when is_reference(ref) do
+    failure(state)
+  end
   def handle_info({:DOWN, ref, _, _, _}, state) do
-    failure(ref, state)
+    down(state, ref)
   end
 
-  def handle_info({:EXIT, pid, _}, {tables, monitors, conns}) do
-    {key, conns} = Map.pop(conns, pid)
-
-    tables =
-      case Map.get(tables, key, :missing) do
-        # There will be no one left using the table
-        {:ready, 1, nil, table} ->
-          stale_table(tables, key, table)
-        # Others are using the table
-        {:ready, counter, nil, table} ->
-          Map.put(tables, key, {:ready, counter - 1, nil, table})
-        # Others are using/updating/waiting on the table
-        {:waiting, ref, counter, waiting, table} ->
-          Map.put(tables, key, {:waiting, ref, counter-1, waiting, table})
-        :missing ->
-          tables
-      end
-    {:noreply, {tables, monitors, conns}}
+  def handle_info({:EXIT, pid, _}, state) do
+    exit(state, pid)
   end
 
-  def handle_info({:drop, ref, key}, {tables, monitors, conns}) do
-    tables =
-      case Map.fetch!(tables, key) do
-        {:ready, 0, {^ref, _timer}, table} ->
-          :ets.delete(table)
-          Map.delete(tables, key)
-        _ ->
-          tables
-      end
-
-    {:noreply, {tables, monitors, conns}}
+  def handle_info(:timeout, state) do
+    {:stop, :normal, state}
   end
 
-  def handle_info(_other, state) do
+  ## Helpers
+
+  defp lock(%{connections: connections} = state, {pid, _}) do
+    Process.link(pid)
+    mref = Process.monitor(pid)
+    state = %{state | lock: mref, connections: MapSet.put(connections, pid)}
+    {:reply, {:lock, mref}, state}
+  end
+
+  defp wait(state, {pid, _} = from) do
+    %{connections: connections, waiting: waiting} = state
+    Process.link(pid)
+    mref = Process.monitor(pid)
+    state = %{state | connections: MapSet.put(connections, pid),
+                      waiting: Map.put(waiting, mref, from)}
     {:noreply, state}
   end
 
-  defp types_table() do
-    :ets.new(:postgrex_type_server, [:set, :public, read_concurrency: true])
+  defp load(state, from, parameters, type_infos, extensions, opts) do
+    %{module: module} = state
+    Postgrex.TypeModule.define(module, parameters, type_infos, extensions, opts)
+    GenServer.reply(from, :go)
+    %{state | lock: nil}
+    |> reply(:go)
+    |> check_processes()
   end
 
-  defp failure(ref, {tables, monitors, conns}) do
-    {key, monitors} = Map.pop(monitors, ref)
-
-    tables =
-      case Map.fetch!(tables, key) do
-        # The process responsible for creating or updating the table crashed
-        # and not tracking any processes
-        {:waiting, ^ref, 0, waiting, table} ->
-          failure(waiting)
-          stale_table(tables, key, table)
-
-        # The process responsible for updating the table crashed
-        # and processes
-        {:waiting, ^ref, counter, waiting, table} ->
-          failure(waiting)
-          Map.put(tables, key, {:ready, counter, nil, table})
-
-        # A process in the waiting list crashed
-        {:waiting, owner_ref, counter, waiting, table} ->
-          waiting = List.keydelete(waiting, ref, 1)
-          Map.put(tables, key, {:waiting, owner_ref, counter, waiting, table})
-      end
-
-    {:noreply, {tables, monitors, conns}}
+  defp failure(state) do
+    %{state | lock: nil}
+    |> reply(:error)
+    |> check_processes()
   end
 
-  defp failure(waiting) do
-    _ =
-      for {_, ref, from} <- waiting do
-        Process.demonitor(ref, [:flush])
-        GenServer.reply(from, :error)
-      end
-    :ok
+  defp reply(%{waiting: waiting} = state, resp) do
+    _ = for {mref, from} <- waiting do
+      Process.demonitor(mref, [:flush, :info]) && GenServer.reply(from, resp)
+    end
+    %{state | waiting: %{}}
   end
 
-  defp stale_table(tables, key, table) do
-    ref     = make_ref()
-    timeout = Application.get_env(:postgrex, :type_server_reap_after)
-    timer   = Process.send_after(self(), {:drop, ref, key}, timeout)
-    Map.put(tables, key, {:ready, 0, {ref, timer}, table})
+  defp down(%{waiting: waiting} = state, ref) do
+    check_processes(%{state | waiting: Map.delete(waiting, ref)})
   end
 
-  defp add_connection(conns, pid, ref, key) do
-    Process.demonitor(ref, [:flush])
-    Process.link(pid)
-    update =
-      fn(key2) when key2 === key ->
-          key;
-        (key2) ->
-          raise "#{inspect pid} key #{inspect key} does not match #{inspect key2}"
-      end
-    Map.update(conns, pid, key, update)
+  defp exit(%{connections: connections} = state, pid) do
+    check_processes(%{state | connections: MapSet.delete(connections, pid)})
   end
 
-  defp cancel_timer(nil), do: :ok
-  defp cancel_timer({_, timer}), do: :erlang.cancel_timer(timer)
+  defp check_processes(%{lock: ref} = state) when is_reference(ref) do
+    {:noreply, state}
+  end
+  defp check_processes(%{connections: connections} = state) do
+    case MapSet.size(connections) do
+      0 ->
+        timeout = Application.fetch_env!(:postgrex, :type_server_reap_after)
+        {:noreply, state, timeout}
+      _ ->
+        {:noreply, state}
+    end
+  end
 end

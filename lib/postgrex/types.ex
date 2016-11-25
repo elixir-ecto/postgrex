@@ -5,6 +5,7 @@ defmodule Postgrex.Types do
 
   alias Postgrex.TypeInfo
   alias Postgrex.Extension
+  import Postgrex.BinaryUtils
 
   @typedoc """
   Postgres internal identifier that maps to a type. See
@@ -15,12 +16,19 @@ defmodule Postgrex.Types do
   @typedoc """
   State used by the encoder/decoder functions
   """
-  @opaque state :: :ets.tab
+  @opaque state :: module
+
+  @typedoc """
+  Term used to describe type information
+  """
+  @opaque type :: module | {module, [oid], [type]}
 
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
   @doc false
-  def bootstrap_query(version, oids) do
+  def bootstrap_query(version, type_infos) do
+    oids = for %TypeInfo{oid: oid} <- type_infos, do: oid
+
     {rngsubtype, join_range} =
       if version >= {9, 2, 0} do
         {"coalesce(r.rngsubtype, 0)",
@@ -52,8 +60,8 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def configure(extensions, parameters) do
-    Enum.into(extensions, Map.new, fn {extension, opts} ->
+  def configure(parameters, extension_opts) do
+    Enum.into(extension_opts, Map.new, fn {extension, opts} ->
       opts     = extension.init(parameters, opts)
       matching = extension.matching(opts)
       format   = extension.format(opts)
@@ -62,33 +70,31 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def build_type_infos(rows) do
-    Enum.map(rows, fn row ->
-      [oid,
-       type,
-       send,
-       receive,
-       output,
-       input,
-       array_oid,
-       base_oid,
-       comp_oids] = row
-      oid = String.to_integer(oid)
-      array_oid = String.to_integer(array_oid)
-      base_oid = String.to_integer(base_oid)
-      comp_oids = parse_oids(comp_oids)
+  def build_type_info(row) do
+    [oid,
+      type,
+      send,
+      receive,
+      output,
+      input,
+      array_oid,
+      base_oid,
+      comp_oids] = row_decode(row)
+    oid = String.to_integer(oid)
+    array_oid = String.to_integer(array_oid)
+    base_oid = String.to_integer(base_oid)
+    comp_oids = parse_oids(comp_oids)
 
-      %TypeInfo{
-        oid: oid,
-        type: :binary.copy(type),
-        send: :binary.copy(send),
-        receive: :binary.copy(receive),
-        output: :binary.copy(output),
-        input: :binary.copy(input),
-        array_elem: array_oid,
-        base_type: base_oid,
-        comp_elems: comp_oids}
-    end)
+    %TypeInfo{
+      oid: oid,
+      type: :binary.copy(type),
+      send: :binary.copy(send),
+      receive: :binary.copy(receive),
+      output: :binary.copy(output),
+      input: :binary.copy(input),
+      array_elem: array_oid,
+      base_type: base_oid,
+      comp_elems: comp_oids}
   end
 
   @doc false
@@ -175,6 +181,14 @@ defmodule Postgrex.Types do
     {:ok, Enum.reverse(acc)}
   end
 
+  defp row_decode(<<>>), do: []
+  defp row_decode(<<-1::int32, rest::binary>>) do
+    [nil | row_decode(rest)]
+  end
+  defp row_decode(<<len::uint32, value::binary(len), rest::binary>>) do
+    [value | row_decode(rest)]
+  end
+
   defp parse_oids(nil) do
     []
   end
@@ -195,63 +209,10 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def oids(table) do
-    :ets.select(table,[{{:"$1", :_, :_}, [], [:"$1"]}])
-  end
-
-  @doc false
-  def delete_unhandled_oids(table) do
-    :ets.match_delete(table, {:_, :_, nil})
-  end
-
-  ### TYPE FORMAT ###
-
-  @doc false
-  def inline_opts(oid, state) do
-    {_, info, extension} = fetch!(state, oid)
-    format = format(oid, state)
-    {extension, format, info, fetch_opts(state, extension)}
-  end
-
-  @doc false
-  def param_opts({oid, info, nil}, _state) do
-    raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
-  end
-  def param_opts({oid, info, extension}, state) do
-    opts = fetch_opts(state, extension)
-    {format(info, extension, state), {oid, info, extension, opts}}
-  end
-
-  @doc false
-  def result_opts({oid, info, nil}, _state) do
-    raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
-  end
-  def result_opts({oid, info, extension}, state) do
-    opts = fetch_opts(state, extension)
-    {format(info, extension, state), {oid, info, extension, opts}}
-  end
-
-  defp format(oid, state) do
-    {_, info, extension} = fetch!(state, oid)
-    format(info, extension, state)
-  end
-
-  defp format(info, extension, state) do
-    case info.send do
-      "array_send" ->
-        format(info.array_elem, state)
-      "range_send" ->
-        format(info.base_type, state)
-      "record_send" ->
-        if info.comp_elems == [] do
-          # Empty record should use binary format
-          :binary
-        else
-          format(hd(info.comp_elems), state)
-        end
-      _ ->
-        opts = fetch_opts(state, extension)
-        extension.format(opts)
+  def type_infos(mod) do
+    case :code.is_loaded(mod) do
+      {:file, _} -> apply(mod, :type_infos, [])
+      false      -> []
     end
   end
 
@@ -298,13 +259,20 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def fetch(table, oid) do
-    case :ets.lookup(table, oid) do
-      [value] ->
-        {:ok, value}
-      [] ->
-        :error
-    end
+  @spec encode_params([term], [type], state) :: iodata
+  def encode_params(params, types, mod) do
+    apply(mod, :encode_params, [params, types])
+  end
+
+  @doc false
+  @spec decode_row(binary, [type], state) :: [term]
+  def decode_row(binary, types, mod) do
+    Enum.reverse(apply(mod, :decode_row, [binary, types]))
+  end
+
+  @doc false
+  def fetch(mod, oid) do
+    apply(mod, :fetch, [oid])
   end
 
   defp fetch!(table, oid) do
