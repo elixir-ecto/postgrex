@@ -236,21 +236,14 @@ defmodule Postgrex.TypeModule do
   defp decode(config) do
     rest = quote do: rest
     acc  = quote do: acc
-    oids = quote do: oids
-    n    = quote do: n
 
     row_dispatch =
       for {extension, {_, [_|_], format}} <- config do
         decode_row_dispatch(extension, format, rest, acc)
       end
 
-    decoded  = (quote do: ([] -> decoded_row(unquote(rest), unquote(acc))))
+    decoded      = (quote do: ([] -> decoded_row(unquote(rest), unquote(acc))))
     row_dispatch = row_dispatch ++ decoded
-
-    tuple_dispatch =
-       for {extension, {_, [_|_], format}} <- config do
-         decode_tuple_dispatch(extension, format, rest, oids, n, acc)
-       end
 
     decodes =
       for {extension, {opts, [_|_], format}} <- config do
@@ -260,10 +253,7 @@ defmodule Postgrex.TypeModule do
           for clause <- decode do
             decode_type(extension, format, clause, row_dispatch, rest, acc)
           end
-
         quote do
-          unquote(decode_list(extension, format))
-
           unquote(clauses |> rewrite(decode))
 
           unquote(decode_null(extension, format, row_dispatch, rest, acc))
@@ -271,31 +261,26 @@ defmodule Postgrex.TypeModule do
       end
 
     quote do
-      def decode_row(<<unquote(rest)::binary>>, types) do
-        unquote(acc) = []
-        case types do
-          unquote(row_dispatch)
-        end
-      end
+      unquote(decode_row(row_dispatch, rest, acc))
 
-      def decode_tuple(<<rest::binary>>, oids, types) do
-        decode_tuple(rest, oids, types, 0, [])
-      end
+      unquote(decode_list(config))
 
-      defp decode_tuple(<<oid::int32, unquote(rest)::binary>>,
-                        [oid | unquote(oids)], types,
-                        unquote(n), unquote(acc)) do
-        case types do
-          unquote(tuple_dispatch)
-        end
-      end
-      defp decode_tuple(<<>>, [], [], n, acc) do
-        :erlang.make_tuple(n, @null, acc)
-      end
+      unquote(decode_tuple(config))
 
       unquote(decodes)
 
       defp decoded_row(<<_::binary-size(0)>>, acc), do: acc
+    end
+  end
+
+  defp decode_row(dispatch, rest, acc) do
+    quote do
+      def decode_row(<<unquote(rest)::binary>>, types) do
+        unquote(acc) = []
+        case types do
+          unquote(dispatch)
+        end
+      end
     end
   end
 
@@ -315,6 +300,69 @@ defmodule Postgrex.TypeModule do
           unquote(extension)(unquote(rest), types, unquote(acc))
       end
     clause
+  end
+
+  defp decode_list(config) do
+    rest = quote do: rest
+
+    dispatch =
+       for {extension, {_, [_|_], format}} <- config do
+         decode_list_dispatch(extension, format, rest)
+       end
+
+    quote do
+      def decode_list(<<unquote(rest)::binary>>, type) do
+        case type do
+          unquote(dispatch)
+        end
+      end
+    end
+  end
+
+  defp decode_list_dispatch(extension, :super_binary, rest) do
+    [clause] =
+      quote do
+        {unquote(extension), sub_oids, sub_types} ->
+          unquote(extension)(unquote(rest), sub_oids, sub_types, [])
+      end
+    clause
+  end
+  defp decode_list_dispatch(extension, _, rest) do
+    [clause] =
+      quote do
+        unquote(extension)->
+          unquote(extension)(unquote(rest), [])
+      end
+    clause
+  end
+
+  defp decode_tuple(config) do
+    rest = quote do: rest
+    oids = quote do: oids
+    n    = quote do: n
+    acc  = quote do: acc
+
+    dispatch =
+       for {extension, {_, [_|_], format}} <- config do
+         decode_tuple_dispatch(extension, format, rest, oids, n, acc)
+       end
+
+    quote do
+      def decode_tuple(<<rest::binary>>, oids, types) do
+        decode_tuple(rest, oids, types, 0, [])
+      end
+
+      defp decode_tuple(<<oid::int32, unquote(rest)::binary>>,
+                        [oid | unquote(oids)], types,
+                        unquote(n), unquote(acc)) do
+        case types do
+          unquote(dispatch)
+        end
+      end
+      defp decode_tuple(<<>>, [], [], n, acc) do
+        :erlang.make_tuple(n, @null, acc)
+      end
+    end
   end
 
   defp decode_tuple_dispatch(extension, :super_binary, rest, oids, n, acc) do
@@ -341,22 +389,6 @@ defmodule Postgrex.TypeModule do
   end
   defp decode_type(extension, _, clause, dispatch, rest, acc) do
     decode_extension(extension, clause, dispatch, rest, acc)
-  end
-
-  defp decode_list(extension, :super_binary) do
-    quote do
-      def decode_list(<<data::binary>>,
-                      {unquote(extension), sub_oids, sub_types}) do
-        unquote(extension)(data, sub_oids, sub_types, [])
-      end
-    end
-  end
-  defp decode_list(extension, _) do
-    quote do
-      def decode_list(<<data::binary>>, unquote(extension)) do
-        unquote(extension)(data, [])
-      end
-    end
   end
 
   defp decode_null(extension, :super_binary, dispatch, rest, acc) do
@@ -387,14 +419,12 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<unquote(pattern), rest::binary>>, acc)
                               when unquote(guard) do
-        decoded = unquote(body)
-        unquote(extension)(rest, [decoded | acc])
+        unquote(extension)(rest, [unquote(body) | acc])
       end
 
-      defp unquote(extension)(<<unquote(pattern), unquote(rest)::binary>>,
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>,
                               oids, types, n, acc) when unquote(guard) do
-        unquote(acc) = [{n, unquote(body)} | acc]
-        decode_tuple(unquote(rest), oids, types, n, unquote(acc))
+        decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
       end
     end
   end
@@ -480,9 +510,8 @@ defmodule Postgrex.TypeModule do
       defp unquote(extension)(<<unquote(pattern), rest::binary>>,
                               unquote(sub_oids), unquote(sub_types), acc)
            when unquote(guard) do
-        decoded = unquote(body)
-        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types),
-                           [decoded | acc])
+        acc = [unquote(body) | acc]
+        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), acc)
       end
 
       defp unquote(extension)(<<unquote(pattern), unquote(rest)::binary>>,
@@ -507,16 +536,15 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<unquote(pattern), rest::binary>>,
                               unquote(sub_oids), unquote(sub_types), acc) do
-        decoded = unquote(body)
-        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types),
-                           [decoded | acc])
+        acc = [unquote(body) | acc]
+        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), acc)
       end
 
-      defp unquote(extension)(<<unquote(pattern), unquote(rest)::binary>>,
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>,
                               unquote(sub_oids), unquote(sub_types),
                               oids, types, n, acc) do
-        unquote(acc) = [{n, unquote(body)} | acc]
-        decode_tuple(unquote(rest), oids, types, n, unquote(acc))
+        acc = [{n, unquote(body)} | acc]
+        decode_tuple(rest, oids, types, n, acc)
       end
     end
   end
