@@ -51,7 +51,9 @@ defmodule Postgrex.TypeModule do
             end
           nil ->
             quote do
-              def fetch(unquote(oid)), do: :error
+              def fetch(unquote(oid)) do
+                {:error, unquote(Macro.escape(info))}
+              end
             end
         end
       end
