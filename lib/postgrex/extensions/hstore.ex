@@ -5,20 +5,7 @@ defmodule Postgrex.Extensions.HStore do
 
   def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
 
-  def encode(_, map, _, _) when is_map(map),
-    do: encode_hstore(map)
-  def encode(type_info, value, _, _) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a map")
-  end
-
-  def decode(_, bin, _, mode),
-    do: decode_hstore(bin, mode)
-
-  def inline(_type_info, _types, mode) do
-    {__MODULE__, inline_encode(), inline_decode(mode)}
-  end
-
-  defp inline_encode() do
+  def encode(_) do
     quote location: :keep do
       %{} = map ->
         data = unquote(__MODULE__).encode_hstore(map)
@@ -28,7 +15,7 @@ defmodule Postgrex.Extensions.HStore do
     end
   end
 
-  defp inline_decode(mode) do
+  def decode(mode) do
     quote do
       <<len :: int32, data :: binary-size(len)>> ->
         unquote(__MODULE__).decode_hstore(data, unquote(mode))
@@ -37,7 +24,7 @@ defmodule Postgrex.Extensions.HStore do
 
   ## Helpers
 
-  defp encode_hstore(hstore_map) do
+  def encode_hstore(hstore_map) do
     keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
         [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end

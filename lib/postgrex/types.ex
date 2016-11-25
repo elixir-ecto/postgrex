@@ -17,8 +17,6 @@ defmodule Postgrex.Types do
   """
   @opaque state :: :ets.tab
 
-  @higher_types ["array_send", "range_send", "record_send"]
-
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
   @doc false
@@ -54,14 +52,17 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def prepare_extensions(extensions, parameters) do
+  def configure(extensions, parameters) do
     Enum.into(extensions, Map.new, fn {extension, opts} ->
-      {extension, extension.init(parameters, opts)}
+      opts     = extension.init(parameters, opts)
+      matching = extension.matching(opts)
+      format   = extension.format(opts)
+      {extension, {opts, matching, format}}
     end)
   end
 
   @doc false
-  def build_types(rows) do
+  def build_type_infos(rows) do
     Enum.map(rows, fn row ->
       [oid,
        type,
@@ -91,59 +92,42 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def associate_extensions_with_types(table, extensions, extension_opts, types) do
-    oid_types = Enum.into(types, Map.new, &{&1.oid, &1})
-
-    for {extension, opts} <- extension_opts do
-      :ets.insert(table, {extension, opts})
+  def associate_type_infos(type_infos, extensions, config) do
+    oids = Enum.into(type_infos, %{}, &{&1.oid, &1})
+    formats = [:binary, :text, :super_binary]
+    for type_info <- type_infos do
+      {type_info, find(extensions, type_info, formats, config, oids)}
     end
-
-    for type_info <- types, type_info != nil do
-      extension = find_extension(type_info, extensions, extension_opts, oid_types)
-      :ets.insert(table, {type_info.oid, type_info, extension})
-    end
-
-    :ok
   end
 
-  @doc false
-  def associate_extensions_with_types(table, types) do
-    old_types =
-      table
-      |> :ets.select([{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
-      |> Enum.into(%{})
-
-    oid_types = Enum.into(types, old_types, &{&1.oid, &1})
-
-    extension_opts =
-      table
-      |> :ets.select([{{:_, :_}, [], [:"$_"]}])
-      |> Enum.into(%{})
-
-    extensions = Map.keys(extension_opts)
-
-    for type_info <- types, type_info != nil do
-      extension = find_extension(type_info, extensions, extension_opts, oid_types)
-      :ets.insert(table, {type_info.oid, type_info, extension})
-    end
-
-    :ok
-  end
-
-  defp find_extension(nil, _extensions, _extension_opts, _types) do
+  defp find(_extensions, nil, _formats, _config, _oids) do
     nil
   end
 
-  defp find_extension(type_info, extensions, extension_opts, types) do
-    Enum.find(extensions, fn extension ->
-      opts = Map.fetch!(extension_opts, extension)
-      match_extension_against_type(extension, opts, type_info)
-    end)
-    || find_superextension_for_type(type_info, extensions, extension_opts, types)
+  defp find(extensions, type_info, formats, config, oids) do
+    find(extensions, type_info, formats, extensions, config, oids)
   end
 
-  defp match_extension_against_type(extension, opts, type_info) do
-    matching = extension.matching(opts)
+  defp find([extension | rest], type_info, formats, extensions, config, oids) do
+    case match(extension, type_info, formats, extensions, config, oids) do
+      {format, type} ->
+        {format, type}
+      nil ->
+        find(rest, type_info, formats, extensions, config, oids)
+    end
+  end
+  defp find([], _type_info, _formats, _extensions, _config, _oids) do
+    nil
+  end
+
+  defp match(extension, type_info, formats, extensions, config, oids) do
+    if match_extension_against_type(extension, config, type_info) do
+      match_format(extension, type_info, formats, extensions, config, oids)
+    end
+  end
+
+  defp match_extension_against_type(extension, config, type_info) do
+    {_opts, matching, _format} = Map.fetch!(config, extension)
     Enum.any?(matching, &match_type(&1, type_info))
   end
 
@@ -154,52 +138,41 @@ defmodule Postgrex.Types do
     end
   end
 
-  defp find_superextension_for_type(type_info, extensions, extension_opts, types) do
-    case type_info.send do
-      "array_send" ->
-        oid = type_info.array_elem
-        if binary_format?(oid, extensions, extension_opts, types) do
-          Postgrex.Extensions.Array
-        end
-
-      "range_send" ->
-        oid = type_info.base_type
-        if binary_format?(oid, extensions, extension_opts, types) do
-          Postgrex.Extensions.Range
-        end
-
-      "record_send" ->
-        oids = type_info.comp_elems
-        if binary_format?(oids, extensions, extension_opts, types) do
-          Postgrex.Extensions.Record
-        end
-
-      _ ->
+   # TODO: Support text
+   # All record elements need to be able to be encoded/decoded with the
+   # same format. For now we only support binary.
+  defp match_format(extension, type_info, formats, extensions, config, oids) do
+    {opts, _matching, format} = Map.fetch!(config, extension)
+    cond do
+      not format in formats ->
         nil
-    end
-  end
-
-  defp binary_format?(oid, extensions, extension_opts, types) when is_integer(oid) do
-    # TODO: Support text
-    if extension = find_extension(types[oid], extensions, extension_opts, types) do
-      opts = Map.fetch!(extension_opts, extension)
-      extension.format(opts) == :binary
-    end
-  end
-
-  defp binary_format?(oids, extensions, extension_opts, types) when is_list(oids) do
-    # TODO: Support text
-    # All record elements need to be able to be encoded/decoded with the
-    # same format. For now we only support binary.
-
-    oids
-    |> Enum.map(&find_extension(types[&1], extensions, extension_opts, types))
-    |> Enum.all?(fn extension ->
-        if extension do
-           opts = Map.fetch!(extension_opts, extension)
-           extension.format(opts) == :binary
+      format == :super_binary ->
+        sub_oids = extension.oids(type_info, opts)
+        formats = formats--[:text]
+        case super_fetch(sub_oids, formats, extensions, config, oids) do
+          {:ok, sub_types} ->
+            {:binary, {extension, sub_oids, sub_types}}
+          :error ->
+            nil
         end
-    end)
+      true ->
+        {format, extension}
+    end
+  end
+
+  defp super_fetch(sub_oids, acc \\ [], formats, extensions, config, oids)
+
+  defp super_fetch([oid | sub_oids], acc, formats, extensions, config, oids) do
+    type_info = Map.get(oids, oid)
+    case find(extensions, type_info, formats, config, oids) do
+      {_format, type} ->
+        super_fetch(sub_oids, [type | acc], formats, extensions, config, oids)
+      nil ->
+        :error
+    end
+  end
+  defp super_fetch([], acc, _formats, _extension, _config, _oids) do
+    {:ok, Enum.reverse(acc)}
   end
 
   defp parse_oids(nil) do

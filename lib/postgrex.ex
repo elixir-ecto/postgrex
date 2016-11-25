@@ -66,6 +66,13 @@ defmodule Postgrex do
     if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
     and decoding (default: `nil`);
+    * `:date` - Either `:postgrex` to use Postgrex date structs or
+    `:elixir` to use Elixir date structs. The date handling can be overriden
+    with a custom extension, see `:extensions` (default: `:postgrex`);
+    * `:json` - The JSON module to encode and decode JSON binaries, calls
+    `module.encode!/1` to encode and `module.decode!/1` to decode. If `nil` then
+    no default JSON handling. The JSON handling can be overriden with a custom
+    extension, see `:extensions` (default: `nil`);
 
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc.
