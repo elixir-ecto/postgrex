@@ -26,7 +26,7 @@ defmodule Postgrex.TypeModule do
 
     quote do
       import Postgrex.BinaryUtils, [warn: false]
-
+      require unquote(__MODULE__), [warn: false]
       unquote(requires)
     end
   end
@@ -34,7 +34,7 @@ defmodule Postgrex.TypeModule do
   defp attributes(null) do
     quote do
       @compile :bin_opt_info
-      @null unquote(null)
+      @null unquote(Macro.escape(null))
     end
   end
 
@@ -72,7 +72,7 @@ defmodule Postgrex.TypeModule do
     end)
   end
 
-  defp encode(config, null) do
+  defp encode(config) do
     encodes =
       for {extension, {opts, [_|_], format}} <- config do
         encode = extension.encode(opts)
@@ -82,7 +82,7 @@ defmodule Postgrex.TypeModule do
             encode_type(extension, format, clause)
           end
 
-        clauses = [encode_null(extension, format, null) | clauses]
+        clauses = [encode_null(extension, format) | clauses]
 
         quote do
           unquote(encode_value(extension, format))
@@ -188,16 +188,16 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp encode_null(extension, :super_binary, null) do
+  defp encode_null(extension, :super_binary) do
     quote do
-      defp unquote(extension)(unquote(null), _sub_oids, _sub_types) do
-        unquote(null)
+      defp unquote(extension)(@null, _sub_oids, _sub_types) do
+        @null
       end
     end
   end
-  defp encode_null(extension, _, null) do
+  defp encode_null(extension, _) do
     quote do
-      defp unquote(extension)(unquote(null)), do: unquote(null)
+      defp unquote(extension)(@null), do: @null
     end
   end
 
@@ -269,7 +269,7 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode(config, null) do
+  defp decode(config) do
     rest = quote do: rest
     acc  = quote do: acc
     oids = quote do: oids
@@ -302,7 +302,7 @@ defmodule Postgrex.TypeModule do
 
           unquote(clauses |> rewrite(decode))
 
-          unquote(decode_null(extension, format, row_dispatch, rest, null, acc))
+          unquote(decode_null(extension, format, row_dispatch, rest, acc))
         end
       end
 
@@ -326,7 +326,7 @@ defmodule Postgrex.TypeModule do
         end
       end
       defp decode_tuple(<<>>, [], [], n, acc) do
-        :erlang.make_tuple(n, unquote(null), acc)
+        :erlang.make_tuple(n, @null, acc)
       end
 
       unquote(decodes)
@@ -394,11 +394,11 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode_null(extension, :super_binary, dispatch, rest, null, acc) do
-    decode_super_null(extension, dispatch, rest, null, acc)
+  defp decode_null(extension, :super_binary, dispatch, rest, acc) do
+    decode_super_null(extension, dispatch, rest, acc)
   end
-  defp decode_null(extension, _, dispatch, rest, null, acc) do
-    decode_extension_null(extension, dispatch, rest, null, acc)
+  defp decode_null(extension, _, dispatch, rest, acc) do
+    decode_extension_null(extension, dispatch, rest, acc)
   end
 
   defp decode_extension(extension, clause, dispatch, rest, acc) do
@@ -456,18 +456,18 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode_extension_null(extension, dispatch, rest, null, acc) do
+  defp decode_extension_null(extension, dispatch, rest, acc) do
     quote do
       defp unquote(extension)(<<-1::int32, unquote(rest)::binary>>,
                               types, acc) do
-        unquote(acc) = [unquote(null) | acc]
+        unquote(acc) = [@null | acc]
         case types do
           unquote(dispatch)
         end
       end
 
       defp unquote(extension)(<<-1::int32, rest::binary>>, acc) do
-        unquote(extension)(rest, [unquote(null) | acc])
+        unquote(extension)(rest, [@null | acc])
       end
 
       defp unquote(extension)(<<>>, acc) do
@@ -556,11 +556,11 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode_super_null(extension, dispatch, rest, null, acc) do
+  defp decode_super_null(extension, dispatch, rest, acc) do
     quote do
       defp unquote(extension)(<<-1::int32, unquote(rest)::binary>>,
                               _sub_oids, _sub_types, types, acc) do
-        unquote(acc) = [unquote(null) | acc]
+        unquote(acc) = [@null | acc]
         case types do
           unquote(dispatch)
         end
@@ -568,8 +568,7 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<-1::int32, rest::binary>>,
                               sub_oids, sub_types, acc) do
-        acc = [unquote(null) | acc]
-        unquote(extension)(rest, sub_oids, sub_types, acc)
+        unquote(extension)(rest, sub_oids, sub_types, [@null | acc])
       end
 
       defp unquote(extension)(<<>>, _sub_oid, _sub_types, acc) do
@@ -602,7 +601,7 @@ defmodule Postgrex.TypeModule do
 
   defp define_inline(module, type_infos, config, null) do
     quoted = [directives(config), attributes(null), fetch(type_infos),
-              encode(config, null), decode(config, null)]
+              encode(config), decode(config)]
     Module.create(module, quoted, Macro.Env.location(__ENV__))
   end
 
