@@ -314,7 +314,7 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      def decode_tuple(<<unquote(rest)::binary>>, oids, types) do
+      def decode_tuple(<<rest::binary>>, oids, types) do
         decode_tuple(rest, oids, types, 0, [])
       end
 
@@ -381,14 +381,15 @@ defmodule Postgrex.TypeModule do
 
   defp decode_list(extension, :super_binary) do
     quote do
-      def decode_list(data, {unquote(extension), sub_oids, sub_types}) do
+      def decode_list(<<data::binary>>,
+                      {unquote(extension), sub_oids, sub_types}) do
         unquote(extension)(data, sub_oids, sub_types, [])
       end
     end
   end
   defp decode_list(extension, _) do
     quote do
-      def decode_list(data, unquote(extension)) do
+      def decode_list(<<data::binary>>, unquote(extension)) do
         unquote(extension)(data, [])
       end
     end
