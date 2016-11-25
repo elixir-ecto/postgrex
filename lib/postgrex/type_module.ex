@@ -34,6 +34,7 @@ defmodule Postgrex.TypeModule do
   defp attributes(null) do
     quote do
       @compile :bin_opt_info
+      @compile {:inline, [encode_value: 2]}
       @null unquote(Macro.escape(null))
     end
   end
@@ -87,10 +88,6 @@ defmodule Postgrex.TypeModule do
         quote do
           unquote(encode_value(extension, format))
 
-          unquote(encode_params(extension, format))
-
-          unquote(encode_tuple(extension, format))
-
           unquote(encode_inline(extension, format))
 
           unquote(clauses |> rewrite(encode))
@@ -98,20 +95,27 @@ defmodule Postgrex.TypeModule do
       end
 
     quote do
+      unquote(encodes)
+
       def encode_params(params, types) do
         encode_params(params, types, [])
       end
 
-      def encode_tuple(tuple, oids, types) do
-        encode_tuple(tuple, 1, oids, types, [])
+      defp encode_params([param | params], [type | types], encoded) do
+        encode_params(params, types, [encode_value(param, type) | encoded])
       end
-
-      unquote(encodes)
-
       defp encode_params([], [], encoded), do: Enum.reverse(encoded)
       defp encode_params(params, _, _) when is_list(params), do: :error
 
-      defp encode_tuple(tuple, n, [], [], acc) when tuple_size(tuple) < n do
+      def encode_tuple(tuple, oids, types) do
+        encode_tuple(tuple, 1, oids, types, [])
+      end
+      defp encode_tuple(tuple, n, [oid | oids], [type | types], acc) do
+        param = :erlang.element(n, tuple)
+        acc = [acc, <<oid::uint32>> | encode_value(param, type)]
+        encode_tuple(tuple, n+1, oids, types, acc)
+      end
+      defp encode_tuple(tuple, n, [], [], acc) when tuple_size(tuple) > n do
         acc
       end
       defp encode_tuple(tuple, _, [], [], _) when is_tuple(tuple), do: :error
@@ -188,6 +192,17 @@ defmodule Postgrex.TypeModule do
     end
   end
 
+  defp encode_inline(extension, :super_binary) do
+    quote do
+      @compile {:inline, [{unquote(extension), 3}]}
+    end
+  end
+  defp encode_inline(extension, _) do
+    quote do
+      @compile {:inline, [{unquote(extension), 1}]}
+    end
+  end
+
   defp encode_null(extension, :super_binary) do
     quote do
       defp unquote(extension)(@null, _sub_oids, _sub_types) do
@@ -198,17 +213,6 @@ defmodule Postgrex.TypeModule do
   defp encode_null(extension, _) do
     quote do
       defp unquote(extension)(@null), do: @null
-    end
-  end
-
-  defp encode_inline(extension, :super_binary) do
-    quote do
-      @compile {:inline, [{unquote(extension), 3}]}
-    end
-  end
-  defp encode_inline(extension, _) do
-    quote do
-      @compile {:inline, [{unquote(extension), 1}]}
     end
   end
 
@@ -223,48 +227,6 @@ defmodule Postgrex.TypeModule do
     quote do
       def encode_value(value, unquote(extension)) do
         unquote(extension)(value)
-      end
-    end
-  end
-
-  defp encode_params(extension, :super_binary) do
-    quote do
-      defp encode_params([param | params],
-                         [{unquote(extension), sub_oids, sub_types} | types],
-                         acc) do
-        encoded = unquote(extension)(param, sub_oids, sub_types)
-        encode_params(params, types, [encoded | acc])
-      end
-    end
-  end
-  defp encode_params(extension, _) do
-    quote do
-      defp encode_params([param | params], [unquote(extension) | types], acc) do
-        encoded = unquote(extension)(param)
-        encode_params(params, types, [encoded | acc])
-      end
-    end
-  end
-
-  defp encode_tuple(extension, :super_binary) do
-    quote do
-      defp encode_tuple(tuple, n, [oid | oids],
-                        [{unquote(extension), sub_oids, sub_types} | types],
-                        acc) do
-        param = :erlang.element(n, tuple)
-        acc = [acc, <<oid::uint32>> |
-                unquote(extension)(param, sub_oids, sub_types)]
-        encode_tuple(tuple, n+1, oids, types, acc)
-      end
-    end
-  end
-  defp encode_tuple(extension, _) do
-    quote do
-      defp encode_tuple(tuple, n, [oid | oids],
-                        [unquote(extension) | types], acc) do
-        param = :erlang.element(n, tuple)
-        acc = [acc, <<oid::uint32>> | unquote(extension)(param)]
-        encode_tuple(tuple, n+1, oids, types, acc)
       end
     end
   end
