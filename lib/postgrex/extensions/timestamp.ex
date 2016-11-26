@@ -70,7 +70,7 @@ defmodule Postgrex.Extensions.Timestamp do
     {:calendar.gregorian_seconds_to_datetime(secs + @gs_epoch), microsecs}
   end
 
-  if Code.ensure_loaded?(NativeDateTime) do
+  if Code.ensure_loaded?(NaiveDateTime) do
     def encode_elixir(%NaiveDateTime{microsecond: {microsecs, _}} = naive) do
       erl_datetime = NaiveDateTime.to_erl(naive)
       case :calendar.datetime_to_gregorian_seconds(erl_datetime) - @gs_epoch do
