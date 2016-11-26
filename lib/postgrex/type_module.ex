@@ -347,6 +347,9 @@ defmodule Postgrex.TypeModule do
        end
 
     quote do
+      def decode_tuple(<<rest::binary>>, count) do
+        decode_tuple(rest, count, nil, 0, [])
+      end
       def decode_tuple(<<rest::binary>>, oids, types) do
         decode_tuple(rest, oids, types, 0, [])
       end
@@ -359,6 +362,31 @@ defmodule Postgrex.TypeModule do
         end
       end
       defp decode_tuple(<<>>, [], [], n, acc) do
+        :erlang.make_tuple(n, @null, acc)
+      end
+      defp decode_tuple(<<oid::int32, unquote(rest)::binary>>,
+                        rem, nil,
+                        unquote(n), unquote(acc)) when rem > 0 do
+        case fetch(oid) do
+          {:ok, {:binary, type}} ->
+            unquote(oids) = rem - 1
+            case [type | nil] do
+              unquote(dispatch)
+            end
+          {:ok, {:text, _}} ->
+            msg = "oid `#{oid}` was bootstrapped in text format and can not " <>
+                  "be decoded inside an anonymous record"
+            raise RuntimeError, msg
+          {:error, %TypeInfo{type: pg_type}} ->
+            msg = "type `#{pg_type}` can not be handled by the configured " <>
+                  "extensions"
+            raise RuntimeError, msg
+          {:error, nil} ->
+            msg = "oid `#{oid}` was not bootstrapped and lacks type information"
+            raise RuntimeError, msg
+        end
+      end
+      defp decode_tuple(<<>>, 0, nil, n, acc) do
         :erlang.make_tuple(n, @null, acc)
       end
     end
