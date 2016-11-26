@@ -625,9 +625,8 @@ defmodule Postgrex.Protocol do
   defp bootstrap(s, %{types_key: types_key} = status, buffer) do
     types = Postgrex.CodeServer.get(types_key)
     case TypeServer.fetch(types) do
-      {:lock, ref} ->
+      {:lock, ref, type_infos} ->
         status = %{status | types_ref: ref}
-        type_infos = Types.type_infos(types)
         bootstrap_send(%{s | types: types}, status, type_infos, buffer)
       :go ->
         reserve_send(%{s | types: types}, status, buffer)
@@ -647,32 +646,39 @@ defmodule Postgrex.Protocol do
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
-        bootstrap_recv(s, status, type_infos, buffer)
+        bootstrap_recv(s, status, type_infos, :unlock, buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_recv(s, status, type_infos, buffer) do
+  defp bootstrap_recv(s, status, type_infos, next, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(), buffer} ->
-        bootstrap_recv(s, status, type_infos, buffer)
+        bootstrap_recv(s, status, type_infos, next, buffer)
       {:ok, msg_data_row(values: values), buffer} ->
         type_infos = [Types.build_type_info(values) | type_infos]
-        bootstrap_recv(s, status, type_infos, buffer)
+        bootstrap_recv(s, status, type_infos, :update, buffer)
       {:ok, msg_command_complete(), buffer} ->
-        bootstrap_types(s, status, type_infos, buffer)
+        bootstrap_types(s, status, type_infos, next, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         bootstrap_fail(s, err, status, buffer)
       {:ok, msg, buffer} ->
-        bootstrap_recv(handle_msg(s, status, msg), status, type_infos, buffer)
+        s = handle_msg(s, status, msg)
+        bootstrap_recv(s, status, type_infos, next, buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_types(s, status, type_infos, buffer) do
+  defp bootstrap_types(s, status, _, :unlock, buffer) do
+    %{types: types} = s
+    %{types_ref: ref} = status
+    TypeServer.unlock(types, ref)
+    bootstrap_sync_recv(s, status, buffer)
+  end
+  defp bootstrap_types(s, status, type_infos, :update, buffer) do
     %{types: types, parameters: parameters} = s
     %{extensions: extensions, types_opts: opts, types_ref: ref} = status
     TypeServer.update(types, ref, parameters, type_infos, extensions, opts)

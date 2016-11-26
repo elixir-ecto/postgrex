@@ -3,7 +3,9 @@ defmodule Postgrex.TypeServer do
 
   use GenServer
 
-  defstruct [:module, :connections, :lock, :waiting]
+  defstruct [:module, :connections, :lock, :waiting, :type_infos]
+
+  @timeout 60_000
 
   @doc """
   Starts a type server.
@@ -21,15 +23,23 @@ defmodule Postgrex.TypeServer do
   or the other process crashes. If the module is unknown returns `:not_found`.
   """
   @spec fetch(module) ::
-    {:lock, reference} | :go | :not_found | :error
+    {:lock, reference, [Postgrex.TypeInfo.t]} | :go | :not_found | :error
   def fetch(module) do
     try do
-      GenServer.call(module, :fetch, 60_000)
+      GenServer.call(module, :fetch, @timeout)
     catch
       # module timed out, pretend it did not exist.
       :exit, {:normal, _} -> :noproc
       :exit, {:noproc, _} -> :noproc
     end
+  end
+
+  @doc """
+  Release a lock for the given module because no updates.
+  """
+  @spec unlock(module, reference) :: :go
+  def unlock(module, ref) do
+    GenServer.call(module, {:unlock, ref}, @timeout)
   end
 
   @doc """
@@ -39,7 +49,8 @@ defmodule Postgrex.TypeServer do
                [{module, term}], Keyword.t) :: :go
   def update(module, ref, parameters, type_infos, extensions, opts) do
     GenServer.call(module,
-                   {:update, ref, parameters, type_infos, extensions, opts})
+                   {:update, ref, parameters, type_infos, extensions, opts},
+                   @timeout)
   end
 
   @doc """
@@ -56,7 +67,7 @@ defmodule Postgrex.TypeServer do
     _ = Process.flag(:trap_exit, true)
     Process.link(starter)
     state = %__MODULE__{module: module, connections: MapSet.new([starter]),
-                        waiting: %{}}
+                        waiting: %{}, type_infos: []}
     {:ok, state}
   end
 
@@ -69,6 +80,11 @@ defmodule Postgrex.TypeServer do
   def handle_call({:update, ref, parameters, type_infos, extensions, opts},
                   from, %{lock: ref} = state) when is_reference(ref) do
     load(state, from, parameters, type_infos, extensions, opts)
+  end
+  def handle_call({:unlock, ref}, from, %{lock: ref} = state)
+      when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    go(state, from)
   end
 
   def handle_cast({:fail, ref}, %{lock: ref} = state) when is_reference(ref) do
@@ -94,11 +110,12 @@ defmodule Postgrex.TypeServer do
 
   ## Helpers
 
-  defp lock(%{connections: connections} = state, {pid, _}) do
+  defp lock(state, {pid, _}) do
+    %{connections: connections, type_infos: type_infos} = state
     Process.link(pid)
     mref = Process.monitor(pid)
     state = %{state | lock: mref, connections: MapSet.put(connections, pid)}
-    {:reply, {:lock, mref}, state}
+    {:reply, {:lock, mref, type_infos}, state}
   end
 
   defp wait(state, {pid, _} = from) do
@@ -113,6 +130,13 @@ defmodule Postgrex.TypeServer do
   defp load(state, from, parameters, type_infos, extensions, opts) do
     %{module: module} = state
     Postgrex.TypeModule.define(module, parameters, type_infos, extensions, opts)
+    GenServer.reply(from, :go)
+    %{state | lock: nil, type_infos: type_infos}
+    |> reply(:go)
+    |> check_processes()
+  end
+
+  defp go(state, from) do
     GenServer.reply(from, :go)
     %{state | lock: nil}
     |> reply(:go)
