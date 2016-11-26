@@ -67,7 +67,7 @@ defmodule Postgrex.Extensions.Date do
         |> Date.to_erl()
         |> :calendar.date_to_gregorian_days()
       if days < @gd_max do
-        <<days - @gd_epoch :: int32>>
+        <<4::int32, days - @gd_epoch :: int32>>
       else
         raise ArgumentError,
           "#{inspect date} is beyond the maximum year #{@max_year}"
