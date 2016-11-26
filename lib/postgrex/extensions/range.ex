@@ -38,7 +38,7 @@ defmodule Postgrex.Extensions.Range do
   def decode(_) do
     quote location: :keep do
       <<len :: int32, binary :: binary-size(len)>>, [oid], [type] ->
-        <<flags :: int32, data :: binary>> = binary
+        <<flags, data :: binary>> = binary
         # decode_list/2 and @null defined by TypeModule
         case decode_list(data, type) do
           [upper, lower] ->
@@ -87,14 +87,14 @@ defmodule Postgrex.Extensions.Range do
         flags
       end
 
-    [<<IO.iodata_length(bin)+4::int32>>, flags | bin]
+    [<<IO.iodata_length(bin)+1::int32>>, flags | bin]
   end
 
   def decode(flags, _oid, [], null) when (flags &&& @range_empty) != 0 do
     %Postgrex.Range{lower: null, upper: null}
   end
 
-  def decode(<<flags, rest::binary>>, _oid, elems, null) do
+  def decode(flags, _oid, elems, null) do
     {lower, elems} =
       if (flags &&& @range_lb_inf) != 0 do
         {null, elems}
