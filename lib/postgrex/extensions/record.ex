@@ -34,6 +34,10 @@ defmodule Postgrex.Extensions.Record do
 
   def decode(_) do
     quote location: :keep do
+      <<len::int32, binary::binary-size(len)>>, [], [] ->
+        <<count::int32, data::binary>> = binary
+        # decode_tuple/2 defined by TypeModule
+        decode_tuple(data, count)
       <<len::int32, binary::binary-size(len)>>, oids, types ->
         <<_::int32, data::binary>> = binary
         # decode_tuple/3 defined by TypeModule
