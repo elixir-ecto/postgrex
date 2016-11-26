@@ -62,7 +62,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
     %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec}
   end
 
-  defp split(microsecs) when microsecs < 0 do
+  defp split(microsecs) when microsecs < 0 and rem(microsecs, 1_000_000) != 0 do
     secs = div(microsecs, 1_000_000) - 1
     microsecs = 1_000_000 + rem(microsecs, 1_000_000)
     split(secs, microsecs)
@@ -77,16 +77,16 @@ defmodule Postgrex.Extensions.TimestampTZ do
     {:calendar.gregorian_seconds_to_datetime(secs + @gs_epoch), microsecs}
   end
 
-  if Code.ensure_loaded?(NativeDateTime) do
+  if Code.ensure_loaded?(DateTime) do
     def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
-      case DateTime.to_unix(date_time, :microseconds) do
+      case DateTime.to_unix(datetime, :microseconds) do
         microsecs when microsecs < @uus_max ->
           <<8 :: int32, microsecs - @uus_epoch :: int64>>
         _ ->
           raise ArgumentError, "#{inspect datetime} is beyond the maximum year 294276"
       end
     end
-    defp encode_elixir(%DateTime{} = datetime) do
+    def encode_elixir(%DateTime{} = datetime) do
       raise ArgumentError, "#{inspect datetime} is not in UTC"
     end
 
