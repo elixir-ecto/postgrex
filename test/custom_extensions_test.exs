@@ -2,7 +2,6 @@ defmodule CustomExtensionsTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
   alias Postgrex, as: P
-  alias Postgrex.TypeInfo
 
   defmodule BinaryExtension do
     @behaviour Postgrex.Extension
@@ -16,12 +15,17 @@ defmodule CustomExtensionsTest do
     def format([]),
       do: :binary
 
-    def encode(%TypeInfo{send: "int4send", oid: oid}, value, types, []) do
-      Postgrex.Types.encode(Postgrex.Extensions.Int4, oid, value + 1, types)
+    def encode([]) do
+      quote do
+        int ->
+          <<4::int32, int+1::int32>>
+      end
     end
 
-    def decode(%TypeInfo{send: "int4send", oid: oid}, bin, types, []) do
-      Postgrex.Types.decode(Postgrex.Extensions.Int4, oid, bin, types) + 1
+    def decode([]) do
+      quote do
+        <<4::int32, int::int32>> -> int + 1
+      end
     end
   end
 
@@ -37,11 +41,19 @@ defmodule CustomExtensionsTest do
     def format({}),
       do: :text
 
-    def encode(_info, value, _types, {}),
-      do: value
+    def encode({}) do
+      quote do
+        value ->
+          [<<byte_size(value)::int32>> | value]
+       end
+    end
 
-    def decode(_info, binary, _types, {}),
-      do: binary
+    def decode({}) do
+      quote do
+        <<len::int32, binary::binary-size(len)>> ->
+          binary
+      end
+    end
   end
 
   defmodule BadExtension do
