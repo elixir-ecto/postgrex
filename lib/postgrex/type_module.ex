@@ -208,14 +208,12 @@ defmodule Postgrex.TypeModule do
 
   defp encode_null(extension, :super_binary) do
     quote do
-      defp unquote(extension)(@null, _sub_oids, _sub_types) do
-        @null
-      end
+      defp unquote(extension)(@null, _sub_oids, _sub_types), do: <<-1::int32>>
     end
   end
   defp encode_null(extension, _) do
     quote do
-      defp unquote(extension)(@null), do: @null
+      defp unquote(extension)(@null), do: <<-1::int32>>
     end
   end
 
