@@ -295,13 +295,14 @@ defmodule QueryTest do
   end
 
   test "encoding oids as binary fails with a helpful error message", context do
-    assert %Postgrex.Error{message: message} = catch_error(query("select $1::regclass;", ["pg_type"]))
-    assert message =~ "See https://github.com/elixir-ecto/postgrex#oid-type-encoding"
+    assert_raise ArgumentError,
+      ~r"See https://github.com/elixir-ecto/postgrex#oid-type-encoding",
+      fn() -> query("select $1::regclass;", ["pg_type"]) end
   end
 
   test "fail on encoding wrong value", context do
     assert %ArgumentError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
-    assert message =~ "Postgrex expected an integer in -2147483648..2147483647 that can be encoded/cast to type \"int4\""
+    assert message =~ "Postgrex expected an integer in -2147483648..2147483647"
   end
 
   @tag min_pg_version: "9.0"

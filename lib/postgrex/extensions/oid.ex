@@ -13,6 +13,11 @@ defmodule Postgrex.Extensions.OID do
     quote location: :keep do
       oid when is_integer(oid) and oid in unquote(range) ->
         <<4 :: int32, oid :: uint32>>
+      binary when is_binary(binary) ->
+        msg = "you tried to use a binary instead for an oid type " <>
+              "(#{binary}) when an integer was expected. See " <>
+              "https://github.com/elixir-ecto/postgrex#oid-type-encoding"
+        raise ArgumentError, msg
       other ->
         raise ArgumentError, Postgrex.Utils.encode_msg(other, unquote(range))
     end
