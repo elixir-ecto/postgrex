@@ -68,11 +68,19 @@ defmodule CustomExtensionsTest do
     def format([]),
       do: :binary
 
-    def encode(%TypeInfo{send: "boolsend"}, _value, _types, []),
-      do: raise "encode"
+    def encode([]) do
+      quote do
+        _ ->
+          raise "encode"
+      end
+    end
 
-    def decode(%TypeInfo{send: "boolsend"}, _binary, _types, []),
-      do: raise "decode"
+    def decode([]) do
+      quote do
+        <<1::int32, _>> ->
+          raise "decode"
+      end
+    end
   end
 
   setup do
