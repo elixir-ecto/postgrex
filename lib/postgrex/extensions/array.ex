@@ -45,7 +45,7 @@ defmodule Postgrex.Extensions.Array do
     {data, ndims, lengths} = encode(list, 0, [], encoder)
     lengths = for len <- Enum.reverse(lengths), do: <<len :: int32, 1 :: int32>>
     iodata = [<<ndims :: int32, 0 :: int32, elem_oid :: uint32>>, lengths, data]
-    [IO.iodata_length(iodata) | iodata]
+    [<<IO.iodata_length(iodata)::int32>> | iodata]
   end
 
   defp encode([], ndims, lengths, _encoder) do
@@ -74,6 +74,8 @@ defmodule Postgrex.Extensions.Array do
 
   def decode(dims, elems) do
     case decode_dims(dims, []) do
+      [] when elems == [] ->
+        []
       [length] when length(elems) == length ->
         Enum.reverse(elems)
       lengths ->
@@ -86,7 +88,7 @@ defmodule Postgrex.Extensions.Array do
     decode_dims(rest, [len | acc])
   end
   defp decode_dims(<<>>, acc) do
-    acc
+    Enum.reverse(acc)
   end
 
   # elems and lengths in reverse order
