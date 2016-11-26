@@ -818,7 +818,8 @@ defmodule Postgrex.Protocol do
   defp describe_recv(s, status, %Query{ref: nil} = query, buffer, next) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_no_data(), buffer} ->
-        query = %Query{query | ref: make_ref(), types: s.types}
+        query = %Query{query | ref: make_ref(), types: s.types,
+                               result_formats: []}
         query_put(s, query)
         next.(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
@@ -849,7 +850,7 @@ defmodule Postgrex.Protocol do
         describe_error(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: ^param_oids), buffer} ->
         describe_recv(s, status, query, buffer, next)
-      {:ok, msg_parameter_desc(type_oids: ^param_oids), buffer} ->
+      {:ok, msg_parameter_desc(), buffer} ->
         describe_error(s, status, query, buffer)
       {:ok, msg_row_desc(fields: fields), buffer} ->
         case column_oids(fields) do
@@ -878,7 +879,8 @@ defmodule Postgrex.Protocol do
     case fetch_type_info(param_oids, types) do
       {:ok, param_info} ->
         {param_formats, param_types} = Enum.unzip(param_info)
-        query = %Query{query | param_formats: param_formats,
+        query = %Query{query | param_oids: param_oids,
+                               param_formats: param_formats,
                                param_types: param_types}
         describe_recv(s, status, query, buffer, next)
       {:error, err} ->
@@ -894,6 +896,7 @@ defmodule Postgrex.Protocol do
         {result_formats, result_types} = Enum.unzip(result_info)
         query = %Query{query | ref: make_ref(), types: types,
                                columns: col_names,
+                               result_oids: result_oids,
                                result_formats: result_formats,
                                result_types: result_types}
         query_put(s, query)
