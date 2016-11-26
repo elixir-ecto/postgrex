@@ -23,7 +23,7 @@ defmodule Postgrex.Query do
     types:          Postgrex.Types.state | nil}
 
   defstruct [:ref, :name, :statement, :param_oids, :param_formats, :param_types,
-    :columns, :result_oids, :result_formats, :result_types, :types, :null]
+    :columns, :result_oids, :result_formats, :result_types, :types]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do

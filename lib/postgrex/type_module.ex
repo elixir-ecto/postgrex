@@ -60,8 +60,6 @@ defmodule Postgrex.TypeModule do
       end
 
     quote do
-      def type_infos(), do: unquote(Macro.escape(type_infos))
-
       unquote(fetches)
       def fetch(_), do: {:error, nil}
     end

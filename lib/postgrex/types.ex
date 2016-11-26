@@ -271,7 +271,7 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  def fetch(mod, oid) do
+  def fetch(oid, mod) do
     apply(mod, :fetch, [oid])
   end
 
