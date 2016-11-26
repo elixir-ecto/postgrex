@@ -100,7 +100,8 @@ defmodule QueryTest do
            query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
     assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 123456}]] =
            query("SELECT timestamp '0001-01-01 00:00:00.123456'", [])
-
+    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 0}]] =
+           query("SELECT timestamp '0001-01-01 00:00:00'", [])
   end
 
   test "decode interval", context do
