@@ -118,7 +118,7 @@ defmodule Postgrex.TypeModule do
         acc = [acc, <<oid::uint32>> | encode_value(param, type)]
         encode_tuple(tuple, n+1, oids, types, acc)
       end
-      defp encode_tuple(tuple, n, [], [], acc) when tuple_size(tuple) > n do
+      defp encode_tuple(tuple, n, [], [], acc) when tuple_size(tuple) < n do
         acc
       end
       defp encode_tuple(tuple, _, [], [], _) when is_tuple(tuple), do: :error
