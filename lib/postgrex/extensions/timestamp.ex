@@ -55,7 +55,7 @@ defmodule Postgrex.Extensions.Timestamp do
     %Postgrex.Timestamp{year: year, month: month, day: day, hour: hour, min: min, sec: sec, usec: usec}
   end
 
-  defp split(microsecs) when microsecs < 0 do
+  defp split(microsecs) when microsecs < 0 and rem(microsecs, 1_000_000) != 0 do
     secs = div(microsecs, 1_000_000) - 1
     microsecs = 1_000_000 + rem(microsecs, 1_000_000)
     split(secs, microsecs)
