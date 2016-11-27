@@ -124,6 +124,30 @@ defmodule QueryTest do
     assert [[%Postgrex.Point{x: -97.0, y: 100.0}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
   end
 
+  test "decode polygon", context do
+    assert [[[
+              %Postgrex.Point{x: 100.0, y: 101.5},
+              %Postgrex.Point{x: 100.0, y: -99.1},
+              %Postgrex.Point{x: -91.1, y: -101.1},
+              %Postgrex.Point{x: -100.0, y: 99.9}
+            ]]] == query(
+      "SELECT '((100.0,101.5),(100.0,-99.1),(-91.1,-101.1),(-100.0,99.9))'::polygon",
+      []
+    )
+  end
+
+  test "encode polygon", context do
+    points = [
+      %Postgrex.Point{x: 100.0, y: 101.5},
+      %Postgrex.Point{x: 100.0, y: -99.1},
+      %Postgrex.Point{x: -91.1, y: -101.1},
+      %Postgrex.Point{x: -100.0, y: 99.9}
+    ]
+    assert [[points]] == query("SELECT $1::polygon", [points])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [1]))
+    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [["x"]]))
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end

@@ -19,6 +19,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Numeric,
     Postgrex.Extensions.OID,
     Postgrex.Extensions.Point,
+    Postgrex.Extensions.Polygon,
     Postgrex.Extensions.Range,
     Postgrex.Extensions.Raw,
     Postgrex.Extensions.Record,
@@ -83,6 +84,7 @@ defmodule Postgrex.Utils do
   ## Helpers
 
   defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"
+  defp to_desc([Postgrex.Point]), do: "a list of %Postgrex.Point{}"
   defp to_desc(%Range{} = range), do: "an integer in #{inspect range}"
   defp to_desc({a, b}), do: to_desc(a) <> " or " <> to_desc(b)
   defp to_desc(desc) when is_binary(desc), do: desc
