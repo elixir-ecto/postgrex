@@ -203,3 +203,19 @@ defmodule Postgrex.LineSegment do
 
   defstruct point1: nil, point2: nil
 end
+
+defmodule Postgrex.Box do
+  @moduledoc """
+  Struct for Postgres rectangular box.
+
+  ## Fields
+    * `upper_right`
+    * `bottom_left`
+  """
+  @type t :: %__MODULE__{
+    upper_right: Postgrex.Point.t,
+    bottom_left: Postgrex.Point.t
+  }
+
+  defstruct upper_right: nil, bottom_left: nil
+end

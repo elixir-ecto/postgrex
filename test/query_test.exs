@@ -190,6 +190,29 @@ defmodule QueryTest do
       catch_error(query("SELECT $1::lseg", [%Postgrex.LineSegment{}]))
   end
 
+  test "decode box", context do
+    box = %Postgrex.Box{
+      upper_right: %Postgrex.Point{x: 1.0,  y: 1.0},
+      bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
+    }
+    # postgres automatically sorts the points so that we get UR/BL
+    assert [[box]] == query("SELECT '(0.0,0.0)(1.0,1.0)'::box", [])
+    assert [[box]] == query("SELECT '(1.0,1.0)(0.0,0.0)'::box", [])
+    assert [[box]] == query("SELECT '(1.0,0.0)(0.0,1.0)'::box", [])
+    assert [[box]] == query("SELECT '(0.0,1.0)(1.0,0.0)'::box", [])
+  end
+
+  test "encode box", context do
+    box = %Postgrex.Box{
+      upper_right: %Postgrex.Point{x: 1.0,  y: 1.0},
+      bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
+    }
+    assert [[box]] == query("SELECT $1::box", [box])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::box", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::box", [%Postgrex.Box{}]))
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end

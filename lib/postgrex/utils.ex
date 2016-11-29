@@ -5,6 +5,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Array,
     Postgrex.Extensions.BitString,
     Postgrex.Extensions.Bool,
+    Postgrex.Extensions.Box,
     Postgrex.Extensions.Date,
     Postgrex.Extensions.Float4,
     Postgrex.Extensions.Float8,
