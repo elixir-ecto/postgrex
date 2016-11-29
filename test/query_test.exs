@@ -125,27 +125,33 @@ defmodule QueryTest do
   end
 
   test "decode polygon", context do
-    assert [[[
-              %Postgrex.Point{x: 100.0, y: 101.5},
-              %Postgrex.Point{x: 100.0, y: -99.1},
-              %Postgrex.Point{x: -91.1, y: -101.1},
-              %Postgrex.Point{x: -100.0, y: 99.9}
-            ]]] == query(
-      "SELECT '((100.0,101.5),(100.0,-99.1),(-91.1,-101.1),(-100.0,99.9))'::polygon",
-      []
+    assert [[
+             %Postgrex.Polygon{vertices: [
+                                  %Postgrex.Point{x: 100.0, y: 101.5},
+                                  %Postgrex.Point{x: 100.0, y: -99.1},
+                                  %Postgrex.Point{x: -91.1, y: -101.1},
+                                  %Postgrex.Point{x: -100.0, y: 99.9}
+                                ]}
+           ]] == query(
+      "SELECT '((100.0,101.5),(100.0,-99.1),(-91.1,-101.1),(-100.0,99.9))'" <>
+        "::polygon", []
     )
   end
 
   test "encode polygon", context do
-    points = [
-      %Postgrex.Point{x: 100.0, y: 101.5},
-      %Postgrex.Point{x: 100.0, y: -99.1},
-      %Postgrex.Point{x: -91.1, y: -101.1},
-      %Postgrex.Point{x: -100.0, y: 99.9}
-    ]
-    assert [[points]] == query("SELECT $1::polygon", [points])
+    polygon = %Postgrex.Polygon{
+      vertices: [
+        %Postgrex.Point{x: 100.0, y: 101.5},
+        %Postgrex.Point{x: 100.0, y: -99.1},
+        %Postgrex.Point{x: -91.1, y: -101.1},
+        %Postgrex.Point{x: -100.0, y: 99.9}
+      ]
+    }
+    assert [[polygon]] == query("SELECT $1::polygon", [polygon])
     assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [["x"]]))
+    assert %ArgumentError{} = catch_error(
+      query("SELECT $1::polygon", [%Postgrex.Polygon{vertices: ["x"]}])
+    )
   end
 
   test "decode name", context do

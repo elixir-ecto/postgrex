@@ -161,3 +161,15 @@ defmodule Postgrex.Point do
     x: nil,
     y: nil]
 end
+
+defmodule Postgrex.Polygon do
+  @moduledoc """
+  Struct for Postgres polygon.
+
+  ## Fields
+    * `vertices`
+  """
+  @type t :: %__MODULE__{vertices: [Postgrex.Point.t]}
+
+  defstruct vertices: []
+end
