@@ -173,3 +173,20 @@ defmodule Postgrex.Polygon do
 
   defstruct vertices: []
 end
+
+defmodule Postgrex.Line do
+  @moduledoc """
+  Struct for Postgres line.
+
+  Note, lines are stored in Postgres in the form `{a,b,c}`, which
+  parameterizes a line as `a*x + b*y + c = 0`.
+
+  ## Fields
+    * `a`
+    * `b`
+    * `c`
+  """
+  @type t :: %__MODULE__{a: float, b: float, c: float}
+
+  defstruct a: nil, b: nil, c: nil
+end

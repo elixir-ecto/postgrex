@@ -154,6 +154,23 @@ defmodule QueryTest do
     )
   end
 
+  test "decode line", context do
+    # 98.6x - y = 0 <=> y = 98.6x
+    line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
+    assert [[line]] == query("SELECT '{98.6,-1.0,0.0}'::line", [])
+    assert [[line]] == query("SELECT '(0.0,0.0),(1.0,98.6)'::line", [])
+  end
+
+  test "encode line", context do
+    # 98.6x - y = 0 <=> y = 98.6x
+    line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
+    assert [[line]] == query("SELECT $1::line", [line])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::line", ["foo"]))
+    assert %ArgumentError{} = catch_error(
+      query("SELECT $1::line", [%Postgrex.Line{a: nil, b: "foo"}])
+    )
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end
