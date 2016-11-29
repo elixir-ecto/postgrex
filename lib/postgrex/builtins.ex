@@ -190,3 +190,16 @@ defmodule Postgrex.Line do
 
   defstruct a: nil, b: nil, c: nil
 end
+
+defmodule Postgrex.LineSegment do
+  @moduledoc """
+  Struct for Postgres line segment.
+
+  ## Fields
+    * `point1`
+    * `point2`
+  """
+  @type t :: %__MODULE__{point1: Postgrex.Point.t, point2: Postgrex.Point.t}
+
+  defstruct point1: nil, point2: nil
+end

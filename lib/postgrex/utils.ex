@@ -14,6 +14,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Int8,
     Postgrex.Extensions.Interval,
     Postgrex.Extensions.Line,
+    Postgrex.Extensions.LineSegment,
     Postgrex.Extensions.MACADDR,
     Postgrex.Extensions.Name,
     Postgrex.Extensions.Network,

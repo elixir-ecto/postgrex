@@ -171,6 +171,25 @@ defmodule QueryTest do
     )
   end
 
+  test "decode line segment", context do
+    segment = %Postgrex.LineSegment{
+      point1: %Postgrex.Point{x: 0.0,  y: 0.0},
+      point2: %Postgrex.Point{x: 1.0,  y: 1.0}
+    }
+    assert [[segment]] == query("SELECT '(0.0,0.0)(1.0,1.0)'::lseg", [])
+  end
+
+  test "encode line segment", context do
+    segment = %Postgrex.LineSegment{
+      point1: %Postgrex.Point{x: 0.0,  y: 0.0},
+      point2: %Postgrex.Point{x: 1.0,  y: 1.0}
+    }
+    assert [[segment]] == query("SELECT $1::lseg", [segment])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::lseg", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::lseg", [%Postgrex.LineSegment{}]))
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end
