@@ -154,6 +154,7 @@ defmodule QueryTest do
     )
   end
 
+  @tag min_pg_version: "9.4"
   test "decode line", context do
     # 98.6x - y = 0 <=> y = 98.6x
     line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
@@ -161,6 +162,7 @@ defmodule QueryTest do
     assert [[line]] == query("SELECT '(0.0,0.0),(1.0,98.6)'::line", [])
   end
 
+  @tag min_pg_version: "9.4"
   test "encode line", context do
     # 98.6x - y = 0 <=> y = 98.6x
     line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
