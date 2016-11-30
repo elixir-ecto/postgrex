@@ -246,6 +246,34 @@ defmodule QueryTest do
     assert [[path]] == query("SELECT $1::path", [path])
   end
 
+  test "decode circle", context do
+    circle = %Postgrex.Circle{
+      center: %Postgrex.Point{x: 1.0, y: -3.5},
+      radius: 100.0
+    }
+    assert [[circle]] == query("SELECT '<(1.0,-3.5),100.0>'::circle", [])
+  end
+
+  test "encode circle", context do
+    circle = %Postgrex.Circle{
+      center: %Postgrex.Point{x: 1.0, y: -3.5},
+      radius: 100.0
+    }
+    assert [[circle]] == query("SELECT $1::circle", [circle])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", ["snu"]))
+    assert %ArgumentError{} =
+      catch_error(query(
+            "SELECT $1::path",
+            [%Postgrex.Circle{center: 1.5, radius: 1.0}]
+          ))
+    assert %ArgumentError{} =
+      catch_error(query(
+            "SELECT $1::path",
+            [%Postgrex.Circle{center: %Postgrex.Point{x: 1.0, y: 0.0},
+                              radius: "five"}]
+          ))
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end

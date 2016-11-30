@@ -232,3 +232,16 @@ defmodule Postgrex.Path do
 
   defstruct points: [], open: false
 end
+
+defmodule Postgrex.Circle do
+  @moduledoc """
+  Struct for Postgres circle.
+
+  ## Fields
+    * `center`
+    * `radius`
+  """
+  @type t :: %__MODULE__{center: Postgrex.Point.t, radius: number}
+
+  defstruct center: %Postgrex.Point{}, radius: nil
+end
