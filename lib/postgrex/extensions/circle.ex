@@ -5,10 +5,10 @@ defmodule Postgrex.Extensions.Circle do
 
   def encode(
     _,
-    circle = %Postgrex.Circle{center: %Postgrex.Point{}, radius: radius},
+    %Postgrex.Circle{center: %Postgrex.Point{x: x, y: y}, radius: radius},
     _, _)
-  when is_number(radius) and radius >= 0 do
-    <<circle.center.x::float64, circle.center.y::float64, radius::float64>>
+  when is_number(x) and is_number(y) and is_number(radius) and radius >= 0 do
+    <<x::float64, y::float64, radius::float64>>
   end
   def encode(type_info, value, _, _) do
     raise ArgumentError,

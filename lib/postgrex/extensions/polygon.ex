@@ -1,6 +1,7 @@
 defmodule Postgrex.Extensions.Polygon do
   @moduledoc false
   import Postgrex.BinaryUtils
+  import Postgrex.Extensions.Point, only: [encode_point: 3]
   use Postgrex.BinaryExtension, send: "poly_send"
 
   def encode(type_info, polygon = %Postgrex.Polygon{vertices: vertices}, _, _)
@@ -8,7 +9,7 @@ defmodule Postgrex.Extensions.Polygon do
     [
       <<length(polygon.vertices)::int32>>,
       Enum.map(polygon.vertices,
-        fn(point) -> encode_point(type_info, point) end)
+        fn(point) -> encode_point(type_info, point, Postgrex.Polygon) end)
     ]
   end
   def encode(type_info, value, _, _) do
@@ -19,13 +20,6 @@ defmodule Postgrex.Extensions.Polygon do
   def decode(_, data, _, _) do
     <<length::int32, rest::bits>> = data
     decode_point(length, %Postgrex.Polygon{vertices: []}, rest)
-  end
-
-  defp encode_point(_, %Postgrex.Point{x: x, y: y}),
-    do: <<x::float64, y::float64>>
-  defp encode_point(type_info, point) do
-    raise ArgumentError,
-      Postgrex.Utils.encode_msg(type_info, point, Postgrex.Polygon)
   end
 
   defp decode_point(0, polygon, _), do: polygon

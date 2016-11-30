@@ -201,7 +201,7 @@ defmodule Postgrex.LineSegment do
   """
   @type t :: %__MODULE__{point1: Postgrex.Point.t, point2: Postgrex.Point.t}
 
-  defstruct point1: nil, point2: nil
+  defstruct point1: %Postgrex.Point{}, point2: %Postgrex.Point{}
 end
 
 defmodule Postgrex.Box do
@@ -217,7 +217,7 @@ defmodule Postgrex.Box do
     bottom_left: Postgrex.Point.t
   }
 
-  defstruct upper_right: nil, bottom_left: nil
+  defstruct upper_right: %Postgrex.Point{}, bottom_left: %Postgrex.Point{}
 end
 
 defmodule Postgrex.Path do
