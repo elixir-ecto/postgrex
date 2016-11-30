@@ -65,6 +65,14 @@ defmodule Postgrex.TypeModule do
     end
   end
 
+  defp maybe_rewrite(ast, clauses) do
+    if Application.fetch_env!(:postgrex, :debug_extensions) do
+      rewrite(ast, clauses)
+    else
+      ast
+    end
+  end
+
   defp rewrite(ast, [{:->, meta, _} | _original]) do
     location = [file: meta[:file] || "nofile", line: meta[:keep] || 1]
 
@@ -93,7 +101,7 @@ defmodule Postgrex.TypeModule do
 
           unquote(encode_inline(extension, format))
 
-          unquote(clauses |> rewrite(encode))
+          unquote(clauses |> maybe_rewrite(encode))
         end
       end
 
@@ -253,7 +261,7 @@ defmodule Postgrex.TypeModule do
             decode_type(extension, format, clause, row_dispatch, rest, acc)
           end
         quote do
-          unquote(clauses |> rewrite(decode))
+          unquote(clauses |> maybe_rewrite(decode))
 
           unquote(decode_null(extension, format, row_dispatch, rest, acc))
         end

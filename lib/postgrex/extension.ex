@@ -1,14 +1,14 @@
 defmodule Postgrex.Extension do
   @moduledoc """
-  An extension knows how to encode and decode Postgres types to and from Elixir
-  values. Custom extensions can be enabled using the `:extensions` option in
-  `Postgrex.start_link/1`.
+  An extension knows how to encode and decode Postgres types to and
+  from Elixir values.
 
+  Custom extensions can be enabled using the `:extensions` option in
+  `Postgrex.start_link/1`.
 
   For example to support label trees using the text encoding format:
 
       defmodule MyApp.LTree do
-
         @behaviour Postgrex.Extension
 
         # It can be memory efficient to copy the decoded binary because a
@@ -57,6 +57,17 @@ defmodule Postgrex.Extension do
 
   This example is enabled with
   `Postgrex.start_link([extensions: [{MyApp.LTree, :copy}]])`.
+
+  When starting Postgrex with a custom extension, you may see new warnings
+  coming from "lib/postgrex/type_modules.ex" caused by your extension. Those
+  warnings are triggered when Postgrex is compiling the extensions into a
+  unified parser. To retrieve the proper file and line, you can set `:postgrex`
+  to debug mode with the following configuration:
+
+      config :postgrex, :debug_extensions, true
+
+  Once such configuration is set, starting Postgrex is slower but provides
+  proper feedback.
   """
 
   alias Postgrex.Types
