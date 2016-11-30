@@ -46,22 +46,23 @@ defmodule Postgrex.TypeModule do
         case info do
           {format, type} ->
             quote do
-              def fetch(unquote(oid)) do
+              unquote(oid) ->
                 {:ok, {unquote(format), unquote(Macro.escape(type))}}
-              end
             end
           nil ->
             quote do
-              def fetch(unquote(oid)) do
+              unquote(oid) ->
                 {:error, unquote(Macro.escape(info))}
-              end
             end
-        end
+        end |> hd()
       end
 
+    fetches = fetches ++ quote do: (_ -> {:error, nil})
+
     quote do
-      unquote(fetches)
-      def fetch(_), do: {:error, nil}
+      def fetch(oid) do
+        case oid, do: unquote(fetches)
+      end
     end
   end
 
@@ -337,7 +338,7 @@ defmodule Postgrex.TypeModule do
   defp decode_list_dispatch(extension, _, rest) do
     [clause] =
       quote do
-        unquote(extension)->
+        unquote(extension) ->
           unquote(extension)(unquote(rest), [])
       end
     clause
