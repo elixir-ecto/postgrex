@@ -219,3 +219,16 @@ defmodule Postgrex.Box do
 
   defstruct upper_right: nil, bottom_left: nil
 end
+
+defmodule Postgrex.Path do
+  @moduledoc """
+  Struct for Postgres path.
+
+  ## Fields
+    * `open`
+    * `points`
+  """
+  @type t :: %__MODULE__{points: [Postgrex.Point.t], open: boolean}
+
+  defstruct points: [], open: false
+end

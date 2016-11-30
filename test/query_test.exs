@@ -215,6 +215,37 @@ defmodule QueryTest do
       catch_error(query("SELECT $1::box", [%Postgrex.Box{}]))
   end
 
+  test "decode path", context do
+    path = %Postgrex.Path{
+      points: [
+        %Postgrex.Point{x: 0.0, y: 0.0},
+        %Postgrex.Point{x: 1.0, y: 3.0},
+        %Postgrex.Point{x: -4.0, y: 3.14}
+      ]
+    }
+    assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::path", [%Postgrex.Path{points: "foo"}]))
+    assert %ArgumentError{} =
+      catch_error(query(
+            "SELECT $1::path",
+            [%Postgrex.Path{points: [], open: "nah"}]
+          )
+      )
+  end
+
+  test "encode path", context do
+    path = %Postgrex.Path{
+      points: [
+        %Postgrex.Point{x: 0.0, y: 0.0},
+        %Postgrex.Point{x: 1.0, y: 3.0},
+        %Postgrex.Point{x: -4.0, y: 3.14}
+      ]
+    }
+    assert [[path]] == query("SELECT $1::path", [path])
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end
