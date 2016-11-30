@@ -19,7 +19,7 @@ defmodule Postgrex.Mixfile do
   def application do
     [applications: [:logger, :db_connection, :decimal],
      mod: {Postgrex.App, []},
-     env: [type_server_reap_after: 3 * 60_000]]
+     env: [type_server_reap_after: 3 * 60_000, debug_extensions: false]]
   end
 
   defp deps do
