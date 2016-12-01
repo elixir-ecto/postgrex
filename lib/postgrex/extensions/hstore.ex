@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.HStore do
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, type: "hstore"
 
-  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+  def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
     quote location: :keep do

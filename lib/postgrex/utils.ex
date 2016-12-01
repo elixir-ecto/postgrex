@@ -62,6 +62,7 @@ defmodule Postgrex.Utils do
     |> Keyword.put_new(:database, System.get_env("PGDATABASE"))
     |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
     |> Keyword.update(:port, normalize_port(System.get_env("PGPORT")), &normalize_port/1)
+    |> Keyword.put_new(:types, Postgrex.DefaultTypes)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
   end
 

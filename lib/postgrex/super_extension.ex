@@ -3,7 +3,7 @@ defmodule Postgrex.SuperExtension do
 
   @type opts :: term
 
-  @callback init(Map.t, term) :: opts
+  @callback init(term) :: opts
 
   @callback matching(opts) :: [type: String.t,
                                  send: String.t,
@@ -13,7 +13,7 @@ defmodule Postgrex.SuperExtension do
 
   @callback format(opts) :: :super_binary
 
-  @callback oids(Postgrex.TypeInfo.t, opts) :: [Postgrex.Types.oid]
+  @callback oids(Postgrex.TypeInfo.t, opts) :: nil | [Postgrex.Types.oid]
 
   @callback encode(opts) :: Macro.expr
 

@@ -91,7 +91,7 @@ defmodule Postgrex do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    opts = [types: true] ++ Postgrex.Utils.default_opts(opts)
+    opts = Postgrex.Utils.default_opts(opts)
     DBConnection.start_link(Postgrex.Protocol, opts)
   end
 

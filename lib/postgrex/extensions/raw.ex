@@ -5,7 +5,7 @@ defmodule Postgrex.Extensions.Raw do
      send: "byteasend", send: "enum_send", send: "unknownsend",
      send: "citextsend", send: "charsend"]
 
-  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+  def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
     quote location: :keep do

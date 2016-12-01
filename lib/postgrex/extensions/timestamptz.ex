@@ -14,7 +14,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
     @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
   end
 
-  def init(_, opts), do: Keyword.fetch!(opts, :date)
+  def init(opts), do: Keyword.fetch!(opts, :date)
 
   def encode(:postgrex) do
     quote location: :keep do

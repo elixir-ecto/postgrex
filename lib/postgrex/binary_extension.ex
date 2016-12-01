@@ -6,13 +6,13 @@ defmodule Postgrex.BinaryExtension do
 
       @behaviour Postgrex.Extension
 
-      def init(_, _), do: nil
+      def init(_), do: nil
 
       def matching(_), do: unquote(matching)
 
       def format(_), do: :binary
 
-      defoverridable [init: 2]
+      defoverridable [init: 1]
     end
   end
 end

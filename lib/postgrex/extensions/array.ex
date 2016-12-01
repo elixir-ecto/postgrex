@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.Array do
   import Postgrex.BinaryUtils
   @behaviour Postgrex.SuperExtension
 
-  def init(_, _), do: nil
+  def init(_), do: nil
 
   def matching(_),
     do: [send: "array_send"]

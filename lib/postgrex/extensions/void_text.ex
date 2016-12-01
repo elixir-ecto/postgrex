@@ -1,8 +1,9 @@
 defmodule Postgrex.Extensions.VoidText do
   @moduledoc false
   @behaviour Postgrex.Extension
+  import Postgrex.BinaryUtils
 
-  def init(_, _), do: nil
+  def init(_), do: nil
 
   def matching(_), do: [output: "void_out"]
 

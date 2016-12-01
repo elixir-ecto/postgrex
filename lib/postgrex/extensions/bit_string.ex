@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.BitString do
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, [send: "bit_send",send: "varbit_send"]
 
-  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+  def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
     quote location: :keep do

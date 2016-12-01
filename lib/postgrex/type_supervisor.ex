@@ -3,25 +3,25 @@ defmodule Postgrex.TypeSupervisor do
 
   use Supervisor
 
-  def start_link(mode \\ :code)
+  def start_link(mode \\ :manager)
 
-  def start_link(:code) do
-    Supervisor.start_link(__MODULE__, :code)
+  def start_link(:manager) do
+    Supervisor.start_link(__MODULE__, :manager)
   end
-  def start_link(:types) do
-    Supervisor.start_link(__MODULE__, :types, [name: __MODULE__])
+  def start_link(:servers) do
+    Supervisor.start_link(__MODULE__, :servers, [name: __MODULE__])
   end
 
   def start_server(module, starter) do
     Supervisor.start_child(__MODULE__, [module, starter])
   end
 
-  def init(:code) do
-    code     = worker(Postgrex.CodeServer, [])
-    type_sup = supervisor(__MODULE__, [:types])
-    supervise([code, type_sup], [strategy: :rest_for_one])
+  def init(:manager) do
+    manager    = worker(Postgrex.TypeManager, [])
+    server_sup = supervisor(__MODULE__, [:servers])
+    supervise([manager, server_sup], [strategy: :rest_for_one])
   end
-  def init(:types) do
+  def init(:servers) do
     # TypeServer is temporary so that a bad extension does not bubble up the
     # Postgrex supervision tree. Instead it should bubble up the supervision
     # tree of the application starting the Postgrex pool.

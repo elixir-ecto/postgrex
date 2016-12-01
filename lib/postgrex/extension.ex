@@ -17,7 +17,7 @@ defmodule Postgrex.Extension do
         # binary to be garbage collected sooner if the copy is going to be kept
         # for a longer period of time. See `:binary.copy/1` for more
         # information.
-        def init(_parameters, opts) when opts in [:reference, :copy], do: opts
+        def init(opts) when opts in [:reference, :copy], do: opts
 
         # Use this extension when `type` from %Postgrex.TypeInfo{} is "ltree"
         def matching(_opts), do: [type: "ltree"]
@@ -78,11 +78,10 @@ defmodule Postgrex.Extension do
 
   @doc """
   Should perform any initialization of the extension. The function receives the
-  server parameters (http://www.postgresql.org/docs/9.4/static/runtime-config.html)
-  and user options. The options returned from this function will be passed to
-  all other callbacks.
+  user options. The options returned from this function will be passed to other
+  callbacks.
   """
-  @callback init(Map.t, term) :: opts
+  @callback init(term) :: opts
 
   @doc """
   Specifies the types the extension matches, see `Postgrex.TypeInfo` for

@@ -90,7 +90,7 @@ defmodule Postgrex.Notifications do
   end
 
   def connect(_, opts) do
-    case Protocol.connect([types: false] ++ opts) do
+    case Protocol.connect([types: nil] ++ opts) do
       {:ok, protocol} ->
         {:ok, %__MODULE__{protocol: protocol}}
       {:error, reason} ->
