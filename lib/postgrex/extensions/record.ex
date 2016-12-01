@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.Record do
   import Postgrex.BinaryUtils
   @behaviour Postgrex.SuperExtension
 
-  def init(_, _), do: nil
+  def init(_), do: nil
 
   def matching(_),
     do: [send: "record_send"]
@@ -11,6 +11,8 @@ defmodule Postgrex.Extensions.Record do
   def format(_),
     do: :super_binary
 
+  def oids(%Postgrex.TypeInfo{comp_elems: []}, _),
+    do: nil
   def oids(%Postgrex.TypeInfo{comp_elems: comp_oids}, _),
     do: comp_oids
 
@@ -34,10 +36,10 @@ defmodule Postgrex.Extensions.Record do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32, binary::binary-size(len)>>, [], [] ->
+      <<len::int32, binary::binary-size(len)>>, nil, types ->
         <<count::int32, data::binary>> = binary
-        # decode_tuple/2 defined by TypeModule
-        decode_tuple(data, count)
+        # decode_tuple/3 defined by TypeModule
+        decode_tuple(data, count, types)
       <<len::int32, binary::binary-size(len)>>, oids, types ->
         <<_::int32, data::binary>> = binary
         # decode_tuple/3 defined by TypeModule

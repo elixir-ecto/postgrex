@@ -7,7 +7,7 @@ defmodule Postgrex.Extensions.Date do
   @max_year 5874897
   @gd_max :calendar.date_to_gregorian_days({@max_year+1, 1, 1})
 
-  def init(_, opts), do: Keyword.fetch!(opts, :date)
+  def init(opts), do: Keyword.fetch!(opts, :date)
 
   def encode(:postgrex) do
     quote location: :keep do

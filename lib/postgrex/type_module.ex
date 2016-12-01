@@ -1,20 +1,15 @@
 defmodule Postgrex.TypeModule do
-  alias Postgrex.Types
   alias Postgrex.TypeInfo
 
-  def define(module, parameters, type_infos, extensions, opts \\ []) do
+  def define(module, extensions, opts \\ []) do
     opts =
       opts
       |> Keyword.put_new(:decode_binary, :copy)
       |> Keyword.put_new(:null, nil)
       |> Keyword.put_new(:date, :postgrex)
-    {type_infos, config} = associate(parameters, type_infos, extensions, opts)
+    config = configure(extensions, opts)
     null = Keyword.get(opts, :null)
-    define_inline(module, type_infos, config, null)
-  end
-
-  def write(file, module, parameters, type_infos, extensions, opts \\ []) do
-    File.write(file, generate(module, parameters, type_infos, extensions, opts))
+    define_inline(module, config, null)
   end
 
   ## Helpers
@@ -40,34 +35,43 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp fetch(type_infos) do
-    fetches =
-      for {%TypeInfo{oid: oid}, info} <- type_infos do
-        case info do
-          {format, type} ->
-            quote do
-              unquote(oid) ->
-                {:ok, {unquote(format), unquote(Macro.escape(type))}}
-            end
-          nil ->
-            quote do
-              unquote(oid) ->
-                {:error, unquote(Macro.escape(info))}
-            end
-        end |> hd()
-      end
-
-    fetches = fetches ++ quote do: (_ -> {:error, nil})
-
-    quote do
-      def fetch(oid) do
-        case oid, do: unquote(fetches)
+  defp find(config) do
+    clauses = Enum.flat_map(config, &find_clauses/1)
+    clauses = clauses ++ quote do: (_ -> nil)
+    quote generated: true do
+      def find(type_info, formats) do
+        case {type_info, formats} do
+          unquote(clauses)
+        end
       end
     end
   end
 
+  defp find_clauses({extension, {opts, matching, format}}) do
+    for {key, value} <- matching do
+      [clause] = find_clause(extension, opts, key, value, format)
+      clause
+    end
+  end
+
+  defp find_clause(extension, opts, key, value, :super_binary) do
+    quote do
+      {%{unquote(key) => unquote(value)} = type_info, formats}
+          when formats in [:any, :binary] ->
+      oids = unquote(extension).oids(type_info, unquote(opts))
+      {:super_binary, unquote(extension), oids}
+    end
+  end
+  defp find_clause(extension, _opts, key, value, format) do
+    quote do
+      {%{unquote(key) => unquote(value)}, formats}
+          when formats in [:any, unquote(format)] ->
+        {unquote(format), unquote(extension)}
+    end
+  end
+
   defp maybe_rewrite(ast, clauses) do
-    if Application.fetch_env!(:postgrex, :debug_extensions) do
+    if Application.get_env(:postgrex, :debug_extensions) do
       rewrite(ast, clauses)
     else
       ast
@@ -361,8 +365,8 @@ defmodule Postgrex.TypeModule do
        end
 
     quote do
-      def decode_tuple(<<rest::binary>>, count) do
-        decode_tuple(rest, count, nil, 0, [])
+      def decode_tuple(<<rest::binary>>, count, types) when is_integer(count) do
+        decode_tuple(rest, count, types, count, [])
       end
       def decode_tuple(<<rest::binary>>, oids, types) do
         decode_tuple(rest, oids, types, 0, [])
@@ -379,12 +383,12 @@ defmodule Postgrex.TypeModule do
         :erlang.make_tuple(n, @null, acc)
       end
       defp decode_tuple(<<oid::int32, unquote(rest)::binary>>,
-                        rem, nil,
+                        rem, types,
                         unquote(n), unquote(acc)) when rem > 0 do
-        case fetch(oid) do
+        case Postgrex.Types.fetch(oid, types) do
           {:ok, {:binary, type}} ->
             unquote(oids) = rem - 1
-            case [type | nil] do
+            case [type | types] do
               unquote(dispatch)
             end
           {:ok, {:text, _}} ->
@@ -400,7 +404,7 @@ defmodule Postgrex.TypeModule do
             raise RuntimeError, msg
         end
       end
-      defp decode_tuple(<<>>, 0, nil, n, acc) do
+      defp decode_tuple(<<>>, 0, _types, n, acc) do
         :erlang.make_tuple(n, @null, acc)
       end
     end
@@ -595,33 +599,19 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp associate(parameters, type_infos, extension_opts, opts) do
+  defp configure(extensions, opts) do
     defaults = Postgrex.Utils.default_extensions(opts)
-    extension_opts = extension_opts ++ defaults
-    extensions = for {extension, _} <- extension_opts, do: extension
-    config = Types.configure(parameters, extension_opts)
-    {Types.associate_type_infos(type_infos, extensions, config), config}
+    for {extension, arg} <- extensions ++ defaults do
+      opts     = extension.init(arg)
+      matching = extension.matching(opts)
+      format   = extension.format(opts)
+      {extension, {opts, matching, format}}
+    end
   end
 
-  defp define_inline(module, type_infos, config, null) do
-    quoted = [directives(config), attributes(null), fetch(type_infos),
+  defp define_inline(module, config, null) do
+    quoted = [directives(config), attributes(null), find(config),
               encode(config), decode(config)]
     Module.create(module, quoted, Macro.Env.location(__ENV__))
-  end
-
-  defp generate(module, parameters, types, extensions, opts) do
-    ["parameters =\n",
-     gen_inspect(parameters), ?\n,
-     "type_infos =\n",
-     gen_inspect(types), ?\n,
-     "extensions =\n",
-     gen_inspect(extensions), ?\n,
-     gen_inspect(__MODULE__),
-      ".define(#{gen_inspect(module)}, parameters, type_infos, extensions, ",
-      gen_inspect(opts), ")\n"]
-  end
-
-  defp gen_inspect(term) do
-    inspect(term, [limit: :infinity, width: 80, pretty: true])
   end
 end

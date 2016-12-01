@@ -2,7 +2,7 @@ defmodule Postgrex.Extensions.Name do
   @moduledoc false
   use Postgrex.BinaryExtension, send: "namesend"
 
-  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+  def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
     quote location: :keep do

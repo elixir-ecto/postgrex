@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.JSON do
   @behaviour Postgrex.Extension
   import Postgrex.BinaryUtils
 
-  def init(_parameters, opts) do
+  def init(opts) do
     {Keyword.get(opts, :decode_binary, :copy), Keyword.get(opts, :json)}
   end
 

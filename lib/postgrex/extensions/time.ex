@@ -4,7 +4,7 @@ defmodule Postgrex.Extensions.Time do
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, [send: "time_send"]
 
-  def init(_, opts), do: Keyword.fetch!(opts, :date)
+  def init(opts), do: Keyword.fetch!(opts, :date)
 
   def encode(:postgrex) do
     quote location: :keep do

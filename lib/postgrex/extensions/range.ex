@@ -10,7 +10,7 @@ defmodule Postgrex.Extensions.Range do
   @range_lb_inf  0x08
   @range_ub_inf  0x10
 
-  def init(_, _), do: nil
+  def init(_), do: nil
 
   def matching(_),
     do: [send: "range_send"]

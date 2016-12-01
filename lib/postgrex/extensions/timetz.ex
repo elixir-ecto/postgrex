@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.TimeTZ do
 
   @day (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000
 
-  def init(_, opts), do: Keyword.fetch!(opts, :date)
+  def init(opts), do: Keyword.fetch!(opts, :date)
 
   def encode(:postgrex) do
     quote location: :keep do
