@@ -1857,7 +1857,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp rows_recv(%{sock: {mod, sock}} = s, result_types, rows, buffer, more) do
-    case mod.recv(sock, min(more, @max_packet), :infinity) do
+    case mod.recv(sock, 0, :infinity) do
       {:ok, data} when byte_size(data) < more ->
         rows_recv(s, result_types, rows, [buffer | data], more-byte_size(data))
       {:ok, data} when is_binary(buffer) ->
