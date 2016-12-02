@@ -124,6 +124,156 @@ defmodule QueryTest do
     assert [[%Postgrex.Point{x: -97.0, y: 100.0}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
   end
 
+  test "decode polygon", context do
+    assert [[
+             %Postgrex.Polygon{vertices: [
+                                  %Postgrex.Point{x: 100.0, y: 101.5},
+                                  %Postgrex.Point{x: 100.0, y: -99.1},
+                                  %Postgrex.Point{x: -91.1, y: -101.1},
+                                  %Postgrex.Point{x: -100.0, y: 99.9}
+                                ]}
+           ]] == query(
+      "SELECT '((100.0,101.5),(100.0,-99.1),(-91.1,-101.1),(-100.0,99.9))'" <>
+        "::polygon", []
+    )
+  end
+
+  test "encode polygon", context do
+    polygon = %Postgrex.Polygon{
+      vertices: [
+        %Postgrex.Point{x: 100.0, y: 101.5},
+        %Postgrex.Point{x: 100.0, y: -99.1},
+        %Postgrex.Point{x: -91.1, y: -101.1},
+        %Postgrex.Point{x: -100.0, y: 99.9}
+      ]
+    }
+    assert [[polygon]] == query("SELECT $1::polygon", [polygon])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [1]))
+    assert %ArgumentError{} = catch_error(
+      query("SELECT $1::polygon", [%Postgrex.Polygon{vertices: ["x"]}])
+    )
+  end
+
+  @tag min_pg_version: "9.4"
+  test "decode line", context do
+    # 98.6x - y = 0 <=> y = 98.6x
+    line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
+    assert [[line]] == query("SELECT '{98.6,-1.0,0.0}'::line", [])
+    assert [[line]] == query("SELECT '(0.0,0.0),(1.0,98.6)'::line", [])
+  end
+
+  @tag min_pg_version: "9.4"
+  test "encode line", context do
+    # 98.6x - y = 0 <=> y = 98.6x
+    line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
+    assert [[line]] == query("SELECT $1::line", [line])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::line", ["foo"]))
+    assert %ArgumentError{} = catch_error(
+      query("SELECT $1::line", [%Postgrex.Line{a: nil, b: "foo"}])
+    )
+  end
+
+  test "decode line segment", context do
+    segment = %Postgrex.LineSegment{
+      point1: %Postgrex.Point{x: 0.0,  y: 0.0},
+      point2: %Postgrex.Point{x: 1.0,  y: 1.0}
+    }
+    assert [[segment]] == query("SELECT '(0.0,0.0)(1.0,1.0)'::lseg", [])
+  end
+
+  test "encode line segment", context do
+    segment = %Postgrex.LineSegment{
+      point1: %Postgrex.Point{x: 0.0,  y: 0.0},
+      point2: %Postgrex.Point{x: 1.0,  y: 1.0}
+    }
+    assert [[segment]] == query("SELECT $1::lseg", [segment])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::lseg", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::lseg", [%Postgrex.LineSegment{}]))
+  end
+
+  test "decode box", context do
+    box = %Postgrex.Box{
+      upper_right: %Postgrex.Point{x: 1.0,  y: 1.0},
+      bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
+    }
+    # postgres automatically sorts the points so that we get UR/BL
+    assert [[box]] == query("SELECT '(0.0,0.0)(1.0,1.0)'::box", [])
+    assert [[box]] == query("SELECT '(1.0,1.0)(0.0,0.0)'::box", [])
+    assert [[box]] == query("SELECT '(1.0,0.0)(0.0,1.0)'::box", [])
+    assert [[box]] == query("SELECT '(0.0,1.0)(1.0,0.0)'::box", [])
+  end
+
+  test "encode box", context do
+    box = %Postgrex.Box{
+      upper_right: %Postgrex.Point{x: 1.0,  y: 1.0},
+      bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
+    }
+    assert [[box]] == query("SELECT $1::box", [box])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::box", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::box", [%Postgrex.Box{}]))
+  end
+
+  test "decode path", context do
+    path = %Postgrex.Path{
+      points: [
+        %Postgrex.Point{x: 0.0, y: 0.0},
+        %Postgrex.Point{x: 1.0, y: 3.0},
+        %Postgrex.Point{x: -4.0, y: 3.14}
+      ]
+    }
+    assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::path", [%Postgrex.Path{points: "foo"}]))
+    assert %ArgumentError{} =
+      catch_error(query(
+            "SELECT $1::path",
+            [%Postgrex.Path{points: [], open: "nah"}]
+          )
+      )
+  end
+
+  test "encode path", context do
+    path = %Postgrex.Path{
+      points: [
+        %Postgrex.Point{x: 0.0, y: 0.0},
+        %Postgrex.Point{x: 1.0, y: 3.0},
+        %Postgrex.Point{x: -4.0, y: 3.14}
+      ]
+    }
+    assert [[path]] == query("SELECT $1::path", [path])
+  end
+
+  test "decode circle", context do
+    circle = %Postgrex.Circle{
+      center: %Postgrex.Point{x: 1.0, y: -3.5},
+      radius: 100.0
+    }
+    assert [[circle]] == query("SELECT '<(1.0,-3.5),100.0>'::circle", [])
+  end
+
+  test "encode circle", context do
+    circle = %Postgrex.Circle{
+      center: %Postgrex.Point{x: 1.0, y: -3.5},
+      radius: 100.0
+    }
+    assert [[circle]] == query("SELECT $1::circle", [circle])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", ["snu"]))
+    assert %ArgumentError{} =
+      catch_error(query(
+            "SELECT $1::path",
+            [%Postgrex.Circle{center: 1.5, radius: 1.0}]
+          ))
+    assert %ArgumentError{} =
+      catch_error(query(
+            "SELECT $1::path",
+            [%Postgrex.Circle{center: %Postgrex.Point{x: 1.0, y: 0.0},
+                              radius: "five"}]
+          ))
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end
