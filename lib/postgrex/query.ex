@@ -55,41 +55,28 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     case res do
       %Postgrex.Result{command: copy, rows: rows}
           when copy in [:copy, :copy_stream] and rows != nil ->
-        %Postgrex.Result{res | rows: decode_copy(rows, opts)}
+        %Postgrex.Result{res | rows: decode_map(rows, opts)}
       _ ->
         res
     end
   end
-  def decode(%Postgrex.Query{result_types: result_types, types: types}, res,
-             opts) do
-    mapper = opts[:decode_mapper] || fn x -> x end
-    %Postgrex.Result{rows: rows} = res
-    rows = decode_rows(rows, result_types, types, mapper, [])
-    %Postgrex.Result{res | rows: rows}
+  def decode(_, %Postgrex.Result{rows: rows} = res, opts) do
+    %Postgrex.Result{res | rows: decode_map(rows, opts)}
   end
 
   ## Helpers
 
-  defp decode_rows([row | rows], result_types, types, mapper, decoded) do
-    row =
-      row
-      |> Postgrex.Types.decode_row(result_types, types)
-      |> mapper.()
-    decode_rows(rows, result_types, types, mapper, [row | decoded])
-  end
-  defp decode_rows([], _, _, _, decoded), do: decoded
-
-  defp decode_copy(data, opts) do
+  defp decode_map(data, opts) do
     case opts[:decode_mapper] do
       nil    -> Enum.reverse(data)
-      mapper -> decode_copy(data, mapper, [])
+      mapper -> decode_map(data, mapper, [])
     end
   end
 
-  defp decode_copy([row | data], mapper, decoded) do
-    decode_copy(data, mapper, [mapper.(row) | decoded])
+  defp decode_map([row | data], mapper, decoded) do
+    decode_map(data, mapper, [mapper.(row) | decoded])
   end
-  defp decode_copy([], _, decoded) do
+  defp decode_map([], _, decoded) do
     decoded
   end
 end
