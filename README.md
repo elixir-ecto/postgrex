@@ -20,7 +20,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 ## Features
 
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
-  * User defined extensions for encoding and decoding any PostgresSQL type
+  * User defined extensions for encoding and decoding any PostgreSQL type
   * Supports transactions, prepared queries and multiple pools via [DBConnection](https://github.com/elixir-ecto/db_connection)
   * Supports PostgreSQL 8.4 and 9.0-9.6 (hstore is not supported on 8.4)
 
