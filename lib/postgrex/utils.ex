@@ -30,7 +30,6 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Timestamp,
     Postgrex.Extensions.TimestampTZ,
     Postgrex.Extensions.TimeTZ,
-    Postgrex.Extensions.Interval,
     Postgrex.Extensions.UUID,
     Postgrex.Extensions.VoidBinary,
     Postgrex.Extensions.VoidText]
