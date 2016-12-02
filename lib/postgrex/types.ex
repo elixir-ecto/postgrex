@@ -223,9 +223,8 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  @spec decode_row(binary, [type], state) :: [term]
-  def decode_row(binary, types, {mod, _}) do
-    Enum.reverse(apply(mod, :decode_row, [binary, types]))
+  def decode_rows(binary, types, rows, {mod, _}) do
+    apply(mod, :decode_rows, [binary, types, rows])
   end
 
   @doc false
