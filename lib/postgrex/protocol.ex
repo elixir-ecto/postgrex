@@ -1441,24 +1441,25 @@ defmodule Postgrex.Protocol do
   end
 
   defp copy_in_recv(s, status, query, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_copy_in_response(), buffer} ->
+    %Query{result_types: types} = query
+    case rows_recv(s, types, [], buffer) do
+      {:ok, msg_copy_in_response(), [], buffer} ->
         copy_in_done_recv(s, status, query, buffer)
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, [], tag, buffer)
-      {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, query, [values], buffer)
-      {:ok, msg_empty_query(), buffer} ->
+      {:ok, msg_command_complete(tag: tag), rows, buffer} ->
+        complete(s, status, query, rows, tag, buffer)
+      {:ok, msg_empty_query(), [], buffer} ->
         complete(s, status, query, [], nil, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
+      {:ok, msg_error(fields: fields), _, buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
-      {:ok, msg_copy_out_response(), buffer} ->
+      {:ok, msg_copy_out_response(), [], buffer} ->
         copy_out(s, status, query, buffer)
-      {:ok, msg_copy_both_response(), buffer} ->
+      {:ok, msg_copy_both_response(), [], buffer} ->
         copy_both_disconnect(s, query, buffer)
-      {:ok, msg, buffer} ->
+      {:ok, msg, [], buffer} ->
         copy_in_recv(handle_msg(s, status, msg), status, query, buffer)
+      {:ok, msg, [_|_] = rows, buffer} ->
+        execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
