@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.UUID do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "uuid_send"
 
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)

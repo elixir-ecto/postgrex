@@ -3,7 +3,7 @@ defmodule Postgrex.Extensions.OID do
   @oid_senders ~w(oidsend regprocsend regproceduresend regopersend
                   regoperatorsend regclasssend regtypesend xidsend cidsend)
 
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, Enum.map(@oid_senders, &{:send, &1})
 
   @oid_range 0..4294967295

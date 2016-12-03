@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Int8 do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "int8send"
 
   @int8_range -9223372036854775808..9223372036854775807

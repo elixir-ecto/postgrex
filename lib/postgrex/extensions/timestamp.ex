@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Timestamp do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "timestamp_send"]
 
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})

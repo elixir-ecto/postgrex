@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.TID do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "tidsend"
 
   def encode(_) do

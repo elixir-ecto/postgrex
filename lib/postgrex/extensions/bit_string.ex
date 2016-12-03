@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.BitString do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "bit_send",send: "varbit_send"]
 
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)

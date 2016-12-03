@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.JSONB do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
 
   def init(opts) do
     {Keyword.get(opts, :decode_binary, :copy), Keyword.get(opts, :json)}

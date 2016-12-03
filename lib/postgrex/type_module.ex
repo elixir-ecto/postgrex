@@ -21,8 +21,8 @@ defmodule Postgrex.TypeModule do
       end
 
     quote do
-      import Postgrex.BinaryUtils, [warn: false]
-      require unquote(__MODULE__), [warn: false]
+      import Postgrex.BinaryUtils
+      require unquote(__MODULE__)
       unquote(requires)
     end
   end

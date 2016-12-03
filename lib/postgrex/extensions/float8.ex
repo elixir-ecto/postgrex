@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Float8 do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "float8send"
 
   def encode(_) do

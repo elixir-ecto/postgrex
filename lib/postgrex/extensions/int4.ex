@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Int4 do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "int4send"
 
   @int4_range -2147483648..2147483647

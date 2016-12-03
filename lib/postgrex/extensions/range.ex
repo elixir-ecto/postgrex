@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Range do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Bitwise, only_operators: true
   @behaviour Postgrex.SuperExtension
 

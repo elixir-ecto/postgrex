@@ -1,7 +1,7 @@
 defmodule Postgrex.Extensions.JSON do
   @moduledoc false
   @behaviour Postgrex.Extension
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
 
   def init(opts) do
     {Keyword.get(opts, :decode_binary, :copy), Keyword.get(opts, :json)}

@@ -1,5 +1,6 @@
 defmodule Postgrex.Extensions.Name do
   @moduledoc false
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "namesend"
 
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)

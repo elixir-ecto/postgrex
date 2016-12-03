@@ -1,5 +1,6 @@
 defmodule Postgrex.Extensions.MACADDR do
   @moduledoc false
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "macaddr_send"]
 
   def encode(_) do

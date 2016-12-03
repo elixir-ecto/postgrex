@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.HStore do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, type: "hstore"
 
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
