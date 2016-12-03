@@ -177,6 +177,69 @@ defmodule Postgrex.Types do
   ### TYPE ENCODING / DECODING ###
 
   @doc """
+  Defines a type module with custom extensions and options.
+
+  Type modules are given to Postgrex on `start_link` via the `:types`
+  option and are used to control how Postgrex encodes and decodes data
+  coming from Postgrex.
+
+  For example, to define a new type module with a custom extension
+  called `MyExtension` while also changing `Postgrex`'s default
+  behaviour regarding binary decoding, you may create a new file
+  called "lib/my_app/postgrex_types.ex" with the following:
+
+      Postgrex.Types.define(MyApp.PostgrexTypes, [MyExtension], [decode_binary: :reference])
+
+  The line above will define a new module, called `MyApp.PostgrexTypes`
+  which can be passed as `:types` when starting Postgrex. The type module
+  works by rewriting and inlining the extensions' encode and decode
+  expressions in an optimal fashion for postgrex to encode parameters and
+  decode multiple rows at a time.
+
+  ## Extensions
+
+  Extensions is a list of `Postgrex.Extension` modules or a 2-tuple
+  containing the module and a keyword list. The keyword, defaulting
+  to `[]`, will be passed to the modules `init/1` callback.
+
+  Extensions at the front of the list will take priority over later
+  extensions when the `matching/1` callback returns have conflicting
+  matches. If an extension is not provided for a type then Postgrex
+  will fallback to default encoding/decoding methods where possible.
+
+  See `Postgrex.Extension` for more information on extensions.
+
+  ## Options
+
+    * `:null` - The atom to use as a stand in for postgres' `NULL` in
+      encoding and decoding. The module attribute `@null` is registered
+      with the value so that extension can access the value if desired
+      (default: `nil`);
+
+    * `:decode_binary` - Either `:copy` to copy binary values when decoding
+      with default extensions that return binaries or `:reference` to use a
+      reference counted binary of the binary received from the socket.
+      Referencing a potentially larger binary can be more efficient if the binary
+      value is going to be garbaged collected soon because a copy is avoided.
+      However the larger binary can not be garbage collected until all references
+      are garbage collected (default: `:copy`);
+
+    * `:date` - The default extensions date handling mode: either `:postgrex`
+      to use Postgrex date structs or `:elixir` to use Elixir date structs
+      (default: `:postgrex`);
+
+    * `:json` - The JSON module to encode and decode JSON binaries, calls
+      `module.encode!/1` to encode and `module.decode!/1` to decode. If `nil`
+      then no default JSON handling (default: `nil`);
+
+    * `:bin_opt_info` - Either `true` to enable binary optimisation information,
+      or `false` to disable, for more information see `Kernel.SpecialForms.<<>>/1`
+      in Elixir (default: `false`);
+
+  """
+  defdelegate define(module, extensions, opts \\ []), to: Postgrex.TypeModule
+
+  @doc """
   Encodes an Elixir term to a binary for the given type.
   """
   @spec encode(oid, term, state) :: binary
