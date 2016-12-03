@@ -1,1 +1,1 @@
-Postgrex.TypeModule.define(Postgrex.DefaultTypes, [])
+Postgrex.Types.define(Postgrex.DefaultTypes, [])
