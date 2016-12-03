@@ -1,15 +1,72 @@
 defmodule Postgrex.TypeModule do
+  @moduledoc  """
+  Combines `Postgrex.Extension` modules into a single module.
+
+  It works by rewriting and inlining the extensions' quoted encode and decode
+  expressions in an optimal fashion for postgrex to encode parameters and
+  decode multiple rows at a time. In a file you can define your own type
+  module with custom extensions and options:
+
+      Postgrex.TypeModule.define(MyTypes, [MyExtension],
+        [decode_binary: :reference])
+
+  Once defined the type module can be used by passing `[types: module]` to
+  `Postgrex.start_link/1`. See `define/3` for more information.
+
+  `Postgrex.DefaultTypes`, the default types module, is equivalent to defining:
+
+      Postgrex.TypeModule.define(Postgrex.DefaultTypes, [],
+        [null: nil, decode_binary: :copy, date: :postgrex, json: nil,
+         bin_opt_info: false])
+  """
   alias Postgrex.TypeInfo
 
+  @doc """
+  Defines a type module with custom extensions and options.
+
+  ## Extensions
+
+  Extensions is a list of `Postgrex.Extension` modules or a 2-tuple containing
+  the module and a keyword list. The keyword, defaulting to `[]`, will be passed
+  to the modules `init/1` callback.
+
+  Extensions at the front of the list will take priority over later extensions
+  when the `matching/1` callback returns have conflicting matches. If an
+  extension is not provided for a type then Postgrex will fallback to default
+  encoding/decoding methods where possible, see `README.md`.
+
+  See `Postgrex.Extension` for more information on extensions.
+
+  ## Options
+
+    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
+    and decoding. The module attribute `@null` is registered with the value so
+    that extension can access the value is desired (default: `nil`);
+    * `:decode_binary` - Either `:copy` to copy binary values when decoding with
+    default extensions that return binaries or `:reference` to use a reference
+    counted binary of the binary received from the socket. Referencing a
+    potentially larger binary can be more efficient if the binary value is going
+    to be garbaged collected soon because a copy is avoided. However the larger
+    binary can not be garbage collected until all references are garbage
+    collected (default: `:copy`);
+    * `:date` - The default extensions date handling mode: either `:postgrex` to
+    use Postgrex date structs or `:elixir` to use Elixir date structs (default:
+    `:postgrex`);
+    * `:json` - The JSON module to encode and decode JSON binaries, calls
+    `module.encode!/1` to encode and `module.decode!/1` to decode. If `nil` then
+    no default JSON handling (default: `nil`);
+    * `:bin_opt_info` - Either `true` to enable binary optimisation information,
+    or `false` to disable, formore information see
+    http://www.erlang.org/doc/efficiency_guide/binaryhandling.html (default:
+    `false`);
+  """
   def define(module, extensions, opts \\ []) do
     opts =
       opts
       |> Keyword.put_new(:decode_binary, :copy)
-      |> Keyword.put_new(:null, nil)
       |> Keyword.put_new(:date, :postgrex)
     config = configure(extensions, opts)
-    null = Keyword.get(opts, :null)
-    define_inline(module, config, null)
+    define_inline(module, config, opts)
   end
 
   ## Helpers
@@ -27,11 +84,21 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp attributes(null) do
+  defp attributes(opts) do
+    null = Keyword.get(opts, :null)
     quote do
-      #@compile :bin_opt_info
+      @moduledoc false
+      unquote(bin_opt_info(opts))
       @compile {:inline, [encode_value: 2]}
       @null unquote(Macro.escape(null))
+    end
+  end
+
+  defp bin_opt_info(opts) do
+    if Keyword.get(opts, :bin_opt_info) do
+      quote do: @compile :bin_opt_info
+    else
+      []
     end
   end
 
@@ -58,8 +125,8 @@ defmodule Postgrex.TypeModule do
     quote do
       {%{unquote(key) => unquote(value)} = type_info, formats}
           when formats in [:any, :binary] ->
-      oids = unquote(extension).oids(type_info, unquote(opts))
-      {:super_binary, unquote(extension), oids}
+        oids = unquote(extension).oids(type_info, unquote(opts))
+        {:super_binary, unquote(extension), oids}
     end
   end
   defp find_clause(extension, _opts, key, value, format) do
@@ -67,14 +134,6 @@ defmodule Postgrex.TypeModule do
       {%{unquote(key) => unquote(value)}, formats}
           when formats in [:any, unquote(format)] ->
         {unquote(format), unquote(extension)}
-    end
-  end
-
-  defp maybe_rewrite(ast, clauses) do
-    if Application.get_env(:postgrex, :debug_extensions) do
-      rewrite(ast, clauses)
-    else
-      ast
     end
   end
 
@@ -106,11 +165,11 @@ defmodule Postgrex.TypeModule do
 
           unquote(encode_inline(extension, format))
 
-          unquote(clauses |> maybe_rewrite(encode))
+          unquote(clauses |> rewrite(encode))
         end
       end
 
-    quote do
+    quote location: :keep do
       unquote(encodes)
 
       def encode_params(params, types) do
@@ -273,7 +332,7 @@ defmodule Postgrex.TypeModule do
         null_clauses = decode_null(extension, format,
                                    row_dispatch, rest, acc, rem, full, rows)
         quote location: :keep do
-          unquote(clauses |> maybe_rewrite(decode))
+          unquote(clauses |> rewrite(decode))
 
           unquote(null_clauses)
         end
@@ -396,7 +455,7 @@ defmodule Postgrex.TypeModule do
 
     quote do
       def decode_tuple(<<rest::binary>>, count, types) when is_integer(count) do
-        decode_tuple(rest, count, types, count, [])
+        decode_tuple(rest, count, types, 0, [])
       end
       def decode_tuple(<<rest::binary>>, oids, types) do
         decode_tuple(rest, oids, types, 0, [])
@@ -642,7 +701,7 @@ defmodule Postgrex.TypeModule do
   end
 
   defp decode_super_null(extension, dispatch, rest, acc, rem, full, rows) do
-    quote location: :keep do
+    quote do
       defp unquote(extension)(<<-1::int32, unquote(rest)::binary>>,
                               _sub_oids, _sub_types, types, acc,
                               unquote(rem), unquote(full), unquote(rows)) do
@@ -680,16 +739,21 @@ defmodule Postgrex.TypeModule do
 
   defp configure(extensions, opts) do
     defaults = Postgrex.Utils.default_extensions(opts)
-    for {extension, arg} <- extensions ++ defaults do
-      opts     = extension.init(arg)
-      matching = extension.matching(opts)
-      format   = extension.format(opts)
-      {extension, {opts, matching, format}}
-    end
+    Enum.map(extensions ++ defaults, &configure/1)
   end
 
-  defp define_inline(module, config, null) do
-    quoted = [directives(config), attributes(null), find(config),
+  defp configure({extension, opts}) do
+    state    = extension.init(opts)
+    matching = extension.matching(state)
+    format   = extension.format(state)
+    {extension, {state, matching, format}}
+  end
+  defp configure(extension) do
+    configure({extension, []})
+  end
+
+  defp define_inline(module, config, opts) do
+    quoted = [directives(config), attributes(opts), find(config),
               encode(config), decode(config)]
     Module.create(module, quoted, Macro.Env.location(__ENV__))
   end

@@ -36,7 +36,7 @@ defmodule Postgrex do
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
-    * `:password` - User password (default PGPASSWORD);
+    * `:password` - User password (default: PGPASSWORD env variable);
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);
@@ -47,16 +47,6 @@ defmodule Postgrex do
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:socket_options` - Options to be given to the underlying socket;
-    * `:extensions` - A list of `{module, opts}` pairs where `module` is
-    implementing the `Postgrex.Extension` behaviour and `opts` are the
-    extension options;
-    * `:decode_binary` - Either `:copy` to copy binary values when decoding with
-    default extensions that return binaries or `:reference` to use a reference
-    counted binary of the binary received from the socket. Referencing a
-    potentially larger binary can be more efficient if the binary value is going
-    to be garbaged collected soon because a copy is avoided. However the larger
-    binary can not be garbage collected until all references are garbage
-    collected (defaults to `:copy`);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
@@ -64,15 +54,9 @@ defmodule Postgrex do
     * `:pool` - The pool module to use, see `DBConnection` for pool dependent
     options, this option must be included with all requests contacting the pool
     if not `DBConnection.Connection` (default: `DBConnection.Connection`);
-    * `:null` - The atom to use as a stand in for postgres' `NULL` in encoding
-    and decoding (default: `nil`);
-    * `:date` - Either `:postgrex` to use Postgrex date structs or
-    `:elixir` to use Elixir date structs. The date handling can be overriden
-    with a custom extension, see `:extensions` (default: `:postgrex`);
-    * `:json` - The JSON module to encode and decode JSON binaries, calls
-    `module.encode!/1` to encode and `module.decode!/1` to decode. If `nil` then
-    no default JSON handling. The JSON handling can be overriden with a custom
-    extension, see `:extensions` (default: `nil`);
+    * `:types` - The types module to use, see `Postgrex.TypeModule`, this
+    option is only required when using custom encoding or decoding (default:
+    `Postgrex.DefaultTypes`);
 
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc.
