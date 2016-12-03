@@ -3,8 +3,7 @@ defmodule Postgrex.Extension do
   An extension knows how to encode and decode Postgres types to and
   from Elixir values.
 
-  Custom extensions can be enabled using the `:extensions` option in
-  `Postgrex.start_link/1`.
+  Custom extensions can be enabled by using `Postgrex.TypeModule`.
 
   For example to support label trees using the text encoding format:
 
@@ -55,39 +54,29 @@ defmodule Postgrex.Extension do
         end
       end
 
-  This example is enabled with
-  `Postgrex.start_link([extensions: [{MyApp.LTree, :copy}]])`.
+  This example could be used in a custom types module:
 
-  When starting Postgrex with a custom extension, you may see new warnings
-  coming from "lib/postgrex/type_modules.ex" caused by your extension. Those
-  warnings are triggered when Postgrex is compiling the extensions into a
-  unified parser. To retrieve the proper file and line, you can set `:postgrex`
-  to debug mode with the following configuration:
-
-      config :postgrex, :debug_extensions, true
-
-  Once such configuration is set, starting Postgrex is slower but provides
-  proper feedback.
+      Postgrex.TypesModule(MyApp.Types, [{MyApp.LTree, :copy}])
   """
 
   alias Postgrex.Types
   alias Postgrex.TypeInfo
 
   @type t :: module
-  @type opts :: term
+  @type state :: term
 
   @doc """
   Should perform any initialization of the extension. The function receives the
-  user options. The options returned from this function will be passed to other
+  user options. The state returned from this function will be passed to other
   callbacks.
   """
-  @callback init(term) :: opts
+  @callback init(Keyword.t) :: state
 
   @doc """
   Specifies the types the extension matches, see `Postgrex.TypeInfo` for
   specification of the fields.
   """
-  @callback matching(opts) :: [type: String.t,
+  @callback matching(state) :: [type: String.t,
                                  send: String.t,
                                  receive: String.t,
                                  input: String.t,
@@ -97,7 +86,7 @@ defmodule Postgrex.Extension do
   Returns the format the type should be encoded as. See
   http://www.postgresql.org/docs/9.4/static/protocol-overview.html#PROTOCOL-FORMAT-CODES.
   """
-  @callback format(opts) :: :binary | :text
+  @callback format(state) :: :binary | :text
 
   @doc """
   Returns a quoted list of clauses that encode an Elixir value to iodata with
@@ -111,7 +100,7 @@ defmodule Postgrex.Extension do
       end
 
   """
-  @callback encode(opts) :: Macro.expr
+  @callback encode(state) :: Macro.expr
 
   @doc """
   Returns a quoted list of clauses that decode a binary to an Elixir value. The
@@ -126,5 +115,5 @@ defmodule Postgrex.Extension do
         end
       end
   """
-  @callback decode(opts) :: Macro.expr
+  @callback decode(state) :: Macro.expr
 end

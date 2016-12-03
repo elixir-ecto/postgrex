@@ -5,8 +5,7 @@ defmodule QueryTest do
 
   setup context do
     opts = [ database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named,
-             decode_binary: context[:decode_binary] || :copy]
+             prepare: context[:prepare] || :named ]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -223,25 +222,13 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "9.0"
-  @tag decode_binary: :copy
-  test "decode_binary: :copy returns copied binary", context do
+  test "hstore copies binaries by default", context do
     text = "hello world"
     assert [[bin]] = query("SELECT $1::text", [text])
     assert :binary.referenced_byte_size(bin) == byte_size(text)
 
     assert [[%{"hello" => world}]] = query("SELECT $1::hstore", [%{"hello" => "world"}])
     assert :binary.referenced_byte_size(world) == byte_size("world")
-  end
-
-  @tag min_pg_version: "9.0"
-  @tag decode_binary: :reference
-  test "decode_binary: :reference returns reference counted binary", context do
-    text = "hello world"
-    assert [[bin]] = query("SELECT $1::text", [text])
-    assert :binary.referenced_byte_size(bin) > byte_size(text)
-
-    assert [[%{"hello" => world}]] = query("SELECT $1::hstore", [%{"hello" => "world"}])
-    assert :binary.referenced_byte_size(world) > byte_size("world")
   end
 
   test "decode bit string", context do
@@ -655,15 +642,6 @@ defmodule QueryTest do
     {:ok, pid2} = Postgrex.start_link(context[:options])
     assert {:ok, %Postgrex.Result{rows: [[42]]}} = Postgrex.execute(pid2, query, [])
     assert {:ok, %Postgrex.Result{rows: [[41]]}} = Postgrex.query(pid2, "SELECT 41", [])
-  end
-
-  test "raise when executing prepared query on connection with different types", context do
-    query = prepare("S42", "SELECT 42")
-
-    {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++ context[:options])
-
-    assert_raise ArgumentError, ~r"invalid types for the connection",
-      fn() -> Postgrex.execute(pid2, query, []) end
   end
 
   test "error codes are translated", context  do

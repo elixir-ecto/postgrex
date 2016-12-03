@@ -4,8 +4,19 @@ if Code.ensure_loaded?(Calendar) do
     import Postgrex.TestHelper
     alias Postgrex, as: P
 
+    @types CalendarTypes
+
+    setup_all do
+      on_exit(fn ->
+        :code.delete(@types)
+        :code.purge(@types)
+      end)
+      Postgrex.TypeModule.define(@types, [], [date: :elixir])
+      :ok
+    end
+
     setup do
-      opts = [database: "postgrex_test", backoff_type: :stop, date: :elixir]
+      opts = [database: "postgrex_test", backoff_type: :stop, types: @types]
       {:ok, pid} = P.start_link(opts)
       {:ok, [pid: pid]}
     end

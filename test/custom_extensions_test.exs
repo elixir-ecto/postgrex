@@ -3,10 +3,12 @@ defmodule CustomExtensionsTest do
   import Postgrex.TestHelper
   alias Postgrex, as: P
 
+  @types CustomExtensionsTypes
+
   defmodule BinaryExtension do
     @behaviour Postgrex.Extension
 
-    def init(%{}, {}),
+    def init([]),
       do: []
 
     def matching([]),
@@ -32,7 +34,7 @@ defmodule CustomExtensionsTest do
   defmodule TextExtension do
     @behaviour Postgrex.Extension
 
-    def init(%{}, []),
+    def init([]),
       do: {}
 
     def matching({}),
@@ -59,7 +61,7 @@ defmodule CustomExtensionsTest do
   defmodule BadExtension do
     @behaviour Postgrex.Extension
 
-    def init(%{}, []),
+    def init([]),
       do: []
 
     def matching([]),
@@ -83,11 +85,21 @@ defmodule CustomExtensionsTest do
     end
   end
 
+  setup_all do
+    on_exit(fn ->
+      :code.delete(@types)
+      :code.purge(@types)
+    end)
+    extensions = [BinaryExtension, TextExtension, BadExtension]
+    opts       = [decode_binary: :reference, null: :custom]
+    Postgrex.TypeModule.define(@types, extensions, opts)
+    :ok
+  end
+
   setup do
-    {:ok, pid} = P.start_link(
-      database: "postgrex_test",
-      extensions: [{BinaryExtension, {}}, {TextExtension, []}, {BadExtension, []}])
-    {:ok, [pid: pid]}
+    opts = [database: "postgrex_test", backoff_type: :stop, types: @types]
+    {:ok, pid} = P.start_link(opts)
+    {:ok, [pid: pid, options: opts]}
   end
 
   test "encode and decode", context do
@@ -112,6 +124,16 @@ defmodule CustomExtensionsTest do
     end
 
     assert Process.alive? context[:pid]
+  end
+
+  test "raise when executing prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    assert_raise ArgumentError, ~r"invalid types for the connection",
+      fn() -> Postgrex.execute(pid2, query, []) end
   end
 
   test "dont decode text format", context do
