@@ -6,13 +6,11 @@ defmodule Postgrex.Extensions.TimestampTZ do
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
   @max_year 294276
 
-  if Code.ensure_loaded?(DateTime) do
-    @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
-    @us_epoch @gs_epoch - @gs_unix_epoch
-    @uus_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
-    @us_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
-    @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
-  end
+  @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
+  @us_epoch @gs_epoch - @gs_unix_epoch
+  @uus_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+  @us_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
+  @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
 
   def init(opts), do: Keyword.fetch!(opts, :date)
 
@@ -77,21 +75,19 @@ defmodule Postgrex.Extensions.TimestampTZ do
     {:calendar.gregorian_seconds_to_datetime(secs + @gs_epoch), microsecs}
   end
 
-  if Code.ensure_loaded?(DateTime) do
-    def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
-      case DateTime.to_unix(datetime, :microseconds) do
-        microsecs when microsecs < @uus_max ->
-          <<8 :: int32, microsecs - @uus_epoch :: int64>>
-        _ ->
-          raise ArgumentError, "#{inspect datetime} is beyond the maximum year 294276"
-      end
+  def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
+    case DateTime.to_unix(datetime, :microseconds) do
+      microsecs when microsecs < @uus_max ->
+        <<8 :: int32, microsecs - @uus_epoch :: int64>>
+      _ ->
+        raise ArgumentError, "#{inspect datetime} is beyond the maximum year 294276"
     end
-    def encode_elixir(%DateTime{} = datetime) do
-      raise ArgumentError, "#{inspect datetime} is not in UTC"
-    end
+  end
+  def encode_elixir(%DateTime{} = datetime) do
+    raise ArgumentError, "#{inspect datetime} is not in UTC"
+  end
 
-    def microsecond_to_elixir(microsecs) do
-      DateTime.from_unix!(microsecs + @uus_epoch, :microseconds)
-    end
+  def microsecond_to_elixir(microsecs) do
+    DateTime.from_unix!(microsecs + @uus_epoch, :microseconds)
   end
 end
