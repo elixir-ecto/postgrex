@@ -4,7 +4,6 @@ defmodule Postgrex.Types do
   """
 
   alias Postgrex.TypeInfo
-  alias Postgrex.Extension
   import Postgrex.BinaryUtils
 
   @typedoc """
@@ -245,46 +244,6 @@ defmodule Postgrex.Types do
     Postgrex.TypeModule.define(module, extensions, opts)
   end
 
-  @doc """
-  Encodes an Elixir term to a binary for the given type.
-  """
-  @spec encode(oid, term, state) :: binary
-  def encode(oid, value, state) do
-    {_oid, info, extension} = fetch!(state, oid)
-    opts = fetch_opts(state, extension)
-    extension.encode(info, value, state, opts)
-  end
-
-  @doc """
-  Encodes an Elixir term with the extension for the given type.
-  """
-  @spec encode(Extension.t, oid, term, state) :: binary
-  def encode(extension, oid, value, state) do
-    {_oid, info, _extension} = fetch!(state, oid)
-    opts = fetch_opts(state, extension)
-    extension.encode(info, value, state, opts)
-  end
-
-  @doc """
-  Decodes a binary to an Elixir value for the given type.
-  """
-  @spec decode(oid, binary, state) :: term
-  def decode(oid, binary, state) do
-    {_oid, info, extension} = fetch!(state, oid)
-    opts = fetch_opts(state, extension)
-    extension.decode(info, binary, state, opts)
-  end
-
-  @doc """
-  Decodes a binary with the extension for the given type.
-  """
-  @spec decode(Extension.t, oid, binary, state) :: term
-  def decode(extension, oid, binary, state) do
-    {_oid, info, _extension} = fetch!(state, oid)
-    opts = fetch_opts(state, extension)
-    extension.decode(info, binary, state, opts)
-  end
-
   @doc false
   @spec encode_params([term], [type], state) :: iodata
   def encode_params(params, types, {mod, _}) do
@@ -321,20 +280,5 @@ defmodule Postgrex.Types do
       type_info ->
         {:error, type_info}
     end
-  end
-
-  defp fetch!(table, oid) do
-    case :ets.lookup(table, oid) do
-      [{_, info, nil}] ->
-        raise ArgumentError, "no extension found for oid `#{oid}`: " <> inspect(info)
-      [value] ->
-        value
-      [] ->
-        raise ArgumentError, "no extension found for oid `#{oid}`"
-    end
-  end
-
-  defp fetch_opts(table, extension) do
-    :ets.lookup_element(table, extension, 2)
   end
 end
