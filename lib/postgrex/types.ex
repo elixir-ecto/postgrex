@@ -241,7 +241,9 @@ defmodule Postgrex.Types do
       will increase the time to compile the type module (default: `false`);
 
   """
-  defdelegate define(module, extensions, opts \\ []), to: Postgrex.TypeModule
+  def define(module, extensions, opts \\ []) do
+    Postgrex.TypeModule.define(module, extensions, opts)
+  end
 
   @doc """
   Encodes an Elixir term to a binary for the given type.
