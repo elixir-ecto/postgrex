@@ -136,6 +136,30 @@ defmodule CustomExtensionsTest do
       fn() -> Postgrex.execute(pid2, query, []) end
   end
 
+  test "raise when streaming prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    Postgrex.transaction(pid2, fn(conn) ->
+      assert_raise ArgumentError, ~r"invalid types for the connection",
+        fn() -> stream(query, []) |> Enum.take(1) end
+    end)
+  end
+
+  test "raise when streaming prepared COPY FROM on connection with different types", context do
+    query = prepare("copy", "COPY uniques FROM STDIN")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    Postgrex.transaction(pid2, fn(conn) ->
+      assert_raise ArgumentError, ~r"invalid types for the connection",
+        fn() -> Enum.into(["1\n"], stream(query, [])) end
+    end)
+  end
+
   test "dont decode text format", context do
     assert [["123.45"]] = query("SELECT 123.45::float8", [])
   end

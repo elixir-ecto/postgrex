@@ -97,16 +97,6 @@ defmodule StreamTest do
     end)
   end
 
-  test "raise when executing prepared query on connection with different types", context do
-    query = prepare("S42", "SELECT 42")
-
-    {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++ context[:options])
-
-    Postgrex.transaction(pid2, fn(conn) ->
-      assert_raise ArgumentError, ~r"invalid types for the connection",
-        fn() -> stream(query, []) |> Enum.take(1) end
-    end)
-  end
 
   test "connection works after failure in binding state", context do
     query = prepare("", "insert into uniques values (CAST($1::text AS int))")
@@ -517,18 +507,6 @@ defmodule StreamTest do
       assert %Postgrex.Result{rows: [[2]]} =
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
       Postgrex.rollback(conn, :done)
-    end)
-  end
-
-  test "raise when executing prepared COPY FROM on connection with different types", context do
-    query = prepare("copy", "COPY uniques FROM STDIN")
-
-    {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++
-    context[:options])
-
-    Postgrex.transaction(pid2, fn(conn) ->
-      assert_raise ArgumentError, ~r"invalid types for the connection",
-        fn() -> Enum.into(["1\n"], stream(query, [])) end
     end)
   end
 
