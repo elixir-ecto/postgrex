@@ -5,7 +5,6 @@ defmodule Postgrex.Extensions.Date do
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
   @max_year 5874897
-  @gd_max :calendar.date_to_gregorian_days({@max_year+1, 1, 1})
 
   def init(opts), do: Keyword.fetch!(opts, :date)
 
@@ -60,24 +59,19 @@ defmodule Postgrex.Extensions.Date do
     :calendar.gregorian_days_to_date(days + @gd_epoch)
   end
 
-  if Code.ensure_loaded?(Date) do
-    def encode_elixir(date) do
-      days =
-        date
-        |> Date.to_erl()
-        |> :calendar.date_to_gregorian_days()
-      if days < @gd_max do
-        <<4::int32, days - @gd_epoch :: int32>>
-      else
-        raise ArgumentError,
-          "#{inspect date} is beyond the maximum year #{@max_year}"
-      end
-    end
+  def encode_elixir(%Date{year: year, month: month, day: day})
+      when year <= @max_year do
+    date = {year, month, day}
+    <<4 :: int32, :calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
+  end
+  def encode_elixir(%Date{} = date) do
+    raise ArgumentError,
+      "#{inspect date} is beyond the maximum year #{@max_year}"
+  end
 
-    def day_to_elixir(days) do
-      days
-      |> erl_date()
-      |> Date.from_erl!()
-    end
+  def day_to_elixir(days) do
+    days
+    |> erl_date()
+    |> Date.from_erl!()
   end
 end

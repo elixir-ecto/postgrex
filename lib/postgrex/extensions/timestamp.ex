@@ -70,21 +70,16 @@ defmodule Postgrex.Extensions.Timestamp do
     {:calendar.gregorian_seconds_to_datetime(secs + @gs_epoch), microsecs}
   end
 
-  if Code.ensure_loaded?(NaiveDateTime) do
-    def encode_elixir(%NaiveDateTime{microsecond: {microsecs, _}} = naive) do
-      erl_datetime = NaiveDateTime.to_erl(naive)
-      case :calendar.datetime_to_gregorian_seconds(erl_datetime) - @gs_epoch do
-        sec when sec < @gs_max ->
-          <<8 :: int32, sec * 1_000_000 + microsecs :: int64>>
-        _ ->
-          raise ArgumentError,
-            "#{inspect naive} is beyond the maximum year #{@max_year}"
-      end
-    end
+  def encode_elixir(%NaiveDateTime{year: year, month: month, day: day,
+                                   hour: hour, minute: min, second: sec, microsecond: {usec, _}})
+      when year <= @max_year and hour in 0..23 and min in 0..59 and sec in 0..59 and usec in 0..999_999 do
+    datetime = {{year, month, day}, {hour, min, sec}}
+    secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
+    <<8 :: int32, secs * 1_000_000 + usec :: int64>>
+  end
 
-    def microsecond_to_elixir(microsecs) do
-      {erl_datetime, microsecs} = split(microsecs)
-      NaiveDateTime.from_erl!(erl_datetime, {microsecs, 6})
-    end
+  def microsecond_to_elixir(microsecs) do
+    {erl_datetime, microsecs} = split(microsecs)
+    NaiveDateTime.from_erl!(erl_datetime, {microsecs, 6})
   end
 end

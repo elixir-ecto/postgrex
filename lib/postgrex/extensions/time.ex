@@ -50,22 +50,17 @@ defmodule Postgrex.Extensions.Time do
     %Postgrex.Time{hour: hour, min: min, sec: sec, usec: usec}
   end
 
-  if Code.ensure_loaded?(Time) do
-    def encode_elixir(%Time{microsecond: {microsec, _}} = time) do
-      sec =
-        time
-        |> Time.to_erl()
-        |> :calendar.time_to_seconds()
+  def encode_elixir(%Time{hour: hour, minute: min, second: sec, microsecond: {usec, _}})
+      when hour in 0..23 and min in 0..59 and sec in 0..59 and usec in 0..999_999 do
+    time = {hour, min, sec}
+    <<8 :: int32, :calendar.time_to_seconds(time) * 1_000_000 + usec :: int64>>
+  end
 
-        <<8 :: int32, sec * 1_000_000 + microsec :: int64>>
-    end
-
-    def microsecond_to_elixir(microsec) do
-      sec = div(microsec, 1_000_000)
-      microsec = rem(microsec, 1_000_000)
-      sec
-      |> :calendar.seconds_to_time()
-      |> Time.from_erl!(microsec)
-    end
+  def microsecond_to_elixir(microsec) do
+    sec = div(microsec, 1_000_000)
+    microsec = rem(microsec, 1_000_000)
+    sec
+    |> :calendar.seconds_to_time()
+    |> Time.from_erl!(microsec)
   end
 end

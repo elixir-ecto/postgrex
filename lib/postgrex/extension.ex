@@ -87,8 +87,9 @@ defmodule Postgrex.Extension do
   @callback format(state) :: :binary | :text
 
   @doc """
-  Returns a quoted list of clauses that encode an Elixir value to iodata with
-  a signed 32 bit big endian integer byte length header.
+  Returns a quoted list of clauses that encode an Elixir value to iodata.
+
+  It must use a signed 32 bit big endian integer byte length header.
 
       def encode(_) do
         quote do
@@ -101,9 +102,10 @@ defmodule Postgrex.Extension do
   @callback encode(state) :: Macro.expr
 
   @doc """
-  Returns a quoted list of clauses that decode a binary to an Elixir value. The
-  pattern must use binary syntax and decode a fixed length using the signed 32
-  bit big endian integer byte length header.
+  Returns a quoted list of clauses that decode a binary to an Elixir value.
+
+  The pattern must use binary syntax and decode a fixed length using the signed
+  32 bit big endian integer byte length header.
 
       def decode(_) do
         quote do
