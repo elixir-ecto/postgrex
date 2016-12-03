@@ -21,6 +21,7 @@ defmodule TypeModuleTest do
     {:ok, [pid: pid]}
   end
 
+  @tag min_pg_version: "9.0"
   test "hstore references binaries when decode_binary: :reference", context do
     text = "hello world"
     assert [[bin]] = query("SELECT $1::text", [text])
