@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Point do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "point_send"
 
   def encode(_) do

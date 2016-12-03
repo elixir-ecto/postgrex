@@ -1,7 +1,7 @@
 defmodule Postgrex.Extensions.VoidText do
   @moduledoc false
   @behaviour Postgrex.Extension
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
 
   def init(_), do: nil
 

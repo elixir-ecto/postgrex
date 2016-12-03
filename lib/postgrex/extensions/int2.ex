@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Int2 do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "int2send"
 
   @int2_range -32768..32767

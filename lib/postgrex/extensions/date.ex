@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Date do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "date_send"
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})

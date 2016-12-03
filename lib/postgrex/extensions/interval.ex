@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Interval do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "interval_send"
 
   def encode(_) do

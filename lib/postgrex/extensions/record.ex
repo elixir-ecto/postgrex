@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Record do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   @behaviour Postgrex.SuperExtension
 
   def init(_), do: nil

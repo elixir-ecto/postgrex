@@ -1,9 +1,10 @@
 defmodule Postgrex.Extensions.INET do
   @moduledoc false
 
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "inet_send"]
 
- def encode(_) do
+  def encode(_) do
     quote location: :keep do
       %Postgrex.INET{address: {a, b, c, d}} ->
         <<8 :: int32, 2, 32, 0, 4, a, b, c, d>>

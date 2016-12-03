@@ -1,5 +1,6 @@
 defmodule Postgrex.Extensions.Raw do
   @moduledoc false
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension,
     [send: "bpcharsend", send: "textsend", send: "varcharsend",
      send: "byteasend", send: "enum_send", send: "unknownsend",

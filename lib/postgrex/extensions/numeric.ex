@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Numeric do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "numeric_send"
 
   def encode(_) do

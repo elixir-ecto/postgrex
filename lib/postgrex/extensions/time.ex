@@ -1,7 +1,6 @@
 defmodule Postgrex.Extensions.Time do
   @moduledoc false
-
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "time_send"]
 
   def init(opts), do: Keyword.fetch!(opts, :date)

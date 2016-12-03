@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Bool do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "boolsend"
 
   def encode(_) do

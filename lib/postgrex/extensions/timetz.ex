@@ -1,7 +1,6 @@
 defmodule Postgrex.Extensions.TimeTZ do
   @moduledoc false
-
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "timetz_send"]
 
   @day (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000

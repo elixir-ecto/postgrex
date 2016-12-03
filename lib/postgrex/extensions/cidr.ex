@@ -1,6 +1,7 @@
 defmodule Postgrex.Extensions.CIDR do
   @moduledoc false
 
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, [send: "cidr_send"]
 
   def encode(_) do
