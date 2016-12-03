@@ -3,7 +3,7 @@ defmodule Postgrex.Extension do
   An extension knows how to encode and decode Postgres types to and
   from Elixir values.
 
-  Custom extensions can be enabled by using `Postgrex.TypeModule`.
+  Custom extensions can be enabled via `Postgrex.Types.define/3`.
 
   For example to support label trees using the text encoding format:
 
@@ -56,11 +56,9 @@ defmodule Postgrex.Extension do
 
   This example could be used in a custom types module:
 
-      Postgrex.TypesModule(MyApp.Types, [{MyApp.LTree, :copy}])
-  """
+      Postgrex.Types.define(MyApp.Types, [{MyApp.LTree, :copy}])
 
-  alias Postgrex.Types
-  alias Postgrex.TypeInfo
+  """
 
   @type t :: module
   @type state :: term

@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.INET do
   @moduledoc false
-  alias Postgrex.TypeInfo
+
   use Postgrex.BinaryExtension, [send: "inet_send"]
 
  def encode(_) do

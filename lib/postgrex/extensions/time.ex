@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.Time do
   @moduledoc false
-  alias Postgrex.TypeInfo
+
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, [send: "time_send"]
 

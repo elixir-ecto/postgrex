@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.CIDR do
   @moduledoc false
-  alias Postgrex.TypeInfo
+
   use Postgrex.BinaryExtension, [send: "cidr_send"]
 
   def encode(_) do
