@@ -1,6 +1,6 @@
 defmodule Postgrex.Extensions.TimeTZ do
   @moduledoc false
-  alias Postgrex.TypeInfo
+
   import Postgrex.BinaryUtils
   use Postgrex.BinaryExtension, [send: "timetz_send"]
 
