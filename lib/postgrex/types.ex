@@ -25,11 +25,13 @@ defmodule Postgrex.Types do
   ### BOOTSTRAP TYPES AND EXTENSIONS ###
 
   @doc false
+  @spec new(module) :: state
   def new(module) do
     {module, :ets.new(__MODULE__, [:protected, {:read_concurrency, true}])}
   end
 
   @doc false
+  @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, state) :: binary
   def bootstrap_query(version, {_, table}) do
     oids = :ets.select(table, [{{:"$1", :_, :_}, [], [:"$1"]}])
 
@@ -64,6 +66,7 @@ defmodule Postgrex.Types do
   end
 
   @doc false
+  @spec build_type_info(binary) :: TypeInfo.t
   def build_type_info(row) do
     [oid,
       type,
@@ -92,6 +95,7 @@ defmodule Postgrex.Types do
   end
 
   @doc false
+  @spec associate_type_infos([TypeInfo.t], state) :: :ok
   def associate_type_infos(type_infos, {module, table}) do
     _ = for %TypeInfo{oid: oid} = type_info <- type_infos do
       true = :ets.insert_new(table, {oid, type_info, nil})
@@ -100,6 +104,7 @@ defmodule Postgrex.Types do
       info = find(type_info, :any, module, table)
       true = :ets.update_element(table, oid, {3, info})
     end
+    :ok
   end
 
   defp find(type_info, formats, module, table) do
@@ -251,11 +256,15 @@ defmodule Postgrex.Types do
   end
 
   @doc false
+  @spec decode_rows(binary, [type], [row], state) ::
+    {:more, iodata, [row], non_neg_integer} | {:ok, [row], binary} when row: var
   def decode_rows(binary, types, rows, {mod, _}) do
     apply(mod, :decode_rows, [binary, types, rows])
   end
 
   @doc false
+  @spec fetch(oid, state) ::
+    {:ok, {:binary | :text, type}} | {:error, TypeInfo.t | nil}
   def fetch(oid, {_, table}) do
     try do
       :ets.lookup_element(table, oid, 3)
