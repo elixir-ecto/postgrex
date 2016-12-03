@@ -80,6 +80,15 @@ defmodule Postgrex.TypeModule do
     end
   end
 
+  defp maybe_rewrite(ast, extension, cases, opts) do
+    if Postgrex.Utils.default_extension?(extension) and
+       not Keyword.get(opts, :debug_defaults, false) do
+      ast
+    else
+      rewrite(ast, cases)
+    end
+  end
+
   defp rewrite(ast, [{:->, meta, _} | _original]) do
     location = [file: meta[:file] || "nofile", line: meta[:keep] || 1]
 
@@ -91,7 +100,7 @@ defmodule Postgrex.TypeModule do
     end)
   end
 
-  defp encode(config) do
+  defp encode(config, define_opts) do
     encodes =
       for {extension, {opts, [_|_], format}} <- config do
         encode = extension.encode(opts)
@@ -108,7 +117,7 @@ defmodule Postgrex.TypeModule do
 
           unquote(encode_inline(extension, format))
 
-          unquote(clauses |> rewrite(encode))
+          unquote(clauses |> maybe_rewrite(extension, encode, define_opts))
         end
       end
 
@@ -247,7 +256,7 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode(config) do
+  defp decode(config, define_opts) do
     rest  = quote do: rest
     acc   = quote do: acc
     rem   = quote do: rem
@@ -275,7 +284,7 @@ defmodule Postgrex.TypeModule do
         null_clauses = decode_null(extension, format,
                                    row_dispatch, rest, acc, rem, full, rows)
         quote location: :keep do
-          unquote(clauses |> rewrite(decode))
+          unquote(clauses |> maybe_rewrite(extension, decode, define_opts))
 
           unquote(null_clauses)
         end
@@ -697,7 +706,7 @@ defmodule Postgrex.TypeModule do
 
   defp define_inline(module, config, opts) do
     quoted = [directives(config), attributes(opts), find(config),
-              encode(config), decode(config)]
+              encode(config, opts), decode(config, opts)]
     Module.create(module, quoted, Macro.Env.location(__ENV__))
   end
 end
