@@ -236,6 +236,10 @@ defmodule Postgrex.Types do
       or `false` to disable, for more information see `Kernel.SpecialForms.<<>>/1`
       in Elixir (default: `false`);
 
+    * `:debug_defaults` - Generate debug information when building default
+      extensions so they point to the proper source. Enabling such option
+      will increase the time to compile the type module (default: `false`);
+
   """
   defdelegate define(module, extensions, opts \\ []), to: Postgrex.TypeModule
 

@@ -35,6 +35,22 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.VoidText]
 
   @doc """
+  Checks if a given extension is a default extension.
+  """
+  for ext <- @extensions do
+    def default_extension?(unquote(ext)), do: true
+  end
+  def default_extension?(_), do: false
+
+  @doc """
+  List all default extensions.
+  """
+  @spec default_extensions(Keyword.t) :: [{module(), Keyword.t}]
+  def default_extensions(opts \\ []) do
+    Enum.map(@extensions, &{&1, opts})
+  end
+
+  @doc """
   Converts pg major.minor.patch (http://www.postgresql.org/support/versioning) version to an integer
   """
   def parse_version(version) do
@@ -67,14 +83,6 @@ defmodule Postgrex.Utils do
 
   defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
   defp normalize_port(port), do: port
-
-  @doc """
-  List all default extensions.
-  """
-  @spec default_extensions(Keyword.t) :: [{module(), Keyword.t}]
-  def default_extensions(opts \\ []) do
-    Enum.map(@extensions, &{&1, opts})
-  end
 
   @doc """
   Return encode error message.
