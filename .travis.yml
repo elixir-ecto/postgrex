@@ -30,10 +30,10 @@ env:
     - PGVERSION=9.6
 matrix:
   include:
-    - elixir: 1.2.6
+    - elixir: 1.4.0-rc.0
       otp_release: 19.1
       env: PGVERSION=9.6
-    - elixir: 1.2.1
+    - elixir: 1.4.0-rc.0
       otp_release: 18.3
       env: PGVERSION=9.6
 notifications:

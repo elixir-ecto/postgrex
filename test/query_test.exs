@@ -3,9 +3,20 @@ defmodule QueryTest do
   import Postgrex.TestHelper
   alias Postgrex, as: P
 
+  @types Deprecated
+
+  setup_all do
+    on_exit(fn ->
+      :code.delete(@types)
+      :code.purge(@types)
+    end)
+    Postgrex.TypeModule.define(@types, [], date: :postgrex)
+    :ok
+  end
+
   setup context do
-    opts = [ database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named ]
+    opts = [database: "postgrex_test", backoff_type: :stop,
+            prepare: context[:prepare] || :named, types: @types]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
