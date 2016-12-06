@@ -5,7 +5,6 @@ defmodule Postgrex.Extensions.Timestamp do
 
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
   @max_year 294276
-  @gs_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}})
 
   def init(opts), do: Keyword.fetch!(opts, :date)
 
