@@ -1,11 +1,6 @@
 # Changelog
 
-## v1.0.0-rc.1 (2016-11-16)
-
-* Bug fixes
-  * Fix encoding of numerical values
-
-## v1.0.0-rc.0 (2016-11-16)
+## v0.13.0-dev
 
 * Enchancements
   * Fallback to `PGDATABASE` system env for the database
@@ -21,10 +16,13 @@
   * Backoff all awaiting connections if a bootstrap fails to prevent timeout loop
   * Handle idle admin shutdown of postgres backend
   * Fix rebootstrap query to be O(Nlog(N)) instead of O(N^2)
+  * Fix encoding of numerical values
 
-* Backwards incompatible change
+* Backwards incompatible changes
   * `:copy_data` query option is no longer supported and data can only be copied to the database using a collectable
   * Query struct has removed encoders/decoders and changed param_info/result_info values
+  * Extensions now use a new encoder/decoder API based on quoted expressions
+  * The `:extensions` option in `start_link` is no longer supported in favor of defining custom types with `Postgrex.Types.define(module, extra_extensions, options)`
 
 ## v0.12.1 (2016-09-29)
 
