@@ -20,7 +20,7 @@ defmodule Postgrex.Extensions.Point do
 
   # used by other extensions
   def encode_point(%Postgrex.Point{x: x, y: y}, _) do
-    << x::float64, y::float64 >>
+    <<x::float64, y::float64>>
   end
   def encode_point(other, wanted) do
     raise ArgumentError, Postgrex.Utils.encode_msg(other, wanted)

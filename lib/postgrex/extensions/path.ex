@@ -10,8 +10,7 @@ defmodule Postgrex.Extensions.Path do
       %Postgrex.Path{open: o, points: ps} when is_list(ps) and is_boolean(o) ->
         open_byte = Path.open_to_byte(o)
         len = <<length(ps)::int32>>
-        encoded_points = ps
-        |> Enum.map(fn(p) -> Point.encode_point(p, Postgrex.Path) end)
+        encoded_points = Enum.map(ps, &Point.encode_point(&1, Postgrex.Path))
 
         # 1 byte for open/closed flag, 4 for length, 16 for each point
         nbytes = 5 + 16 * length(ps)
@@ -34,8 +33,8 @@ defmodule Postgrex.Extensions.Path do
     %Postgrex.Path{open: open, points: points}
   end
 
-  def open_to_byte(true), do: << 1 :: int8 >>
-  def open_to_byte(false), do: << 0 :: int8 >>
+  def open_to_byte(true), do: <<1 :: int8>>
+  def open_to_byte(false), do: <<0 :: int8>>
 
   defp decode_points(0, _, points), do: Enum.reverse(points)
   defp decode_points(n, <<x::float64, y::float64, rest::bits>>, points) do

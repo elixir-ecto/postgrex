@@ -8,9 +8,8 @@ defmodule Postgrex.Extensions.Polygon do
   def encode(_) do
     quote location: :keep do
       %Postgrex.Polygon{vertices: vertices} when is_list(vertices) ->
-        len = << length(vertices)::int32 >>
-        vert = vertices
-        |> Enum.map(fn(p) -> Point.encode_point(p, Postgrex.Polygon) end)
+        len = <<length(vertices)::int32>>
+        vert = Enum.map(vertices, &Point.encode_point(&1, Postgrex.Polygon))
 
         # 32 bits for len, 64 for each x and each y
         nbytes = 4 + 16 * length(vertices)
