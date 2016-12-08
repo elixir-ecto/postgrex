@@ -10,7 +10,7 @@ defmodule Postgrex.Extensions.LineSegment do
         encoded_p1 = Point.encode_point(p1, Postgrex.LineSegment)
         encoded_p2 = Point.encode_point(p2, Postgrex.LineSegment)
         # 2 points -> 16 bytes each
-        [<<32::int32>>, encoded_p1, encoded_p2]
+        [<<32::int32>>, encoded_p1 | encoded_p2]
       other ->
         raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Line)
     end

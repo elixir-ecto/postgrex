@@ -10,11 +10,12 @@ defmodule Postgrex.Extensions.Path do
       %Postgrex.Path{open: o, points: ps} when is_list(ps) and is_boolean(o) ->
         open_byte = Path.open_to_byte(o)
         len = <<length(ps)::int32>>
-        encoded_points = Enum.map(ps, &Point.encode_point(&1, Postgrex.Path))
+        encoded_points = Enum.reduce(ps, [],
+          fn(p, acc) -> [acc | Point.encode_point(p, Postgrex.Path)] end)
 
         # 1 byte for open/closed flag, 4 for length, 16 for each point
         nbytes = 5 + 16 * length(ps)
-        [<<nbytes::int32>>, open_byte, len, encoded_points]
+        [<<nbytes::int32>>, open_byte, len | encoded_points]
       other ->
         raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
     end
@@ -29,15 +30,15 @@ defmodule Postgrex.Extensions.Path do
 
   def decode_path(<<o::int8, n::int32, point_data::binary-size(n)-unit(128)>>) do
     open = (o == 1)
-    points = decode_points(n, point_data, [])
+    points = decode_points(point_data, [])
     %Postgrex.Path{open: open, points: points}
   end
 
-  def open_to_byte(true), do: <<1 :: int8>>
-  def open_to_byte(false), do: <<0 :: int8>>
+  def open_to_byte(true), do: 1
+  def open_to_byte(false), do: 0
 
-  defp decode_points(0, _, points), do: Enum.reverse(points)
-  defp decode_points(n, <<x::float64, y::float64, rest::bits>>, points) do
-    decode_points(n-1, rest, [%Postgrex.Point{x: x, y: y} | points])
+  defp decode_points(<<>>, points), do: Enum.reverse(points)
+  defp decode_points(<<x::float64, y::float64, rest::bits>>, points) do
+    decode_points(rest, [%Postgrex.Point{x: x, y: y} | points])
   end
 end
