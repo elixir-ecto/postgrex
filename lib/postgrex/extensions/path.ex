@@ -9,13 +9,13 @@ defmodule Postgrex.Extensions.Path do
     quote location: :keep do
       %Postgrex.Path{open: o, points: ps} when is_list(ps) and is_boolean(o) ->
         open_byte = Path.open_to_byte(o)
-        len = <<length(ps)::int32>>
+        len = length(ps)
         encoded_points = Enum.reduce(ps, [],
           fn(p, acc) -> [acc | Point.encode_point(p, Postgrex.Path)] end)
 
         # 1 byte for open/closed flag, 4 for length, 16 for each point
-        nbytes = 5 + 16 * length(ps)
-        [<<nbytes::int32>>, open_byte, len | encoded_points]
+        nbytes = 5 + 16 * len
+        [<<nbytes::int32>>, open_byte, <<len::int32>> | encoded_points]
       other ->
         raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
     end
