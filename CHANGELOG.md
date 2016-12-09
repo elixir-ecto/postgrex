@@ -1,8 +1,9 @@
 # Changelog
 
-## v0.13.0-dev
+## v0.13.0-rc.0 (2016-12-09)
 
 * Enchancements
+  * Support built-in geometry types
   * Fallback to `PGDATABASE` system env for the database
   * Support `bit` and `varbit` types
   * Add postgres error code to error messages
@@ -22,7 +23,7 @@
   * `:copy_data` query option is no longer supported and data can only be copied to the database using a collectable
   * Query struct has removed encoders/decoders and changed param_info/result_info values
   * Extensions now use a new encoder/decoder API based on quoted expressions
-  * The `:extensions` option in `start_link` is no longer supported in favor of defining custom types with `Postgrex.Types.define(module, extra_extensions, options)`
+  * The `:extensions`, `:decode_binary` and `:null` options in `start_link` are no longer supported in favor of defining custom types with `Postgrex.Types.define(module, extra_extensions, options)`
 
 ## v0.12.1 (2016-09-29)
 
