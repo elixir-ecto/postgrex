@@ -10,7 +10,7 @@ defmodule TypeModuleTest do
       :code.delete(@types)
       :code.purge(@types)
     end)
-    opts = [decode_binary: :reference, null: :custom]
+    opts = [decode_binary: :reference, null: :custom, json: :fake_json]
     Postgrex.TypeModule.define(@types, [], opts)
     :ok
   end

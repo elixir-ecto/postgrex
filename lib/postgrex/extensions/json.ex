@@ -4,10 +4,10 @@ defmodule Postgrex.Extensions.JSON do
   import Postgrex.BinaryUtils, warn: false
 
   def init(opts) do
-    {Keyword.get(opts, :decode_binary, :copy), Keyword.get(opts, :json)}
+    {Keyword.get(opts, :json), Keyword.get(opts, :decode_binary, :copy)}
   end
 
-  def matching({_, nil}),
+  def matching({nil, _}),
     do: []
   def matching(_),
     do: [type: "json"]

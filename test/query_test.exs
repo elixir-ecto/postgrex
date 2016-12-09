@@ -5,6 +5,8 @@ defmodule QueryTest do
 
   @types Deprecated
 
+  # TODO: Once we remove date: :postgrex, we can remove the custom type
+  # as elixir calendar types are tested in the calendar module.
   setup_all do
     on_exit(fn ->
       :code.delete(@types)
@@ -804,6 +806,12 @@ defmodule QueryTest do
       Postgrex.query!(context[:pid], "", [])
   end
 
+  test "query from child spec", %{options: opts, test: test} do
+    child_spec = Postgrex.child_spec([name: test] ++ opts)
+    Supervisor.start_link([child_spec], strategy: :one_for_one)
+    %Postgrex.Result{rows: [[42]]} = Postgrex.query!(test, "SELECT 42", [])
+  end
+
   test "query before and after idle ping" do
     opts = [ database: "postgrex_test", backoff_type: :stop, idle_timeout: 1]
     {:ok, pid} = P.start_link(opts)
@@ -874,7 +882,6 @@ defmodule QueryTest do
 
     capture_log(fn() ->
       assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
-
       assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{postgres: %{code: :admin_shutdown}}}}
     end)
   end

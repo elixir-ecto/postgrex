@@ -3,7 +3,7 @@ defmodule ClientTest do
   import Postgrex.TestHelper
 
   setup do
-    opts = [ database: "postgrex_test", backoff_type: :stop ]
+    opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = Postgrex.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
