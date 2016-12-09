@@ -51,7 +51,7 @@ defmodule Postgrex.Protocol do
     {:ok, state} |
     {:error, Postgrex.Error.t | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    host       = Keyword.fetch!(opts, :hostname) |> to_char_list
+    host       = Keyword.fetch!(opts, :hostname) |> to_charlist
     port       = opts[:port] || 5432
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])

@@ -6,7 +6,7 @@ defmodule Postgrex.ErrorCode do
   errcodes = for line <- File.stream!(errcodes_path),
                  match?(<<_code::(5*8), "    ", _::binary>>, line) do
     case String.split(line, " ", trim: true) do
-      [code, _, _, name] -> {code, name |> String.strip |> String.to_atom}
+      [code, _, _, name] -> {code, name |> String.trim |> String.to_atom}
       [code, _, _] -> {code} # duplicated code without name
     end
   end
