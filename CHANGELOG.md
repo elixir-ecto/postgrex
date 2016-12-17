@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.13.0-rc.0 (2016-12-09)
+## v0.13.0 (2016-12-17)
 
 * Enchancements
   * Support built-in geometry types
