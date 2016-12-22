@@ -64,12 +64,14 @@ Extensions are used to extend Postgrex' built-in type encoding/decoding.
 
 Here is a [JSON extension](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the Postgres' JSON type.
 
-Extensions can be specified and configured when building custom type modules. For example, if you want to different a JSON encoder/decode, you can define a new type module as below:
+Extensions can be specified and configured when building custom type modules. For example, if you want to different a JSON encoder/decode, you can define a new type module as below.
 
 ```elixir
 # Postgrex.Types.define(module_name, extra_extensions, options)
 Postgrex.Types.define(MyApp.PostgrexTypes, [], json: AnotherJSONLib)
 ```
+
+`Postgrex.Types.define/3` must be called on its own file, outside of any module and function, as it only needs to be defined once during compilation.
 
 Once a type module is defined, you must specify it on `start_link`:
 

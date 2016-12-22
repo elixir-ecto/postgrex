@@ -183,6 +183,10 @@ defmodule Postgrex.Types do
   @doc """
   Defines a type module with custom extensions and options.
 
+  `Postgrex.Types.define/3` must be called on its own file, outside of
+  any module and function, as it only needs to be defined once during
+  compilation.
+
   Type modules are given to Postgrex on `start_link` via the `:types`
   option and are used to control how Postgrex encodes and decodes data
   coming from Postgrex.

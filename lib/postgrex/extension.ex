@@ -4,6 +4,9 @@ defmodule Postgrex.Extension do
   from Elixir values.
 
   Custom extensions can be enabled via `Postgrex.Types.define/3`.
+  `Postgrex.Types.define/3` must be called on its own file, outside of
+  any module and function, as it only needs to be defined once during
+  compilation.
 
   For example to support label trees using the text encoding format:
 

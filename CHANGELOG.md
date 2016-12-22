@@ -23,7 +23,7 @@
   * `:copy_data` query option is no longer supported and data can only be copied to the database using a collectable
   * Query struct has removed encoders/decoders and changed param_info/result_info values
   * Extensions now use a new encoder/decoder API based on quoted expressions
-  * The `:extensions`, `:decode_binary` and `:null` options in `start_link` are no longer supported in favor of defining custom types with `Postgrex.Types.define(module, extra_extensions, options)`
+  * The `:extensions`, `:decode_binary` and `:null` options in `start_link` are no longer supported in favor of defining custom types with `Postgrex.Types.define(module, extra_extensions, options)`. `Postgrex.Types.define/3` must be called on its own file, outside of any module and function, as it only needs to be defined once during compilation.
 
 ## v0.12.1 (2016-09-29)
 
