@@ -131,7 +131,7 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
-  test "non existant database" do
+  test "non existent database" do
     Process.flag(:trap_exit, true)
 
     capture_log fn ->

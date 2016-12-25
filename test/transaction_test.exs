@@ -193,7 +193,7 @@ defmodule TransactionTest do
 
   @tag mode: :savepoint
   @tag prepare: :unnamed
-  test "savepoint transaction rollbacks on failed wih unnamed queries", context do
+  test "savepoint transaction rollbacks on failed with unnamed queries", context do
     assert :ok = query("BEGIN", [])
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
