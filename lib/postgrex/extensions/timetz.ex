@@ -87,6 +87,6 @@ defmodule Postgrex.Extensions.TimeTZ do
     microsec = rem(microsec, 1_000_000)
     sec
     |> :calendar.seconds_to_time()
-    |> Time.from_erl!(microsec)
+    |> Time.from_erl!({microsec, 6})
   end
 end

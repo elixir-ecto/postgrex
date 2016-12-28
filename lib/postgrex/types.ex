@@ -254,7 +254,7 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  @spec encode_params([term], [type], state) :: iodata
+  @spec encode_params([term], [type], state) :: iodata | :error
   def encode_params(params, types, {mod, _}) do
     apply(mod, :encode_params, [params, types])
   end

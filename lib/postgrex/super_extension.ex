@@ -1,21 +1,21 @@
 defmodule Postgrex.SuperExtension do
   @moduledoc false
 
-  @type opts :: term
+  @type state :: term
 
-  @callback init(term) :: opts
+  @callback init(Keyword.t) :: state
 
-  @callback matching(opts) :: [type: String.t,
+  @callback matching(state) :: [type: String.t,
                                  send: String.t,
                                  receive: String.t,
                                  input: String.t,
                                  output: String.t]
 
-  @callback format(opts) :: :super_binary
+  @callback format(state) :: :super_binary
 
-  @callback oids(Postgrex.TypeInfo.t, opts) :: nil | [Postgrex.Types.oid]
+  @callback oids(Postgrex.TypeInfo.t, state) :: nil | [Postgrex.Types.oid]
 
-  @callback encode(opts) :: Macro.expr
+  @callback encode(state) :: Macro.t
 
-  @callback decode(opts) :: Macro.expr
+  @callback decode(state) :: Macro.t
 end

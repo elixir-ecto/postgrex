@@ -19,13 +19,15 @@ defmodule Postgrex.Extension do
         # binary to be garbage collected sooner if the copy is going to be kept
         # for a longer period of time. See `:binary.copy/1` for more
         # information.
-        def init(opts) when opts in [:reference, :copy], do: opts
+        def init(opts) do
+          Keyword.get(opts, :decode_copy, :copy)
+        end
 
         # Use this extension when `type` from %Postgrex.TypeInfo{} is "ltree"
-        def matching(_opts), do: [type: "ltree"]
+        def matching(_state), do: [type: "ltree"]
 
         # Use the text format, "ltree" does not have a binary format.
-        def format(_opts), do: :text
+        def format(_state), do: :text
 
         # Use quoted expression to encode a string that is the same as
         # postgresql's ltree text format. The quoted expression should contain
@@ -33,7 +35,7 @@ defmodule Postgrex.Extension do
         # value and returns encoded `iodata()`. The first 4 bytes in the
         # `iodata()` must be the byte size of the rest of the encoded data, as a
         # signed 32bit big endian integer.
-        def encode(_opts) do
+        def encode(_state) do
           quote do
             bin when is_binary(bin) ->
               [<<byte_size(bin) :: signed-size(32)>> | bin]
@@ -102,7 +104,7 @@ defmodule Postgrex.Extension do
       end
 
   """
-  @callback encode(state) :: Macro.expr
+  @callback encode(state) :: Macro.t
 
   @doc """
   Returns a quoted list of clauses that decode a binary to an Elixir value.
@@ -118,5 +120,5 @@ defmodule Postgrex.Extension do
         end
       end
   """
-  @callback decode(state) :: Macro.expr
+  @callback decode(state) :: Macro.t
 end

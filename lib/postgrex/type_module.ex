@@ -33,6 +33,7 @@ defmodule Postgrex.TypeModule do
       @moduledoc false
       unquote(bin_opt_info(opts))
       @compile {:inline, [encode_value: 2]}
+      @dialyzer {:no_opaque, [decode_tuple: 5]}
       @null unquote(Macro.escape(null))
     end
   end

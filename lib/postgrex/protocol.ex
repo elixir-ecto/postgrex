@@ -689,9 +689,6 @@ defmodule Postgrex.Protocol do
     TypeServer.fail(server, ref)
     {:disconnect, err, s}
   end
-  defp bootstrap_fail(s, err, s) do
-    {:disconnect, err, s}
-  end
 
   defp bootstrap_fail(s, err, status, buffer) do
     bootstrap_fail(%{s | buffer: buffer}, err, status)
@@ -2135,7 +2132,6 @@ defmodule Postgrex.Protocol do
   defp queries_delete(%{queries: queries}), do: :ets.delete(queries)
 
   defp query_put(%{queries: nil}, _), do: :ok
-  defp query_put(s, %Stream{query: query}), do: query_put(s, query)
   defp query_put(_, %Query{ref: nil}), do: nil
   defp query_put(%{queries: queries}, %Query{name: name, ref: ref}) do
     try do
@@ -2157,13 +2153,9 @@ defmodule Postgrex.Protocol do
   defp unnamed_query_delete(s, %Query{name: ""} = query) do
     query_delete(s, query)
   end
-  defp unnamed_query_delete(s, %Stream{query: %Query{name: ""} = query}) do
-    query_delete(s, query)
-  end
   defp unnamed_query_delete(_, _), do: :ok
 
   defp query_delete(%{queries: nil}, _), do: :ok
-  defp query_delete(s, %Stream{query: query}), do: query_delete(s, query)
   defp query_delete(%{queries: queries}, %Query{name: name}) do
     try do
       :ets.delete(queries, name)
