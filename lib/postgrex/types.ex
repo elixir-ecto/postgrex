@@ -48,7 +48,13 @@ defmodule Postgrex.Types do
         [] ->
           ""
         _  ->
-          "WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))"
+          # equiv to `WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))`
+          """
+          WHERE t.oid NOT IN (
+            SELECT (ARRAY[#{Enum.join(oids, ",")}])[i]
+            FROM generate_series(1, #{length(oids)}) AS i
+          )
+          """
       end
 
     """
