@@ -44,11 +44,20 @@ defmodule Postgrex.Types do
       end
 
     filter_oids =
-      case oids do
-        [] ->
-          ""
-        _  ->
+      case  {version >= {8, 4, 0}, !(Enum.empty?(oids))} do
+        {true, true} ->
           "WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))"
+        {false, true} ->
+          """
+          WHERE t.oid NOT IN (
+            SELECT ARRAY[#{Enum.join(oids, ",")}][i]
+            FROM generate_series(
+              array_lower(ARRAY[#{Enum.join(oids, ",")}], 1),
+              array_upper(ARRAY[#{Enum.join(oids, ",")}],1))
+            i)
+          """
+        {_, false} ->
+          ""
       end
 
     """
