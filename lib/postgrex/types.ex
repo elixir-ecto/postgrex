@@ -48,7 +48,7 @@ defmodule Postgrex.Types do
         [] ->
           ""
         _  ->
-          "WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))"
+          "WHERE t.oid NOT IN (VALUES (#{Enum.join(oids, "), (")}))"
       end
 
     """
