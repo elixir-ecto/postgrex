@@ -51,7 +51,7 @@ defmodule Postgrex.Types do
           oid_array = Enum.join(oids, ",")
           """
           WHERE t.oid NOT IN (
-            SELECT ARRAY[#{oid_array}][i]
+            SELECT (ARRAY[#{oid_array}])[i]
             FROM generate_series(
               array_lower(ARRAY[#{oid_array}], 1),
               array_upper(ARRAY[#{oid_array}], 1)
