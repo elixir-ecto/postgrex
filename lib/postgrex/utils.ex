@@ -109,6 +109,18 @@ defmodule Postgrex.Utils do
     "your table or in your query or convert the value accordingly."
   end
 
+  @doc """
+  Return type error message.
+  """
+  def type_msg(%Postgrex.TypeInfo{type: json}, module)
+      when json in ["json", "jsonb"] do
+    "type `#{json}` can not be handled by the types module #{inspect module}, " <>
+    "it must define a `:json` library in its options to support JSON types"
+  end
+  def type_msg(%Postgrex.TypeInfo{type: type}, module) do
+    "type `#{type}` can not be handled by the types module #{inspect module}"
+  end
+
   ## Helpers
 
   defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"

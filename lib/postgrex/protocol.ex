@@ -903,10 +903,10 @@ defmodule Postgrex.Protocol do
     case Postgrex.Types.fetch(oid, types) do
       {:ok, info} ->
         fetch_type_info(oids, types, [info | infos])
-      {:error, %Postgrex.TypeInfo{type: type}} ->
-        msg = "type `#{type}` can not be handled by the configured extensions"
+      {:error, %Postgrex.TypeInfo{} = info, mod} ->
+        msg = Postgrex.Utils.type_msg(info, mod)
         {:error, RuntimeError.exception(message: msg)}
-      {:error, nil} ->
+      {:error, nil, _} ->
         msg = "oid `#{oid}` was not bootstrapped and lacks type information"
         {:error, RuntimeError.exception(message: msg)}
     end

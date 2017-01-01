@@ -268,30 +268,30 @@ defmodule Postgrex.Types do
 
   @doc false
   @spec fetch(oid, state) ::
-    {:ok, {:binary | :text, type}} | {:error, TypeInfo.t | nil}
-  def fetch(oid, {_, table}) do
+    {:ok, {:binary | :text, type}} | {:error, TypeInfo.t | nil, module}
+  def fetch(oid, {mod, table}) do
     try do
       :ets.lookup_element(table, oid, 3)
     rescue
       ArgumentError ->
-        {:error, nil}
+        {:error, nil, mod}
     else
       {_, _} = info ->
         {:ok, info}
       nil ->
-        fetch_type_info(oid, table)
+        fetch_type_info(oid, mod, table)
     end
   end
 
-  defp fetch_type_info(oid, table) do
+  defp fetch_type_info(oid, mod, table) do
     try do
       :ets.lookup_element(table, oid, 2)
     rescue
       ArgumentError ->
-        {:error, nil}
+        {:error, nil, mod}
     else
       type_info ->
-        {:error, type_info}
+        {:error, type_info, mod}
     end
   end
 end
