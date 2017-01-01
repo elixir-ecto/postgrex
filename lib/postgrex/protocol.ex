@@ -20,7 +20,7 @@ defmodule Postgrex.Protocol do
 
   defstruct [sock: nil, connection_id: nil, connection_key: nil, peer: nil,
              types: nil, null: nil, timeout: nil, parameters: %{}, queries: nil,
-             postgres: :idle, transactions: :naive, buffer: nil]
+             postgres: :idle, transactions: :naive, buffer: nil, variant: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
                              connection_id: nil | pos_integer,
@@ -33,7 +33,8 @@ defmodule Postgrex.Protocol do
                              queries: nil | :ets.tid,
                              postgres: :idle | :transaction | :failed,
                              transactions: :strict | :naive,
-                             buffer: nil | binary | :active_once}
+                             buffer: nil | binary | :active_once,
+                             variant: atom}
   @type notify :: ((binary, binary) -> any)
 
   @reserved_prefix "POSTGREX_"
@@ -57,6 +58,7 @@ defmodule Postgrex.Protocol do
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl?       = opts[:ssl] || false
     types_mod  = Keyword.fetch!(opts, :types)
+    variant    = opts[:variant]
 
     transactions =
       case opts[:transactions] || :naive do
@@ -71,7 +73,7 @@ defmodule Postgrex.Protocol do
       end
 
     s = %__MODULE__{timeout: timeout, postgres: :idle,
-                    transactions: transactions}
+                    transactions: transactions, variant: variant}
 
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     status = %{opts: opts, types_mod: types_mod, types_key: types_key,
@@ -635,9 +637,10 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_send(s, status, types, buffer) do
-    %{parameters: parameters} = s
+    %{parameters: parameters, variant: variant} = s
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    statement = Types.bootstrap_query(version, types)
+    bootstrap_module = variant || Types
+    statement = bootstrap_module.bootstrap_query(version, types)
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
