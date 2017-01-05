@@ -49,6 +49,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
     enum            "ok" ***
     bit             << 1::1, 0::1 >>
     varbit          << 1::1, 0::1 >>
+    tsvector        [%Postgrex.Lexeme{positions: [{1, :A}], word: "a"}]
 
 \* [Decimal](http://github.com/ericmj/decimal)
 

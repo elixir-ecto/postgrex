@@ -257,6 +257,23 @@ defmodule Postgrex.Circle do
 
   defstruct [
     center: nil,
-    radius: nil 
+    radius: nil
+  ]
+end
+
+defmodule Postgrex.Lexeme do
+  @moduledoc """
+  Struct for Postgres Lexeme (A Tsvector type is composed of multiple lexemes)
+
+  ## Fields
+    * `word`
+    * `positions`
+  """
+
+  @type t :: %__MODULE__{word: String.t, positions: [{pos_integer, :A | :B | :C | nil}]}
+
+  defstruct [
+    word: nil,
+    positions: nil
   ]
 end
