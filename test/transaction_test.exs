@@ -1,6 +1,7 @@
 defmodule TransactionTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
   alias Postgrex, as: P
 
   setup context do

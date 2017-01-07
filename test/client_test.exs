@@ -1,6 +1,7 @@
 defmodule ClientTest do
   use ExUnit.Case
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
 
   setup do
     opts = [database: "postgrex_test", backoff_type: :stop]

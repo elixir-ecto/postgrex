@@ -1,7 +1,7 @@
 defmodule LoginTest do
   use ExUnit.Case
   alias Postgrex, as: P
-  import Postgrex.TestHelper
+  import ExUnit.CaptureLog
 
   test "login cleartext password" do
     Process.flag(:trap_exit, true)

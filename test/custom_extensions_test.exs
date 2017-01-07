@@ -1,6 +1,7 @@
 defmodule CustomExtensionsTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
   alias Postgrex, as: P
 
   @types CustomExtensionsTypes
@@ -113,17 +114,20 @@ defmodule CustomExtensionsTest do
   end
 
   test "encode and decode pushes error to client", context do
+    Process.flag(:trap_exit, true)
+
     assert_raise RuntimeError, "encode", fn ->
       query("SELECT $1::boolean", [true])
     end
 
-    assert Process.alive? context[:pid]
+    assert capture_log(fn() ->
+      assert_raise RuntimeError, "decode", fn ->
+        query("SELECT true", [])
+      end
 
-    assert_raise RuntimeError, "decode", fn ->
-      query("SELECT true", [])
-    end
-
-    assert Process.alive? context[:pid]
+      pid = context[:pid]
+      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{}, _}}
+    end) =~ "(RuntimeError) decode"
   end
 
   test "raise when executing prepared query on connection with different types", context do
