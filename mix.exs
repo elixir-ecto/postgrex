@@ -17,7 +17,7 @@ defmodule Postgrex.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger, :db_connection, :decimal],
+    [applications: [:logger, :db_connection, :decimal, :crypto],
      mod: {Postgrex.App, []},
      env: [type_server_reap_after: 3 * 60_000]]
   end
