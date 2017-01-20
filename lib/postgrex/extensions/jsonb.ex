@@ -3,11 +3,10 @@ defmodule Postgrex.Extensions.JSONB do
   import Postgrex.BinaryUtils, warn: false
 
   def init(opts) do
-    {Keyword.get(opts, :json), Keyword.get(opts, :decode_binary, :copy)}
+    library = Keyword.get(opts, :json) || __MODULE__
+    {library, Keyword.get(opts, :decode_binary, :copy)}
   end
 
-  def matching({nil, _}),
-    do: []
   def matching(_),
     do: [type: "jsonb"]
 
@@ -21,6 +20,8 @@ defmodule Postgrex.Extensions.JSONB do
         [<<(IO.iodata_length(data)+1) :: int32, 1>> | data]
     end
   end
+
+  def encode!(json), do: json
 
   def decode({library, :copy}) do
     quote location: :keep do
@@ -38,4 +39,6 @@ defmodule Postgrex.Extensions.JSONB do
         unquote(library).decode!(json)
     end
   end
+
+  def decode!(json), do: json
 end

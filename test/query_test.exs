@@ -678,6 +678,16 @@ defmodule QueryTest do
          1::1,0::1,1::1>>])
   end
 
+  @tag min_pg_version: "9.2"
+  test "encode json", context do
+    assert [["{}"]] == query("SELECT $1::json", ["{}"])
+  end
+
+  @tag min_pg_version: "9.4"
+  test "encode jsonb", context do
+    assert [["{}"]] == query("SELECT $1::jsonb", ["{}"])
+  end
+
   test "fail on encode arrays", context do
     assert_raise ArgumentError, "nested lists must have lists with matching lengths", fn ->
       query("SELECT $1::integer[]", [[[1], [1,2]]])
