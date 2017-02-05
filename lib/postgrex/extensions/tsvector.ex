@@ -35,7 +35,7 @@ defmodule Postgrex.Extensions.TSVector do
 
   defp encode_positions(%Postgrex.Lexeme{word: word, positions: positions}) do
     positions = Enum.map(positions, fn({position, weight}) -> <<encode_weight_binary(weight)::2, position::14>> end)
-    [[word, 0], <<length(positions)::16>>, positions]
+    [word, 0, <<length(positions)::16>> | positions]
   end
 
   def decode_tsvector_values("") do
@@ -43,7 +43,7 @@ defmodule Postgrex.Extensions.TSVector do
   end
 
   def decode_tsvector_values(words) do
-    [word, <<positions_count::16, rest::binary>>] = :binary.split(words, [<<0>>])
+    [word, <<positions_count::16, rest::binary>>] = :binary.split(words, <<0>>)
     positions_bytes = positions_count * 2
     <<positions::binary-size(positions_bytes), remaining_data::binary>> = rest
     positions = for <<weight::2, position::14 <- positions>>, do: {position, decode_weight(weight)}
