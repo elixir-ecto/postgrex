@@ -13,36 +13,32 @@ defmodule TsvectorTest do
   test "encode basic tsvector", context do
     assert [["'1'"]] =
            query("SELECT $1::tsvector::text", [[%Lexeme{positions: [], word: "1"}]])
-    assert [[[%Lexeme{positions: [], word: "1"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [], word: "1"}]])
     assert [["'1' 'hello'"]] =
            query("SELECT $1::tsvector::text", [[%Lexeme{positions: [], word: "1"}, %Lexeme{positions: [], word: "hello"}]])
-    assert [[[%Lexeme{positions: [], word: "1"}, %Lexeme{positions: [], word: "hello"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [], word: "1"}, %Lexeme{positions: [], word: "hello"}]])
   end
 
   test "encode tsvector with positions", context do
-    assert [[[%Lexeme{positions: [{1, nil}], word: "1"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [{1, nil}], word: "1"}]])
+    assert [["'1':1"]] =
+           query("SELECT $1::tsvector::text", [[%Lexeme{positions: [{1, nil}], word: "1"}]])
   end
 
   test "encode tsvector with multiple positions", context do
-    assert [[[%Lexeme{positions: [{1, nil}, {2, nil}], word: "1"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [{1, nil}, {2, nil}], word: "1"}]])
+    assert [["'1':1,2"]] =
+           query("SELECT $1::tsvector::text", [[%Lexeme{positions: [{1, nil}, {2, nil}], word: "1"}]])
   end
 
   test "encode tsvector with position and weight", context do
-    assert [[[%Lexeme{positions: [{1, :A}], word: "car"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [{1, :A}], word: "car"}]])
-    assert [[[%Lexeme{positions: [{1, :B}], word: "car"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [{1, :B}], word: "car"}]])
-    assert [[[%Lexeme{positions: [{1, :C}], word: "car"}]]] =
-           query("SELECT $1::tsvector", [[%Lexeme{positions: [{1, :C}], word: "car"}]])
+    assert [["'car':1A"]] =
+           query("SELECT $1::tsvector::text", [[%Lexeme{positions: [{1, :A}], word: "car"}]])
+    assert [["'car':1B"]] =
+           query("SELECT $1::tsvector::text", [[%Lexeme{positions: [{1, :B}], word: "car"}]])
+    assert [["'car':1C"]] =
+           query("SELECT $1::tsvector::text", [[%Lexeme{positions: [{1, :C}], word: "car"}]])
   end
 
   test "encode tsvector with multiple positions and weights", context do
-        assert [[[%Lexeme{positions: [{1, :A}, {2, nil}, {3, :B}], word: "car"}]]] =
-               query("SELECT $1::tsvector", [[%Lexeme{positions: [{1, :A}, {2, nil}, {3, :B}], word: "car"}]])
+        assert [["'car':1A,2,3B"]] =
+               query("SELECT $1::tsvector::text", [[%Lexeme{positions: [{1, :A}, {2, nil}, {3, :B}], word: "car"}]])
   end
 
   test "decode basic tsvectors", context do
