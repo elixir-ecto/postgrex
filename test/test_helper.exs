@@ -47,6 +47,14 @@ DROP TYPE IF EXISTS enum1;
 CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 
 CREATE TABLE uniques (a int UNIQUE);
+
+DROP TABLE IF EXISTS missing_oid;
+DROP TYPE IF EXISTS missing_enum;
+DROP TYPE IF EXISTS missing_comp;
+
+CREATE TABLE altering (a int2);
+
+CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);
 """
 
 sql_with_schemas = """
@@ -155,11 +163,5 @@ defmodule Postgrex.TestHelper do
       Postgrex.transaction(var!(context)[:pid], unquote(fun),
                                       unquote(opts))
     end
-  end
-
-  def capture_log(fun) do
-    Logger.remove_backend(:console)
-    fun.()
-    Logger.add_backend(:console, flush: true)
   end
 end

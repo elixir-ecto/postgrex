@@ -1,26 +1,29 @@
 defmodule Postgrex.Extensions.Float4 do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "float4send"
 
-  def encode(_, :NaN, _, _),
-    do: <<127, 192, 0, 0>>
-  def encode(_, :inf, _, _),
-    do: <<127, 128, 0, 0>>
-  def encode(_, :"-inf", _, _),
-    do: <<255, 128, 0, 0>>
-  def encode(_, n, _, _) when is_number(n),
-    do: <<n :: float32>>
-  def encode(type_info, value, _, _) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a float")
+  def encode(_) do
+    quote location: :keep do
+      n when is_number(n) ->
+        <<4::int32, n::float32>>
+      :NaN ->
+        <<4::int32, 0::1, 255, 1::1, 0::22>>
+      :inf ->
+        <<4::int32, 0::1, 255, 0::23>>
+      :"-inf" ->
+        <<4::int32, 1::1, 255, 0::23>>
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a float")
+    end
   end
 
-  def decode(_, <<127, 192, 0, 0>>, _, _),
-    do: :NaN
-  def decode(_, <<127, 128, 0, 0>>, _, _),
-    do: :inf
-  def decode(_, <<255, 128, 0, 0>>, _, _),
-    do: :"-inf"
-  def decode(_, <<n :: float32>>, _, _),
-    do: n
+  def decode(_) do
+    quote location: :keep do
+      <<4::int32, 0::1, 255, 0::23>> -> :inf
+      <<4::int32, 1::1, 255, 0::23>> -> :"-inf"
+      <<4::int32, _::1, 255, _::23>> -> :NaN
+      <<4::int32, float::float32>>   -> float
+    end
+  end
 end

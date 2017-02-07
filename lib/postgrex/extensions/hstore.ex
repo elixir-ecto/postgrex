@@ -1,26 +1,34 @@
 defmodule Postgrex.Extensions.HStore do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, type: "hstore"
 
-  def init(_, opts), do: Keyword.fetch!(opts, :decode_binary)
+  def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
-  def encode(_, map, _, _) when is_map(map),
-    do: encode_hstore(map)
-  def encode(type_info, value, _, _) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a map")
+  def encode(_) do
+    quote location: :keep do
+      %{} = map ->
+        data = unquote(__MODULE__).encode_hstore(map)
+        [<<IO.iodata_length(data) :: int32>> | data]
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a map")
+    end
   end
 
-  def decode(_, bin, _, mode),
-    do: decode_hstore(bin, mode)
+  def decode(mode) do
+    quote do
+      <<len :: int32, data :: binary-size(len)>> ->
+        unquote(__MODULE__).decode_hstore(data, unquote(mode))
+    end
+  end
 
   ## Helpers
 
-  defp encode_hstore(hstore_map) do
+  def encode_hstore(hstore_map) do
     keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
         [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end
-    :erlang.iolist_to_binary([<<Map.size(hstore_map)::int32>> | keys_and_values])
+    [<<Map.size(hstore_map)::int32>> | keys_and_values]
   end
 
   defp encode_hstore_key(key) when is_binary(key) do

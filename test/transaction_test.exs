@@ -1,6 +1,7 @@
 defmodule TransactionTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
   alias Postgrex, as: P
 
   setup context do
@@ -193,7 +194,7 @@ defmodule TransactionTest do
 
   @tag mode: :savepoint
   @tag prepare: :unnamed
-  test "savepoint transaction rollbacks on failed wih unnamed queries", context do
+  test "savepoint transaction rollbacks on failed with unnamed queries", context do
     assert :ok = query("BEGIN", [])
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
@@ -225,6 +226,40 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+      P.rollback(conn, :oops)
+    end) == {:error, :oops}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  test "savepoint query does not rollback on savepoint error", context do
+    assert transaction(fn(conn) ->
+      assert {:ok, _} = P.query(conn, "SAVEPOINT postgrex_query", [])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+        P.query(conn, "INSERT INTO uniques VALUES (1), (1)", [])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [], [mode: :savepoint])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [])
+
+      P.rollback(conn, :oops)
+    end) == {:error, :oops}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  test "savepoint query handles release savepoint error", context do
+    assert transaction(fn(conn) ->
+      assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
+        P.query(conn, "RELEASE SAVEPOINT postgrex_query", [], [mode: :savepoint])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [])
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -353,7 +388,7 @@ defmodule TransactionTest do
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
@@ -369,7 +404,7 @@ defmodule TransactionTest do
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
@@ -384,28 +419,17 @@ defmodule TransactionTest do
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
   end
 
   @tag mode: :transaction
-  test "COPY FROM STDIN with copy_data: true", context do
-    transaction(fn(conn) ->
-      assert %Postgrex.Result{command: :copy, rows: nil, num_rows: 1} =
-        Postgrex.query!(conn, "COPY uniques FROM STDIN", ["2\n"], [copy_data: true])
-      assert %Postgrex.Result{rows: [[2]]} =
-        Postgrex.query!(conn, "SELECT * FROM uniques", [])
-      Postgrex.rollback(conn, :done)
-    end)
-  end
-
-  @tag mode: :transaction
   test "COPY FROM STDIN with copy_data: false, mode: :savepoint returns error", context do
     transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{}} =
-        Postgrex.query(conn, "COPY uniques FROM STDIN", [], [mode: :savepoint, copy_data: false])
+        Postgrex.query(conn, "COPY uniques FROM STDIN", [], [mode: :savepoint])
       assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
     end)
   end

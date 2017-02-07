@@ -1,11 +1,25 @@
 defmodule QueryTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
   alias Postgrex, as: P
 
+  @types Deprecated
+
+  # TODO: Once we remove date: :postgrex, we can remove the custom type
+  # as elixir calendar types are tested in the calendar module.
+  setup_all do
+    on_exit(fn ->
+      :code.delete(@types)
+      :code.purge(@types)
+    end)
+    Postgrex.TypeModule.define(@types, [], date: :postgrex)
+    :ok
+  end
+
   setup context do
-    opts = [ database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named]
+    opts = [database: "postgrex_test", backoff_type: :stop,
+            prepare: context[:prepare] || :named, types: @types]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -65,8 +79,6 @@ defmodule QueryTest do
            query("SELECT time '01:02:03'", [])
     assert [[%Postgrex.Time{hour: 23, min: 59, sec: 59, usec: 0}]] =
            query("SELECT time '23:59:59'", [])
-    assert [[%Postgrex.Time{hour: 4, min: 5, sec: 6, usec: 0}]] =
-           query("SELECT time '04:05:06 PST'", [])
 
     assert [[%Postgrex.Time{hour: 0, min: 0, sec: 0, usec: 123000}]] =
            query("SELECT time '00:00:00.123'", [])
@@ -74,6 +86,13 @@ defmodule QueryTest do
            query("SELECT time '00:00:00.123456'", [])
     assert [[%Postgrex.Time{hour: 1, min: 2, sec: 3, usec: 123456}]] =
            query("SELECT time '01:02:03.123456'", [])
+
+    assert [[%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}]] =
+           query("SELECT timetz '04:05:06+02'", [])
+    assert [[%Postgrex.Time{hour: 22, min: 5, sec: 6, usec: 0}]] =
+           query("SELECT timetz '00:05:06+02'", [])
+    assert [[%Postgrex.Time{hour: 1, min: 5, sec: 6, usec: 0}]] =
+           query("SELECT timetz '23:05:06-02'", [])
   end
 
   test "decode date", context do
@@ -94,7 +113,10 @@ defmodule QueryTest do
            query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
     assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 123456}]] =
            query("SELECT timestamp '0001-01-01 00:00:00.123456'", [])
-
+    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 0}]] =
+           query("SELECT timestamp '0001-01-01 00:00:00'", [])
+    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 0}]] =
+           query("SELECT timestamp with time zone '0001-01-01 00:00:00 UTC'", [])
   end
 
   test "decode interval", context do
@@ -118,12 +140,141 @@ defmodule QueryTest do
     assert [[%Postgrex.Point{x: -97.0, y: 100.0}]] == query("SELECT $1::point", [%Postgrex.Point{x: -97, y: 100}])
   end
 
+ test "decode polygon", context do
+    p1 = %Postgrex.Point{x: 100.0, y: 101.5}
+    p2 = %Postgrex.Point{x: 100.0, y: -99.1}
+    p3 = %Postgrex.Point{x: -91.1, y: -101.1}
+    p4 = %Postgrex.Point{x: -100.0, y: 99.9}
+    polygon = %Postgrex.Polygon{vertices: [p1, p2, p3, p4]}
+    polystring = "((100.0,101.5),(100.0,-99.1),(-91.1,-101.1),(-100.0,99.9))"
+    assert [[polygon]] == query("SELECT '#{polystring}'" <> "::polygon", [])
+  end
+
+  test "encode polygon", context do
+    p1 = %Postgrex.Point{x: 100.0, y: 101.5}
+    p2 = %Postgrex.Point{x: 100.0, y: -99.1}
+    p3 = %Postgrex.Point{x: -91.1, y: -101.1}
+    p4 = %Postgrex.Point{x: -100.0, y: 99.9}
+    polygon = %Postgrex.Polygon{vertices: [p1, p2, p3, p4]}
+    assert [[polygon]] == query("SELECT $1::polygon", [polygon])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [1]))
+    bad_polygon = %Postgrex.Polygon{vertices: ["x"]}
+    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [bad_polygon]))
+  end
+
+  @tag min_pg_version: "9.4"
+  test "decode line", context do
+    # 98.6x - y = 0 <=> y = 98.6x
+    line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
+    assert [[line]] == query("SELECT '{98.6,-1.0,0.0}'::line", [])
+    assert [[line]] == query("SELECT '(0.0,0.0),(1.0,98.6)'::line", [])
+  end
+
+  @tag min_pg_version: "9.4"
+  test "encode line", context do
+    # 98.6x - y = 0 <=> y = 98.6x
+    line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
+    assert [[line]] == query("SELECT $1::line", [line])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::line", ["foo"]))
+    bad_line = %Postgrex.Line{a: nil, b: "foo"}
+    assert %ArgumentError{} = catch_error(query("SELECT $1::line", [bad_line]))
+  end
+
+  test "decode line segment", context do
+    segment = %Postgrex.LineSegment{
+      point1: %Postgrex.Point{x: 0.0,  y: 0.0},
+      point2: %Postgrex.Point{x: 1.0,  y: 1.0}
+    }
+    assert [[segment]] == query("SELECT '(0.0,0.0)(1.0,1.0)'::lseg", [])
+  end
+
+  test "encode line segment", context do
+    segment = %Postgrex.LineSegment{
+      point1: %Postgrex.Point{x: 0.0,  y: 0.0},
+      point2: %Postgrex.Point{x: 1.0,  y: 1.0}
+    }
+    assert [[segment]] == query("SELECT $1::lseg", [segment])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::lseg", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::lseg", [%Postgrex.LineSegment{}]))
+  end
+
+  test "decode box", context do
+    box = %Postgrex.Box{
+      upper_right: %Postgrex.Point{x: 1.0,  y: 1.0},
+      bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
+    }
+    # postgres automatically sorts the points so that we get UR/BL
+    assert [[box]] == query("SELECT '(0.0,0.0)(1.0,1.0)'::box", [])
+    assert [[box]] == query("SELECT '(1.0,1.0)(0.0,0.0)'::box", [])
+    assert [[box]] == query("SELECT '(1.0,0.0)(0.0,1.0)'::box", [])
+    assert [[box]] == query("SELECT '(0.0,1.0)(1.0,0.0)'::box", [])
+  end
+
+  test "encode box", context do
+    box = %Postgrex.Box{
+      upper_right: %Postgrex.Point{x: 1.0,  y: 1.0},
+      bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
+    }
+    assert [[box]] == query("SELECT $1::box", [box])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::box", [1.0]))
+    assert %ArgumentError{} =
+      catch_error(query("SELECT $1::box", [%Postgrex.Box{}]))
+  end
+
+  test "decode path", context do
+    p1 = %Postgrex.Point{x: 0.0, y: 0.0}
+    p2 = %Postgrex.Point{x: 1.0, y: 3.0}
+    p3 = %Postgrex.Point{x: -4.0, y: 3.14}
+    path = %Postgrex.Path{points: [p1, p2, p3], open: false}
+    assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
+    bad_path = %Postgrex.Path{points: "foo", open: false}
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
+    # open must be true/false
+    bad_path = %Postgrex.Path{points: []}
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
+  end
+
+  test "encode path", context do
+    p1 = %Postgrex.Point{x: 0.0, y: 0.0}
+    p2 = %Postgrex.Point{x: 1.0, y: 3.0}
+    p3 = %Postgrex.Point{x: -4.0, y: 3.14}
+    path = %Postgrex.Path{points: [p1, p2, p3], open: false}
+    assert [[path]] == query("SELECT $1::path", [path])
+  end
+
+  test "decode circle", context do
+    center = %Postgrex.Point{x: 1.0, y: -3.5}
+    circle = %Postgrex.Circle{center: center, radius: 100.0}
+    assert [[circle]] == query("SELECT '<(1.0,-3.5),100.0>'::circle", [])
+  end
+
+  test "encode circle", context do
+    center = %Postgrex.Point{x: 1.0, y: -3.5}
+    circle = %Postgrex.Circle{center: center, radius: 100.0}
+    assert [[circle]] == query("SELECT $1::circle", [circle])
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", ["snu"]))
+    bad_circle = %Postgrex.Circle{center: 1.5, radius: 1.0}
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_circle]))
+    bad_circle = %Postgrex.Circle{center: %Postgrex.Point{x: 1.0, y: 0.0}, radius: "five"}
+    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_circle]))
+  end
+
   test "decode name", context do
     assert [["test"]] == query("SELECT 'test'::name", [])
   end
 
   test "encode name", context do
     assert [["test"]] == query("SELECT $1::name", ["test"])
+  end
+
+  test "decode \"char\"", context do
+    assert [["X"]] == query("SELECT 'X'::\"char\"", [])
+  end
+
+  test "encode \"char\"", context do
+    assert [["x"]] == query("SELECT $1::\"char\"", ["x"])
   end
 
   test "decode record", context do
@@ -206,7 +357,7 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "9.0"
-  test "decode_binary: :copy returns copied binary", context do
+  test "hstore copies binaries by default", context do
     text = "hello world"
     assert [[bin]] = query("SELECT $1::text", [text])
     assert :binary.referenced_byte_size(bin) == byte_size(text)
@@ -215,16 +366,28 @@ defmodule QueryTest do
     assert :binary.referenced_byte_size(world) == byte_size("world")
   end
 
-  @tag min_pg_version: "9.0"
-  test "decode_binary: :reference returns reference counted binary" do
-    {:ok, pid} = P.start_link(database: "postgrex_test",
-                              decode_binary: :reference)
-    text = "hello world"
-    assert %{rows: [[bin]]} = P.query!(pid, "SELECT $1::text", [text])
-    assert :binary.referenced_byte_size(bin) > byte_size(text)
-
-    assert %{rows: [[%{"hello" => world}]]} = P.query!(pid, "SELECT $1::hstore", [%{"hello" => "world"}])
-    assert :binary.referenced_byte_size(world) > byte_size("world")
+  test "decode bit string", context do
+    assert [[<<1::1,0::1,1::1>>]] == query("SELECT bit '101'", [])
+    assert [[<<1::1,1::1,0::1>>]] == query("SELECT bit '110'", [])
+    assert [[<<1::1,1::1,0::1>>]] == query("SELECT bit '110' :: varbit", [])
+    assert [[<<1::1,0::1,1::1,1::1,0::1>>]] == query("SELECT bit '10110'", [])
+    assert [[<<1::1,0::1,1::1,0::1,0::1>>]] ==
+      query("SELECT bit '101' :: bit(5)", [])
+    assert [[<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '10000000101'", [])
+    assert [[<<0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '0000000000000000101'", [])
+    assert [[<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '1000000000000000101'", [])
+    assert [[<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,1::1,
+             1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+             1::1,0::1,1::1>>]] ==
+      query("SELECT bit '1000000110000000101'", [])
   end
 
   test "encode oid and its aliases", context do
@@ -257,13 +420,14 @@ defmodule QueryTest do
   end
 
   test "encoding oids as binary fails with a helpful error message", context do
-    assert %Postgrex.Error{message: message} = catch_error(query("select $1::regclass;", ["pg_type"]))
-    assert message =~ "See https://github.com/elixir-ecto/postgrex#oid-type-encoding"
+    assert_raise ArgumentError,
+      ~r"See https://github.com/elixir-ecto/postgrex#oid-type-encoding",
+      fn() -> query("select $1::regclass;", ["pg_type"]) end
   end
 
   test "fail on encoding wrong value", context do
     assert %ArgumentError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
-    assert message =~ "Postgrex expected an integer in -2147483648..2147483647 that can be encoded/cast to type \"int4\""
+    assert message =~ "Postgrex expected an integer in -2147483648..2147483647"
   end
 
   @tag min_pg_version: "9.0"
@@ -305,7 +469,8 @@ defmodule QueryTest do
       "1.111101",
       "1.1111111101",
       "1.11110001",
-      "NaN"
+      "NaN",
+      "-42"
     ]
 
     Enum.each(nums, fn num ->
@@ -320,6 +485,17 @@ defmodule QueryTest do
 
     dec = Decimal.new(1.0)
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
+  end
+
+  test "encode custom numerics", context do
+    assert [[%Decimal{sign: 1, coef: 1500, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1500.0)])
+    assert [[%Decimal{sign: 1, coef: 1, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 0)])
+    assert [[%Decimal{sign: 1, coef: 10, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 1)])
+    assert [[%Decimal{sign: 1, coef: 100, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 2)])
+    assert [[%Decimal{sign: 1, coef: 1000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 3)])
+    assert [[%Decimal{sign: 1, coef: 10000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 4)])
+    assert [[%Decimal{sign: 1, coef: 100000, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 5)])
+    assert [[%Decimal{sign: 1, coef: 1, exp: -5}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, -5)])
   end
 
   test "encode enforces bounds on integers", context do
@@ -369,6 +545,9 @@ defmodule QueryTest do
            query("SELECT $1::time", [%Postgrex.Time{hour: 23, min: 59, sec: 59}])
     assert [[%Postgrex.Time{hour: 4, min: 5, sec: 6, usec: 123456}]] =
            query("SELECT $1::time", [%Postgrex.Time{hour: 4, min: 5, sec: 6, usec: 123456}])
+
+    assert [[%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}]] =
+           query("SELECT $1::timetz", [%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}])
   end
 
   test "encode timestamp", context do
@@ -472,6 +651,33 @@ defmodule QueryTest do
            query("SELECT $1::macaddr", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
   end
 
+  test "encode bit string", context do
+    assert [["110"]] == query("SELECT $1::bit(3)::text", [<<1::1, 1::1, 0::1>>])
+    assert [["110"]] == query("SELECT $1::varbit::text", [<<1::1, 1::1, 0::1>>])
+    assert [["101"]] == query("SELECT $1::bit(3)::text", [<<1::1, 0::1, 1::1>>])
+    assert [["11010"]] ==
+      query("SELECT $1::bit(5)::text", [<<1::1, 1::1, 0::1, 1::1>>])
+    assert [["10000000101"]] ==
+      query("SELECT $1::bit(11)::text",
+        [<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+    assert [["0000000000000000101"]] ==
+      query("SELECT $1::bit(19)::text",
+        [<<0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+    assert [["1000000000000000101"]] ==
+      query("SELECT $1::bit(19)::text",
+        [<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         0::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+    assert [["1000000110000000101"]] ==
+      query("SELECT $1::bit(19)::text",
+        [<<1::1,0::1,0::1,0::1,0::1,0::1,0::1,1::1,
+         1::1,0::1,0::1,0::1,0::1,0::1,0::1,0::1,
+         1::1,0::1,1::1>>])
+  end
+
   test "fail on encode arrays", context do
     assert_raise ArgumentError, "nested lists must have lists with matching lengths", fn ->
       query("SELECT $1::integer[]", [[[1], [1,2]]])
@@ -534,12 +740,11 @@ defmodule QueryTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "prepare query and execute different query with same name raise", context do
+  test "prepare query and execute different queries with same name", context do
     assert (%Postgrex.Query{name: "select"} = query42) = prepare("select", "SELECT 42")
     assert close(query42) == :ok
     assert %Postgrex.Query{} = prepare("select", "SELECT 41")
-    assert %Postgrex.Error{postgres: %{code: :duplicate_prepared_statement}} =
-      execute(query42, [])
+    assert [[42]] = execute(query42, [])
 
     assert [[42]] = query("SELECT 42", [])
   end
@@ -572,15 +777,6 @@ defmodule QueryTest do
     {:ok, pid2} = Postgrex.start_link(context[:options])
     assert {:ok, %Postgrex.Result{rows: [[42]]}} = Postgrex.execute(pid2, query, [])
     assert {:ok, %Postgrex.Result{rows: [[41]]}} = Postgrex.query(pid2, "SELECT 41", [])
-  end
-
-  test "raise when executing prepared query on connection with different types", context do
-    query = prepare("S42", "SELECT 42")
-
-    {:ok, pid2} = Postgrex.start_link([decode_binary: :reference] ++ context[:options])
-
-    assert_raise ArgumentError, ~r"invalid types for the connection",
-      fn() -> Postgrex.execute(pid2, query, []) end
   end
 
   test "error codes are translated", context  do
@@ -732,6 +928,12 @@ defmodule QueryTest do
       Postgrex.query!(context[:pid], "", [])
   end
 
+  test "query from child spec", %{options: opts, test: test} do
+    child_spec = Postgrex.child_spec([name: test] ++ opts)
+    Supervisor.start_link([child_spec], strategy: :one_for_one)
+    %Postgrex.Result{rows: [[42]]} = Postgrex.query!(test, "SELECT 42", [])
+  end
+
   test "query before and after idle ping" do
     opts = [ database: "postgrex_test", backoff_type: :stop, idle_timeout: 1]
     {:ok, pid} = P.start_link(opts)
@@ -762,23 +964,17 @@ defmodule QueryTest do
     params = Enum.into(params, [])
 
     capture_log fn ->
-      assert_raise ArgumentError,
+      assert_raise RuntimeError,
         "postgresql protocol can not handle 65536 parameters, the maximum is 65535",
         fn() -> query(query, params) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %ArgumentError{}}}
+      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
     end
   end
 
-  test "COPY FROM STDIN with copy_data: false returns error", context do
+  test "COPY FROM STDIN  returns error", context do
     assert %Postgrex.Error{postgres: %{code: :query_canceled}} =
       query("COPY uniques FROM STDIN", [])
-  end
-
-  test "COPY FROM STDIN with copy_data: true but no copy data raises", context do
-    assert_raise ArgumentError,
-      ~r"parameters must be of length 1 with copy data as final parameter for query",
-      fn -> query("COPY uniques FROM STDIN", [], [copy_data: true]) end
   end
 
   test "COPY TO STDOUT", context do
@@ -797,5 +993,18 @@ defmodule QueryTest do
     big_binary = :binary.copy(<<1>>, 128*1024*1024+1)
     assert [[binary]] = query("SELECT $1::bytea;", [big_binary])
     assert byte_size(binary) == 128 * 1024 * 1024 + 1
+  end
+
+  test "terminate backend", context do
+    Process.flag(:trap_exit, true)
+    assert {:ok, pid} = P.start_link([idle_timeout: 10] ++ context[:options])
+
+    %Postgrex.Result{connection_id: connection_id} =
+      Postgrex.query!(pid, "SELECT 42", [])
+
+    capture_log(fn() ->
+      assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
+      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{postgres: %{code: :admin_shutdown}}}}
+    end)
   end
 end

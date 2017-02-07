@@ -1,41 +1,64 @@
 defmodule Postgrex.Extensions.Array do
   @moduledoc false
-  alias Postgrex.TypeInfo
-  alias Postgrex.Types
-  import Postgrex.BinaryUtils
-  use Postgrex.BinaryExtension, [] # send: "array_send" hard coded in types
+  import Postgrex.BinaryUtils, warn: false
+  @behaviour Postgrex.SuperExtension
 
-  def encode(%TypeInfo{array_elem: elem_oid}, list, types, _) when is_list(list),
-    do: encode_array(list, elem_oid, types)
-  def encode(type_info, value, _, _) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a list")
+  def init(_), do: nil
+
+  def matching(_),
+    do: [send: "array_send"]
+
+  def format(_),
+    do: :super_binary
+
+  def oids(%Postgrex.TypeInfo{array_elem: elem_oid}, _),
+    do: [elem_oid]
+
+  def encode(_) do
+    quote location: :keep do
+      list, [oid], [type] when is_list(list) ->
+        # encode_list/2 defined by TypeModule
+        encoder = &encode_list(&1, type)
+        unquote(__MODULE__).encode(list, oid, encoder)
+      other, _, _ ->
+        raise ArgumentError,
+          Postgrex.Utils.encode_msg(other, "a list")
+    end
   end
 
-  def decode(_, bin, types, _),
-    do: decode_array(bin, types)
+  def decode(_) do
+    quote location: :keep do
+      <<len :: int32, binary :: binary-size(len)>>, [oid], [type] ->
+        <<ndims :: int32, _has_null :: int32, ^oid :: uint32,
+          dims :: size(ndims)-binary-unit(64), data :: binary>> = binary
+
+        # decode_list/2 defined by TypeModule
+        flat = decode_list(data, type)
+
+        unquote(__MODULE__).decode(dims, flat)
+    end
+  end
 
   ## Helpers
 
-  defp encode_array(list, elem_oid, types) do
-    encoder = &Types.encode(elem_oid, &1, types)
-
-    {data, ndims, lengths} = encode_array(list, 0, [], encoder)
+  def encode(list, elem_oid, encoder) do
+    {data, ndims, lengths} = encode(list, 0, [], encoder)
     lengths = for len <- Enum.reverse(lengths), do: <<len :: int32, 1 :: int32>>
-    [<<ndims :: int32, 0 :: int32, elem_oid :: uint32>>, lengths, data]
+    iodata = [<<ndims :: int32, 0 :: int32, elem_oid :: uint32>>, lengths, data]
+    [<<IO.iodata_length(iodata)::int32>> | iodata]
   end
 
-  defp encode_array([], ndims, lengths, _encoder) do
+  defp encode([], ndims, lengths, _encoder) do
     {"", ndims, lengths}
   end
 
-  defp encode_array([head|tail]=list, ndims, lengths, encoder)
-  when is_list(head) do
+  defp encode([head|tail]=list, ndims, lengths, encoder) when is_list(head) do
     lengths = [length(list)|lengths]
-    {data, ndims, lengths} = encode_array(head, ndims, lengths, encoder)
+    {data, ndims, lengths} = encode(head, ndims, lengths, encoder)
     [dimlength|_] = lengths
 
     rest = Enum.reduce(tail, [], fn sublist, acc ->
-      {data, _, [len|_]} = encode_array(sublist, ndims, lengths, encoder)
+      {data, _, [len|_]} = encode(sublist, ndims, lengths, encoder)
       if len != dimlength do
         raise ArgumentError, "nested lists must have lists with matching lengths"
       end
@@ -45,55 +68,49 @@ defmodule Postgrex.Extensions.Array do
     {[data|rest], ndims+1, lengths}
   end
 
-  defp encode_array(list, ndims, lengths, encoder) do
-    {data, length} =
-    Enum.map_reduce(list, 0, fn
-      nil, length ->
-        {<<-1::int32>>, length + 1}
-      elem, length ->
-        data = encoder.(elem)
-        data = [<<IO.iodata_length(data)::int32>>, data]
-        {data, length + 1}
-    end)
-    {data, ndims+1, [length|lengths]}
+  defp encode(list, ndims, lengths, encoder) do
+    {encoder.(list), ndims+1, [length(list) | lengths]}
   end
 
-  defp decode_array(<<ndims :: int32, _has_null :: int32, oid :: uint32,
-                      dims :: size(ndims)-binary-unit(64), rest :: binary>>, types) do
-    lengths = for <<len :: int32, _lbound :: int32 <- dims>>, do: len
-    decoder = &Types.decode(oid, &1, types)
-
-    {array, ""} = decode_array(rest, lengths, decoder)
-    array
+  def decode(dims, elems) do
+    case decode_dims(dims, []) do
+      [] when elems == [] ->
+        []
+      [length] when length(elems) == length ->
+        Enum.reverse(elems)
+      lengths ->
+        {array, []} = nest(elems, lengths)
+        array
+    end
   end
 
-  defp decode_array("", [], _decoder) do
-    {[], ""}
+  defp decode_dims(<<len :: int32, _lbound :: int32, rest :: binary>>, acc) do
+    decode_dims(rest, [len | acc])
+  end
+  defp decode_dims(<<>>, acc) do
+    Enum.reverse(acc)
   end
 
-  defp decode_array(rest, [len], decoder) do
-    array_elements(rest, len, [], decoder)
+  # elems and lengths in reverse order
+  defp nest(elems, [len]) do
+     nest_inner(elems, len, [])
+  end
+  defp nest(elems, [len | lengths]) do
+    nest(elems, len, lengths, [])
   end
 
-  defp decode_array(rest, [len|lens], decoder) do
-    Enum.map_reduce(1..len, rest, fn _, rest ->
-      decode_array(rest, lens, decoder)
-    end)
+  defp nest(elems, 0, _, acc) do
+    {acc, elems}
+  end
+  defp nest(elems, n, lengths, acc) do
+    {row, elems} = nest(elems, lengths)
+    nest(elems, n-1, lengths, [row | acc])
   end
 
-  defp array_elements(rest, 0, acc, _decoder) do
-    {Enum.reverse(acc), rest}
+  defp nest_inner(elems, 0, acc) do
+    {acc, elems}
   end
-
-  defp array_elements(<<-1 :: int32, rest :: binary>>, count, acc, decoder) do
-    array_elements(rest, count-1, [nil|acc], decoder)
-  end
-
-  defp array_elements(<<size :: int32, elem :: binary(size), rest :: binary>>,
-                       count, acc, decoder) do
-    value = decoder.(elem)
-    array_elements(rest, count-1, [value|acc], decoder)
+  defp nest_inner([elem | elems], n, acc) do
+    nest_inner(elems, n-1, [elem | acc])
   end
 end
-
-

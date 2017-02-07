@@ -1,26 +1,29 @@
 defmodule Postgrex.Extensions.Float8 do
   @moduledoc false
-  import Postgrex.BinaryUtils
+  import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "float8send"
 
-  def encode(_, :NaN, _, _),
-    do: <<127, 248, 0, 0, 0, 0, 0, 0>>
-  def encode(_, :inf, _, _),
-    do: <<127, 240, 0, 0, 0, 0, 0, 0>>
-  def encode(_, :"-inf", _, _),
-    do: <<255, 240, 0, 0, 0, 0, 0, 0>>
-  def encode(_, n, _, _) when is_number(n),
-    do: <<n :: float64>>
-  def encode(type_info, value, _, _) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(type_info, value, "a float")
+  def encode(_) do
+    quote location: :keep do
+      n when is_number(n) ->
+        <<8 :: int32, n :: float64>>
+      :NaN ->
+        <<8 :: int32, 0::1, 2047::11, 1::1, 0::51>>
+      :inf ->
+        <<8 :: int32, 0::1, 2047::11, 0::52>>
+      :"-inf" ->
+        <<8 :: int32, 1::1, 2047::11, 0::52>>
+      other ->
+        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a float")
+    end
   end
 
-  def decode(_, <<127, 248, 0, 0, 0, 0, 0, 0>>, _, _),
-    do: :NaN
-  def decode(_, <<127, 240, 0, 0, 0, 0, 0, 0>>, _, _),
-    do: :inf
-  def decode(_, <<255, 240, 0, 0, 0, 0, 0, 0>>, _, _),
-    do: :"-inf"
-  def decode(_, <<n :: float64>>, _, _),
-    do: n
+  def decode(_) do
+    quote location: :keep do
+      <<8::int32, 0::1, 2047::11, 0::52>> -> :inf
+      <<8::int32, 1::1, 2047::11, 0::52>> -> :"-inf"
+      <<8::int32, _::1, 2047::11, _::52>> -> :NaN
+      <<8::int32, float::float64>>        -> float
+    end
+  end
 end

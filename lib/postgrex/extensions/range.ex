@@ -1,10 +1,8 @@
 defmodule Postgrex.Extensions.Range do
   @moduledoc false
-  alias Postgrex.TypeInfo
-  alias Postgrex.Types
-  import Postgrex.BinaryUtils
-  use Postgrex.BinaryExtension, [] # send: "range_send" hard coded in types
+  import Postgrex.BinaryUtils, warn: false
   use Bitwise, only_operators: true
+  @behaviour Postgrex.SuperExtension
 
   @range_empty   0x01
   @range_lb_inc  0x02
@@ -12,80 +10,107 @@ defmodule Postgrex.Extensions.Range do
   @range_lb_inf  0x08
   @range_ub_inf  0x10
 
-  def encode(%TypeInfo{base_type: oid}, %Postgrex.Range{} = range, types, _),
-    do: encode_range(range, oid, types)
-  def encode(type_info, value, _, _) do
-    raise ArgumentError,
-      Postgrex.Utils.encode_msg(type_info, value, Postgrex.Range)
+  def init(_), do: nil
+
+  def matching(_),
+    do: [send: "range_send"]
+
+  def format(_),
+    do: :super_binary
+
+  def oids(%Postgrex.TypeInfo{base_type: base_oid}, _) do
+    [base_oid]
   end
 
-  def decode(%TypeInfo{base_type: oid}, bin, types, _),
-    do: decode_range(bin, oid, types)
+  def encode(_) do
+    quote location: :keep do
+      %Postgrex.Range{lower: lower, upper: upper} = range, [oid], [type] ->
+        # encode_value/2 defined by TypeModule
+        lower = encode_value(lower, type)
+        upper = encode_value(upper, type)
+        unquote(__MODULE__).encode(range, oid, lower, upper)
+      other, _, _ ->
+        raise ArgumentError,
+          Postgrex.Utils.encode_msg(other, Postgrex.Range)
+    end
+  end
+
+  def decode(_) do
+    quote location: :keep do
+      <<len :: int32, binary :: binary-size(len)>>, [oid], [type] ->
+        <<flags, data :: binary>> = binary
+        # decode_list/2 and @null defined by TypeModule
+        case decode_list(data, type) do
+          [upper, lower] ->
+            unquote(__MODULE__).decode(flags, oid, [lower, upper], @null)
+          empty_or_one ->
+            unquote(__MODULE__).decode(flags, oid, empty_or_one, @null)
+        end
+    end
+  end
 
   ## Helpers
 
-  defp encode_range(%Postgrex.Range{lower: nil, upper: nil}, _oid, _types) do
+  def encode(_, _, <<-1::int32>>, <<-1::int32>>) do
     <<@range_empty>>
   end
 
-  defp encode_range(range, oid, types) do
+  def encode(%Postgrex.Range{lower_inclusive: lower_inc,
+                             upper_inclusive: upper_inc}, _oid, lower, upper) do
     flags = 0
 
     {flags, bin} =
-      if range.lower == nil do
+      if lower == <<-1::int32>> do
         {flags ||| @range_lb_inf, ""}
       else
-        data = Types.encode(oid, range.lower, types)
-        {flags, [<<IO.iodata_length(data)::int32>>, data]}
+        {flags, lower}
       end
 
     {flags, bin} =
-    if range.upper == nil do
-      {flags ||| @range_ub_inf, bin}
-    else
-      data = Types.encode(oid, range.upper, types)
-      {flags, [bin, <<IO.iodata_length(data)::int32>>, data]}
-    end
+      if upper == <<-1::int32>> do
+        {flags ||| @range_ub_inf, bin}
+      else
+        {flags, [bin | upper]}
+      end
 
     flags =
-      if range.lower_inclusive do
+      if lower_inc do
         flags ||| @range_lb_inc
       else
         flags
       end
 
     flags =
-      if range.upper_inclusive do
+      if upper_inc do
         flags ||| @range_ub_inc
       else
         flags
       end
 
-    [flags|bin]
+    [<<IO.iodata_length(bin)+1::int32>>, flags | bin]
   end
 
-  defp decode_range(<<flags>>, _oid, _types) when (flags &&& @range_empty) != 0 do
-    %Postgrex.Range{}
+  def decode(flags, _oid, [], null) when (flags &&& @range_empty) != 0 do
+    %Postgrex.Range{lower: null, upper: null}
   end
 
-  defp decode_range(<<flags, rest::binary>>, oid, types) do
-    {lower, rest} =
+  def decode(flags, _oid, elems, null) do
+    {lower, elems} =
       if (flags &&& @range_lb_inf) != 0 do
-        {nil, rest}
+        {null, elems}
       else
-        <<size::int32, lower::binary(size), rest::binary>> = rest
-        {Types.decode(oid, lower, types), rest}
+        [lower | rest] = elems
+        {lower, rest}
       end
 
-    {upper, rest} =
+    {upper, []} =
       if (flags &&& @range_ub_inf) != 0 do
-        {nil, rest}
+        {null, elems}
       else
-        <<size::int32, upper::binary(size), rest::binary>> = rest
-        {Types.decode(oid, upper, types), rest}
+        [upper | rest] = elems
+        {upper, rest}
       end
 
-    "" = rest
     lower_inclusive = (flags &&& @range_lb_inc) != 0
     upper_inclusive = (flags &&& @range_ub_inc) != 0
     %Postgrex.Range{lower: lower, upper: upper, lower_inclusive: lower_inclusive,

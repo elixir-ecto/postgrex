@@ -1,7 +1,7 @@
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
-  @version "0.11.2"
+  @version "0.13.0"
 
   def project do
     [app: :postgrex,
@@ -17,7 +17,7 @@ defmodule Postgrex.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger, :db_connection, :decimal],
+    [applications: [:logger, :db_connection, :decimal, :crypto],
      mod: {Postgrex.App, []},
      env: [type_server_reap_after: 3 * 60_000]]
   end
@@ -25,7 +25,7 @@ defmodule Postgrex.Mixfile do
   defp deps do
     [{:ex_doc, "~> 0.12", only: :dev},
      {:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.0-rc"},
+     {:db_connection, "~> 1.1"},
      {:connection, "~> 1.0"}]
   end
 

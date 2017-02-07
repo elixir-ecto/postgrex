@@ -12,7 +12,7 @@ defmodule Postgrex.Notifications do
   @timeout 5000
 
   defstruct protocol: nil, parameters: nil,
-            listeners: HashDict.new(), listener_channels: HashDict.new()
+            listeners: Map.new(), listener_channels: Map.new()
 
   ## PUBLIC API ##
 
@@ -90,7 +90,7 @@ defmodule Postgrex.Notifications do
   end
 
   def connect(_, opts) do
-    case Protocol.connect([types: false] ++ opts) do
+    case Protocol.connect([types: nil] ++ opts) do
       {:ok, protocol} ->
         {:ok, %__MODULE__{protocol: protocol}}
       {:error, reason} ->
@@ -102,19 +102,18 @@ defmodule Postgrex.Notifications do
     ref = Process.monitor(pid)
 
     s = put_in(s.listeners[ref], {channel, pid})
-    s = update_in(s.listener_channels[channel], &((&1 || HashSet.new()) |> HashSet.put(ref)))
-
+    s = update_in(s.listener_channels[channel], &((&1 || Map.new()) |> Map.put(ref, pid)))
     # If this is the first listener for the given channel, we need to actually
     # issue the LISTEN query.
-    if HashSet.size(s.listener_channels[channel]) == 1 do
-      listener_query("LISTEN #{channel}", {:ok, ref}, from, s)
+    if Map.size(s.listener_channels[channel]) == 1 do
+      listener_query("LISTEN \"#{channel}\"", {:ok, ref}, from, s)
     else
       {:reply, {:ok, ref}, s}
     end
   end
 
   def handle_call({:unlisten, ref}, from, s) do
-    case HashDict.fetch(s.listeners, ref) do
+    case Map.fetch(s.listeners, ref) do
       :error ->
         {:reply, {:error, %ArgumentError{}}, s}
       {:ok, {channel, _pid}} ->
@@ -124,9 +123,9 @@ defmodule Postgrex.Notifications do
 
         # If no listeners remain for `channel`, then let's actually issue an
         # UNLISTEN query.
-        if HashSet.size(s.listener_channels[channel]) == 0 do
-          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-          listener_query("UNLISTEN #{channel}", :ok, from, s)
+        if Map.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &Map.delete(&1, channel))
+          listener_query("UNLISTEN \"#{channel}\"", :ok, from, s)
         else
           {:reply, :ok, s}
         end
@@ -134,15 +133,15 @@ defmodule Postgrex.Notifications do
   end
 
   def handle_info({:DOWN, ref, :process, _, _}, s) do
-    case HashDict.fetch(s.listeners, ref) do
+    case Map.fetch(s.listeners, ref) do
       :error ->
         {:noreply, s}
       {:ok, {channel, _pid}} ->
         s = remove_monitored_listener(s, ref, channel)
 
-        if HashSet.size(s.listener_channels[channel]) == 0 do
-          s = update_in(s.listener_channels, &HashDict.delete(&1, channel))
-          listener_query("UNLISTEN #{channel}", :ok, nil, s)
+        if Map.size(s.listener_channels[channel]) == 0 do
+          s = update_in(s.listener_channels, &Map.delete(&1, channel))
+          listener_query("UNLISTEN \"#{channel}\"", :ok, nil, s)
         else
           {:noreply, s}
         end
@@ -165,19 +164,18 @@ defmodule Postgrex.Notifications do
     %{protocol: protocol, listener_channels: channels, listeners: listeners} = s
     opts = [notify: &notify_listeners(channels, listeners, &1, &2)]
 
-    case Protocol.handle_simple(statement, opts, protocol) do
+    case Protocol.handle_listener(statement, opts, protocol) do
       {:ok, %Postgrex.Result{}, protocol} ->
         if from, do: Connection.reply(from, result)
         checkin(protocol, s)
       {error, reason, protocol} when error in [:error, :disconnect] ->
-        Connection.reply(from, reason)
         {:stop, reason, %{s | protocol: protocol}}
     end
   end
 
   defp notify_listeners(channels, listeners, channel, payload) do
-    Enum.each (HashDict.get(channels, channel) || []), fn ref ->
-      {_, pid} = HashDict.fetch!(listeners, ref)
+    Enum.each (Map.get(channels, channel) || []), fn {ref, _pid} ->
+      {_, pid} = Map.fetch!(listeners, ref)
       send(pid, {:notification, self(), ref, channel, payload})
     end
   end
@@ -199,7 +197,7 @@ defmodule Postgrex.Notifications do
   end
 
   defp remove_monitored_listener(s, ref, channel) do
-    s = update_in(s.listeners, &HashDict.delete(&1, ref))
-    update_in(s.listener_channels[channel], &HashSet.delete(&1, ref))
+    s = update_in(s.listeners, &Map.delete(&1, ref))
+    update_in(s.listener_channels[channel], &Map.delete(&1, ref))
   end
 end

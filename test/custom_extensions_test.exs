@@ -1,13 +1,15 @@
 defmodule CustomExtensionsTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
   alias Postgrex, as: P
-  alias Postgrex.TypeInfo
+
+  @types CustomExtensionsTypes
 
   defmodule BinaryExtension do
     @behaviour Postgrex.Extension
 
-    def init(%{}, {}),
+    def init([]),
       do: []
 
     def matching([]),
@@ -16,19 +18,24 @@ defmodule CustomExtensionsTest do
     def format([]),
       do: :binary
 
-    def encode(%TypeInfo{send: "int4send", oid: oid}, value, types, []) do
-      Postgrex.Types.encode(Postgrex.Extensions.Int4, oid, value + 1, types)
+    def encode([]) do
+      quote do
+        int ->
+          <<4::int32, int+1::int32>>
+      end
     end
 
-    def decode(%TypeInfo{send: "int4send", oid: oid}, bin, types, []) do
-      Postgrex.Types.decode(Postgrex.Extensions.Int4, oid, bin, types) + 1
+    def decode([]) do
+      quote do
+        <<4::int32, int::int32>> -> int + 1
+      end
     end
   end
 
   defmodule TextExtension do
     @behaviour Postgrex.Extension
 
-    def init(%{}, []),
+    def init([]),
       do: {}
 
     def matching({}),
@@ -37,17 +44,25 @@ defmodule CustomExtensionsTest do
     def format({}),
       do: :text
 
-    def encode(_info, value, _types, {}),
-      do: value
+    def encode({}) do
+      quote do
+        value ->
+          [<<byte_size(value)::int32>> | value]
+       end
+    end
 
-    def decode(_info, binary, _types, {}),
-      do: binary
+    def decode({}) do
+      quote do
+        <<len::int32, binary::binary-size(len)>> ->
+          binary
+      end
+    end
   end
 
   defmodule BadExtension do
     @behaviour Postgrex.Extension
 
-    def init(%{}, []),
+    def init([]),
       do: []
 
     def matching([]),
@@ -56,18 +71,36 @@ defmodule CustomExtensionsTest do
     def format([]),
       do: :binary
 
-    def encode(%TypeInfo{send: "boolsend"}, _value, _types, []),
-      do: raise "encode"
+    def encode([]) do
+      quote do
+        _ ->
+          raise "encode"
+      end
+    end
 
-    def decode(%TypeInfo{send: "boolsend"}, _binary, _types, []),
-      do: raise "decode"
+    def decode([]) do
+      quote do
+        <<1::int32, _>> ->
+          raise "decode"
+      end
+    end
+  end
+
+  setup_all do
+    on_exit(fn ->
+      :code.delete(@types)
+      :code.purge(@types)
+    end)
+    extensions = [BinaryExtension, TextExtension, BadExtension]
+    opts       = [decode_binary: :reference, null: :custom]
+    Postgrex.TypeModule.define(@types, extensions, opts)
+    :ok
   end
 
   setup do
-    {:ok, pid} = P.start_link(
-      database: "postgrex_test",
-      extensions: [{BinaryExtension, {}}, {TextExtension, []}, {BadExtension, []}])
-    {:ok, [pid: pid]}
+    opts = [database: "postgrex_test", backoff_type: :stop, types: @types]
+    {:ok, pid} = P.start_link(opts)
+    {:ok, [pid: pid, options: opts]}
   end
 
   test "encode and decode", context do
@@ -81,17 +114,54 @@ defmodule CustomExtensionsTest do
   end
 
   test "encode and decode pushes error to client", context do
+    Process.flag(:trap_exit, true)
+
     assert_raise RuntimeError, "encode", fn ->
       query("SELECT $1::boolean", [true])
     end
 
-    assert Process.alive? context[:pid]
+    assert capture_log(fn() ->
+      assert_raise RuntimeError, "decode", fn ->
+        query("SELECT true", [])
+      end
 
-    assert_raise RuntimeError, "decode", fn ->
-      query("SELECT true", [])
-    end
+      pid = context[:pid]
+      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{}, _}}
+    end) =~ "(RuntimeError) decode"
+  end
 
-    assert Process.alive? context[:pid]
+  test "raise when executing prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    assert_raise ArgumentError, ~r"invalid types for the connection",
+      fn() -> Postgrex.execute(pid2, query, []) end
+  end
+
+  test "raise when streaming prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    Postgrex.transaction(pid2, fn(conn) ->
+      assert_raise ArgumentError, ~r"invalid types for the connection",
+        fn() -> stream(query, []) |> Enum.take(1) end
+    end)
+  end
+
+  test "raise when streaming prepared COPY FROM on connection with different types", context do
+    query = prepare("copy", "COPY uniques FROM STDIN")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    Postgrex.transaction(pid2, fn(conn) ->
+      assert_raise ArgumentError, ~r"invalid types for the connection",
+        fn() -> Enum.into(["1\n"], stream(query, [])) end
+    end)
   end
 
   test "dont decode text format", context do

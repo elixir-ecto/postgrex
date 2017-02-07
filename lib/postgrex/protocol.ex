@@ -2,8 +2,11 @@ defmodule Postgrex.Protocol do
   @moduledoc false
 
   alias Postgrex.Types
+  alias Postgrex.TypeServer
   alias Postgrex.Query
+  alias Postgrex.Cursor
   alias Postgrex.Stream
+  alias Postgrex.Copy
   import Postgrex.Messages
   import Postgrex.BinaryUtils
   require Logger
@@ -12,14 +15,18 @@ defmodule Postgrex.Protocol do
   @timeout 5000
   @sock_opts [packet: :raw, mode: :binary, active: false]
   @max_packet 64 * 1024 * 1024 # max raw receive length
+  @nonposix_errors [:closed, :timeout]
+  @max_rows 500
 
-  defstruct [sock: nil, connection_id: nil, types: nil, null: nil, timeout: nil,
-             parameters: %{}, queries: nil, postgres: :idle,
-             transactions: :naive, buffer: nil]
+  defstruct [sock: nil, connection_id: nil, connection_key: nil, peer: nil,
+             types: nil, null: nil, timeout: nil, parameters: %{}, queries: nil,
+             postgres: :idle, transactions: :naive, buffer: nil]
 
   @type state :: %__MODULE__{sock: {module, any},
-                             connection_id: pos_integer,
-                             types: (nil | reference | Postgrex.TypeServer.table),
+                             connection_id: nil | pos_integer,
+                             connection_key: nil | pos_integer,
+                             peer: nil | {:inet.ip_address, :inet.port_number},
+                             types: nil | module,
                              null: atom,
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
@@ -41,19 +48,15 @@ defmodule Postgrex.Protocol do
                      "ROLLBACK TO SAVEPOINT postgrex_query"]
 
   @spec connect(Keyword.t) ::
-    {:ok, state} | {:error, Postgrex.Error.t}
+    {:ok, state} |
+    {:error, Postgrex.Error.t | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    host       = Keyword.fetch!(opts, :hostname) |> to_char_list
+    host       = Keyword.fetch!(opts, :hostname) |> to_charlist
     port       = opts[:port] || 5432
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
-    custom     = opts[:extensions] || []
-    decode_bin = opts[:decode_binary] || :copy
-    ext_opts   = [decode_binary: decode_bin]
-    extensions = custom ++ Postgrex.Utils.default_extensions(ext_opts)
     ssl?       = opts[:ssl] || false
-    types?     = Keyword.fetch!(opts, :types)
-    null       = opts[:null]
+    types_mod  = Keyword.fetch!(opts, :types)
 
     transactions =
       case opts[:transactions] || :naive do
@@ -68,13 +71,13 @@ defmodule Postgrex.Protocol do
       end
 
     s = %__MODULE__{timeout: timeout, postgres: :idle,
-                    transactions: transactions, null: null}
+                    transactions: transactions}
 
-    types_key = if types?, do: {host, port, Keyword.fetch!(opts, :database), decode_bin, custom}
-    status = %{opts: opts, types_key: types_key, types_ref: nil,
-               types_table: nil, extensions: extensions, prepare: prepare,
-               ssl: ssl?}
-    case connect(host, port, sock_opts ++ @sock_opts, s) do
+    types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
+    status = %{opts: opts, types_mod: types_mod, types_key: types_key,
+               types_lock: nil, prepare: prepare, ssl: ssl?}
+    connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
+    case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
       {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
     end
@@ -86,27 +89,32 @@ defmodule Postgrex.Protocol do
     _ = recv_buffer(s)
     delete_parameters(s)
     queries_delete(s)
+    cancel_request(s)
     :ok
   end
 
   @spec ping(state) ::
-    {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:disconnect, Postgrex.Error.t | %DBConnection.ConnectionError{}, state}
   def ping(%{postgres: :transaction, transactions: :strict} = s) do
     sync_error(s, :transaction)
   end
   def ping(%{buffer: buffer} = s) do
     status = %{notify: notify([]), mode: :transaction, sync: :sync}
     s = %{s | buffer: nil}
-    case buffer do
-      :active_once ->
-        sync(s, status, :active_once, buffer)
-      _ when is_binary(buffer) ->
-        sync(s, status, nil, buffer)
+    case msg_send(s, msg_sync(), buffer) do
+      :ok when buffer == :active_once ->
+        ping_recv(s, status, :active_once, buffer)
+      :ok when is_binary(buffer) ->
+        ping_recv(s, status, nil, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
     end
   end
 
   @spec checkout(state) ::
-    {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:disconnect, Postgrex.Error.t | %DBConnection.ConnectionError{}, state}
   def checkout(%{postgres: :transaction, transactions: :strict} = s) do
     sync_error(s, :transaction)
   end
@@ -118,7 +126,8 @@ defmodule Postgrex.Protocol do
   end
 
   @spec checkin(state) ::
-  {:ok, state} | {:disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:disconnect, Postgrex.Error.t | %DBConnection.ConnectionError{}, state}
   def checkin(%{postgres: :transaction, transactions: :strict} = s) do
     sync_error(s, :transaction)
   end
@@ -126,35 +135,40 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
 
-  @spec handle_prepare(Postgrex.Query.t, Keyword.t, state) ::
+  @spec handle_prepare(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Query.t, state} |
-    {:error, %ArgumentError{} | %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Query.t, state}
-  def handle_prepare(query, _, %{postgres: {_, _}} = s) do
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_prepare(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :prepare, query)
   end
   def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
   end
   def handle_prepare(%Query{types: nil} = query, opts, %{queries: nil, buffer: buffer} = s) do
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    parse_describe_send(%{s | buffer: nil}, status, unnamed(query), buffer)
+    {sync, next} = prepare(opts)
+    status = %{notify: notify(opts), mode: mode(opts), sync: sync}
+    parse_describe(%{s | buffer: nil}, status, unnamed(query), buffer, next)
   end
   def handle_prepare(%Query{types: nil} = query, opts, %{buffer: buffer} = s) do
-    case query_member?(s, query) do
-      true ->
-        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-        describe_send(%{s | buffer: nil}, status, query, buffer)
-      false ->
-        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-        parse_describe_send(%{s | buffer: nil}, status, query, buffer)
-    end
+    {sync, next} = prepare(opts)
+    status = %{notify: notify(opts), mode: mode(opts), sync: sync}
+    close_parse_describe(%{s | buffer: nil}, status, query, buffer, next)
   end
   def handle_prepare(%Query{types: types} = query, _, %{types: types} = s) do
     query_error(s, "query #{inspect query} has already been prepared")
   end
   def handle_prepare(%Query{} = query, _, s) do
     query_error(s, "query #{inspect query} has invalid types for the connection")
+  end
+  def handle_prepare(%Stream{query: query} = stream, opts, s) do
+    case handle_prepare(query, opts, s) do
+      {:ok, %Query{} = query, s} ->
+        {:ok, %Stream{stream | query: query}, s}
+      {error, _, _} = other when error in [:error, :disconnect] ->
+        other
+    end
   end
 
   @spec handle_execute(Postgrex.Parameters.t, nil, Keyword.t, state) ::
@@ -170,72 +184,165 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_execute(Postgrex.Stream.t | Postgrex.Query.t, list, Keyword.t, state) ::
+  @spec handle_execute(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, %RuntimeError{}, Postgrex.Error.t, state}
-  def handle_execute(req, params, opts, s) do
-    %{buffer: buffer} = s
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_execute(%Query{} = query, params, opts, s) do
     status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    action = execute(s, req)
-    s = %{s | buffer: nil}
-    case action do
-      {:bind_execute, query} ->
-        bind_execute_send(s, status, query, params, buffer)
-      {:bind_copy_in, query} ->
-        bind_copy_in_send(s, status, query, params, buffer)
-      {:bind_copy_in, stream, query} ->
-        bind_copy_in_send(s, status, stream, query, params, buffer)
-      {:bind, stream, query} ->
-        bind_send(s, status, stream, query, params, buffer)
-      {:parse_execute, query} ->
-        parse_execute_send(s, status, query, params, buffer)
-      {:parse_copy_in, query} ->
-        parse_copy_in_send(s, status, query, params, buffer)
-      {:parse_copy_in, stream, query} ->
-        parse_copy_in_send(s, status, stream, query, params, buffer)
-      {:parse_bind, stream, query} ->
-        parse_bind_send(s, status, stream, query, params, buffer)
-      {:execute, stream} ->
-        execute_send(s, status, stream, buffer)
-      {:copy_out, stream} ->
-        copy_out(s, status, stream, buffer)
-      :copy_data ->
-        copy_data(s, status, params, buffer)
-      {:copy_in_stop, stream, msg} ->
-        copy_in_stop(s, status, stream, buffer, msg)
+    case execute(s, query) do
+      execute when is_function(execute, 4) ->
+        %{buffer: buffer} = s
+        s = %{s | buffer: nil}
+        execute.(s, status, params, buffer)
       {kind, _, _} = error when kind in [:error, :disconnect] ->
         error
     end
   end
 
+  @spec handle_execute(Postgrex.Stream.t, list, Keyword.t, state) ::
+    {:ok, Copy.t, state} |
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_execute(%Stream{query: query}, params, opts, s) do
+    %{connection_id: connection_id} = s
+    copy = %Copy{portal: make_portal(), ref: make_ref(), query: query,
+                 connection_id: connection_id}
+    handle_bind(query, params, copy, opts, s)
+  end
+
+  @spec handle_execute(Postgrex.Copy.t, {:copy_data, iodata} | :copy_done,
+                       Keyword.t, state) ::
+    {:ok, Postgrex.Result.t, state} |
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_execute(%Copy{ref: ref} = copy, {:copy_data, iodata}, opts, s) do
+    case s do
+      %{postgres: {_, ^ref}} ->
+        copy_in_data(s, iodata)
+      %{postgres: {_, _}} ->
+        lock_error(s, :execute, copy)
+      %{buffer: buffer} ->
+        status = %{notify: notify(opts), mode: mode(opts), sync: :flush}
+        copy_in_data(%{s | buffer: nil}, status, copy, iodata, buffer)
+    end
+  end
+  def handle_execute(%Copy{ref: ref} = copy, :copy_done, opts, s) do
+    case s do
+      %{postgres: {postgres, ^ref}} ->
+        status = %{notify: notify(opts), mode: mode(opts), sync: :flushed_sync}
+        %{buffer: buffer} = s
+        s = %{s | postgres: postgres, buffer: nil}
+        copy_in_done(s, status, copy, buffer)
+      %{postgres: {_, _}} ->
+        lock_error(s, :execute, copy)
+      _ ->
+        handle_close_portal(copy, opts, s)
+    end
+  end
+
   @spec handle_close(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, %ArgumentError{}, state} |
-    {:error | :disconnect, %RuntimeError{} | Postgrex.Error.t, state}
-  def handle_close(%Stream{ref: ref} = stream, _, %{postgres: {_, ref}} = s) do
-    msg = "postgresql protocol can not halt copying from database for " <>
-      inspect(stream)
-    err = RuntimeError.exception(message: msg)
-    {:disconnect, err, s}
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_close(%Query{ref: ref} = query, opts, %{postgres: {postgres, ref}} = s) do
+    %{connection_id: connection_id, buffer: buffer} = s
+    status = %{notify: notify(opts), mode: mode(opts), sync: :flushed_sync}
+    res = %Postgrex.Result{command: :close, connection_id: connection_id}
+    close(%{s | postgres: postgres, buffer: nil}, status, query, res, buffer)
   end
-  def handle_close(query, _, %{postgres: {_, _}} = s) do
+  def handle_close(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :close, query)
   end
   def handle_close(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
   end
-  def handle_close(query, opts, s) do
+  def handle_close(%Query{} = query, opts, s) do
     %{connection_id: connection_id, buffer: buffer} = s
     status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
     res = %Postgrex.Result{command: :close, connection_id: connection_id}
     close(%{s | buffer: nil}, status, query, res, buffer)
   end
+  def handle_close(%Stream{query: query}, opts, s) do
+    handle_close(query, opts, s)
+  end
+
+  @spec handle_declare(Postgrex.Query.t, list, Keyword.t, state) ::
+    {:ok, Postgrex.Cursor.t, state} |
+    {:error, %ArgumentError{} | Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_declare(query, params, opts, s) do
+    %{connection_id: connection_id} = s
+    max_rows = Keyword.get(opts, :max_rows, @max_rows)
+    cursor = %Cursor{portal: make_portal(), ref: make_ref(), max_rows: max_rows,
+                     connection_id: connection_id}
+    handle_bind(query, params, cursor, opts, s)
+  end
+
+  @spec handle_first(Postgrex.Query.t, Postgrex.Cursor.t, Keyword.t, state) ::
+    {:ok | :deallocate, Postgrex.Result.t, state} |
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_first(%Query{} = query, _, _, %{postgres: {_, _}} = s) do
+    lock_error(s, "fetch first", query)
+  end
+  def handle_first(query, cursor, opts, %{buffer: buffer} = s) do
+    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    execute_portal(%{s | buffer: nil}, status, query, cursor, buffer)
+  end
+
+  @spec handle_next(Postgrex.Query.t, Postgrex.Cursor.t, Keyword.t, state) ::
+    {:ok | :deallocate, Postgrex.Result.t, state} |
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_next(query, cursor, opts, %{postgres: {postgres, ref}} = s) do
+    case cursor do
+      %Cursor{ref: ^ref} ->
+        %{buffer: buffer} = s
+        s = %{s | postgres: postgres, buffer: nil}
+        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+        copy_out_portal(s, status, query, cursor, buffer)
+      _ ->
+        lock_error(s, "fetch next", cursor)
+    end
+  end
+  def handle_next(query, cursor, opts, %{buffer: buffer} = s) do
+    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    execute_portal(%{s | buffer: nil}, status, query, cursor, buffer)
+  end
+
+  @spec handle_deallocate(Postgrex.Query.t, Postgrex.Cursor.t, Keyword.t, state) ::
+    {:ok, Postgrex.Result.t, state} |
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_deallocate(_, cursor, opts, %{postgres: {postgres, ref}} = s) do
+    case cursor do
+      %Cursor{ref: ^ref} ->
+        %{buffer: buffer} = s
+        %{s | postgres: postgres, buffer: nil}
+        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+        deallocate_copy_recv(s, status, buffer)
+      _ ->
+        lock_error(s, :deallocate, cursor)
+    end
+  end
+  def handle_deallocate(_, %Cursor{} = cursor, opts, s) do
+    handle_close_portal(cursor, opts, s)
+  end
 
   @spec handle_begin(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:disconnect, %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error, Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
@@ -252,8 +359,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:disconnect, %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error, Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
@@ -272,8 +380,9 @@ defmodule Postgrex.Protocol do
 
   @spec handle_rollback(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:disconnect, %RuntimeError{}, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
+    {:error, Postgrex.Error.t, state} |
+    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_rollback(_, %{postgres: {_, _}} = s) do
     lock_error(s, :rollback)
   end
@@ -290,39 +399,42 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_simple(String.t, Keyword.t, state) ::
+  @spec handle_listener(String.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error | :disconnect, Postgrex.Error.t, state}
-  def handle_simple(statement, opts, %{buffer: buffer} = s) do
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_listener(statement, opts, s) do
+    %{buffer: buffer, timeout: timeout, sock: sock} = s
     status = %{notify: notify(opts), mode: :transaction, sync: :sync}
-    simple_send(%{s | buffer: nil}, status, statement, buffer)
+    timer = start_listener_timer(timeout, sock)
+    result = listener(%{s | buffer: nil}, status, statement, buffer)
+    cancel_listener_timer(timer)
+    result
   end
 
   @spec handle_info(any, Keyword.t, state) ::
-    {:ok, state} | {:error | :disconnect, Postgrex.Error.t, state}
+    {:ok, state} |
+    {:error, Postgrex.Error.t, state} |
+    {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_info(msg, opts \\ [], s)
 
   def handle_info({:tcp, sock, data}, opts, %{sock: {:gen_tcp, sock}} = s) do
     handle_data(s, opts, data)
   end
   def handle_info({:tcp_closed, sock}, _, %{sock: {:gen_tcp, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :tcp, action: "async recv", reason: :closed)
-    {:disconnect, err, s}
+    disconnect(s, :tcp, "async recv", :closed)
   end
   def handle_info({:tcp_error, sock, reason}, _, %{sock: {:gen_tcp, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :tcp, action: "async recv", reason: reason)
-    {:disconnect, err, s}
+    disconnect(s, :tcp, "async recv", reason)
   end
   def handle_info({:ssl, sock, data}, opts, %{sock: {:ssl, sock}} = s) do
     handle_data(s, opts, data)
   end
   def handle_info({:ssl_closed, sock}, _, %{sock: {:ssl, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :ssl, action: "async recv", reason: :closed)
-    {:disconnect, err, s}
+    disconnect(s, :ssl, "async recv", :closed)
   end
   def handle_info({:ssl_error, sock, reason}, _, %{sock: {:ssl, sock}} = s) do
-    err = Postgrex.Error.exception(tag: :ssl, action: "async recv", reason: reason)
-    {:disconnect, err, s}
+    disconnect(s, :ssl, "async recv", reason)
   end
   def handle_info(msg, _, s) do
     Logger.info(fn() -> [inspect(__MODULE__), ?\s, inspect(self()),
@@ -333,7 +445,7 @@ defmodule Postgrex.Protocol do
 
   ## connect
 
-  defp connect(host, port, sock_opts, %{timeout: timeout} = s) do
+  defp connect(host, port, sock_opts, timeout, s) do
     buffer? = Keyword.has_key?(sock_opts, :buffer)
     case :gen_tcp.connect(host, port, sock_opts ++ @sock_opts, timeout) do
       {:ok, sock} when buffer? ->
@@ -349,15 +461,18 @@ defmodule Postgrex.Protocol do
         :ok = :inet.setopts(sock, [buffer: buffer])
         {:ok, %{s | sock: {:gen_tcp, sock}}}
       {:error, reason} ->
-        {:error, Postgrex.Error.exception(tag: :tcp, action: "connect", reason: reason)}
+        {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
     end
   end
 
   ## handshake
 
-  defp handshake(%{timeout: timeout, sock: {:gen_tcp, sock}} = s,status) do
-    timer = start_handshake_timer(timeout, sock)
-    case do_handshake(s, status) do
+  defp handshake(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status) do
+    {:ok, peer} = :inet.peername(sock)
+    %{opts: opts} = status
+    handshake_timeout = Keyword.get(opts, :handshake_timeout, timeout)
+    timer = start_handshake_timer(handshake_timeout, sock)
+    case do_handshake(%{s | peer: peer}, status) do
       {:ok, %{parameters: parameters} = s} ->
         cancel_handshake_timer(timer)
         ref = Postgrex.Parameters.insert(parameters)
@@ -371,9 +486,21 @@ defmodule Postgrex.Protocol do
 
   defp start_handshake_timer(:infinity, _), do: :infinity
   defp start_handshake_timer(timeout, sock) do
-    {:ok, tref} = :timer.apply_after(timeout, :gen_tcp, :shutdown,
-                                     [sock, :read_write])
+    {:ok, tref} = :timer.apply_after(timeout, __MODULE__, :handshake_shutdown,
+                                     [timeout, self(), sock])
     {:timer, tref}
+  end
+
+  @doc false
+  def handshake_shutdown(timeout, pid, sock) do
+    if Process.alive?(pid) do
+      Logger.error(fn() ->
+        [inspect(__MODULE__), " (", inspect(pid),
+          ") timed out because it was handshaking for longer than ",
+          to_string(timeout) | "ms"]
+      end)
+      :gen_tcp.shutdown(sock, :read_write)
+    end
   end
 
   def cancel_handshake_timer(:infinity), do: :ok
@@ -401,8 +528,7 @@ defmodule Postgrex.Protocol do
       {:ok, <<?N>>} ->
         disconnect(s, %Postgrex.Error{message: "ssl not available"}, "")
       {:error, reason} ->
-        err = Postgrex.Error.exception(tag: :tcp, action: "recv", reason: reason)
-        disconnect(s, err, "")
+        disconnect(s, :tcp, "recv", reason)
     end
   end
 
@@ -411,8 +537,7 @@ defmodule Postgrex.Protocol do
       {:ok, ssl_sock} ->
         startup(%{s | sock: {:ssl, ssl_sock}}, status)
       {:error, reason} ->
-        err = Postgrex.Error.exception(tag: :ssl, action: "connect", reason: reason)
-        disconnect(s, err, "")
+        disconnect(s, :ssl, "connect", reason)
     end
   end
 
@@ -473,8 +598,8 @@ defmodule Postgrex.Protocol do
 
   defp init_recv(s, status, buffer) do
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_backend_key(pid: pid), buffer} ->
-        init_recv(%{s | connection_id: pid}, status, buffer)
+      {:ok, msg_backend_key(pid: pid, key: key), buffer} ->
+        init_recv(%{s | connection_id: pid, connection_key: key}, status, buffer)
       {:ok, msg_ready(), buffer} ->
         bootstrap(s, status, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -491,65 +616,59 @@ defmodule Postgrex.Protocol do
   defp bootstrap(s, %{types_key: nil}, buffer) do
     activate(s, buffer)
   end
-  defp bootstrap(s, %{types_key: types_key} = status, buffer) do
-    case Postgrex.TypeServer.fetch(types_key) do
-      {:lock, ref, table} ->
-        bootstrap_send(%{s | types: table}, %{status | types_ref: ref}, buffer)
-      {:go, table} ->
-        reserve_send(%{s | types: table}, status, buffer)
+  defp bootstrap(s, status, buffer) do
+    %{types_mod: types_mod, types_key: types_key} = status
+    server = Postgrex.TypeManager.get(types_mod, types_key)
+    case TypeServer.fetch(server) do
+      {:lock, ref, types} ->
+        status = %{status | types_lock: {server, ref}}
+        bootstrap_send(%{s | types: types}, status, types, buffer)
+      {:go, types} ->
+        reserve_send(%{s | types: types}, status, buffer)
+      :noproc ->
+        bootstrap(s, status, buffer)
+      :error ->
+        msg = "awaited on another connection that failed to bootstrap types"
+        err = RuntimeError.exception(message: msg)
+        {:disconnect, err, %{s | buffer: buffer}}
     end
   end
 
-  defp bootstrap_send(%{parameters: parameters} = s, status, buffer) do
+  defp bootstrap_send(s, status, types, buffer) do
+    %{parameters: parameters} = s
     version = parameters["server_version"] |> Postgrex.Utils.parse_version
-    statement = Types.bootstrap_query(version)
+    statement = Types.bootstrap_query(version, types)
     msg = msg_query(statement: statement)
     case msg_send(s, msg, buffer) do
       :ok ->
-        bootstrap_recv(s, status, buffer)
+        bootstrap_recv(s, status, [], buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_recv(s, status, buffer) do
+  defp bootstrap_recv(s, status, type_infos, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(), buffer} ->
-        bootstrap_recv(s, status, [], buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        bootstrap_fail(s, err, status, buffer)
-      {:ok, msg, buffer} ->
-        bootstrap_recv(handle_msg(s, status, msg), status, buffer)
-      {:disconnect, err, s} ->
-        bootstrap_fail(s, err, status)
-    end
-  end
-
-  defp bootstrap_recv(s, status, rows, buffer) do
-    case msg_recv(s, :infinity, buffer) do
+        bootstrap_recv(s, status, type_infos, buffer)
       {:ok, msg_data_row(values: values), buffer} ->
-        bootstrap_recv(s, status, [row_decode(values) | rows], buffer)
+        type_infos = [Types.build_type_info(values) | type_infos]
+        bootstrap_recv(s, status, type_infos, buffer)
       {:ok, msg_command_complete(), buffer} ->
-        bootstrap_types(s, status, rows, buffer)
+        bootstrap_types(s, status, Enum.reverse(type_infos), buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         bootstrap_fail(s, err, status, buffer)
       {:ok, msg, buffer} ->
-        bootstrap_recv(handle_msg(s, status, msg), status, rows, buffer)
+        bootstrap_recv(handle_msg(s, status, msg), status, type_infos, buffer)
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_types(s, status, rows, buffer) do
-    %{types: table, parameters: parameters} = s
-    %{extensions: extensions, types_ref: ref} = status
-    extension_keys = Enum.map(extensions, &elem(&1, 0))
-    extension_opts = Types.prepare_extensions(extensions, parameters)
-    types = Types.build_types(rows)
-    Types.associate_extensions_with_types(table, extension_keys, extension_opts, types)
-    Postgrex.TypeServer.unlock(ref)
+  defp bootstrap_types(s, status, type_infos, buffer) do
+    %{types_lock: {server, ref}} = status
+    TypeServer.update(server, ref, type_infos)
     bootstrap_sync_recv(s, status, buffer)
   end
 
@@ -566,8 +685,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_fail(s, err, %{types_ref: ref}) do
-    Postgrex.TypeServer.fail(ref)
+  defp bootstrap_fail(s, err, %{types_lock: {server, ref}}) do
+    TypeServer.fail(server, ref)
     {:disconnect, err, s}
   end
 
@@ -611,52 +730,67 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  ## simple
+  ## listener
 
-  defp simple_send(s, status, statement, buffer) do
-    msg = msg_query(statement: statement)
-    case msg_send(s, msg, buffer) do
-      :ok                       -> simple_recv(s, status, buffer)
-      {:disconnect, _, _} = dis -> dis
-    end
+  defp listener(s, status, statement, buffer) do
+    msgs = [msg_parse(name: "", statement: statement, type_oids: []),
+            msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
+            msg_execute(name_port: "", max_rows: 0)]
+    query = %Query{name: "", statement: statement}
+    execute_listener_recv = &execute_listener_recv/4
+    bind_recv = &bind_recv(&1, &2, &3, &4, execute_listener_recv)
+    recv = &parse_recv(&1, &2, &3, &4, bind_recv)
+    send_and_recv(s, status, query, buffer, msgs, recv)
   end
 
-  defp simple_recv(%{timeout: timeout} = s, status, buffer) do
-    ## simple queries here are only done by Postgrex.Notifications processes
-    case msg_recv(s, timeout, buffer) do
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, %Query{}, [], tag, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        simple_recv(handle_msg(s, status, msg), status, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
+  defp start_listener_timer(:infinity, _), do: :infinity
+  defp start_listener_timer(timeout, {mod, sock}) do
+    {:ok, tref} = :timer.apply_after(timeout, mod, :close, [sock])
+    {:timer, tref}
+  end
+
+  def cancel_listener_timer(:infinity), do: :ok
+  def cancel_listener_timer({:timer, tref}) do
+    {:ok, _} = :timer.cancel(tref)
+    :ok
   end
 
   ## prepare
 
-  defp parse_describe_send(s, status, query, buffer) do
+  defp prepare(opts) do
+    case Keyword.fetch!(opts, :function) do
+      :prepare         -> {:sync, &sync_recv/4}
+      :prepare_execute -> {:flush, &execute_ready/4}
+      :prepare_open    -> {:flush, &execute_ready/4}
+      :prepare_into    -> {:flush, &execute_ready/4}
+    end
+  end
+
+  defp parse_describe(s, status, query, buffer, next) do
     %Query{name: name, statement: statement} = query
     msgs =
       [msg_parse(name: name, statement: statement, type_oids: []),
        msg_describe(type: :statement, name: name)]
-    describe_recv = &describe_recv/4
+    describe_recv = &describe_recv(&1, &2, &3, &4, next)
     recv = &parse_recv(&1, &2, &3, &4, describe_recv)
     send_and_recv(s, status, query, buffer, msgs, recv)
   end
 
-  defp describe_send(s, status, %Query{name: name} = query, buffer) do
-    msgs = [msg_describe(type: :statement, name: name)]
-    send_and_recv(s, status, query, buffer, msgs, &describe_recv/4)
+  defp close_parse_describe(s, status, query, buffer, next) do
+    %Query{name: name, statement: statement} = query
+    msgs =
+      [msg_close(type: :statement, name: name),
+       msg_parse(name: name, statement: statement, type_oids: []),
+       msg_describe(type: :statement, name: name)]
+    describe_recv = &describe_recv(&1, &2, &3, &4, next)
+    parse_recv = &parse_recv(&1, &2, &3, &4, describe_recv)
+    recv = &close_recv(&1, &2, &3, &4, parse_recv)
+    send_and_recv(s, status, query, buffer, msgs, recv)
   end
 
-  defp parse_recv(s, status, query, buffer, recv \\ &bind_recv/4) do
+  defp parse_recv(s, status, query, buffer, recv) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_parse_complete(), buffer} ->
-        query_put(s, query)
         recv.(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         unnamed_query_delete(s, query)
@@ -669,18 +803,134 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp describe_recv(s, status, query, buffer) do
+  defp describe_recv(s, status, %Query{ref: nil} = query, buffer, next) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_no_data(), buffer} ->
-        query = %Query{query | types: s.types, null: s.null}
-        sync_recv(s, status, query, buffer)
+        query = %Query{query | ref: make_ref(), types: s.types,
+                               result_formats: []}
+        query_put(s, query)
+        next.(s, status, query, buffer)
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
-        describe_recv(s, status, %Query{query | encoders: param_oids}, buffer)
+        describe_params(s, status, query, param_oids, buffer, next)
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {col_oids, col_names} = columns(fields)
-        query = %Query{query | types: s.types, null: s.null,
-                               columns: col_names, decoders: col_oids}
-        sync_recv(s, status, query, buffer)
+        describe_result(s, status, query, fields, buffer, next)
+      {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
+        msg = "postgresql protocol can not handle #{len} parameters, " <>
+          "the maximum is #{max}"
+        err = RuntimeError.exception(message: msg)
+        {:disconnect, err, %{s | buffer: buffer}}
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        describe_recv(handle_msg(s, status, msg), status, query, buffer, next)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp describe_recv(s, status, query, buffer, next) do
+    %Query{param_oids: param_oids, result_oids: result_oids} = query
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_no_data(), buffer} when is_nil(result_oids) ->
+        query_put(s, query)
+        next.(s, status, query, buffer)
+      {:ok, msg_no_data(), buffer} when is_list(result_oids) ->
+        describe_error(s, status, query, buffer)
+      {:ok, msg_parameter_desc(type_oids: ^param_oids), buffer} ->
+        describe_recv(s, status, query, buffer, next)
+      {:ok, msg_parameter_desc(), buffer} ->
+        describe_error(s, status, query, buffer)
+      {:ok, msg_row_desc(fields: fields), buffer} ->
+        case column_oids(fields) do
+          ^result_oids ->
+            query_put(s, query)
+            next.(s, status, query, buffer)
+          _ ->
+            describe_error(s, status, query, buffer)
+        end
+      {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
+        msg = "postgresql protocol can not handle #{len} parameters, " <>
+          "the maximum is #{max}"
+        err = RuntimeError.exception(message: msg)
+        {:disconnect, err, %{s | buffer: buffer}}
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        describe_recv(handle_msg(s, status, msg), status, query, buffer, next)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp describe_params(s, status, query, param_oids, buffer, next) do
+    %{types: types} = s
+    case fetch_type_info(param_oids, types) do
+      {:ok, param_info} ->
+        {param_formats, param_types} = Enum.unzip(param_info)
+        query = %Query{query | param_oids: param_oids,
+                               param_formats: param_formats,
+                               param_types: param_types}
+        describe_recv(s, status, query, buffer, next)
+      {:error, err} ->
+        {:disconnect, err, %{s | buffer: buffer}}
+    end
+  end
+
+  defp describe_result(s, status, query, fields, buffer, next) do
+    %{types: types} = s
+    {result_oids, col_names} = columns(fields)
+    case fetch_type_info(result_oids, types) do
+      {:ok, result_info} ->
+        {result_formats, result_types} = Enum.unzip(result_info)
+        query = %Query{query | ref: make_ref(), types: types,
+                               columns: col_names,
+                               result_oids: result_oids,
+                               result_formats: result_formats,
+                               result_types: result_types}
+        query_put(s, query)
+        next.(s, status, query, buffer)
+      {:error, err} ->
+        {:disconnect, err, %{s | buffer: buffer}}
+    end
+  end
+
+  defp fetch_type_info(oids, types, infos \\ [])
+
+  defp fetch_type_info([], _, infos) do
+    {:ok, Enum.reverse(infos)}
+  end
+  defp fetch_type_info([oid | oids], types, infos) do
+    case Postgrex.Types.fetch(oid, types) do
+      {:ok, info} ->
+        fetch_type_info(oids, types, [info | infos])
+      {:error, %Postgrex.TypeInfo{} = info, mod} ->
+        msg = Postgrex.Utils.type_msg(info, mod)
+        {:error, RuntimeError.exception(message: msg)}
+      {:error, nil, _} ->
+        msg = "oid `#{oid}` was not bootstrapped and lacks type information"
+        {:error, RuntimeError.exception(message: msg)}
+    end
+  end
+
+  defp describe_error(s, %{sync: :flush} = status, query, buffer) do
+    msg = "query #{inspect query} has stale type information"
+    err = ArgumentError.exception(message: msg)
+    %Query{name: name} = query
+    msgs = [msg_close(type: :statement, name: name)]
+    recv = &describe_error_recv/4
+    send_and_recv(s, %{status | sync: :flushed_sync}, err, buffer, msgs, recv)
+  end
+
+  defp describe_error_recv(s, status, err, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_close_complete(), buffer} ->
+        sync_recv(s, status, err, buffer)
+      {:ok, msg_no_data(), buffer} ->
+        describe_error_recv(s, status, err, buffer)
+      {:ok, msg_parameter_desc(), buffer} ->
+        describe_error_recv(s, status, err, buffer)
+      {:ok, msg_row_desc(), buffer} ->
+        describe_error_recv(s, status, err, buffer)
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, " <>
           "the maximum is #{max}"
@@ -689,10 +939,15 @@ defmodule Postgrex.Protocol do
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
-        describe_recv(handle_msg(s, status, msg), status, query, buffer)
+        describe_error_recv(handle_msg(s, status, msg), status, err, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
+  end
+
+  defp execute_ready(%{postgres: postgres} = s, _, query, buffer) do
+    %Query{ref: ref} = query
+    ok(s, query, {postgres, ref}, buffer)
   end
 
   ## execute
@@ -713,6 +968,13 @@ defmodule Postgrex.Protocol do
     {:error, RuntimeError.exception(msg), s}
   end
 
+  defp execute(%{postgres: {postgres, ref}}, %Query{ref: ref} = query) do
+    fn(s, status, params, buffer) ->
+      s = %{s | postgres: postgres}
+      status = %{status | sync: :flushed_sync}
+      bind_execute(s, status, query, params, buffer)
+    end
+  end
   defp execute(%{postgres: {_, _ref}} = s, %Query{} = query) do
     lock_error(s, :execute, query)
   end
@@ -722,105 +984,90 @@ defmodule Postgrex.Protocol do
   defp execute(s, %Query{types: nil} = query) do
     query_error(s, "query #{inspect query} has not been prepared")
   end
-  defp execute(%{types: types, queries: nil}, %Query{types: types, copy_data: data?} = query) do
-    query = unnamed(query)
-    if data? do
-      {:parse_copy_in, query}
-    else
-      {:parse_execute, query}
-    end
-  end
-  defp execute(%{types: types} = s, %Query{types: types, copy_data: data?} = query) do
-    prepared? = query_member?(s, query)
-    cond do
-      prepared? and data? ->
-        {:bind_copy_in, query}
-      prepared? ->
-        {:bind_execute, query}
-      data? ->
-        {:parse_copy_in, query}
-      true ->
-        {:parse_execute, query}
+  defp execute(%{types: types} = s, %Query{types: types} = query) do
+    case query_prepare(s, query) do
+      {:ready, query} ->
+        &bind_execute(&1, &2, query, &3, &4)
+      {:parse_describe, query} ->
+        fn(s, status, params, buffer) ->
+          next = &bind_execute(&1, %{&2 | sync: :flushed_sync}, &3, params, &4)
+          parse_describe(s, %{status | sync: :flush}, query, buffer, next)
+        end
+      {:close_parse_describe, query} ->
+        fn(s, status, params, buffer) ->
+          next = &bind_execute(&1, %{&2 | sync: :flushed_sync}, &3, params, &4)
+          close_parse_describe(s, %{status | sync: :flush}, query, buffer, next)
+        end
     end
   end
   defp execute(s, %Query{} = query) do
     query_error(s, "query #{inspect query} has invalid types for the connection")
   end
-  defp execute(%{postgres: {_, ref}}, %Stream{ref: ref, state: state} = stream) do
-    case state do
-      :copy_out ->
-        {:copy_out, stream}
-      :copy_done ->
-        {:copy_in_stop, stream, msg_copy_done()}
-      :copy_fail ->
-        msg = "copying to database halted"
-        {:copy_in_stop, stream, msg_copy_fail(message: msg)}
-    end
-  end
-  defp execute(s, %Stream{state: state} = stream)
-      when state in [:copy_out, :copy_done, :copy_fail] do
-    msg = "connection lost lock for copying to or from the database and " <>
-      "can not execute #{inspect stream}"
-    {:disconnect, RuntimeError.exception(msg), s}
-  end
-  defp execute(%{postgres: {_, _ref}} = s, %Stream{} = stream) do
-    lock_error(s, :execute, stream)
-  end
-  defp execute(s, %Stream{query: query, state: state} = stream)
-      when state in [:out, :suspended] do
-    case execute(s, query) do
-      {execute, _} when execute in [:bind_execute, :parse_execute] ->
-        {:execute, stream}
-      {:error, _, _} = error ->
-        error
-    end
-  end
-  defp execute(s, %Stream{query: query, state: :bind} = stream) do
-    case execute(s, query) do
-      {:bind_execute, query} ->
-        {:bind, %Stream{stream | query: query}, query}
-      {:parse_execute, query} ->
-        {:parse_bind, %Stream{stream | query: query}, query}
-      {:error, _, _} = error ->
-        error
-    end
-  end
-  defp execute(s, %Stream{query: query, state: :copy_in} = stream) do
-    case execute(s, query) do
-      {:bind_copy_in, query} ->
-        {:bind_copy_in, %Stream{stream | query: query}, query}
-      {:parse_copy_in, query} ->
-        {:parse_copy_in, %Stream{stream | query: query}, query}
-      {:error, _, _} = error ->
-        error
-    end
-  end
-  defp execute(%{postgres: {_, ref}}, %Postgrex.CopyData{ref: ref}) do
-    :copy_data
-  end
-  defp execute(%{postgres: {_, _ref}} = s, %Postgrex.CopyData{} = copy_data) do
-    lock_error(s, :execute, copy_data)
+
+  defp make_portal() do
+    System.unique_integer([:positive])
+    |> Integer.to_string(36)
   end
 
-  defp execute_send(s, status, stream, buffer) do
-    %Stream{portal: portal, max_rows: max_rows} = stream
+  defp handle_bind(query, params, res, opts, s) do
+    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    bind(s, status, query, params, res)
+  end
+
+  defp bind(%{postgres: {postgres, ref}} = s, status, query, params, res) do
+    case query do
+      %Query{ref: ^ref} ->
+        %{buffer: buffer} = s
+        s = %{s | postgres: postgres, buffer: nil}
+        status = %{status | sync: :flushed_sync}
+        bind(s, status, query, params, res, buffer)
+      query ->
+        lock_error(s, :bind, query)
+    end
+  end
+  defp bind(s, _, %Query{name: @reserved_prefix <> _} = query, _, _) do
+    reserved_error(query, s)
+  end
+  defp bind(s, _, %Query{types: nil} = query, _, _) do
+    query_error(s, "query #{inspect query} has not been prepared")
+  end
+  defp bind(%{types: types} = s, _, %Query{types: types2} = query, _, _)
+       when types != types2 do
+    query_error(s, "query #{inspect query} has invalid types for the connection")
+  end
+  defp bind(%{buffer: buffer} = s, status, query, params, res) do
+    s = %{s | buffer: nil}
+    case query_prepare(s, query) do
+      {:ready, query} ->
+        bind(s, status, query, params, res, buffer)
+      {:parse_describe, query} ->
+        next = &bind(&1, %{&2 | sync: :flushed_sync}, &3, params, res, &4)
+        parse_describe(s, %{status | sync: :flush}, query, buffer, next)
+      {:close_parse_describe, query} ->
+        next = &bind(&1, %{&2 | sync: :flushed_sync}, &3, params, res, &4)
+        close_parse_describe(s, %{status | sync: :flush}, query, buffer, next)
+    end
+  end
+
+  defp execute_portal(s, status, query, cursor, buffer) do
+    %Cursor{portal: portal, max_rows: max_rows} = cursor
     messages = [msg_execute(name_port: portal, max_rows: max_rows)]
-    send_and_recv(s, status, stream, buffer, messages, &execute_recv/4)
+    execute_portal_recv = &execute_portal_recv(&1, &2, &3, cursor, &4)
+    send_and_recv(s, status, query, buffer, messages, execute_portal_recv)
   end
 
-  defp bind_send(s, status, stream, query, params, buffer) do
-    %{connection_id: connection_id} = s
-    res = %Postgrex.Result{command: :bind, connection_id: connection_id}
-    %Stream{portal: portal} = stream
+  defp bind(s, status, query, params, %{portal: portal} = res, buffer) do
     %Query{param_formats: pfs, result_formats: rfs, name: name} = query
     messages = [
       msg_bind(name_port: portal, name_stat: name, param_formats: pfs, params: params, result_formats: rfs)]
-    sync_recv = &sync_recv/4
+    sync_recv = fn(s, status, _, buffer) ->
+      sync_recv(s, status, res, buffer)
+    end
     recv = &bind_recv(&1, &2, &3, &4, sync_recv)
-    send_and_recv(s, status, res, buffer, messages, recv)
+    send_and_recv(s, status, query, buffer, messages, recv)
   end
 
-  defp bind_execute_send(s, status, query, params, buffer) do
+  defp bind_execute(s, status, query, params, buffer) do
     %Query{param_formats: pfs, result_formats: rfs, name: name} = query
     msgs = [
       msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
@@ -828,88 +1075,10 @@ defmodule Postgrex.Protocol do
     send_and_recv(s, status, query, buffer, msgs, &bind_recv/4)
   end
 
-  defp bind_copy_in_send(s, status, query, params, buffer) do
-    {params, [copy_data_msg]} = Enum.split(params, -1)
-    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
-    msgs = [
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0),
-      copy_data_msg,
-      msg_copy_done()]
-    copy_in_recv = &copy_in_recv/4
-    bind_recv = &bind_recv(&1, &2, &3, &4, copy_in_recv)
-    send_and_recv(s, status, query, buffer, msgs, bind_recv)
-  end
-
-  defp bind_copy_in_send(s, status, stream, query, params, buffer) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
-    msgs = [
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_flush(),
-      msg_execute(name_port: "", max_rows: 0)]
-    status = %{status | sync: :flush}
-    copy_in_ready = &copy_in_ready/4
-    bind_recv = &bind_recv(&1, &2, &3, &4, copy_in_ready)
-    copy_in_send(s, status, stream, buffer, msgs, bind_recv)
-  end
-
-  defp parse_bind_send(s, status, stream, query, params, buffer) do
-    %{connection_id: connection_id} = s
-    res = %Postgrex.Result{command: :bind, connection_id: connection_id}
-    %Stream{portal: portal} = stream
-    %Query{param_formats: pfs, result_formats: rfs, name: name, statement: statement} = query
-    messages = [
-      msg_parse(name: name, statement: statement, type_oids: []),
-      msg_bind(name_port: portal, name_stat: name, param_formats: pfs, params: params, result_formats: rfs)]
-    sync_recv = &sync_recv/4
-    bind_recv = fn(s, status, _query, buffer) ->
-      bind_recv(s, status, res, buffer, sync_recv)
-    end
-    parse_recv = &parse_recv(&1, &2, &3, &4, bind_recv)
-    send_and_recv(s, status, query, buffer, messages, parse_recv)
-  end
-
-  defp parse_execute_send(s, status, query, params, buffer) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name, statement: statement} = query
-    msgs = [
-      msg_parse(name: name, statement: statement, type_oids: []),
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0)]
-    send_and_recv(s, status, query, buffer, msgs, &parse_recv/4)
-  end
-
-  defp parse_copy_in_send(s, status, query, params, buffer) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name, statement: statement} = query
-    {params, [copy_data_msg]} = Enum.split(params, -1)
-    msgs = [
-      msg_parse(name: name, statement: statement, type_oids: []),
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_execute(name_port: "", max_rows: 0),
-      copy_data_msg,
-      msg_copy_done()]
-    copy_in_recv = &copy_in_recv/4
-    bind_recv = &bind_recv(&1, &2, &3, &4, copy_in_recv)
-    parse_recv = &parse_recv(&1, &2, &3, &4, bind_recv)
-    send_and_recv(s, status, query, buffer, msgs, parse_recv)
-  end
-
-  defp parse_copy_in_send(s, status, stream, query, params, buffer) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name, statement: statement} = query
-    msgs = [
-      msg_parse(name: name, statement: statement, type_oids: []),
-      msg_bind(name_port: "", name_stat: name, param_formats: pfs, params: params, result_formats: rfs),
-      msg_flush(),
-      msg_execute(name_port: "", max_rows: 0)]
-    status = %{status | sync: :flush}
-    bind_recv = fn(s, status, _query, buffer) ->
-      bind_recv(s, status, stream, buffer, &copy_in_ready/4)
-    end
-    parse_recv = &parse_recv(&1, &2, &3, &4, bind_recv)
-    copy_in_send(s, status, query, buffer, msgs, parse_recv)
-  end
-
-  defp send_and_recv(s, %{mode: :savepoint} = status, query, buffer, msgs, recv) do
-    case msg_send(s, savepoint_msgs(s, msgs), buffer) do
+  defp send_and_recv(s, %{mode: :savepoint, sync: sync} = status, query, buffer, msgs, recv) do
+    case msg_send(s, savepoint_msgs(s, sync, msgs), buffer) do
+      :ok when sync == :flushed_sync ->
+        recv.(s, status, query, buffer)
       :ok ->
         savepoint_recv(s, status, query, buffer, recv)
       {:disconnect, _, _} = dis ->
@@ -917,8 +1086,13 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp send_and_recv(s, %{mode: :transaction} = status, query, buffer, msgs, recv) do
-    case msg_send(s, msgs ++ [msg_sync()], buffer) do
+  defp send_and_recv(s, %{mode: :transaction, sync: sync} = status, query, buffer, msgs, recv) do
+    msgs = case sync do
+      :sync         -> msgs ++ [msg_sync()]
+      :flush        -> msgs ++ [msg_flush()]
+      :flushed_sync -> msgs ++ [msg_sync()]
+    end
+    case msg_send(s, msgs, buffer) do
       :ok ->
         recv.(s, status, query, buffer)
       {:disconnect, _, _} = dis ->
@@ -926,10 +1100,16 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp savepoint_msgs(s, msgs) do
+  defp savepoint_msgs(s, :sync, msgs) do
     savepoint = transaction_msgs(s, ["SAVEPOINT postgrex_query"])
     release = transaction_msgs(s, ["RELEASE SAVEPOINT postgrex_query", :sync])
     savepoint ++ msgs ++ release
+  end
+  defp savepoint_msgs(s, :flush, msgs) do
+    transaction_msgs(s, ["SAVEPOINT postgrex_query"]) ++ msgs ++ [msg_flush()]
+  end
+  defp savepoint_msgs(s, :flushed_sync, msgs) do
+    msgs ++ transaction_msgs(s, ["RELEASE SAVEPOINT postgrex_query", :sync])
   end
 
   defp savepoint_recv(s, status, query, buffer, recv) do
@@ -942,7 +1122,8 @@ defmodule Postgrex.Protocol do
         recv.(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
-        do_sync_recv(s, status, err, buffer)
+        # Failed with savepoints can only await ready message and return error
+        sync_recv(s, %{status | mode: :transaction}, err, buffer)
       {:ok, msg, buffer} ->
         s = handle_msg(s, status, msg)
         savepoint_recv(s, status, query, buffer, recv)
@@ -951,29 +1132,36 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp savepoint_rollback(s, %{sync: :flush} = status, err, buffer) do
+    savepoint_rollback(s, status, err, [msg_sync()], buffer)
+  end
   defp savepoint_rollback(s, status, err, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_ready(status: :failed), buffer} ->
-        do_savepoint_rollback(s, status, err, buffer)
-      {:ok, msg_ready(status: postgres), buffer} ->
-        sync_error(s, postgres, buffer)
-      {:ok, msg, buffer} ->
-        savepoint_rollback(handle_msg(s, status, msg), status, err, buffer)
+    savepoint_rollback(s, status, err, [], buffer)
+  end
+
+  defp savepoint_rollback(s, status, err, msgs, buffer) do
+    statements = ["ROLLBACK TO SAVEPOINT postgrex_query",
+                  "RELEASE SAVEPOINT postgrex_query",
+                  :sync]
+    msgs = msgs ++ transaction_msgs(s, statements)
+    case msg_send(s, msgs, buffer) do
+      :ok ->
+        savepoint_rollback_recv(s, %{status | sync: :sync}, err, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp do_savepoint_rollback(s, status, err, buffer) do
-    statements = ["ROLLBACK TO SAVEPOINT postgrex_query",
-                  "RELEASE SAVEPOINT postgrex_query",
-                  :sync]
-    messages = transaction_msgs(s, statements)
-    case msg_send(s, messages, buffer) do
-      :ok ->
+  defp savepoint_rollback_recv(s, status, err, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_ready(status: :failed), buffer} ->
         sync_recv = &do_sync_recv/4
         recv = &savepoint_recv(&1, &2, &3, &4, sync_recv)
         savepoint_recv(s, status, err, buffer, recv)
+      {:ok, msg_ready(status: postgres), buffer} ->
+        sync_error(s, postgres, buffer)
+      {:ok, msg, buffer} ->
+        savepoint_rollback_recv(handle_msg(s, status, msg), status, err, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1003,50 +1191,78 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, err, buffer)
   end
 
-  defp execute_recv(s, status, query, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, query, [values], buffer)
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, [], tag, buffer)
-      {:ok, msg_empty_query(), buffer} ->
-        sync_recv(s, status, %Postgrex.Result{num_rows: 0}, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
+  defp execute_recv(s, status, query, rows \\ [], buffer) do
+    %Query{result_types: types} = query
+    case rows_recv(s, types, rows, buffer) do
+      {:ok, msg_command_complete(tag: tag), rows, buffer} ->
+        complete(s, status, query, rows, tag, buffer)
+      {:ok, msg_error(fields: fields), _, buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
-      {:ok, msg_copy_in_response(), buffer} ->
-        msg = "query #{inspect query} is trying to copying but it is not supported"
+      {:ok, msg_empty_query(), [], buffer} ->
+        complete(s, status, query, [], nil, buffer)
+      {:ok, msg_copy_in_response(), [], buffer} ->
+        msg = "query #{inspect query} is trying to copying but no copy data to send"
         err = ArgumentError.exception(msg)
         copy_fail(s, status, err, buffer)
-      {:ok, msg_copy_out_response(), buffer} ->
+      {:ok, msg_copy_out_response(), [], buffer} ->
         copy_out(s, status, query, buffer)
-      {:ok, msg_copy_both_response(), buffer} ->
+      {:ok, msg_copy_both_response(), [], buffer} ->
         copy_both_disconnect(s, query, buffer)
-      {:ok, msg, buffer} ->
-        execute_recv(handle_msg(s, status, msg), status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp execute_recv(s, status, query, rows, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, query, [values | rows], buffer)
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, rows, tag, buffer)
-      {:ok, msg_portal_suspend(), buffer} ->
-        suspend(s, status, query, rows, buffer)
-      {:ok, msg, buffer} ->
+      {:ok, msg, rows, buffer} ->
         execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
+  defp execute_portal_recv(s, status, query, cursor, rows \\ [], buffer) do
+    %Query{result_types: types} = query
+    case rows_recv(s, types, rows, buffer) do
+      {:ok, msg_command_complete(tag: tag), rows, buffer} ->
+        deallocate(s, status, query, rows, tag, buffer)
+      {:ok, msg_portal_suspend(), rows, buffer} ->
+        suspend(s, status, query, cursor, rows, buffer)
+      {:ok, msg_error(fields: fields), _, buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg_empty_query(), [], buffer} ->
+        deallocate(s, status, query, [], nil, buffer)
+      {:ok, msg_copy_in_response(), [], buffer} ->
+        msg = "query #{inspect query} is trying to copying but no copy data to send"
+        err = ArgumentError.exception(msg)
+        copy_fail(s, status, err, buffer)
+      {:ok, msg_copy_out_response(), [],  buffer} ->
+        copy_out_portal(s, status, query, cursor, buffer)
+      {:ok, msg_copy_both_response(), [], buffer} ->
+        copy_both_disconnect(s, query, buffer)
+      {:ok, msg, rows, buffer} ->
+        s = handle_msg(s, status, msg)
+        execute_portal_recv(s, status, query, cursor, rows, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp execute_listener_recv(s, status, query, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        complete(s, status, query, [], tag, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg, buffer} ->
+        execute_listener_recv(handle_msg(s, status, msg), status, query, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+
   defp complete(s, status, %Query{} = query, rows, tag, buffer) do
     %{connection_id: connection_id} = s
-    {command, nrows} = decode_tag(tag)
+    {command, nrows} =
+      if tag, do: decode_tag(tag), else: {nil, nil}
     %Query{columns: cols} = query
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
     nrows =
@@ -1059,34 +1275,26 @@ defmodule Postgrex.Protocol do
                               rows: rows, columns: cols, connection_id: connection_id}
     sync_recv(s, status, result, buffer)
   end
-  defp complete(s, status, stream, rows, tag, buffer) do
-    %Postgrex.Stream{query: query, num_rows: previous_nrows} = stream
+
+  defp suspend(s, status, query, cursor, rows, buffer) do
     %{connection_id: connection_id} = s
-    {command, nrows} = decode_tag(tag)
     %Query{columns: cols} = query
-    # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
-    nrows =
-      if is_nil(nrows) and command == :select, do: length(rows), else: nrows
+    %Cursor{max_rows: max_rows} = cursor
 
-    nrows =
-      if command == :select, do: nrows + previous_nrows, else: nrows
-
-    rows =
-      if is_nil(cols) and rows == [] and command != :copy, do: nil, else: rows
-
-    result = %Postgrex.Result{command: command, num_rows: nrows || 0,
-                              rows: rows, columns: cols, connection_id: connection_id}
+    result = %Postgrex.Result{command: :stream, rows: rows, num_rows: max_rows,
+                              columns: cols, connection_id: connection_id}
     sync_recv(s, status, result, buffer)
   end
 
-  defp suspend(s, status, stream, rows, buffer) do
-    %{connection_id: connection_id} = s
-    %Postgrex.Stream{query: %Query{columns: cols}} = stream
-
-    result = %Postgrex.Result{command: :stream, num_rows: :stream,
-                              rows: rows, columns: cols,
-                              connection_id: connection_id}
-    sync_recv(s, status, result, buffer)
+  defp deallocate(s, status, query, rows, tag, buffer) do
+    case complete(s, status, query, rows, tag, buffer) do
+      {:ok, %Postgrex.Result{rows: rows} = res, s} when is_list(rows) ->
+        {:deallocate, %Postgrex.Result{res | num_rows: length(rows)}, s}
+      {:ok, res, s} ->
+        {:deallocate, res, s}
+      {error, _, _} = other when error in [:error, :disconnect] ->
+        other
+    end
   end
 
   defp copy_fail(s, %{mode: :transaction} = status, err, buffer) do
@@ -1117,33 +1325,20 @@ defmodule Postgrex.Protocol do
   end
 
   defp copy_out(s, status, %Query{} = query, buffer) do
-    copy_out_recv(s, status, query, :infinity, [], 0, buffer)
-  end
-  defp copy_out(s, status, stream, buffer) do
-    %Stream{max_rows: max_rows} = stream
-    max_rows = if max_rows == 0, do: :infinity, else: max_rows
-    copy_out_recv(s, status, stream, max_rows, [], 0, buffer)
+    copy_out_recv(s, status, query, [], buffer)
   end
 
-  defp copy_out_recv(s, _, stream, max_rows, acc, max_rows, buffer) do
-    %Stream{ref: ref} = stream
-    %{postgres: postgres, connection_id: connection_id} = s
-    result = %Postgrex.Result{command: :copy_stream, num_rows: :copy_stream,
-      rows: acc, columns: nil, connection_id: connection_id}
-    ok(s, result, {postgres, ref}, buffer)
-  end
-  defp copy_out_recv(s, status, query, max_rows, acc, nrows, buffer) do
+  defp copy_out_recv(s, status, query, acc, buffer) do
      case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(data: data), buffer} ->
-        copy_out_recv(s, status, query, max_rows, [data | acc], nrows+1, buffer)
+        copy_out_recv(s, status, query, [data | acc], buffer)
       {:ok, msg_copy_done(), buffer} ->
         copy_out_done(s, status, query, acc, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
       {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
-        copy_out_recv(s, status, query, max_rows, acc, nrows, buffer)
+        copy_out_recv(handle_msg(s, status, msg), status, query, acc, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1164,31 +1359,110 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp copy_in_recv(s, status, query, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_copy_in_response(), buffer} ->
-        copy_in_done(s, status, query, buffer)
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, [], tag, buffer)
-      {:ok, msg_data_row(values: values), buffer} ->
-        execute_recv(s, status, query, [values], buffer)
-      {:ok, msg_empty_query(), buffer} ->
-        sync_recv(s, status, %Postgrex.Result{num_rows: 0}, buffer)
+  defp copy_out_portal(s, status, query, cursor, buffer) do
+    %Cursor{max_rows: max_rows} = cursor
+    max_rows = if max_rows == 0, do: :infinity, else: max_rows
+    copy_out_recv(s, status, query, cursor, max_rows, [], 0, buffer)
+  end
+
+  defp copy_out_recv(s, _, _, cursor, max_rows, acc, max_rows, buffer) do
+    %Cursor{ref: ref} = cursor
+    %{postgres: postgres, connection_id: connection_id} = s
+    result = %Postgrex.Result{command: :copy_stream, num_rows: max_rows,
+                              rows: acc, columns: nil,
+                              connection_id: connection_id}
+    {:ok, result, %{s | postgres: {postgres, ref}, buffer: buffer}}
+  end
+  defp copy_out_recv(s, status, query, cursor, max_rows, acc, nrows, buffer) do
+     case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_copy_data(data: data), buffer} ->
+        acc = [data | acc]
+        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows+1, buffer)
+      {:ok, msg_copy_done(), buffer} ->
+        copy_out_portal_done(s, status, query, acc, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
-      {:ok, msg_copy_out_response(), buffer} ->
-        copy_out(s, status, query, buffer)
-      {:ok, msg_copy_both_response(), buffer} ->
-        copy_both_disconnect(s, query, buffer)
       {:ok, msg, buffer} ->
-        copy_in_recv(handle_msg(s, status, msg), status, query, buffer)
+        s = handle_msg(s, status, msg)
+        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp copy_in_done(s, status, query, buffer) do
+  defp copy_out_portal_done(s, status, query, acc, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        deallocate(s, status, query, acc, tag, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg, buffer} ->
+        s = handle_msg(s, status, msg)
+        copy_out_portal_done(s, status, query, acc, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp copy_in_data(s, status, %Copy{portal: portal} = copy, data, buffer) do
+    msgs = [
+      msg_execute(name_port: portal, max_rows: 0),
+      data]
+    send_and_recv(s, status, copy, buffer, msgs, &copy_in_ready/4)
+  end
+
+  defp copy_in_ready(s, _status, %Copy{ref: ref}, buffer) do
+    %{connection_id: connection_id, postgres: postgres} = s
+    res = %Postgrex.Result{connection_id: connection_id, command: :copy_stream,
+                           rows: nil, num_rows: :copy_stream}
+    ok(s, res, {postgres, ref}, buffer)
+  end
+
+  defp copy_in_data(%{sock: {mod, sock}} = s, data) do
+    case mod.send(sock, data) do
+      :ok ->
+        %{connection_id: connection_id} = s
+        res = %Postgrex.Result{command: :copy_stream, num_rows: nil, rows: nil,
+                               columns: nil, connection_id: connection_id}
+        {:ok, res, s}
+      {:error, reason} ->
+        disconnect(s, tag(mod), "send", reason)
+    end
+  end
+
+  defp copy_in_done(s, status, %Copy{query: query}, buffer) do
+    msgs = [msg_copy_done()]
+    send_and_recv(s, status, query, buffer, msgs, &copy_in_recv/4)
+  end
+
+  defp copy_in_recv(s, status, query, buffer) do
+    %Query{result_types: types} = query
+    case rows_recv(s, types, [], buffer) do
+      {:ok, msg_copy_in_response(), [], buffer} ->
+        copy_in_done_recv(s, status, query, buffer)
+      {:ok, msg_command_complete(tag: tag), rows, buffer} ->
+        complete(s, status, query, rows, tag, buffer)
+      {:ok, msg_empty_query(), [], buffer} ->
+        complete(s, status, query, [], nil, buffer)
+      {:ok, msg_error(fields: fields), _, buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        sync_recv(s, status, err, buffer)
+      {:ok, msg_copy_out_response(), [], buffer} ->
+        copy_out(s, status, query, buffer)
+      {:ok, msg_copy_both_response(), [], buffer} ->
+        copy_both_disconnect(s, query, buffer)
+      {:ok, msg, [], buffer} ->
+        copy_in_recv(handle_msg(s, status, msg), status, query, buffer)
+      {:ok, msg, [_|_] = rows, buffer} ->
+        execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp copy_in_done_recv(s, status, query, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
         complete(s, status, query, nil, tag, buffer)
@@ -1196,67 +1470,7 @@ defmodule Postgrex.Protocol do
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
       {:ok, msg, buffer} ->
-        copy_in_done(handle_msg(s, status, msg), status, query, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_in_send(s, %{mode: :transaction} = status, stream, buffer, msgs, recv) do
-    case msg_send(s, msgs, buffer) do
-      :ok ->
-        recv.(s, status, stream, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_in_send(s, %{mode: :savepoint} = status, stream, buffer, msgs, recv) do
-    savepoint_msgs = transaction_msgs(s, ["SAVEPOINT postgrex_query"])
-    case msg_send(s, savepoint_msgs ++ msgs, buffer) do
-      :ok ->
-        savepoint_recv(s, status, stream, buffer, recv)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_in_ready(s, _status, stream, buffer) do
-    %{connection_id: connection_id, postgres: postgres} = s
-    result = %Postgrex.Result{connection_id: connection_id, command: :copy_stream,
-                              rows: nil, num_rows: :copy_stream}
-    %Stream{ref: ref} = stream
-    ok(s, result, {postgres, ref}, buffer)
-  end
-
-  defp copy_data(s, _status, data, buffer) do
-    case do_send(s, data, buffer) do
-      :ok ->
-        %{connection_id: connection_id, postgres: postgres} = s
-        result = %Postgrex.Result{connection_id: connection_id,
-                                  command: :copy_stream, rows: nil,
-                                  num_rows: :copy_stream}
-        ok(s, result, postgres, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_in_stop(s, %{mode: :transaction} = status, stream, buffer, msg) do
-    msgs = [msg, msg_sync()]
-    copy_in_stop_send(s, status, stream, buffer, msgs)
-  end
-
-  defp copy_in_stop(s, %{mode: :savepoint} = status, stream, buffer, msg) do
-    release = transaction_msgs(s, ["RELEASE SAVEPOINT postgrex_query", :sync])
-    msgs = [msg | release]
-    copy_in_stop_send(s, status, stream, buffer, msgs)
-  end
-
-  defp copy_in_stop_send(s, status, stream, buffer, msgs) do
-    case msg_send(s, msgs, buffer) do
-      :ok ->
-        copy_in_recv(s, status, stream, buffer)
+        copy_in_done_recv(handle_msg(s, status, msg), status, query, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1273,35 +1487,106 @@ defmodule Postgrex.Protocol do
     messages = [msg_close(type: :statement, name: name)]
     close(s, status, query, buffer, result, messages)
   end
-  defp close(s, status, %Stream{portal: portal} = stream, result, buffer) do
-    messages = [msg_close(type: :portal, name: portal)]
-    close(s, status, stream, buffer, result, messages)
-  end
 
   defp close(s, status, query, buffer, result, messages) do
-    recv = &close_recv(&1, &2, query, &3, &4)
-    send_and_recv(s, status, result, buffer, messages, recv)
+    sync_recv = fn(s, status, _query, buffer) ->
+      sync_recv(s, status, result, buffer)
+    end
+    recv = &close_recv(&1, &2, &3, &4, sync_recv)
+    send_and_recv(s, status, query, buffer, messages, recv)
   end
 
-  defp close_recv(s, status, query, result, buffer) do
+  defp close_recv(s, status, query, buffer, recv) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_close_complete(), buffer} ->
-        statement_query_delete(s, query)
-        sync_recv(s, status, result, buffer)
+        query_delete(s, query)
+        recv.(s, status, query, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
         sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
       {:ok, msg, buffer} ->
-        close_recv(handle_msg(s, status, msg), status, query, result, buffer)
+        close_recv(handle_msg(s, status, msg), status, query, buffer, recv)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  ## sync
-  defp sync(s, status, result, buffer) do
-    case msg_send(s, msg_sync(), buffer) do
-      :ok                       -> sync_recv(s, status, result, buffer)
-      {:disconnect, _, _} = dis -> dis
+  defp handle_close_portal(%{portal: portal} = cursor, opts, s) do
+    %{buffer: buffer} = s
+    s = %{s | buffer: nil}
+    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    messages = [msg_close(type: :portal, name: portal)]
+    send_and_recv(s, status, cursor, buffer, messages, &close_portal_recv/4)
+  end
+
+  defp close_portal_recv(s, status, cursor, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_close_complete(), buffer} ->
+        %{connection_id: connection_id} = s
+        res = %Postgrex.Result{command: :close, connection_id: connection_id}
+        sync_recv(s, status, res, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        close_portal_recv(handle_msg(s, status, msg), status, cursor, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp deallocate_copy_recv(s, status, nrows \\ 0, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_copy_data(), buffer} ->
+        deallocate_copy_recv(s, status, nrows+1, buffer)
+      {:ok, msg_copy_done(), buffer} ->
+        deallocate_copy_done(s, status, nrows, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        deallocate_copy_recv(handle_msg(s, status, msg), status, nrows, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  defp deallocate_copy_done(s, status, nrows, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        {command, _} = decode_tag(tag)
+        %{connection_id: connection_id} = s
+        res = %Postgrex.Result{command: command, num_rows: nrows, rows: nil,
+                               columns: nil, connection_id: connection_id}
+        sync_recv(s, status, res, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        deallocate_copy_done(handle_msg(s, status, msg), status, nrows, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  ## ping
+
+  defp ping_recv(s, status, res, buffer) do
+    %{timeout: timeout, postgres: postgres, transactions: transactions} = s
+    case msg_recv(s, timeout, buffer) do
+      {:ok, msg_ready(status: :idle), buffer}
+      when postgres == :transaction and transactions == :strict ->
+        sync_error(s, :idle, buffer)
+      {:ok, msg_ready(status: :transaction), buffer}
+      when postgres == :idle and transactions == :strict ->
+        sync_error(s, :transaction, buffer)
+      {:ok, msg_ready(status: :failed), buffer}
+      when postgres == :idle and transactions == :strict ->
+        sync_error(s, :failed, buffer)
+      {:ok, msg_ready(status: postgres), buffer} ->
+        ok(s, res, postgres, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+      {:ok, msg, buffer} ->
+        ping_recv(handle_msg(s, status, msg), status, res, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
     end
   end
 
@@ -1458,6 +1743,10 @@ defmodule Postgrex.Protocol do
     end) |> :lists.unzip
   end
 
+  defp column_oids(fields) do
+    for row_field(type_oid: oid) <- fields, do: oid
+  end
+
   defp tag(:gen_tcp), do: :tcp
   defp tag(:ssl), do: :ssl
 
@@ -1556,12 +1845,35 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp row_decode(<<>>), do: []
-  defp row_decode(<<-1::int32, rest::binary>>) do
-    [nil | row_decode(rest)]
+  defp rows_recv(%{types: types} = s, result_types, rows, buffer) do
+    case Types.decode_rows(buffer, result_types, rows, types) do
+      {:ok, rows, buffer} ->
+        rows_msg(s, rows, buffer)
+      {:more, buffer, rows, more} ->
+        rows_recv(s, result_types, rows, buffer, more)
+    end
   end
-  defp row_decode(<<len::uint32, value::binary(len), rest::binary>>) do
-    [value | row_decode(rest)]
+
+  defp rows_recv(%{sock: {mod, sock}} = s, result_types, rows, buffer, more) do
+    case mod.recv(sock, 0, :infinity) do
+      {:ok, data} when byte_size(data) < more ->
+        rows_recv(s, result_types, rows, [buffer | data], more-byte_size(data))
+      {:ok, data} when is_binary(buffer) ->
+        rows_recv(s, result_types, rows, buffer <> data)
+      {:ok, data} when is_list(buffer) ->
+        rows_recv(s, result_types, rows, IO.iodata_to_binary([buffer | data]))
+      {:error, reason} ->
+        disconnect(s, tag(mod), "recv", reason, IO.iodata_to_binary(buffer))
+    end
+  end
+
+  defp rows_msg(s, rows, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg, buffer} ->
+        {:ok, msg, rows, buffer}
+      {:disconnect, _, _} = dis ->
+        dis
+    end
   end
 
   defp msg_send(s, msgs, buffer) when is_list(msgs) do
@@ -1614,10 +1926,19 @@ defmodule Postgrex.Protocol do
   end
   defp ok(s, %Postgrex.Query{} = query, postgres, buffer) do
     {:ok, query, %{s | postgres: postgres, buffer: buffer}}
-   end
+  end
+  defp ok(s, %Postgrex.Cursor{} = cursor, postgres, buffer) do
+    {:ok, cursor, %{s | postgres: postgres, buffer: buffer}}
+  end
+  defp ok(s, %Postgrex.Copy{} = copy, postgres, buffer) do
+    {:ok, copy, %{s | postgres: postgres, buffer: buffer}}
+  end
   defp ok(s, %Postgrex.Error{} = err, postgres, buffer) do
     %{connection_id: connection_id} = s
     err = %{err | connection_id: connection_id}
+    {:error, err, %{s | postgres: postgres, buffer: buffer}}
+  end
+  defp ok(s, %ArgumentError{} = err, postgres, buffer) do
     {:error, err, %{s | postgres: postgres, buffer: buffer}}
   end
   defp ok(s, :active_once, postgres, buffer) do
@@ -1628,8 +1949,29 @@ defmodule Postgrex.Protocol do
   end
 
   defp disconnect(s, tag, action, reason, buffer) do
-    err = Postgrex.Error.exception(tag: tag, action: action, reason: reason)
-    disconnect(s, err, buffer)
+    disconnect(%{s | buffer: buffer}, tag, action, reason)
+  end
+
+  defp disconnect(s, tag, action, reason) do
+    {:disconnect, conn_error(tag, action, reason), s}
+  end
+
+  defp conn_error(mod, action, reason) when reason in @nonposix_errors do
+    conn_error("#{mod} #{action}: #{reason}")
+  end
+
+  defp conn_error(:tcp, action, reason) do
+    formatted_reason = :inet.format_error(reason)
+    conn_error("tcp #{action}: #{formatted_reason} - #{inspect(reason)}")
+  end
+
+  defp conn_error(:ssl, action, reason) do
+    formatted_reason = :ssl.format_error(reason)
+    conn_error("ssl #{action}: #{formatted_reason} - #{inspect(reason)}")
+  end
+
+  defp conn_error(message) do
+    DBConnection.ConnectionError.exception(message)
   end
 
   defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
@@ -1641,17 +1983,6 @@ defmodule Postgrex.Protocol do
     {:error, err, s}
   end
 
-  # Query has completed so ok to use state timeout as message should either be
-  # buffer or in flight. sync_recv/4 used by simple queries so can't use
-  # :infinity.
-  defp sync_recv(s, %{sync: :flush} = status, res, buffer) do
-    case msg_send(s, msg_sync(), buffer) do
-      :ok ->
-        sync_recv(s, %{status | sync: :sync}, res, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
   defp sync_recv(s, %{mode: :savepoint} = status, res, buffer) do
     case res do
       %Postgrex.Error{} ->
@@ -1660,13 +1991,21 @@ defmodule Postgrex.Protocol do
         savepoint_recv(s, status, res, buffer, &do_sync_recv/4)
     end
   end
+  defp sync_recv(s, %{mode: :transaction, sync: :flush} = status, res, buffer) do
+    case msg_send(s, msg_sync(), buffer) do
+      :ok ->
+        do_sync_recv(s, %{status | sync: :flushed_sync}, res, buffer)
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
   defp sync_recv(s, %{mode: :transaction} = status, res, buffer) do
     do_sync_recv(s, status, res, buffer)
   end
 
   defp do_sync_recv(s, status, res, buffer) do
-    %{postgres: postgres, transactions: transactions, timeout: timeout} = s
-    case msg_recv(s, timeout, buffer) do
+    %{postgres: postgres, transactions: transactions} = s
+    case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(status: :idle), buffer}
       when postgres == :transaction and transactions == :strict ->
         sync_error(s, :idle, buffer)
@@ -1745,6 +2084,41 @@ defmodule Postgrex.Protocol do
   defp setopts(:gen_tcp, sock, opts), do: :inet.setopts(sock, opts)
   defp setopts(:ssl, sock, opts), do: :ssl.setopts(sock, opts)
 
+  defp cancel_request(%{connection_key: nil}), do: :ok
+  defp cancel_request(s) do
+    case do_cancel_request(s) do
+      :ok ->
+        :ok
+      {:error, action, reason} ->
+        err = conn_error(:tcp, action, reason)
+        Logger.error fn() ->
+          ["#{inspect __MODULE__} #{inspect self()} could not cancel backend: " |
+            Exception.message(err)]
+        end
+    end
+  end
+
+  defp do_cancel_request(%{peer: {ip, port}, timeout: timeout} = s) do
+    case :gen_tcp.connect(ip, port, [mode: :binary, active: false], timeout) do
+      {:ok, sock}      -> cancel_send_recv(s, sock)
+      {:error, reason} -> {:error, :connect, reason}
+    end
+  end
+
+  defp cancel_send_recv(%{connection_id: pid, connection_key: key} = s, sock) do
+    msg = msg_cancel_request(pid: pid, key: key)
+    case :gen_tcp.send(sock, encode_msg(msg)) do
+      :ok              -> cancel_recv(s, sock)
+      {:error, reason} -> {:error, :send, reason}
+    end
+  end
+
+  defp cancel_recv(%{timeout: timeout}, sock) do
+    # ignore result as socket will close, else can do nothing
+    _ = :gen_tcp.recv(sock, 0, timeout)
+    :gen_tcp.close(sock)
+  end
+
   defp sock_close(%{sock: {mod, sock}}), do: mod.close(sock)
 
   defp delete_parameters(%{parameters: ref}) when is_reference(ref) do
@@ -1758,11 +2132,10 @@ defmodule Postgrex.Protocol do
   defp queries_delete(%{queries: queries}), do: :ets.delete(queries)
 
   defp query_put(%{queries: nil}, _), do: :ok
-  defp query_put(s, %Stream{query: query}), do: query_put(s, query)
-  defp query_put(%{queries: queries}, query) do
-    %Query{name: name, statement: statement} = query
+  defp query_put(_, %Query{ref: nil}), do: nil
+  defp query_put(%{queries: queries}, %Query{name: name, ref: ref}) do
     try do
-      :ets.insert(queries, {name, statement})
+      :ets.insert(queries, {name, ref})
     rescue
       ArgumentError ->
         # ets table deleted, socket will be closed, rescue here and get nice
@@ -1780,16 +2153,9 @@ defmodule Postgrex.Protocol do
   defp unnamed_query_delete(s, %Query{name: ""} = query) do
     query_delete(s, query)
   end
-  defp unnamed_query_delete(s, %Stream{query: %Query{name: ""} = query}) do
-    query_delete(s, query)
-  end
   defp unnamed_query_delete(_, _), do: :ok
 
-  defp statement_query_delete(s, %Query{} = query), do: query_delete(s, query)
-  defp statement_query_delete(_, %Stream{}), do: :ok
-
   defp query_delete(%{queries: nil}, _), do: :ok
-  defp query_delete(s, %Stream{query: query}), do: query_delete(s, query)
   defp query_delete(%{queries: queries}, %Query{name: name}) do
     try do
       :ets.delete(queries, name)
@@ -1802,18 +2168,21 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp query_member?(%{queries: queries}, query) when queries != nil do
-    %Query{name: name, statement: statement} = query
+  defp query_prepare(%{queries: nil}, query) do
+    {:parse_describe, unnamed(query)}
+  end
+  defp query_prepare(%{queries: queries}, query) when queries != nil do
+    %Query{name: name, ref: ref} = query
     try do
-      :ets.lookup(queries, name)
+      :ets.lookup_element(queries, name, 2)
     rescue
       ArgumentError ->
-        false
+        {:parse_describe, query}
     else
-      [{_, ^statement}] ->
-        true
+      ^ref ->
+        {:ready, query}
       _ ->
-        false
+        {:close_parse_describe, query}
     end
   end
 end

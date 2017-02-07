@@ -1,22 +1,32 @@
 defmodule ClientTest do
   use ExUnit.Case
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
 
   setup do
-    opts = [ database: "postgrex_test", backoff_type: :stop ]
+    opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = Postgrex.start_link(opts)
-    {:ok, [pid: pid]}
+    {:ok, [pid: pid, options: opts]}
   end
 
- test "active client timeout", context do
+  test "active client timeout", context do
     conn = context[:pid]
+
+    %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(conn, "SELECT 42", [])
 
     Process.flag(:trap_exit, true)
     capture_log fn ->
-      assert %Postgrex.Error{} = query("SELECT pg_sleep(0.1)", [], [timeout: 50])
+      assert [[_]] = query("SELECT pg_stat_get_activity($1)", [connection_id])
+      assert_raise DBConnection.ConnectionError, "tcp recv: closed",
+        fn() -> query("SELECT pg_sleep(10)", [], [timeout: 50]) end
 
       assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end
+
+    :timer.sleep(500)
+    {:ok, pid} = Postgrex.start_link(context[:options])
+    assert %Postgrex.Result{rows: []} =
+      Postgrex.query!(pid, "SELECT pg_stat_get_activity($1)", [connection_id])
   end
 
   test "active client cancel", context do
