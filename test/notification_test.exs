@@ -9,6 +9,8 @@ defmodule NotificationTest do
     {:ok, pid} = P.start_link(opts)
     {:ok, pid_ps} = PN.start_link(opts)
     {:ok, other_pid_ps} = PN.start_link(opts)
+    {:ok, _named_pid} = P.start_link(Keyword.put_new(opts, :name, :client))
+    {:ok, _named_ps} = PN.start_link(Keyword.put_new(opts, :name, :notifications))
 
     {:ok, [pid: pid, pid_ps: pid_ps, other_pid_ps: other_pid_ps]}
   end
@@ -36,6 +38,15 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
     receiver_pid = context.pid_ps
+    ref = ref
+    assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
+  end
+
+  test "listening, notify, then receive (using registered names)", _context do
+    assert {:ok, ref} = PN.listen(:notifications, "channel")
+
+    assert {:ok, %Postgrex.Result{command: :notify}} = P.query(:client, "NOTIFY channel", [])
+    receiver_pid = Process.whereis(:notifications)
     ref = ref
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
   end
