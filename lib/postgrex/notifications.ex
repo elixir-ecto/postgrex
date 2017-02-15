@@ -24,7 +24,7 @@ defmodule Postgrex.Notifications do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    Connection.start_link(__MODULE__, Postgrex.Utils.default_opts(opts))
+    Connection.start_link(__MODULE__, Postgrex.Utils.default_opts(opts), [name: opts[:name]])
   end
 
   @doc """
