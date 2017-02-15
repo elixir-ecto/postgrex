@@ -200,7 +200,7 @@ defmodule LoginTest do
   end
 
   test "obtains credentials via .pgpass" do
-    opts = [ hostname: "localhost", database: "somedb", port: "5432" ]
+    opts = [hostname: "localhost", database: "somedb", port: "5432"]
     assert "foo" == P.Utils.default_opts(opts)[:username]
     assert "bar" == P.Utils.default_opts(opts)[:password]
   end
