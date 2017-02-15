@@ -79,17 +79,22 @@ defmodule Postgrex.Utils do
   @spec default_opts(Keyword.t) :: Keyword.t
   def default_opts(opts) do
     opts
-    |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
-    |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
     |> Keyword.put_new(:database, System.get_env("PGDATABASE"))
     |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
     |> Keyword.update(:port, normalize_port(System.get_env("PGPORT")), &normalize_port/1)
+    |> set_credentials
     |> Keyword.put_new(:types, Postgrex.DefaultTypes)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
   end
 
   defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
   defp normalize_port(port), do: port
+
+  defp set_credentials(opts) do
+    opts
+    |> Keyword.put_new_lazy(:username, fn () -> System.get_env("PGUSER") || Postgrex.Pgpass.username(opts) || System.get_env("USER") end)
+    |> Keyword.put_new_lazy(:password, fn () -> System.get_env("PGPASSWORD") || Postgrex.Pgpass.password(opts) end )
+  end
 
   @doc """
   Return encode error message.

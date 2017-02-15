@@ -199,6 +199,12 @@ defmodule LoginTest do
     end
   end
 
+  test "obtains credentials via .pgpass" do
+    opts = [ hostname: "localhost", database: "somedb", port: "5432" ]
+    assert "foo" == P.Utils.default_opts(opts)[:username]
+    assert "bar" == P.Utils.default_opts(opts)[:password]
+  end
+
   defp set_port_number(nil) do
     System.delete_env("PGPORT")
   end
