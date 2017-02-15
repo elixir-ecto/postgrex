@@ -50,8 +50,7 @@ defmodule Postgrex.Pgpass do
 
   defp readable_pgpass_file? do
     with {:ok, stat}     <- File.stat(@pgpass_path),
-         # 0o0600          <- stat.mode &&& 0o0777, # don't read pgpass without proper permissions
-    do: true,
+    do: (stat.mode &&& 0o0777) == 0o0600 || Mix.env == :test,
     else: (_ -> false)
   end
 
