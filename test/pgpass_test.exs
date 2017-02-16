@@ -4,7 +4,7 @@ defmodule PgpassTest do
 
   setup do
     with path <- Path.join(__DIR__, "support/pgpass"),
-         :ok <- System.put_env("PGPASSFILE", path ),
+         :ok <- System.put_env("PGPASSFILE", path),
       do: File.chmod!(path, 0o0600)
   end
 

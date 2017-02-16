@@ -203,7 +203,7 @@ defmodule LoginTest do
     Process.flag(:trap_exit, true)
     set_pgpass_file()
 
-    opts = [ hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432" ]
+    opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432"]
     assert "postgrex_cleartext_pw" == P.Utils.default_opts(opts)[:password]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
@@ -227,7 +227,7 @@ defmodule LoginTest do
 
   defp set_pgpass_file do
     with path <- Path.join(__DIR__, "support/pgpass"),
-         :ok <- System.put_env("PGPASSFILE", path ),
+         :ok <- System.put_env("PGPASSFILE", path),
       do: File.chmod!(path, 0o0600)
   end
 end
