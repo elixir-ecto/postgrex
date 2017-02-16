@@ -59,5 +59,15 @@ defmodule Postgrex.Pgpass do
   defp filter_database(entries, database), do: Enum.filter(entries, &(Enum.at(&1, 2) == "*" || (database && database == Enum.at(&1, 2))))
   defp filter_username(entries, username), do: Enum.filter(entries, &(Enum.at(&1, 3) == "*" || !username || (username && username == Enum.at(&1, 3))))
 
-  defp pgpass_path, do: System.get_env("PGPASSFILE") || Path.join(System.user_home, ".pgpass")
+  defp pgpass_path, do: System.get_env("PGPASSFILE") || os_default_location()
+
+  defp os_default_location do
+    case :os.type do
+      {:unix, _} -> Path.join(System.user_home, ".pgpass")
+      {:win32, _} -> System.get_env("APPDATA") && Path.join(System.get_env("APPDATA"), "postgresql/pgpass.conf")
+      _ -> nil
+    end
+  end
+
+
 end
