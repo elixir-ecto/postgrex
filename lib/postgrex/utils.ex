@@ -92,7 +92,7 @@ defmodule Postgrex.Utils do
 
   defp set_credentials(opts) do
     opts
-    |> Keyword.put_new_lazy(:username, fn () -> System.get_env("PGUSER") || Postgrex.Pgpass.username(opts) || System.get_env("USER") end)
+    |> Keyword.put_new_lazy(:username, fn () -> System.get_env("PGUSER") || System.get_env("USER") || Postgrex.Pgpass.username(opts) end)
     |> Keyword.put_new_lazy(:password, fn () -> System.get_env("PGPASSWORD") || Postgrex.Pgpass.password(opts) end)
   end
 

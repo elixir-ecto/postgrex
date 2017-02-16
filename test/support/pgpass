@@ -3,3 +3,4 @@
 localhost:5432:somedb:foo:bar
 localhost:5432:somedb:root:secret
 localhost:*:somedb:baz:bat
+localhost:5432:postgres:postgrex_cleartext_pw:postgrex_cleartext_pw

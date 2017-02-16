@@ -200,9 +200,13 @@ defmodule LoginTest do
   end
 
   test "obtains credentials via .pgpass" do
-    opts = [hostname: "localhost", database: "somedb", port: "5432"]
-    assert (System.get_env("PGUSER") || "foo") == P.Utils.default_opts(opts)[:username]
-    assert "bar" == P.Utils.default_opts(opts)[:password]
+    Process.flag(:trap_exit, true)
+    set_pgpass_file()
+
+    opts = [ hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432" ]
+    assert "postgrex_cleartext_pw" == P.Utils.default_opts(opts)[:password]
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
   defp set_port_number(nil) do
@@ -219,5 +223,11 @@ defmodule LoginTest do
 
   defp set_db_name(db_name) when is_binary(db_name) do
     System.put_env("PGDATABASE", db_name)
+  end
+
+  defp set_pgpass_file do
+    with path <- Path.join(__DIR__, "support/pgpass"),
+         :ok <- System.put_env("PGPASSFILE", path ),
+      do: File.chmod!(path, 0o0600)
   end
 end

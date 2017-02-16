@@ -3,7 +3,6 @@ defmodule Postgrex.Pgpass do
   Parses .pgpass file to obtain database credentials
   """
 
-  @pgpass_path Application.get_env(:postgrex, :pgpass, Path.join(System.user_home, '.pgpass'))
   use Bitwise, only_operators: true
 
   @doc """
@@ -30,7 +29,7 @@ defmodule Postgrex.Pgpass do
 
   defp pgpass_for(hostname, database, port, username \\ nil) do
     with true <- readable_pgpass_file?(),
-         {:ok, contents} <- File.read(@pgpass_path),
+         {:ok, contents} <- File.read(pgpass_path()),
          entries when is_list(entries) <- parse(contents) do
       entries
       |> filter_hostname(hostname)
@@ -49,8 +48,9 @@ defmodule Postgrex.Pgpass do
   end
 
   defp readable_pgpass_file? do
-    with {:ok, stat}     <- File.stat(@pgpass_path),
-    do: (stat.mode &&& 0o0777) == 0o0600 || Mix.env == :test,
+    with {:ok, stat} <- File.stat(pgpass_path()),
+         0o0600 <- stat.mode &&& 0o0777,
+    do: true,
     else: (_ -> false)
   end
 
@@ -59,4 +59,5 @@ defmodule Postgrex.Pgpass do
   defp filter_database(entries, database), do: Enum.filter(entries, &(Enum.at(&1, 2) == "*" || (database && database == Enum.at(&1, 2))))
   defp filter_username(entries, username), do: Enum.filter(entries, &(Enum.at(&1, 3) == "*" || !username || (username && username == Enum.at(&1, 3))))
 
+  defp pgpass_path, do: System.get_env("PGPASSFILE") || Path.join(System.user_home, ".pgpass")
 end

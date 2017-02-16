@@ -2,6 +2,12 @@ defmodule PgpassTest do
   use ExUnit.Case
   alias Postgrex.Pgpass, as: P
 
+  setup do
+    with path <- Path.join(__DIR__, "support/pgpass"),
+         :ok <- System.put_env("PGPASSFILE", path ),
+      do: File.chmod!(path, 0o0600)
+  end
+
   test "obtains credentials via .pgpass" do
     opts = [hostname: "localhost", database: "somedb", port: 5432]
     assert "foo" == P.username(opts)
