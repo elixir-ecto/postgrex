@@ -35,8 +35,11 @@ defmodule Postgrex do
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
-    * `:username` - Username (default: PGUSER env variable, then checks ~/.pgpass, then USER env var);
-    * `:password` - User password (default: PGPASSWORD env variable, then checks ~/.pgpass);
+    * `:username` - Username (default: PGUSER env variable, then USER env var);
+    * `:password` - User password (default: PGPASSWORD env variable, then checks pgpass);
+    * `:passfile` - A credentials file using the .pgpass file format:
+    https://www.postgresql.org/docs/current/static/libpq-pgpass.html
+    (default: ~/.pgpass on unix %APPDATA%/postgresql/pgpass.conf on win32)
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);

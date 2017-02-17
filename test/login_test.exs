@@ -199,11 +199,23 @@ defmodule LoginTest do
     end
   end
 
-  test "obtains credentials via .pgpass" do
+  test "obtains credentials via .pgpass at default location" do
     Process.flag(:trap_exit, true)
     set_pgpass_file()
 
-    opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432"]
+    opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432",
+            sync_connect: true, backoff_type: :stop]
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "obtains credentials via .pgpass at passfile option" do
+    Process.flag(:trap_exit, true)
+    set_pgpass_file()
+
+    opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432",
+            sync_connect: true, backoff_type: :stop,
+            passfile: Path.join(__DIR__, "support/pgpass")]
     assert "postgrex_cleartext_pw" == P.Utils.default_opts(opts)[:password]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
