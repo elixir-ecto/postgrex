@@ -39,7 +39,7 @@ defmodule Postgrex do
     * `:password` - User password (default: PGPASSWORD env variable, then checks pgpass);
     * `:passfile` - A credentials file using the .pgpass file format:
     https://www.postgresql.org/docs/current/static/libpq-pgpass.html
-    (default: ~/.pgpass on unix %APPDATA%/postgresql/pgpass.conf on win32)
+    (default: PGPASSFILE env variable, then ~/.pgpass on unix %APPDATA%/postgresql/pgpass.conf on win32)
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);

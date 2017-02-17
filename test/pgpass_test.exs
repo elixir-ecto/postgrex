@@ -30,14 +30,14 @@ defmodule PgpassTest do
 
   test "raises if the passfile option is unreadable" do
     opts = [hostname: "doesnt", database: "exist", port: 5432, username: "foo", passfile: "invalid"]
-    assert_raise RuntimeError, ~r/does not exist/, fn ->
+    assert_raise File.Error, fn ->
       P.password(opts)
     end
   end
 
   test "raises if the passfile has incorrect permissions" do
     opts = [hostname: "doesnt", database: "exist", port: 5432, username: "foo", passfile: Path.join(__DIR__, "support/pgpass-wrong-permissions")]
-    assert_raise RuntimeError, ~r/must have permissions 0600/, fn ->
+    assert_raise P.PassfileError, ~r/has group or world access/, fn ->
       P.password(opts)
     end
   end

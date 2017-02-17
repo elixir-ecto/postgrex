@@ -3,6 +3,10 @@ defmodule Postgrex.Pgpass do
   Parses .pgpass file to obtain database credentials
   """
 
+  defmodule PassfileError do
+    defexception message: "passfile error"
+  end
+
   use Bitwise, only_operators: true
 
   @doc """
@@ -40,34 +44,26 @@ defmodule Postgrex.Pgpass do
     # when the pgpass is not passed via the :passfile option, simply ignore and move on
     with default_path <- pgpass_path(),
          {:ok, stat} <- File.stat(default_path),
-         0o0600 <- stat.mode &&& 0o0777,
-    do: {:ok, default_path},
-    else: (_ -> false)
+         0o0600 <- stat.mode &&& 0o0777
+    do {:ok, default_path}
+    else
+      permissions_decimal when is_integer(permissions_decimal) ->
+        permissions = int_to_octal(permissions_decimal)
+        IO.warn "WARNING: passfile \"#{pgpass_path()}\" has group or world access (#{permissions}); permissions should be u=rw (0600) or less"
+        false
+      _ ->
+        false
+    end
   end
   defp readable_pgpass_file?(passfile) do
     # when using the :passfile options, the file must be readable or an error is raised
-    case File.stat(passfile) do
-      {:ok, stat} ->
-         case stat.mode &&& 0o0777 do
-           0o0600 ->
-             {:ok, passfile}
-           permissions_decimal ->
-             permissions =
-               permissions_decimal
-               |> Integer.digits(8)
-               |> Enum.join
-            raise RuntimeError, "passfile #{passfile} must have permissions 0600; yours was #{permissions}"
-         end
-      {:error,:enoent} ->
-        raise RuntimeError, "passfile '#{passfile}' does not exist"
-      {:error,:eacces} ->
-        raise RuntimeError, "passfile '#{passfile}' cannot be read"
-      {:error,:eisdir} ->
-        raise RuntimeError, "passfile '#{passfile}' is a directory"
-      {:error,:enomem} ->
-        raise RuntimeError, "passfile '#{passfile}' is to big to read into memory"
-      _ ->
-        raise RuntimeError, "passfile '#{passfile}' is invalid"
+    with stat <- File.stat!(passfile),
+         0o0600 <- stat.mode &&& 0o0777 do
+      {:ok, passfile}
+    else
+      permissions_decimal ->
+        permissions = int_to_octal(permissions_decimal)
+        raise PassfileError, "ERROR: passfile \"#{passfile}\" has group or world access (#{permissions}); permissions should be u=rw (0600) or less"
     end
   end
 
@@ -85,5 +81,7 @@ defmodule Postgrex.Pgpass do
       _ -> nil
     end
   end
+
+  defp int_to_octal(x), do: x |> Integer.digits(8) |> Enum.join
 
 end

@@ -200,7 +200,6 @@ defmodule LoginTest do
   end
 
   test "obtains credentials via .pgpass at default location" do
-    Process.flag(:trap_exit, true)
     set_pgpass_file()
 
     opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432",
@@ -210,7 +209,6 @@ defmodule LoginTest do
   end
 
   test "obtains credentials via .pgpass at passfile option" do
-    Process.flag(:trap_exit, true)
     set_pgpass_file()
 
     opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432",
