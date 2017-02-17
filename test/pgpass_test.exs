@@ -37,7 +37,7 @@ defmodule PgpassTest do
 
   test "raises if the passfile has incorrect permissions" do
     opts = [hostname: "doesnt", database: "exist", port: 5432, username: "foo", passfile: Path.join(__DIR__, "support/pgpass-wrong-permissions")]
-    assert_raise P.PassfileError, ~r/has group or world access/, fn ->
+    assert_raise RuntimeError, ~r/has group or world access/, fn ->
       P.password(opts)
     end
   end

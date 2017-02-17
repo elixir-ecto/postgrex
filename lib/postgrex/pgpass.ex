@@ -3,10 +3,6 @@ defmodule Postgrex.Pgpass do
   Parses .pgpass file to obtain database credentials
   """
 
-  defmodule PassfileError do
-    defexception message: "passfile error"
-  end
-
   use Bitwise, only_operators: true
 
   @doc """
@@ -47,9 +43,8 @@ defmodule Postgrex.Pgpass do
          0o0600 <- stat.mode &&& 0o0777
     do {:ok, default_path}
     else
-      permissions_decimal when is_integer(permissions_decimal) ->
-        permissions = int_to_octal(permissions_decimal)
-        IO.warn "WARNING: passfile \"#{pgpass_path()}\" has group or world access (#{permissions}); permissions should be u=rw (0600) or less"
+      permissions when is_integer(permissions) ->
+        IO.warn "WARNING: passfile \"#{pgpass_path()}\" has group or world access (#{inspect(permissions, [base: :octal])}); permissions should be u=rw (0600) or less"
         false
       _ ->
         false
@@ -61,9 +56,8 @@ defmodule Postgrex.Pgpass do
          0o0600 <- stat.mode &&& 0o0777 do
       {:ok, passfile}
     else
-      permissions_decimal ->
-        permissions = int_to_octal(permissions_decimal)
-        raise PassfileError, "ERROR: passfile \"#{passfile}\" has group or world access (#{permissions}); permissions should be u=rw (0600) or less"
+      permissions ->
+        raise RuntimeError, "ERROR: passfile \"#{passfile}\" has group or world access (#{inspect(permissions, [base: :octal])}); permissions should be u=rw (0600) or less"
     end
   end
 
@@ -81,7 +75,5 @@ defmodule Postgrex.Pgpass do
       _ -> nil
     end
   end
-
-  defp int_to_octal(x), do: x |> Integer.digits(8) |> Enum.join
 
 end
