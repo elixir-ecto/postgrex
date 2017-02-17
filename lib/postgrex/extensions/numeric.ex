@@ -56,26 +56,15 @@ defmodule Postgrex.Extensions.Numeric do
   end
 
   defp encode_float(float, scale) do
-    {float_prefix, float_suffix} = float_padding(float, scale)
-    leading_zeros = List.duplicate(0, float_prefix)
+    pending = pending_scale(float, scale)
+    float_prefix = div(pending, 4)
+    float_suffix = 4 - rem(scale, 4)
     float = float * pow10(float_suffix)
-    leading_zeros ++ encode_digits(float, [])
+    List.duplicate(0, float_prefix) ++ encode_digits(float, [])
   end
 
-  defp float_padding(num, scale) when num < 10000 and scale > 0 do
-    prefix = div(scale, 4)
-    suffix = rem(scale, 4)
-    if suffix == 0 do
-      {prefix - 1, 0}
-    else
-      {prefix, 4 - suffix}
-    end
-  end
-  defp float_padding(num, _scale) when num < 10, do: {0, 3}
-  defp float_padding(num, _scale) when num < 100, do: {0, 2}
-  defp float_padding(num, _scale) when num < 1000, do: {0, 1}
-  defp float_padding(num, _scale) when num < 10000, do: {0, 0}
-  defp float_padding(num, scale), do: float_padding(div(num, 10000), scale - 4)
+  defp pending_scale(0, scale), do: scale
+  defp pending_scale(num, scale), do: pending_scale(div(num, 10), scale - 1)
 
   defp encode_digits(coef, digits) when coef < 10000 do
     [coef|digits]
