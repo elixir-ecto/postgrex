@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.1 (2017-02-20)
+
+* Enhancements
+  * Allow naming Postgrex.Notifications server
+  * Provide tsvector and lexeme support using binary formats
+
+* Bug fixes
+  * Fix encoding of Decimal values that would be wrong in certain circumstances
+  * Add `:crypto` to applications
+  * Specify proper Elixir dependency
+  * Restore compatibility with postgres versions prior to 8.4 and with redshift
+
 ## v0.13.0 (2016-12-17)
 
 * Enchancements
