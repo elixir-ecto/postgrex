@@ -72,6 +72,14 @@ defmodule Postgrex do
       iex> {:ok, pid} = Postgrex.start_link(after_connect: &Postgrex.query!(&1, "SET TIME ZONE 'UTC';", []))
       {:ok, #PID<0.69.0>}
 
+  ## PgBouncer
+
+  When using PgBouncer with transaction or statement pooling named prepared
+  queries can not be used because the bouncer may route requests from
+  the same postgrex connection to different PostgreSQL backend processes
+  and discards named queries after the transactions closes.
+  To force unnamed prepared queries set the `:prepare` option to `:unnamed`.
+
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
