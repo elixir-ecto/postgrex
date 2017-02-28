@@ -83,7 +83,7 @@ defmodule Postgrex.Utils do
     |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
     |> Keyword.update(:port, normalize_port(System.get_env("PGPORT")), &normalize_port/1)
     |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
-    |> Keyword.put_new_lazy(:password, fn () -> System.get_env("PGPASSWORD") || Postgrex.Pgpass.password(opts) end)
+    |> Keyword.put_new_lazy(:password, fn -> System.get_env("PGPASSWORD") || Postgrex.Pgpass.password(opts) end)
     |> Keyword.put_new(:types, Postgrex.DefaultTypes)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
   end

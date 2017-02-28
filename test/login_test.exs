@@ -236,8 +236,8 @@ defmodule LoginTest do
   end
 
   defp set_pgpass_file do
-    with path <- Path.join(__DIR__, "support/pgpass"),
-         :ok <- System.put_env("PGPASSFILE", path),
-      do: File.chmod!(path, 0o0600)
+    path = Path.join(__DIR__, "support/pgpass")
+    System.put_env("PGPASSFILE", path)
+    File.chmod!(path, 0o0600)
   end
 end

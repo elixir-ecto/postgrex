@@ -9,9 +9,8 @@ defmodule Postgrex.Pgpass do
   Obtains the password given a keyword list containing hostname, database, port and optionally the username.
   """
   def password(opts) do
-    with [_h, _p, _d, _u, password] <- pgpass_for(opts[:hostname], opts[:database], opts[:port], opts[:username], opts[:passfile]) do
-      password
-    else
+    case pgpass_for(opts[:hostname], opts[:database], opts[:port], opts[:username], opts[:passfile]) do
+      [_h, _p, _d, _u, password] -> password
       _ -> nil
     end
   end
@@ -40,8 +39,8 @@ defmodule Postgrex.Pgpass do
     # when the pgpass is not passed via the :passfile option, simply ignore and move on
     with default_path <- pgpass_path(),
          {:ok, stat} <- File.stat(default_path),
-         0o0600 <- stat.mode &&& 0o0777
-    do {:ok, default_path}
+         0o0600 <- stat.mode &&& 0o0777 do
+      {:ok, default_path}
     else
       permissions when is_integer(permissions) ->
         IO.warn "WARNING: passfile \"#{pgpass_path()}\" has group or world access (#{inspect(permissions, [base: :octal])}); permissions should be u=rw (0600) or less"
