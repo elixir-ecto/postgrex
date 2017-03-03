@@ -7,10 +7,9 @@ defmodule Postgrex.Extensions.TimestampTZ do
   @max_year 294276
 
   @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
-  @us_epoch @gs_epoch - @gs_unix_epoch
-  @uus_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
-  @us_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
-  @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+  @us_epoch (@gs_epoch - @gs_unix_epoch) * 1_000_000
+  @gs_max :calendar.datetime_to_gregorian_seconds({{@max_year+1, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
+  @us_max @gs_max * 1_000_000
 
   def init(opts), do: Keyword.fetch!(opts, :date)
 
@@ -77,8 +76,8 @@ defmodule Postgrex.Extensions.TimestampTZ do
 
   def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
     case DateTime.to_unix(datetime, :microseconds) do
-      microsecs when microsecs < @uus_max ->
-        <<8 :: int32, microsecs - @uus_epoch :: int64>>
+      microsecs when microsecs < @us_max ->
+        <<8 :: int32, microsecs - @us_epoch :: int64>>
       _ ->
         raise ArgumentError, "#{inspect datetime} is beyond the maximum year 294276"
     end
@@ -88,6 +87,6 @@ defmodule Postgrex.Extensions.TimestampTZ do
   end
 
   def microsecond_to_elixir(microsecs) do
-    DateTime.from_unix!(microsecs + @uus_epoch, :microseconds)
+    DateTime.from_unix!(microsecs + @us_epoch, :microseconds)
   end
 end
