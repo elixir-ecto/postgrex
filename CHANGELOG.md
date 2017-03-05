@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.13.2 (2017-03-05)
+
+* Bug fixes
+  * Do not build invalid dates at compilation time on Elixir master
+
 ## v0.13.1 (2017-02-20)
 
 * Enhancements
