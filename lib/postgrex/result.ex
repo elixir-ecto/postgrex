@@ -5,8 +5,8 @@ defmodule Postgrex.Result do
     * `command` - An atom of the query command, for example: `:select` or
                   `:insert`;
     * `columns` - The column names;
-    * `rows` - The result set. A list of tuples, each tuple corresponding to a
-               row, each element in the tuple corresponds to a column;
+    * `rows` - The result set. A list of lists, each inner list corresponding to a
+               row, each element in the inner list corresponds to a column;
     * `num_rows` - The number of fetched or affected rows;
     * `connection_id` - The OS pid of the Postgres backend that executed the query;
   """
