@@ -443,11 +443,11 @@ defmodule Postgrex.TypeModule do
             msg = "oid `#{oid}` was bootstrapped in text format and can not " <>
                   "be decoded inside an anonymous record"
             raise RuntimeError, msg
-          {:error, %TypeInfo{type: pg_type}} ->
+          {:error, %TypeInfo{type: pg_type}, _mod} ->
             msg = "type `#{pg_type}` can not be handled by the configured " <>
                   "extensions"
             raise RuntimeError, msg
-          {:error, nil} ->
+          {:error, nil, _mod} ->
             msg = "oid `#{oid}` was not bootstrapped and lacks type information"
             raise RuntimeError, msg
         end
