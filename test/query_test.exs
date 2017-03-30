@@ -524,6 +524,11 @@ defmodule QueryTest do
     assert [[^uuid]] = query("SELECT $1::uuid", [uuid])
   end
 
+  test "encode stringified uuid", context do
+    uuid = <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
+    assert [[^uuid]] = query("SELECT $1::uuid", ["a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"])
+  end
+
   test "encode date", context do
     assert [[%Postgrex.Date{year: 1, month: 1, day: 1}]] =
            query("SELECT $1::date", [%Postgrex.Date{year: 1, month: 1, day: 1}])
