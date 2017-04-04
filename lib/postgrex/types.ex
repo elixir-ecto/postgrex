@@ -48,13 +48,8 @@ defmodule Postgrex.Types do
         [] ->
           ""
         _  ->
-          # equiv to `WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))`
-          # `unnest` is not supported in redshift or postgres version prior to 8.4
           """
-          WHERE t.oid NOT IN (
-            SELECT (ARRAY[#{Enum.join(oids, ",")}])[i]
-            FROM generate_series(1, #{length(oids)}) AS i
-          )
+          WHERE t.oid NOT IN (#{Enum.join(oids, ",")})
           """
       end
 
