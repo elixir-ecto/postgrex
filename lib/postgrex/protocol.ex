@@ -761,7 +761,7 @@ defmodule Postgrex.Protocol do
     case Keyword.fetch!(opts, :function) do
       :prepare         -> {:sync, &sync_recv/4}
       :prepare_execute -> {:flush, &execute_ready/4}
-      :prepare_open    -> {:flush, &execute_ready/4}
+      :prepare_declare -> {:flush, &execute_ready/4}
       :prepare_into    -> {:flush, &execute_ready/4}
     end
   end
