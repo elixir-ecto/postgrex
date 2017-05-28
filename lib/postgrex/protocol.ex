@@ -293,7 +293,8 @@ defmodule Postgrex.Protocol do
     lock_error(s, "fetch first", query)
   end
   def handle_first(query, cursor, opts, %{buffer: buffer} = s) do
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    status = %{notify: notify(opts), mode: mode(opts),
+               max_rows: max_rows(cursor, opts), sync: :sync}
     execute_portal(%{s | buffer: nil}, status, query, cursor, buffer)
   end
 
@@ -307,14 +308,16 @@ defmodule Postgrex.Protocol do
       %Cursor{ref: ^ref} ->
         %{buffer: buffer} = s
         s = %{s | postgres: postgres, buffer: nil}
-        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+        status = %{notify: notify(opts), mode: mode(opts),
+                   max_rows: max_rows(cursor, opts), sync: :sync}
         copy_out_portal(s, status, query, cursor, buffer)
       _ ->
         lock_error(s, "fetch next", cursor)
     end
   end
   def handle_next(query, cursor, opts, %{buffer: buffer} = s) do
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    status = %{notify: notify(opts), mode: mode(opts),
+               max_rows: max_rows(cursor, opts), sync: :sync}
     execute_portal(%{s | buffer: nil}, status, query, cursor, buffer)
   end
 
@@ -1050,7 +1053,8 @@ defmodule Postgrex.Protocol do
   end
 
   defp execute_portal(s, status, query, cursor, buffer) do
-    %Cursor{portal: portal, max_rows: max_rows} = cursor
+    %Cursor{portal: portal} = cursor
+    %{max_rows: max_rows} = status
     messages = [msg_execute(name_port: portal, max_rows: max_rows)]
     execute_portal_recv = &execute_portal_recv(&1, &2, &3, cursor, &4)
     send_and_recv(s, status, query, buffer, messages, execute_portal_recv)
@@ -1276,10 +1280,10 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, result, buffer)
   end
 
-  defp suspend(s, status, query, cursor, rows, buffer) do
+  defp suspend(s, status, query, _cursor, rows, buffer) do
     %{connection_id: connection_id} = s
     %Query{columns: cols} = query
-    %Cursor{max_rows: max_rows} = cursor
+    %{max_rows: max_rows} = status
 
     result = %Postgrex.Result{command: :stream, rows: rows, num_rows: max_rows,
                               columns: cols, connection_id: connection_id}
@@ -1360,7 +1364,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp copy_out_portal(s, status, query, cursor, buffer) do
-    %Cursor{max_rows: max_rows} = cursor
+    %{max_rows: max_rows} = status
     max_rows = if max_rows == 0, do: :infinity, else: max_rows
     copy_out_recv(s, status, query, cursor, max_rows, [], 0, buffer)
   end
@@ -1735,6 +1739,13 @@ defmodule Postgrex.Protocol do
       :transaction -> :transaction
       :savepoint   -> :savepoint
     end
+  end
+
+  defp max_rows(%Cursor{max_rows: 0}, opts) do
+    opts[:fetch] || 0
+  end
+  defp max_rows(%Cursor{max_rows: max_rows}, opts) do
+    min(opts[:fetch] || :infinity, max_rows)
   end
 
   defp columns(fields) do

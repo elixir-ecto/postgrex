@@ -27,8 +27,10 @@ defmodule Postgrex.Mixfile do
      {:decimal, "~> 1.0"},
      {:db_connection, "~> 1.1", github: "elixir-ecto/db_connection", branch: "jf-stream_stage"},
      {:connection, "~> 1.0"},
-     {:gen_stage, "~> 0.11", optional: true},
-     {:flow, "~> 0.11", optional: true}]
+     {:gen_stage, "~> 0.11", github: "elixir-lang/gen_stage",
+        branch: "jv-exit-signals", optional: true},
+     {:flow, "~> 0.11", github: "elixir-lang/flow",
+        branch: "jv-exit-signals", optional: true}]
   end
 
   defp description do
