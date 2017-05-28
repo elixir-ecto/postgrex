@@ -1226,7 +1226,7 @@ defmodule Postgrex.Protocol do
       {:ok, msg_command_complete(tag: tag), rows, buffer} ->
         deallocate(s, status, query, rows, tag, buffer)
       {:ok, msg_portal_suspend(), rows, buffer} ->
-        suspend(s, status, query, cursor, rows, buffer)
+        suspend(s, status, query, rows, buffer)
       {:ok, msg_error(fields: fields), _, buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
@@ -1280,7 +1280,7 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, result, buffer)
   end
 
-  defp suspend(s, status, query, _cursor, rows, buffer) do
+  defp suspend(s, status, query, rows, buffer) do
     %{connection_id: connection_id} = s
     %Query{columns: cols} = query
     %{max_rows: max_rows} = status

@@ -1,7 +1,8 @@
 defmodule StageTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
-  alias Postgrex.{CopyConsumer, Producer}
+  alias Postgrex.CopyConsumer
+  alias Postgrex.Producer
 
   setup context do
     options = [database: "postgrex_test", backoff_type: :stop,
@@ -45,7 +46,7 @@ defmodule StageTest do
   test "produce COPY TO STDOUT", context do
     query = "COPY (VALUES (1, 2), (3, 4)) TO STDOUT"
     parent = self()
-    opts = [stream_mapper: fn(_, %{rows: rows}) -> send(parent, rows) ; rows end]
+    opts = [stream_mapper: fn(_, %{rows: rows}) -> send(parent, rows) end]
     {:ok, stage} = Producer.start_link(context.pid, query, [], opts)
     mon = Process.monitor(stage)
 
@@ -61,7 +62,7 @@ defmodule StageTest do
   test "produce query in chunks", context do
     query = prepare("", "SELECT * FROM generate_series(1, 3)")
     parent = self()
-    opts = [stream_mapper: fn(_, %{rows: rows}) -> send(parent, rows) ; rows end]
+    opts = [stream_mapper: fn(_, %{rows: rows}) -> send(parent, rows) end]
     {:ok, stage} = Producer.start_link(context.pid, query, [], opts)
     mon = Process.monitor(stage)
 
