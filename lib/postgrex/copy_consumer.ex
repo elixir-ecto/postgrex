@@ -26,7 +26,7 @@ defmodule Postgrex.CopyConsumer do
       "posts"
       |> File.stream!()
       |> Flow.from_enumerable()
-      |> Flow.into_stages(pid)
+      |> Flow.into_stages([pid])
 
   ### Options
 

@@ -29,6 +29,13 @@ defmodule Postgrex.Producer do
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
 
   The pool may support other options.
+
+  ## Examples
+
+      {:ok, pid} = Postgrex.Producer.start_link(pool, "SELECT * FROM posts, [])
+      [{pid, [cancel: :transient]}]
+      |> GenStage.stream()
+      |> Enum.to_list()
   """
   @spec start_link(GenServer.server, iodata | Postgrex.Query.t, list, Keyword.t) ::
     GenServer.on_start
