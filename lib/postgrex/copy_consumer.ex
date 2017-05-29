@@ -19,15 +19,6 @@ defmodule Postgrex.CopyConsumer do
   Start and link to a `GenStage` consumer that executes a query and copies
   data.
 
-  ## Examples
-
-      statement = "COPY posts FROM STDIN"
-      {:ok, pid} = Postgrex.CopyConsumer.start_link(pool, statement, [])
-      "posts"
-      |> File.stream!()
-      |> Flow.from_enumerable()
-      |> Flow.into_stages([pid])
-
   ### Options
 
     * `:pool_timeout` - Time to wait in the queue for the connection
@@ -42,6 +33,15 @@ defmodule Postgrex.CopyConsumer do
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
 
   The pool may support other options.
+
+  ## Examples
+
+      statement = "COPY posts FROM STDIN"
+      {:ok, pid} = Postgrex.CopyConsumer.start_link(pool, statement, [])
+      "posts"
+      |> File.stream!()
+      |> Flow.from_enumerable()
+      |> Flow.into_stages([pid])
   """
   @spec start_link(GenServer.server, iodata | Postgrex.Query.t, list, Keyword.t) ::
     GenServer.on_start
