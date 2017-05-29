@@ -1,7 +1,6 @@
 defmodule AlterTest do
   use ExUnit.Case, async: false
   import Postgrex.TestHelper
-  import ExUnit.CaptureLog
 
   setup context do
     options = [database: "postgrex_test", backoff_type: :stop,
@@ -168,22 +167,12 @@ defmodule AlterTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "new oid causes disconnect but is added on reconnect", context do
+  test "new oid is looked up", context do
     assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", []);
     assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", []);
     assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", []);
 
-    Process.flag(:trap_exit, true)
-
-    capture_log fn ->
-      assert_raise RuntimeError, ~r"was not bootstrapped and lacks type info",
-        fn -> query("SELECT a, b FROM missing_oid", []) end
-
-      assert_receive {:EXIT, _, {:shutdown, %RuntimeError{}}}
-    end
-
-   {:ok, pid} = Postgrex.start_link(context[:options])
-   assert %Postgrex.Result{num_rows: 1} = Postgrex.query!(pid, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1,2}])
-   assert %Postgrex.Result{rows: [["missing", {1,2}]]} = Postgrex.query!(pid, "SELECT a,b FROM missing_oid", [])
+    assert :ok = query("INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1,2}])
+    assert [["missing", {1, 2}]] = query("SELECT a,b FROM missing_oid", [])
   end
 end
