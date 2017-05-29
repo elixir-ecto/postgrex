@@ -670,6 +670,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp bootstrap_types(s, status, type_infos, buffer, next) do
+    query_delete(s, %Query{name: "", statement: ""})
     %{types_lock: {server, ref}} = status
     TypeServer.update(server, ref, type_infos)
     next.(s, status, buffer)
@@ -977,7 +978,7 @@ defmodule Postgrex.Protocol do
     {_, mon} = spawn_monitor(fn() -> reload_lock(s, status, ref, buffer) end)
     receive do
       {:DOWN, ^mon, _, _, {^ref, s, buffer}} ->
-        reload_fetch(%{s| buffer: nil}, status, query, oid, buffer)
+        reload_fetch(s, status, query, oid, buffer)
       {:DOWN, ^mon, _, _, _} ->
         {:disconnect, type_fetch_error(), %{s | buffer: buffer}}
     end
