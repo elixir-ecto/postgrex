@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.0-dev
+
+* Backwards incompatible changes
+  * Invoke `encode_to_iodata!` instead of `encode!` in JSON encoder
+
 ## v0.13.2 (2017-03-05)
 
 * Bug fixes
