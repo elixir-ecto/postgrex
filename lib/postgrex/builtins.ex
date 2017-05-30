@@ -104,32 +104,16 @@ end
 
 defmodule Postgrex.INET do
   @moduledoc """
-  Struct for Postgres inet.
-
-  ## Fields
-    * `address`
-  """
-
-  @type t :: %__MODULE__{address: :inet.ip_address}
-
-  defstruct [address: nil]
-end
-
-defmodule Postgrex.CIDR do
-  @moduledoc """
-  Struct for Postgres cidr.
+  Struct for Postgres inet/cidr.
 
   ## Fields
     * `address`
     * `netmask`
   """
 
-  @type t :: %__MODULE__{address: :inet.ip_address,
-                         netmask: 0..128}
+  @type t :: %__MODULE__{address: :inet.ip_address, netmask: 0..128}
 
-  defstruct [
-    address: nil,
-    netmask: nil]
+  defstruct [address: nil, netmask: nil]
 end
 
 defmodule Postgrex.MACADDR do
