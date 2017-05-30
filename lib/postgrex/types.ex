@@ -239,10 +239,6 @@ defmodule Postgrex.Types do
       However the larger binary can not be garbage collected until all references
       are garbage collected (default: `:copy`);
 
-    * `:date` - The default extensions date handling mode: `:elixir` to use
-      Elixir date structs or `:postgrex` to use the deprecated `:postgrex`
-      structs (default: `:elixir`);
-
     * `:json` - The JSON module to encode and decode JSON binaries, calls
       `module.encode_to_iodata!/1` to encode and `module.decode!/1` to decode.
       If `nil` then no default JSON handling (default: `nil`);

@@ -4,22 +4,9 @@ defmodule QueryTest do
   import ExUnit.CaptureLog
   alias Postgrex, as: P
 
-  @types Deprecated
-
-  # TODO: Once we remove date: :postgrex, we can remove the custom type
-  # as elixir calendar types are tested in the calendar module.
-  setup_all do
-    on_exit(fn ->
-      :code.delete(@types)
-      :code.purge(@types)
-    end)
-    Postgrex.TypeModule.define(@types, [], date: :postgrex)
-    :ok
-  end
-
   setup context do
     opts = [database: "postgrex_test", backoff_type: :stop,
-            prepare: context[:prepare] || :named, types: @types]
+            prepare: context[:prepare] || :named]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -70,53 +57,6 @@ defmodule QueryTest do
     assert [[[1,2]]] = query("SELECT ARRAY[1,2]", [])
     assert [[[[0],[1]]]] = query("SELECT ARRAY[[0],[1]]", [])
     assert [[[[0]]]] = query("SELECT ARRAY[ARRAY[0]]", [])
-  end
-
-  test "decode time", context do
-    assert [[%Postgrex.Time{hour: 0, min: 0, sec: 0, usec: 0}]] =
-           query("SELECT time '00:00:00'", [])
-    assert [[%Postgrex.Time{hour: 1, min: 2, sec: 3, usec: 0}]] =
-           query("SELECT time '01:02:03'", [])
-    assert [[%Postgrex.Time{hour: 23, min: 59, sec: 59, usec: 0}]] =
-           query("SELECT time '23:59:59'", [])
-
-    assert [[%Postgrex.Time{hour: 0, min: 0, sec: 0, usec: 123000}]] =
-           query("SELECT time '00:00:00.123'", [])
-    assert [[%Postgrex.Time{hour: 0, min: 0, sec: 0, usec: 123456}]] =
-           query("SELECT time '00:00:00.123456'", [])
-    assert [[%Postgrex.Time{hour: 1, min: 2, sec: 3, usec: 123456}]] =
-           query("SELECT time '01:02:03.123456'", [])
-
-    assert [[%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}]] =
-           query("SELECT timetz '04:05:06+02'", [])
-    assert [[%Postgrex.Time{hour: 22, min: 5, sec: 6, usec: 0}]] =
-           query("SELECT timetz '00:05:06+02'", [])
-    assert [[%Postgrex.Time{hour: 1, min: 5, sec: 6, usec: 0}]] =
-           query("SELECT timetz '23:05:06-02'", [])
-  end
-
-  test "decode date", context do
-    assert [[%Postgrex.Date{year: 1, month: 1, day: 1}]] =
-           query("SELECT date '0001-01-01'", [])
-    assert [[%Postgrex.Date{year: 1, month: 2, day: 3}]] =
-           query("SELECT date '0001-02-03'", [])
-    assert [[%Postgrex.Date{year: 2013, month: 9, day: 23}]] =
-           query("SELECT date '2013-09-23'", [])
-  end
-
-  test "decode timestamp", context do
-    assert [[%Postgrex.Timestamp{year: 2001, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 0}]] =
-           query("SELECT timestamp '2001-01-01 00:00:00'", [])
-    assert [[%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, usec: 123000}]] =
-           query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
-    assert [[%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37, usec: 0}]] =
-           query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
-    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 123456}]] =
-           query("SELECT timestamp '0001-01-01 00:00:00.123456'", [])
-    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 0}]] =
-           query("SELECT timestamp '0001-01-01 00:00:00'", [])
-    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 0}]] =
-           query("SELECT timestamp with time zone '0001-01-01 00:00:00 UTC'", [])
   end
 
   test "decode interval", context do
@@ -307,11 +247,11 @@ defmodule QueryTest do
     assert [[%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: false, upper_inclusive: false}]] ==
            query("SELECT '(1.2,3.4)'::numrange", [])
 
-    assert [[%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}]] =
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2014, month: 12, day: 31}}]] =
            query("SELECT '[2014-1-1,2014-12-31)'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}]] =
+    assert [[%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}]] =
            query("SELECT '(,2014-12-31)'::daterange", [])
-    assert [[%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 2}, upper: nil}]] =
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 2}, upper: nil}]] =
            query("SELECT '(2014-1-1,]'::daterange", [])
   end
 
@@ -528,42 +468,6 @@ defmodule QueryTest do
     assert [[^uuid]] = query("SELECT $1::uuid", [uuid])
   end
 
-  test "encode date", context do
-    assert [[%Postgrex.Date{year: 1, month: 1, day: 1}]] =
-           query("SELECT $1::date", [%Postgrex.Date{year: 1, month: 1, day: 1}])
-    assert [[%Postgrex.Date{year: 1, month: 2, day: 3}]] =
-           query("SELECT $1::date", [%Postgrex.Date{year: 1, month: 2, day: 3}])
-    assert [[%Postgrex.Date{year: 2013, month: 9, day: 23}]] =
-           query("SELECT $1::date", [%Postgrex.Date{year: 2013, month: 9, day: 23}])
-    assert [[%Postgrex.Date{year: 1999, month: 12, day: 31}]] =
-           query("SELECT $1::date", [%Postgrex.Date{year: 1999, month: 12, day: 31}])
-    assert [[%Postgrex.Date{year: 1999, month: 12, day: 31}]] =
-           query("SELECT $1::date", [%Postgrex.Date{year: 1999, month: 12, day: 31}])
-  end
-
-  test "encode time", context do
-    assert [[%Postgrex.Time{hour: 0, min: 0, sec: 0}]] =
-           query("SELECT $1::time", [%Postgrex.Time{hour: 0, min: 0, sec: 0}])
-    assert [[%Postgrex.Time{hour: 1, min: 2, sec: 3}]] =
-           query("SELECT $1::time", [%Postgrex.Time{hour: 1, min: 2, sec: 3}])
-    assert [[%Postgrex.Time{hour: 23, min: 59, sec: 59}]] =
-           query("SELECT $1::time", [%Postgrex.Time{hour: 23, min: 59, sec: 59}])
-    assert [[%Postgrex.Time{hour: 4, min: 5, sec: 6, usec: 123456}]] =
-           query("SELECT $1::time", [%Postgrex.Time{hour: 4, min: 5, sec: 6, usec: 123456}])
-
-    assert [[%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}]] =
-           query("SELECT $1::timetz", [%Postgrex.Time{hour: 2, min: 5, sec: 6, usec: 0}])
-  end
-
-  test "encode timestamp", context do
-    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}]] =
-      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0}])
-    assert [[%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}]] =
-      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 2013, month: 9, day: 23, hour: 14, min: 4, sec: 37}])
-    assert [[%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 123456}]] =
-      query("SELECT $1::timestamp", [%Postgrex.Timestamp{year: 1, month: 1, day: 1, hour: 0, min: 0, sec: 0, usec: 123456}])
-  end
-
   test "encode interval", context do
     assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0}]] =
            query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 0, secs: 0}])
@@ -613,12 +517,12 @@ defmodule QueryTest do
     assert [[%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}]] ==
            query("SELECT $1::numrange", [%Postgrex.Range{lower: Decimal.new("1.2"), upper: Decimal.new("3.4"), lower_inclusive: true, upper_inclusive: true}])
 
-    assert [[%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2015, month: 1, day: 1}}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
-    assert [[%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2015, month: 1, day: 1}}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
-    assert [[%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}])
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2015, month: 1, day: 1}}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2014, month: 12, day: 31}}])
+    assert [[%Postgrex.Range{lower: nil, upper: %Date{year: 2015, month: 1, day: 1}}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}])
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}])
   end
 
   @tag min_pg_version: "9.2"

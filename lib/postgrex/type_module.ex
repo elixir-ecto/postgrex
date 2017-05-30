@@ -7,7 +7,6 @@ defmodule Postgrex.TypeModule do
     opts =
       opts
       |> Keyword.put_new(:decode_binary, :copy)
-      |> Keyword.put_new(:date, :elixir)
     config = configure(extensions, opts)
     define_inline(module, config, opts)
   end

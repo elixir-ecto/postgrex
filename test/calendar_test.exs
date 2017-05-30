@@ -204,7 +204,7 @@ defmodule CalendarTest do
                        std_offset: 0}])
   end
 
-  test "persit timestamp and timestamptz", context  do
+  test "persist timestamp and timestamptz", context  do
     assert :ok = query("SET SESSION TIME ZONE +1", [])
     assert :ok = query("INSERT INTO calendar VALUES (timestamp without time zone '2001-01-01 00:00:00', timestamp with time zone '2001-01-01 00:00:00 UTC')", [])
 
