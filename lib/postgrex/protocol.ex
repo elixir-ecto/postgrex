@@ -973,6 +973,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp reload_spawn(s, status, %Query{ref: ref} = query, oid, buffer) do
+    Logger.warn(fn() ->
+      [inspect(query) | " uses unknown oid `#{oid}` causing bootstrap"]
+    end)
     {_, mon} = spawn_monitor(fn() -> reload_lock(s, status, ref, buffer) end)
     receive do
       {:DOWN, ^mon, _, _, {^ref, s, buffer}} ->

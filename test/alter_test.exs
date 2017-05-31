@@ -2,6 +2,8 @@ defmodule AlterTest do
   use ExUnit.Case, async: false
   import Postgrex.TestHelper
 
+  @moduletag :capture_log
+
   setup context do
     options = [database: "postgrex_test", backoff_type: :stop,
                prepare: context[:prepare] || :named]
