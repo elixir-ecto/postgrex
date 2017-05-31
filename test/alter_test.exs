@@ -1,18 +1,26 @@
 defmodule AlterTest do
   use ExUnit.Case, async: false
   import Postgrex.TestHelper
-  import ExUnit.CaptureLog
+
+  @moduletag :capture_log
 
   setup context do
     options = [database: "postgrex_test", backoff_type: :stop,
                prepare: context[:prepare] || :named]
 
-    on_exit(fn() ->
+    reset = fn() ->
       {:ok, pid} = Postgrex.start_link(options)
-      Postgrex.query(pid, "ALTER TABLE altering ALTER a type int2", [])
-    end)
+      Postgrex.query!(pid, "ALTER TABLE altering ALTER a type int2", [])
+      Postgrex.query!(pid, "DROP TABLE IF EXISTS missing_enum_table", [])
+      Postgrex.query!(pid, "DROP TABLE IF EXISTS missing_comp_table", [])
+      Postgrex.query!(pid, "DROP TYPE IF EXISTS missing_enum", [])
+      Postgrex.query!(pid, "DROP TYPE IF EXISTS missing_comp", [])
+      pid
+    end
 
-    {:ok, pid} = Postgrex.start_link(options)
+    on_exit(reset)
+
+    pid = reset.()
     {:ok, [pid: pid, options: options]}
   end
 
@@ -168,22 +176,134 @@ defmodule AlterTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
-  test "new oid causes disconnect but is added on reconnect", context do
-    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", []);
-    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", []);
-    assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", []);
+  test "new oid is bootstrapped", context do
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_comp_table (a missing_comp)", [])
 
-    Process.flag(:trap_exit, true)
+    assert :ok = query("INSERT INTO missing_comp_table VALUES ($1)", [{1, 2}])
+    assert [[{1, 2}]] = query("SELECT a FROM missing_comp_table", [])
+  end
 
-    capture_log fn ->
-      assert_raise RuntimeError, ~r"was not bootstrapped and lacks type info",
-        fn -> query("SELECT a, b FROM missing_oid", []) end
+  @tag prepare: :unnamed
+  test "new oid is bootstrapped with unnamed", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+    assert :ok = query("INSERT INTO missing_enum_table VALUES ($1)", ["missing"])
+    assert [["missing"]] = query("SELECT a FROM missing_enum_table", [])
+  end
 
-      assert_receive {:EXIT, _, {:shutdown, %RuntimeError{}}}
-    end
+  test "new oid is bootstrapped on prepare and prepared executes", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+    unnamed = prepare("", "SELECT 42")
 
-   {:ok, pid} = Postgrex.start_link(context[:options])
-   assert %Postgrex.Result{num_rows: 1} = Postgrex.query!(pid, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1,2}])
-   assert %Postgrex.Result{rows: [["missing", {1,2}]]} = Postgrex.query!(pid, "SELECT a,b FROM missing_oid", [])
+    named = prepare("foo", "INSERT INTO missing_enum_table VALUES ($1)")
+    assert [[42]] = execute(unnamed, [])
+    assert :ok = execute(named, ["missing"])
+  end
+
+  test "new oid is bootstrapped on prepare and prepared executes inside transaction", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+    unnamed = prepare("", "SELECT 42")
+
+    assert transaction(fn(conn) ->
+      named = Postgrex.prepare!(conn, "foo", "INSERT INTO missing_enum_table VALUES ($1)")
+
+      %Postgrex.Result{rows: [[42]]} = Postgrex.execute!(conn, unnamed, [])
+
+      assert %Postgrex.Result{command: :insert} = Postgrex.execute!(conn, named, ["missing"])
+
+      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_comp_table (a missing_comp)", [])
+
+      unnamed = Postgrex.prepare!(conn, "", "SELECT 42")
+      named2 = Postgrex.prepare!(conn, "bar", "INSERT INTO missing_comp_table VALUES ($1)", [mode: :savepoint])
+
+      assert %Postgrex.Result{rows: [[42]]} = Postgrex.execute!(conn, unnamed, [], [mode: :savepoint])
+
+      assert %Postgrex.Result{command: :insert} = Postgrex.execute!(conn, named2, [{1, 2}])
+    end)
+  end
+
+  test "new oid is bootstrapped inside transaction", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+
+    assert transaction(fn(conn) ->
+      assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
+        Postgrex.query(conn, "INSERT INTO missing_enum_table VALUES ($1)", ["missing"])
+      assert {:ok, %Postgrex.Result{rows: [["missing"]]}} =
+        Postgrex.query(conn, "SELECT a FROM missing_enum_table", [])
+
+      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_comp_table (a missing_comp)", [])
+
+      assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
+        Postgrex.query(conn, "INSERT INTO missing_comp_table VALUES ($1)", [{1, 2}])
+
+      :done
+    end) == {:ok, :done}
+  end
+
+  @tag prepare: :unnamed
+  test "new oid is bootstrapped inside transaction with unnamed", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+
+    assert transaction(fn(conn) ->
+      assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
+        Postgrex.query(conn, "INSERT INTO missing_enum_table VALUES ($1)", ["missing"])
+      assert {:ok, %Postgrex.Result{rows: [["missing"]]}} =
+        Postgrex.query(conn, "SELECT a FROM missing_enum_table", [])
+
+      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_comp_table (a missing_comp)", [])
+
+      assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
+        Postgrex.query(conn, "INSERT INTO missing_comp_table VALUES ($1)", [{1, 2}], [mode: :savepoint])
+
+      :done
+    end) == {:ok, :done}
+  end
+
+  test "new oid is bootstrapped when preparing enumerable stream", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+
+    assert transaction(fn(conn) ->
+      stream = Postgrex.stream(conn, "INSERT INTO missing_enum_table VALUES ($1)", ["missing"])
+
+      assert [%Postgrex.Result{num_rows: 1, command: :insert}] = Enum.to_list(stream)
+
+      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_comp_table (a missing_comp)", [])
+
+      stream2 = Postgrex.stream(conn, "INSERT INTO missing_comp_table VALUES ($1)", [{1, 2}], [mode: :savepoint])
+
+      assert [%Postgrex.Result{num_rows: 1, command: :insert}] = Enum.to_list(stream2)
+
+      :done
+    end) == {:ok, :done}
+  end
+
+  test "new oid is bootstrapped when preparing collectable stream", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_enum_table (a missing_enum)", [])
+
+    assert transaction(fn(conn) ->
+      stream = Postgrex.stream(conn, "INSERT INTO missing_enum_table VALUES ($1)", ["missing"])
+
+      assert Enum.into(["foo"], stream) == stream
+
+      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_comp_table (a missing_comp)", [])
+
+      stream2 = Postgrex.stream(conn, "INSERT INTO missing_comp_table VALUES ($1)", [{1, 2}], [mode: :savepoint])
+
+      assert Enum.into(["bar"], stream2) == stream2
+
+      :done
+    end) == {:ok, :done}
   end
 end
