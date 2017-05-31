@@ -232,11 +232,11 @@ defmodule AlterTest do
   end
 
   test "new oid is bootstrapped inside transaction", context do
-    assert transaction(fn(conn) ->
-      Postgrex.query!(conn, "CREATE TYPE missing_enum AS ENUM ('missing')", [])
-      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
-      Postgrex.query!(conn, "CREATE TABLE missing_oid (a missing_enum, b missing_comp)", [])
+   assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+   assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+   assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", [])
 
+   assert transaction(fn(conn) ->
       assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
         Postgrex.query(conn, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1, 2}])
       assert {:ok, %Postgrex.Result{rows: [["missing", {1, 2}]]}} =
@@ -254,11 +254,11 @@ defmodule AlterTest do
 
   @tag prepare: :unnamed
   test "new oid is bootstrapped inside transaction with unnamed", context do
-    assert transaction(fn(conn) ->
-      Postgrex.query!(conn, "CREATE TYPE missing_enum AS ENUM ('missing')", [])
-      Postgrex.query!(conn, "CREATE TYPE missing_comp AS (a int, b int)", [])
-      Postgrex.query!(conn, "CREATE TABLE missing_oid (a missing_enum, b missing_comp)", [])
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", [])
 
+    assert transaction(fn(conn) ->
       assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
         Postgrex.query(conn, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1, 2}])
       assert {:ok, %Postgrex.Result{rows: [["missing", {1, 2}]]}} =
@@ -269,6 +269,50 @@ defmodule AlterTest do
 
       assert {:ok, %Postgrex.Result{num_rows: 1, command: :insert}} =
         Postgrex.query(conn, "INSERT INTO missing_oid2 VALUES ($1)", [%Postgrex.Range{lower: 1, upper: 2}], [mode: :savepoint])
+
+      :done
+    end) == {:ok, :done}
+  end
+
+  test "new oid is bootstrapped when preparing enumerable stream", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", [])
+
+    assert transaction(fn(conn) ->
+      stream = Postgrex.stream(conn, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1, 2}])
+
+      assert [%Postgrex.Result{num_rows: 1, command: :insert}] = Enum.to_list(stream)
+
+      Postgrex.query!(conn, "CREATE TYPE missing_range AS RANGE (subtype = integer)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_oid2 (a missing_range)", [])
+
+      stream2 = Postgrex.stream(conn, "INSERT INTO missing_oid2 VALUES ($1)",
+        [%Postgrex.Range{lower: 1, upper: 2}], [mode: :savepoint])
+
+      assert [%Postgrex.Result{num_rows: 1, command: :insert}] = Enum.to_list(stream2)
+
+      :done
+    end) == {:ok, :done}
+  end
+
+  test "new oid is bootstrapped when preparing collectable stream", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_oid (a missing_enum, b missing_comp)", [])
+
+    assert transaction(fn(conn) ->
+      stream = Postgrex.stream(conn, "INSERT INTO missing_oid VALUES ($1, $2)", ["missing", {1, 2}])
+
+      assert Enum.into(["foo"], stream) == stream
+
+      Postgrex.query!(conn, "CREATE TYPE missing_range AS RANGE (subtype = integer)", [])
+      Postgrex.query!(conn, "CREATE TABLE missing_oid2 (a missing_range)", [])
+
+      stream2 = Postgrex.stream(conn, "INSERT INTO missing_oid2 VALUES ($1)",
+        [%Postgrex.Range{lower: 1, upper: 2}], [mode: :savepoint])
+
+      assert Enum.into(["bar"], stream2) == stream2
 
       :done
     end) == {:ok, :done}
