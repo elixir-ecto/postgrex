@@ -961,8 +961,6 @@ defmodule Postgrex.Protocol do
     end
   end
   defp reload_close(s, %{sync: :sync} = status, query, oid, buffer) do
-    close(%{s | buffer: nil}, status, query, nil, buffer)
-
     with {:ok, %{buffer: buffer} = s} <- sync_recv(s, status, nil, buffer),
          s = %{s | buffer: nil},
          {:ok, %{buffer: buffer} = s} <- close(s, status, query, nil, buffer),
