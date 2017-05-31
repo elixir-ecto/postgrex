@@ -30,7 +30,7 @@ defimpl Enumerable, for: Postgrex.Stream do
   def reduce(%Postgrex.Stream{query: statement} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
     query = %Query{name: "" , statement: statement}
-    opts = Keyword.put(opts, :function, :prepare_open)
+    opts = Keyword.put(opts, :function, :prepare_declare)
     stream = %DBConnection.PrepareStream{conn: conn, query: query,
                                          params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
