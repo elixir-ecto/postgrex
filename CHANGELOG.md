@@ -7,6 +7,14 @@
   * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as Postgres may perform implicit/explicit casting at any time)
   * Postgrex.Time, Postgrex.Date and Postgrex.Timestamp were deprecated and now have been effectively removed
 
+## v0.13.3 (2017-05-31)
+
+* Enhancements
+  * Reload types on unknown oid during prepare
+
+* Bug fixes
+  * Fix default timeout for connection process from 5000s to 15000s
+
 ## v0.13.2 (2017-03-05)
 
 * Bug fixes
