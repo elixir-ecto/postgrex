@@ -31,6 +31,17 @@ defmodule Postgrex.Types do
   end
 
   @doc false
+  @spec owner(state) :: {:ok, pid} | :error
+  def owner({_, table}) do
+    case :ets.info(table, :owner) do
+      owner when is_pid(owner) ->
+        {:ok, owner}
+      :undefined ->
+        :error
+    end
+  end
+
+  @doc false
   @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, state) :: binary
   def bootstrap_query(version, {_, table}) do
     oids = :ets.select(table, [{{:"$1", :_, :_}, [], [:"$1"]}])
