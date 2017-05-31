@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.3 (2017-05-31)
+
+* Enhancements
+  * Reload types on unknown oid during prepare
+
+* Bug fixes
+  * Fix default timeout for connection process from 5000s to 15000s
+
 ## v0.13.2 (2017-03-05)
 
 * Bug fixes
