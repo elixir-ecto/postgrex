@@ -285,7 +285,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_fetch(Postgrex.Query.t, Postgrex.Cursor.t, Keyword.t, state) ::
-    {:cont | :done, Postgrex.Result.t, state} |
+    {:cont | :halt, Postgrex.Result.t, state} |
     {:error, Postgrex.Error.t, state} |
     {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
@@ -295,6 +295,7 @@ defmodule Postgrex.Protocol do
         %{buffer: buffer} = s
         s = %{s | postgres: postgres, buffer: nil}
         status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+        cursor = max_rows(cursor, opts)
         copy_out_portal(s, status, query, cursor, buffer)
       _ ->
         lock_error(s, "fetch", cursor)
@@ -302,6 +303,7 @@ defmodule Postgrex.Protocol do
   end
   def handle_fetch(query, cursor, opts, %{buffer: buffer} = s) do
     status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    cursor = max_rows(cursor, opts)
     execute_portal(%{s | buffer: nil}, status, query, cursor, buffer)
   end
 
@@ -1859,6 +1861,15 @@ defmodule Postgrex.Protocol do
     case opts[:mode] || :transaction do
       :transaction -> :transaction
       :savepoint   -> :savepoint
+    end
+  end
+
+  defp max_rows(cursor, opts) do
+    case Keyword.fetch(opts, :max_rows) do
+      {:ok, max_rows} ->
+        %Cursor{cursor | max_rows: max_rows}
+      _ ->
+        cursor
     end
   end
 
