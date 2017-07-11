@@ -25,7 +25,7 @@ defmodule Postgrex.Mixfile do
   defp deps do
     [{:ex_doc, "~> 0.14", only: :docs},
      {:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.1"},
+     {:db_connection, "~> 1.1", github: "elixir-ecto/db_connection", ref: "f6187d8"},
      {:connection, "~> 1.0"}]
   end
 
