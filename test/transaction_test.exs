@@ -433,4 +433,27 @@ defmodule TransactionTest do
       assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
     end)
   end
+
+  @tag mode: :transaction
+  test "transaction shows correct transaction status", context do
+    pid = context[:pid]
+    opts = [mode: :transaction]
+
+    assert DBConnection.status(pid, opts) == :idle
+    assert query("SELECT 42", []) == [[42]]
+    assert DBConnection.status(pid, opts) == :idle
+    {conn, _} = DBConnection.begin!(pid, opts)
+    assert DBConnection.status(conn, opts) == :transaction
+    assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+        P.query(conn, "insert into uniques values (1), (1);", [], opts)
+    assert DBConnection.status(conn, opts) == :error
+    assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+        P.query(conn, "SELECT 42", [], opts)
+    assert DBConnection.status(conn, opts) == :error
+    assert {:error, %DBConnection.TransactionError{status: :error}} =
+      DBConnection.commit(conn, opts)
+    assert DBConnection.status(pid, opts) == :idle
+    assert query("SELECT 42", []) == [[42]]
+    assert DBConnection.status(pid) == :idle
+  end
 end

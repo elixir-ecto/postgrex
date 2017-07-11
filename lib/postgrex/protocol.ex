@@ -393,6 +393,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @spec handle_status(Keyword.t, state) :: {DBConnection.status, state}
+  def handle_status(_, %{postgres: {postgres, _}} = s),
+    do: {postgres, s}
+  def handle_status(_, %{postgres: postgres} = s),
+    do: {postgres, s}
+
   @spec handle_listener(String.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, Postgrex.Error.t, state} |
