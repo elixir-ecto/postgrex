@@ -330,7 +330,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_begin(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {DBConnecation.status, state} |
+    {DBConnection.status, state} |
     {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t, state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
