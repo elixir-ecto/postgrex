@@ -87,7 +87,7 @@ defmodule Postgrex.Messages do
     status = case status do
       ?I -> :idle
       ?T -> :transaction
-      ?E -> :failed
+      ?E -> :error
     end
     msg_ready(status: status)
   end

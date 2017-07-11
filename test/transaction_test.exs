@@ -24,7 +24,7 @@ defmodule TransactionTest do
      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
        P.query(conn, "SELECT 42", [])
       :hi
-    end) == {:ok, :hi}
+    end) == {:error, :rollback}
     assert [[42]] = query("SELECT 42", [])
   end
 
@@ -187,7 +187,7 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
         P.query(conn, "SELECT 42", [])
       :hi
-    end, [mode: :savepoint]) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:error, :rollback}
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
   end
@@ -200,7 +200,7 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
         P.query(conn, "insert into uniques values (1), (1);", [], [])
       :hi
-    end, [mode: :savepoint]) == {:ok, :hi}
+    end, [mode: :savepoint]) == {:error, :rollback}
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
   end

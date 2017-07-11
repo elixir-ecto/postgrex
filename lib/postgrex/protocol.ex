@@ -31,7 +31,8 @@ defmodule Postgrex.Protocol do
                              timeout: timeout,
                              parameters: %{binary => binary} | reference,
                              queries: nil | :ets.tid,
-                             postgres: :idle | :transaction | :failed,
+                             postgres: DBConnection.status |
+                               {DBConnection.status, reference},
                              transactions: :strict | :naive,
                              buffer: nil | binary | :active_once}
   @type notify :: ((binary, binary) -> any)
@@ -329,62 +330,66 @@ defmodule Postgrex.Protocol do
 
   @spec handle_begin(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
-    {:disconnect, %DBConnection.ConnectionError{}, state}
+    {DBConnecation.status, state} |
+    {:disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t, state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
-  def handle_begin(opts, s) do
+  def handle_begin(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
-      :transaction ->
+      :transaction when postgres == :idle ->
         statement = "BEGIN"
         handle_transaction(statement, :transaction, :begin, opts, s)
-      :savepoint   ->
+      :savepoint when postgres == :transaction  ->
         statement = "SAVEPOINT postgrex_savepoint"
         handle_savepoint([statement, :sync], :savepoint, opts, s)
+      mode when mode in [:transaction, :savepoint] ->
+        {postgres, s}
     end
   end
 
   @spec handle_commit(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
-    {:disconnect, %DBConnection.ConnectionError{}, state}
+    {DBConnection.status, state} |
+    {:disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t, state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
   def handle_commit(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
-      :transaction ->
+      :transaction when postgres == :transaction ->
         statement = "COMMIT"
         handle_transaction(statement, :idle, :commit, opts, s)
-      :savepoint when postgres == :failed ->
-        handle_rollback(opts, s)
-      :savepoint ->
+      :savepoint when postgres == :transaction ->
         statement = "RELEASE SAVEPOINT postgrex_savepoint"
         handle_savepoint([statement, :sync], :release, opts, s)
+      mode when mode in [:transaction, :savepoint] ->
+        {postgres, s}
     end
   end
 
   @spec handle_rollback(Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
-    {:error, Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
-    {:disconnect, %DBConnection.ConnectionError{}, state}
+    {DBConnection.status, state} |
+    {:disconnect, %RuntimeError{}, state} |
+    {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t, state}
   def handle_rollback(_, %{postgres: {_, _}} = s) do
     lock_error(s, :rollback)
   end
-  def handle_rollback(opts, s) do
+  def handle_rollback(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
-      :transaction ->
+      :transaction when postgres in [:transaction, :error] ->
         statement = "ROLLBACK"
         handle_transaction(statement, :idle, :rollback, opts, s)
-      :savepoint ->
+      :savepoint when postgres in [:transaction, :error] ->
         statements = ["ROLLBACK TO SAVEPOINT postgrex_savepoint",
                       "RELEASE SAVEPOINT postgrex_savepoint",
                       :sync]
         handle_savepoint(statements, [:rollback, :release], opts, s)
+      mode when mode in [:transaction, :savepoint] ->
+        {postgres, s}
     end
   end
 
@@ -1276,7 +1281,7 @@ defmodule Postgrex.Protocol do
 
   defp savepoint_rollback_recv(s, status, err, buffer) do
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_ready(status: :failed), buffer} ->
+      {:ok, msg_ready(status: :error), buffer} ->
         sync_recv = &do_sync_recv/4
         recv = &savepoint_recv(&1, &2, &3, &4, sync_recv)
         savepoint_recv(s, status, err, buffer, recv)
@@ -1703,9 +1708,9 @@ defmodule Postgrex.Protocol do
       {:ok, msg_ready(status: :transaction), buffer}
       when postgres == :idle and transactions == :strict ->
         sync_error(s, :transaction, buffer)
-      {:ok, msg_ready(status: :failed), buffer}
+      {:ok, msg_ready(status: :error), buffer}
       when postgres == :idle and transactions == :strict ->
-        sync_error(s, :failed, buffer)
+        sync_error(s, :error, buffer)
       {:ok, msg_ready(status: postgres), buffer} ->
         ok(s, res, postgres, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -1816,9 +1821,9 @@ defmodule Postgrex.Protocol do
       {:ok, msg_ready(status: :transaction), buffer}
       when postgres == :idle and transactions == :strict ->
         sync_error(s, :transaction, buffer)
-      {:ok, msg_ready(status: :failed), buffer}
+      {:ok, msg_ready(status: :error), buffer}
       when postgres == :idle and transactions == :strict ->
-        sync_error(s, :failed, buffer)
+        sync_error(s, :error, buffer)
       {:ok, msg_ready(status: postgres), buffer} ->
         ok(s, res, postgres, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -2148,9 +2153,9 @@ defmodule Postgrex.Protocol do
       {:ok, msg_ready(status: :transaction), buffer}
       when postgres == :idle and transactions == :strict ->
         sync_error(s, :transaction, buffer)
-      {:ok, msg_ready(status: :failed), buffer}
+      {:ok, msg_ready(status: :error), buffer}
       when postgres == :idle and transactions == :strict ->
-        sync_error(s, :failed, buffer)
+        sync_error(s, :error, buffer)
       {:ok, msg_ready(status: postgres), buffer} ->
         ok(s, res, postgres, buffer)
       {:ok, msg, buffer} ->
