@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Calendar) do
+if Code.ensure_loaded?(NaiveDateTime) do
   defmodule Postgrex.Extensions.Calendar do
     @moduledoc """
     An extension that supports the calendar structs introduced in Elixir 1.3.0:
@@ -110,7 +110,7 @@ if Code.ensure_loaded?(Calendar) do
     @us_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
     @uus_epoch @us_epoch |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
     @us_max :calendar.datetime_to_gregorian_seconds({{294277, 1, 1}, {0, 0, 0}}) - @gs_unix_epoch
-    @uus_max @us_max |> DateTime.from_unix!() |> DateTime.to_unix(:microseconds)
+    @uus_max @us_max * 1_000_000
 
     defp encode_datetime(_, %DateTime{utc_offset: 0, std_offset: 0} = date_time) do
       case DateTime.to_unix(date_time, :microseconds) do

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.12.1 (2017-08-02)
+
+* Bug fixes
+  * Fix Calendar usage in Elixir v1.5
+
+## v0.12.1 (2016-09-29)
+
+* Bug fixes
+  * Fix rebootstraping of composite types
+
 ## v0.12.0 (2016-09-06)
 
 * Enhancements

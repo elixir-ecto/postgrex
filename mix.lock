@@ -1,6 +1,6 @@
 %{"backoff": {:hex, :backoff, "1.1.1"},
-  "connection": {:hex, :connection, "1.0.2", "f4a06dd3ecae4141aa66f94ce92ea4c4b8753069472814932f1cadbc3078ab80", [:mix], []},
-  "db_connection": {:hex, :db_connection, "1.0.0-rc.4", "fad1f772c151cc6bde82412b8d72319968bc7221df8ef7d5e9d7fde7cb5c86b7", [:mix], [{:connection, "~> 1.0.2", [hex: :connection, optional: false]}, {:poolboy, "~> 1.5", [hex: :poolboy, optional: true]}, {:sbroker, "~> 1.0.0-beta.3", [hex: :sbroker, optional: true]}]},
-  "decimal": {:hex, :decimal, "1.1.1", "a8ff5b673105e6cdaca96f799aeefc6f07142881b616c65db16e14e556b16e76", [:mix], []},
-  "earmark": {:hex, :earmark, "0.2.1", "ba6d26ceb16106d069b289df66751734802777a3cbb6787026dd800ffeb850f3", [:mix], []},
-  "ex_doc": {:hex, :ex_doc, "0.12.0", "b774aabfede4af31c0301aece12371cbd25995a21bb3d71d66f5c2fe074c603f", [:mix], [{:earmark, "~> 0.2", [hex: :earmark, optional: false]}]}}
+  "connection": {:hex, :connection, "1.0.2", "f4a06dd3ecae4141aa66f94ce92ea4c4b8753069472814932f1cadbc3078ab80", [:mix], [], "hexpm"},
+  "db_connection": {:hex, :db_connection, "1.0.0-rc.4", "fad1f772c151cc6bde82412b8d72319968bc7221df8ef7d5e9d7fde7cb5c86b7", [:mix], [{:connection, "~> 1.0.2", [hex: :connection, repo: "hexpm", optional: false]}, {:poolboy, "~> 1.5", [hex: :poolboy, repo: "hexpm", optional: true]}, {:sbroker, "~> 1.0.0-beta.3", [hex: :sbroker, repo: "hexpm", optional: true]}], "hexpm"},
+  "decimal": {:hex, :decimal, "1.1.1", "a8ff5b673105e6cdaca96f799aeefc6f07142881b616c65db16e14e556b16e76", [:mix], [], "hexpm"},
+  "earmark": {:hex, :earmark, "1.2.3", "206eb2e2ac1a794aa5256f3982de7a76bf4579ff91cb28d0e17ea2c9491e46a4", [:mix], [], "hexpm"},
+  "ex_doc": {:hex, :ex_doc, "0.16.2", "3b3e210ebcd85a7c76b4e73f85c5640c011d2a0b2f06dcdf5acdb2ae904e5084", [:mix], [{:earmark, "~> 1.1", [hex: :earmark, repo: "hexpm", optional: false]}], "hexpm"}}
