@@ -17,7 +17,7 @@ defmodule Postgrex.Extensions.JSONB do
   def encode({library, _}) do
     quote location: :keep do
       map ->
-        data = unquote(library).encode!(map)
+        data = unquote(library).encode_to_iodata!(map)
         [<<(IO.iodata_length(data)+1) :: int32, 1>> | data]
     end
   end
