@@ -6,7 +6,7 @@ end
 
 version_exclusions = case System.get_env("PGVERSION") do
   v when is_binary(v) ->
-    ["8.4", "9.0", "9.1", "9.2", "9.3", "9.4"]
+    ["8.4", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5"]
     |> Enum.filter(fn x -> x > v end)
     |> Enum.map(&{:min_pg_version, &1})
   _ ->
