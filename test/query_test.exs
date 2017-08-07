@@ -46,6 +46,7 @@ defmodule QueryTest do
     assert [[Decimal.new("NaN")]] == query("SELECT 'NaN'::numeric", [])
   end
 
+  @tag min_pg_version: "9.5"
   test "decode json/jsonb", context do
     assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::json", [])
     assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::jsonb", [])
@@ -437,6 +438,7 @@ defmodule QueryTest do
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
   end
 
+  @tag min_pg_version: "9.5"
   test "encode json/jsonb", context do
     json = %{"foo" => 42}
     assert [[json]] == query("SELECT $1::json", [json])
