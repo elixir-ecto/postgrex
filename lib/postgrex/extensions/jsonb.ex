@@ -3,7 +3,11 @@ defmodule Postgrex.Extensions.JSONB do
   import Postgrex.BinaryUtils, warn: false
 
   def init(opts) do
-    {Keyword.get(opts, :json), Keyword.get(opts, :decode_binary, :copy)}
+    json =
+      Keyword.get_lazy(opts, :json, fn ->
+        Application.get_env(:postgrex, :json_library, Poison)
+      end)
+    {json, Keyword.get(opts, :decode_binary, :copy)}
   end
 
   def matching({nil, _}),

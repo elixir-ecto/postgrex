@@ -38,7 +38,6 @@ defmodule TypeModuleTest do
     assert [[:custom, true, false]] = query("SELECT NULL, true, false", [])
     assert [[[:custom, true, false]]] = query("SELECT ARRAY[NULL, true, false]", [])
     assert [[{:custom, true, false}]] = query("SELECT ROW(NULL, true, false)", [])
-
   end
 
   @tag min_pg_version: "9.2"

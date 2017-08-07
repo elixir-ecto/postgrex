@@ -46,6 +46,11 @@ defmodule QueryTest do
     assert [[Decimal.new("NaN")]] == query("SELECT 'NaN'::numeric", [])
   end
 
+  test "decode json/jsonb", context do
+    assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::json", [])
+    assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::jsonb", [])
+  end
+
   test "decode uuid", context do
     uuid = <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
     assert [[^uuid]] = query("SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid", [])
@@ -430,6 +435,12 @@ defmodule QueryTest do
 
     dec = Decimal.new(1.0)
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
+  end
+
+  test "encode json/jsonb", context do
+    json = %{"foo" => 42}
+    assert [[json]] == query("SELECT $1::json", [json])
+    assert [[json]] == query("SELECT $1::jsonb", [json])
   end
 
   test "encode custom numerics", context do
