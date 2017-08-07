@@ -11,7 +11,7 @@ defmodule Postgrex.ErrorCode do
     end
   end
 
-  {errcodes, duplicates} = Enum.partition(errcodes, &match?({_, _}, &1))
+  {errcodes, duplicates} = Enum.split_with(errcodes, &match?({_, _}, &1))
 
   # The errcodes.txt file does contain some codes twice, but the duplicates
   # don't have a name. Make sure every every code without a name has another
