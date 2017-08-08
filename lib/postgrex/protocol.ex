@@ -158,8 +158,9 @@ defmodule Postgrex.Protocol do
     reserved_error(query, s)
   end
   def handle_prepare(%Query{types: nil, name: ""} = query, opts, s) do
-    status = %{notify: notify(opts), mode: mode(opts)}
-    case Keyword.get(opts, :function) do
+    function = Keyword.get(opts, :function)
+    status = %{notify: notify(opts), mode: mode(opts), function: function}
+    case function do
       :prepare ->
         parse_describe_close(s, status, query)
       _ ->
@@ -171,8 +172,9 @@ defmodule Postgrex.Protocol do
     handle_prepare(%Query{query | name: ""}, opts, s)
   end
   def handle_prepare(%Query{types: nil} = query, opts,  s) do
-    status = %{notify: notify(opts), mode: mode(opts)}
-    case Keyword.get(opts, :function) do
+    function = Keyword.get(opts, :function)
+    status = %{notify: notify(opts), mode: mode(opts), function: function}
+    case function do
       :prepare ->
         close_parse_describe(s, status, query)
       _ ->
@@ -792,11 +794,25 @@ defmodule Postgrex.Protocol do
 
   ## prepare
 
-  defp prepare(%{sync: :sync}) do
-    {:sync, &sync_recv/4}
-  end
-  defp prepare(%{sync: :flush}) do
-    {:flush, &execute_ready/4}
+  defp parse_describe(%{buffer: buffer} = s, status, query) do
+    %Query{name: name, statement: statement} = query
+    msgs = [msg_parse(name: name, statement: statement, type_oids: []),
+            msg_describe(type: :statement, name: name),
+            msg_sync()]
+
+    with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
+         {:ok, query, s, buffer}
+          <- recv_parse_describe(s, status, query, buffer),
+         {:ok, s} <- recv_ready(s, status, buffer) do
+      {:ok, query, s}
+    else
+      {:reload, oid, s, buffer} ->
+        reload_ready(s, status, query, oid, buffer)
+      {:disconnect, err, s} ->
+        {:disconnect, err, s}
+      {:error, %Postgrex.Error{} = err, s, buffer} ->
+        error_ready(s, status, err, buffer)
+    end
   end
 
   defp parse_describe_close(%{buffer: buffer} = s, status, query) do
@@ -824,7 +840,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp parse_describe_flush(s, %{mode: :transaction} = status, query) do
-    %{buffer: buffer} = s 
+    %{buffer: buffer} = s
     %Query{name: name, statement: statement} = query
     msgs = [msg_parse(name: name, statement: statement, type_oids: []),
             msg_describe(type: :statement, name: name),
@@ -1329,7 +1345,7 @@ defmodule Postgrex.Protocol do
   defp reload_fetch(%{types: types} = s, status, query, oid, buffer) do
     case Postgrex.Types.fetch(oid, types) do
       {:ok, _} ->
-        reload_prepare(s, status, query, buffer)
+        reload_prepare(%{s | buffer: buffer}, status, query)
       {:error, %Postgrex.TypeInfo{} = info, mod} ->
         msg = Postgrex.Utils.type_msg(info, mod)
         reload_error(s, msg, buffer)
@@ -1339,14 +1355,18 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reload_prepare(%{queries: queries} = s, status, query, buffer) do
-    %Query{name: name, statement: statement} = query
-    query = %Query{name: name, statement: statement}
-    case prepare(status) do
-      {_, next} when is_nil(queries) ->
-        parse_describe(s, status, unnamed(query), buffer, next)
-      {_, next} ->
-        close_parse_describe(s, status, query, buffer, next)
+  defp reload_prepare(s, %{function: function} = status, query) do
+    %Query{name: name} = query
+    case function do
+      :prepare when name == "" ->
+        # unnamed queries closed on prepare when not re-using
+        parse_describe_close(s, status, query)
+      :prepare ->
+        # named queries closed when oid not found
+        parse_describe(s, status, query)
+      _ ->
+        # flush awaiting execute or declare
+        parse_describe_flush(s, status, query)
     end
   end
 
@@ -1385,11 +1405,6 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = dis ->
         dis
     end
-  end
-
-  defp execute_ready(%{postgres: postgres} = s, _, query, buffer) do
-    %Query{ref: ref} = query
-    ok(s, query, {postgres, ref}, buffer)
   end
 
   ## execute
