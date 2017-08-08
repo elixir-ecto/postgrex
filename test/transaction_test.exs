@@ -240,8 +240,8 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
         P.query(conn, "INSERT INTO uniques VALUES (1), (1)", [])
 
-      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
-        P.query(conn, "SELECT 42", [], [mode: :savepoint])
+      assert_raise DBConnection.TransactionError, "transaction is aborted",
+        fn -> P.query(conn, "SELECT 42", [], [mode: :savepoint]) end
 
       assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
         P.query(conn, "SELECT 42", [])
