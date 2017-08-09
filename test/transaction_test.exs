@@ -253,17 +253,16 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
-  test "savepoint query handles release savepoint error", context do
+  test "savepoint query disconnects on release savepoint error", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [], [mode: :savepoint])
 
-      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
-        P.query(conn, "SELECT 42", [])
+      assert_raise DBConnection.ConnectionError, "connection is closed",
+        fn -> P.query(conn, "SELECT 42", []) end
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
-
-    assert [[42]] = query("SELECT 42", [])
   end
 
   @tag mode: :transaction
@@ -423,15 +422,6 @@ defmodule TransactionTest do
 
     assert [[42]] = query("SELECT 42", [])
     assert :ok = query("ROLLBACK", [])
-  end
-
-  @tag mode: :transaction
-  test "COPY FROM STDIN with copy_data: false, mode: :savepoint returns error", context do
-    transaction(fn(conn) ->
-      assert {:error, %Postgrex.Error{}} =
-        Postgrex.query(conn, "COPY uniques FROM STDIN", [], [mode: :savepoint])
-      assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
-    end)
   end
 
   @tag mode: :transaction
