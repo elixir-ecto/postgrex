@@ -329,15 +329,13 @@ defmodule Postgrex.Protocol do
     {:error, Postgrex.Error.t, state} |
     {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_fetch(query, cursor, opts, %{postgres: {postgres, ref}} = s) do
+  def handle_fetch(query, cursor, opts, %{postgres: {_, ref}} = s) do
     case cursor do
       %Cursor{ref: ^ref, mode: mode} ->
-        %{buffer: buffer} = s
-        s = %{s | postgres: postgres, buffer: nil}
-        status = %{notify: notify(opts), mode: mode, sync: :sync}
+        status = %{notify: notify(opts), mode: mode}
         max_rows = Keyword.get(opts, :max_rows, @max_rows)
-        copy_out_portal(s, status, query, cursor, max_rows, buffer)
-      _ ->
+        fetch_copy_out(s, status, query, max_rows)
+    _ ->
         lock_error(s, "fetch", cursor)
     end
   end
@@ -352,10 +350,10 @@ defmodule Postgrex.Protocol do
     {:error, Postgrex.Error.t, state} |
     {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_deallocate(query, %Cursor{ref: ref} = cursor, opts,
+  def handle_deallocate(query, %Cursor{ref: ref}, opts,
       %{postgres: {_, ref}} = s) do
     status = %{notify: notify(opts), mode: mode(opts)}
-    copy_out_done(s, status, query, cursor)
+    copy_out_done(s, status, query)
   end
   def handle_deallocate(_, %Cursor{} = cursor, _, %{postgres: {_, _}} = s) do
     lock_error(s, :deallocate, cursor)
@@ -1629,7 +1627,10 @@ defmodule Postgrex.Protocol do
       {:ok, msg_copy_in_response(), [], buffer} ->
         copy_in_disconnect(s, query, buffer)
       {:ok, msg_copy_out_response(), [],  buffer} ->
-        recv_copy_out(s, status, query, cursor, max_rows, [], buffer)
+        %{postgres: postgres} = s
+        %Cursor{ref: ref} = cursor
+        s = %{s | postgres: {postgres, ref}}
+        recv_copy_out(s, status, query, max_rows, [], buffer)
       {:ok, msg_copy_both_response(), [], buffer} ->
         copy_both_disconnect(s, query, buffer)
       {:ok, msg, rows, buffer} ->
@@ -1640,32 +1641,62 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp recv_copy_out(s, status, query, cursor, max_rows, [], buffer) do
-    max_rows = if max_rows == 0, do: :infinity, else: max_rows
-    recv_copy_out(s, status, query, cursor, max_rows, [], 0, buffer)
+  defp fetch_copy_out(%{buffer: buffer} = s, %{mode: :transaction} = status,
+       query, max_rows) do
+    s = %{s | buffer: nil}
+    with {:halt, result, s, buffer}
+          <- recv_copy_out(s, status, query, max_rows, [], buffer),
+         {:ok, s} <- recv_ready(s, status, buffer) do
+      {:halt, result, s}
+    else
+      {:copy_out, result, s} ->
+        {:cont, result, s}
+      {:error, err, s, buffer} ->
+        error_ready(s, status, err, buffer)
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
+  end
+  defp fetch_copy_out(%{buffer: buffer} = s, %{mode: :savepoint} = status,
+       query, max_rows) do
+    s = %{s | buffer: nil}
+    with {:halt, result, s, buffer}
+          <- recv_copy_out(s, status, query, max_rows, [], buffer),
+         {:ok, _, s} <- recv_transaction(s, status, buffer) do
+      {:halt, result, s}
+    else
+      {:copy_out, result, s} ->
+        {:cont, result, s}
+      {:error, err, s, buffer} ->
+        rollback_flushed(s, status, err, buffer)
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
   end
 
-  defp recv_copy_out(s, _, query, cursor, max_rows, acc, max_rows, buffer) do
-    result = done(s, query, acc, :copy_stream, max_rows)
-    %{postgres: postgres} = s
-    %Cursor{ref: ref} = cursor
-    {:copy_out, result, %{s | postgres: {postgres, ref}, buffer: buffer}}
+  defp recv_copy_out(s, status, query, max_rows, [], buffer) do
+    max_rows = if max_rows == 0, do: :infinity, else: max_rows
+    recv_copy_out(s, status, query, max_rows, [], 0, buffer)
   end
-  defp recv_copy_out(s, status, query, cursor, max_rows, acc, nrows, buffer) do
+
+  defp recv_copy_out(s, _, query, max_rows, acc, max_rows, buffer) do
+    s = %{s | buffer: buffer}
+    {:copy_out, done(s, query, acc, :copy_stream, max_rows), s}
+  end
+  defp recv_copy_out(s, status, query, max_rows, acc, nrows, buffer) do
      case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(data: data), buffer} ->
-        acc = [data | acc]
-        recv_copy_out(s, status, query, cursor, max_rows, acc, nrows+1, buffer)
+        recv_copy_out(s, status, query, max_rows, [data | acc], nrows+1, buffer)
       {:ok, msg_copy_done(), buffer} ->
-        recv_copy_out(s, status, query, cursor, max_rows, acc, nrows, buffer)
+        recv_copy_out(s, status, query, max_rows, acc, nrows, buffer)
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        {:halt, done(s, query, acc, tag), s, buffer}
+        {:halt, halt(s, query, acc, tag), s, buffer}
       {:ok, msg_error(fields: fields), buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
       {:ok, msg, buffer} ->
         s
         |> handle_msg(status, msg)
-        |> recv_copy_out(status, query, cursor, max_rows, acc, nrows, buffer)
+        |> recv_copy_out(status, query, max_rows, acc, nrows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1805,63 +1836,6 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, done(s, query, rows, tag), buffer)
   end
 
-  defp halt(s, status, query, rows, tag, buffer) do
-    case complete(s, status, query, rows, tag, buffer) do
-      {:ok, %Postgrex.Result{rows: rows} = res, s} when is_list(rows) ->
-        {:halt, %Postgrex.Result{res | num_rows: length(rows)}, s}
-      {:ok, res, s} ->
-        {:halt, res, s}
-      {error, _, _} = other when error in [:error, :disconnect] ->
-        other
-    end
-  end
-
-  defp copy_out_portal(s, status, query, cursor, max_rows, buffer) do
-    max_rows = if max_rows == 0, do: :infinity, else: max_rows
-    copy_out_recv(s, status, query, cursor, max_rows, [], 0, buffer)
-  end
-
-  defp copy_out_recv(s, _, _, cursor, max_rows, acc, max_rows, buffer) do
-    %Cursor{ref: ref} = cursor
-    %{postgres: postgres, connection_id: connection_id} = s
-    result = %Postgrex.Result{command: :copy_stream, num_rows: max_rows,
-                              rows: acc, columns: nil,
-                              connection_id: connection_id}
-    {:cont, result, %{s | postgres: {postgres, ref}, buffer: buffer}}
-  end
-  defp copy_out_recv(s, status, query, cursor, max_rows, acc, nrows, buffer) do
-     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_copy_data(data: data), buffer} ->
-        acc = [data | acc]
-        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows + 1, buffer)
-      {:ok, msg_copy_done(), buffer} ->
-        copy_out_portal_done(s, status, query, acc, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
-        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_out_portal_done(s, status, query, acc, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        halt(s, status, query, acc, tag, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
-        copy_out_portal_done(s, status, query, acc, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
   defp copy_in_data(s, %{mode: :transaction}, copy, data) do
     %Copy{portal: portal, ref: ref} = copy
     msgs = [msg_execute(name_port: portal, max_rows: 0),
@@ -1982,11 +1956,11 @@ defmodule Postgrex.Protocol do
 
   ## close
 
-  defp copy_out_done(s, %{mode: :transaction} = status, query, cursor) do
+  defp copy_out_done(s, %{mode: :transaction} = status, query) do
     %{buffer: buffer} = s
     s = %{s | buffer: nil}
     with {:halt, result, s, buffer} <-
-           recv_copy_out(s, status, query, cursor, :infinity, [], buffer),
+           recv_copy_out(s, status, query, :infinity, [], buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, result, s}
     else
@@ -1996,11 +1970,11 @@ defmodule Postgrex.Protocol do
         disconnect
     end
   end
-  defp copy_out_done(s, %{mode: :savepoint} = status, query, cursor) do
+  defp copy_out_done(s, %{mode: :savepoint} = status, query) do
     %{buffer: buffer} = s
     s = %{s | buffer: nil}
     with {:halt, result, s, buffer} <-
-           recv_copy_out(s, status, query, cursor, :infinity, [], buffer),
+           recv_copy_out(s, status, query, :infinity, [], buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
       {:ok, result, s}
     else
