@@ -942,9 +942,16 @@ defmodule QueryTest do
     end
   end
 
-  test "COPY FROM STDIN  returns error", context do
-    assert %Postgrex.Error{postgres: %{code: :query_canceled}} =
-      query("COPY uniques FROM STDIN", [])
+  test "COPY FROM STDIN disconnects", context do
+    Process.flag(:trap_exit, true)
+
+    capture_log fn ->
+      assert_raise RuntimeError,
+        ~r"trying to copy in but no copy data to send",
+        fn() -> query("COPY uniques FROM STDIN", []) end
+      pid = context[:pid]
+      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
+    end
   end
 
   test "COPY TO STDOUT", context do
