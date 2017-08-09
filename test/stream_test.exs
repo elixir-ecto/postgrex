@@ -346,17 +346,11 @@ defmodule StreamTest do
     end)
   end
 
-  test "stream from COPY FROM STDIN", context do
+  test "stream from COPY FROM STDIN disconnects", context do
     query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
-      assert_raise Postgrex.Error, ~r"\(query_canceled\)",
+      assert_raise RuntimeError, ~r"trying to copy in but no copy data to send",
         fn() -> stream(query, []) |> Enum.to_list() end
-      Postgrex.rollback(conn, :done)
-    end)
-
-    transaction(fn(conn) ->
-      assert_raise Postgrex.Error, ~r"\(protocol_violation\)",
-        fn() -> stream(query, [], [mode: :savepoint]) |> Enum.to_list() end
       Postgrex.rollback(conn, :done)
     end)
   end

@@ -1,6 +1,6 @@
 defmodule Postgrex.Stream do
   @moduledoc false
-  defstruct [:conn, :query, :params, :options, max_rows: 500]
+  defstruct [:conn, :query, :params, :options]
   @type t :: %Postgrex.Stream{}
 end
 defmodule Postgrex.Cursor do
