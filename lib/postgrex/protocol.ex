@@ -296,11 +296,9 @@ defmodule Postgrex.Protocol do
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
     {:error | :disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_close(%Query{ref: ref} = query, opts, %{postgres: {postgres, ref}} = s) do
-    %{connection_id: connection_id, buffer: buffer} = s
-    status = %{notify: notify(opts), mode: mode(opts), sync: :flushed_sync}
-    res = %Postgrex.Result{command: :close, connection_id: connection_id}
-    close(%{s | postgres: postgres, buffer: nil}, status, query, res, buffer)
+  def handle_close(%Query{ref: ref} = query, opts, %{postgres: {_, ref}} = s) do
+    status = %{notify: notify(opts), mode: mode(opts)}
+    flushed_close(s, status, query)
   end
   def handle_close(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :close, query)
@@ -309,10 +307,8 @@ defmodule Postgrex.Protocol do
     reserved_error(query, s)
   end
   def handle_close(%Query{} = query, opts, s) do
-    %{connection_id: connection_id, buffer: buffer} = s
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    res = %Postgrex.Result{command: :close, connection_id: connection_id}
-    close(%{s | buffer: nil}, status, query, res, buffer)
+    status = %{notify: notify(opts), mode: mode(opts)}
+    close(s, status, query)
   end
   def handle_close(%Stream{query: query}, opts, s) do
     handle_close(query, opts, s)
@@ -2057,33 +2053,47 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp close(s, status, %Query{name: name} = query, result, buffer) do
-    messages = [msg_close(type: :statement, name: name)]
-    close(s, status, query, buffer, result, messages)
+  defp flushed_close(s, %{mode: :transaction} = status, query) do
+    # closing query without transaction if not flushed is the same as if doing
+    # with preparing immediately before.
+    close(s, status, query)
   end
+  defp flushed_close(s, %{mode: :savepoint} = status, query) do
+    %Query{name: name} = query
+    rollback_release =
+          "ROLLBACK TO SAVEPOINT postgrex_savepoint;RELEASE SAVEPOINT postgrex_savepoint"
+    msgs = [msg_close(type: :statement, name: name),
+            msg_query(statement: rollback_release)]
 
-  defp close(s, status, query, buffer, result, messages) do
-    sync_recv = fn(s, status, _query, buffer) ->
-      sync_recv(s, status, result, buffer)
-    end
-    recv = &close_recv(&1, &2, &3, &4, sync_recv)
-    send_and_recv(s, status, query, buffer, messages, recv)
-  end
-
-  defp close_recv(s, status, query, buffer, recv) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_close_complete(), buffer} ->
-        query_delete(s, query)
-        recv.(s, status, query, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        sync_recv(s, status, Postgrex.Error.exception(postgres: fields), buffer)
-      {:ok, msg, buffer} ->
-        close_recv(handle_msg(s, status, msg), status, query, buffer, recv)
-      {:disconnect, _, _} = dis ->
-        dis
+    %{buffer: buffer} = s
+    with :ok <- msg_send(%{s | buffer: nil}, msgs,  buffer),
+         {:ok, s, buffer} <- recv_close(s, status, buffer),
+         query_delete(s, query),
+         {:ok, _, s} <- recv_transaction(s, status, buffer) do
+      %{connection_id: connection_id} = s
+      {:ok, %Postgrex.Result{command: :close, connection_id: connection_id}, s}
+    else
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
     end
   end
 
+  defp close(s, status, %Query{name: name} = query) do
+    msgs = [msg_close(type: :statement, name: name),
+            msg_sync()]
+
+    %{buffer: buffer} = s
+    with :ok <- msg_send(%{s | buffer: nil}, msgs,  buffer),
+         {:ok, s, buffer} <- recv_close(s, status, buffer),
+         query_delete(s, query),
+         {:ok, s} <- recv_ready(s, status, buffer) do
+      %{connection_id: connection_id} = s
+      {:ok, %Postgrex.Result{command: :close, connection_id: connection_id}, s}
+    else
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
+  end
   defp close(s, status, %{portal: portal}) do
     msgs = [msg_close(type: :portal, name: portal),
             msg_sync()]
@@ -2095,8 +2105,6 @@ defmodule Postgrex.Protocol do
       %{connection_id: connection_id} = s
       {:ok, %Postgrex.Result{command: :close, connection_id: connection_id}, s}
     else
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        error_ready(s, status, err, buffer)
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
