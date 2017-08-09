@@ -146,15 +146,6 @@ defmodule StreamTest do
     end)
   end
 
-  test "raise when trying to stream reserved query", context do
-    query = prepare("", "BEGIN")
-
-    transaction(fn(conn) ->
-      assert_raise ArgumentError, ~r/uses reserved name/,
-        fn -> stream(%{query | name: "POSTGREX_COMMIT"}, []) |> Enum.take(1) end
-    end)
-  end
-
   test "stream struct interpolates to statement", context do
     query = prepare("", "BEGIN")
     transaction(fn(conn) ->
@@ -538,16 +529,6 @@ defmodule StreamTest do
     transaction(fn(conn) ->
       stream = stream(query, [])
       assert_raise ArgumentError, ~r/has not been prepared/,
-        fn -> Enum.into(["5\n"], stream) end
-    end)
-  end
-
-  test "raise when trying to COPY FROM reserved query", context do
-    query = prepare("", "COPY uniques FROM STDIN")
-
-    transaction(fn(conn) ->
-      stream = stream(%Postgrex.Query{query | name: "POSTGREX_BEGIN"}, [])
-      assert_raise ArgumentError, ~r/uses reserved name/,
         fn -> Enum.into(["5\n"], stream) end
     end)
   end

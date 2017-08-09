@@ -861,23 +861,6 @@ defmodule QueryTest do
       fn -> execute(%Postgrex.Query{name: "hi", statement: "BEGIN"}, []) end
   end
 
-  test "raise when trying to prepare or close reserved query", context do
-    assert_raise ArgumentError, ~r/uses reserved name/,
-      fn -> prepare("POSTGREX_BEGIN", "COMMIT") end
-
-    query = prepare("BEGIN", "BEGIN")
-    query = %Postgrex.Query{query | name: "POSTGREX_BEGIN"}
-
-    assert_raise ArgumentError, ~r/uses reserved name/, fn -> close(query) end
-  end
-
-  test "raise when trying to execute reserved query", context do
-    query = prepare("", "BEGIN")
-
-    assert_raise ArgumentError, ~r/uses reserved name/,
-      fn -> execute(%{query | name: "POSTGREX_COMMIT"}, []) end
-  end
-
   test "query struct interpolates to statement" do
     assert "#{%Postgrex.Query{statement: "BEGIN"}}" == "BEGIN"
   end
