@@ -37,11 +37,6 @@ defmodule Postgrex.Protocol do
                              buffer: nil | binary | :active_once}
   @type notify :: ((binary, binary) -> any)
 
-  @reserved_prefix "POSTGREX_"
-  @reserved_queries ["SAVEPOINT postgrex_query",
-                     "RELEASE SAVEPOINT postgrex_query",
-                     "ROLLBACK TO SAVEPOINT postgrex_query"]
-
   @spec connect(Keyword.t) ::
     {:ok, state} |
     {:error, Postgrex.Error.t | %DBConnection.ConnectionError{}}
@@ -154,9 +149,6 @@ defmodule Postgrex.Protocol do
   def handle_prepare(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :prepare, query)
   end
-  def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
-    reserved_error(query, s)
-  end
   def handle_prepare(%Query{types: nil, name: ""} = query, opts, s) do
     function = Keyword.get(opts, :function)
     status = %{notify: notify(opts), mode: mode(opts), function: function}
@@ -231,9 +223,6 @@ defmodule Postgrex.Protocol do
   def handle_execute(%Query{types: nil} = query, _, _, s) do
     query_error(s, "query #{inspect query} has not been prepared")
   end
-  def handle_execute(%Query{name: @reserved_prefix <> _} = query, _, _, s) do
-    reserved_error(query, s)
-  end
   def handle_execute(%Query{types: types} = query, params, opts,
       %{types: types} = s) do
     if query_member?(s, query) do
@@ -300,9 +289,6 @@ defmodule Postgrex.Protocol do
   end
   def handle_close(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :close, query)
-  end
-  def handle_close(%Query{name: @reserved_prefix <> _} = query, _, s) do
-    reserved_error(query, s)
   end
   def handle_close(%Query{} = query, opts, s) do
     status = %{notify: notify(opts), mode: mode(opts)}
@@ -664,7 +650,7 @@ defmodule Postgrex.Protocol do
         status = %{status | types_lock: {server, ref}}
         bootstrap_send(%{s | types: types}, status, types, buffer)
       {:go, types} ->
-        reserve_send(%{s | types: types}, status, buffer)
+        bootstrap_done(%{s | types: types}, status, buffer)
       :noproc ->
         bootstrap(s, status, buffer)
       :error ->
@@ -719,7 +705,7 @@ defmodule Postgrex.Protocol do
   defp bootstrap_sync_recv(s, status, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_ready(status: :idle), buffer} ->
-        reserve_send(s, status, buffer)
+        bootstrap_done(s, status, buffer)
       {:ok, msg_ready(status: postgres), buffer} ->
         sync_error(s, postgres, buffer)
       {:ok, msg, buffer} ->
@@ -729,6 +715,11 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp bootstrap_done(s, %{prepare: :unnamed}, buffer),
+    do: activate(s, buffer)
+  defp bootstrap_done(s, %{prepare: :named}, buffer),
+    do: activate(%{s | queries: queries_new()}, buffer)
+
   defp bootstrap_fail(s, err, %{types_lock: {server, ref}}) do
     TypeServer.fail(server, ref)
     {:disconnect, err, s}
@@ -736,42 +727,6 @@ defmodule Postgrex.Protocol do
 
   defp bootstrap_fail(s, err, status, buffer) do
     bootstrap_fail(%{s | buffer: buffer}, err, status)
-  end
-
-  defp reserve_send(s, %{prepare: :unnamed}, buffer) do
-    activate(s, buffer)
-  end
-  defp reserve_send(s, %{prepare: :named} = status, buffer) do
-    case msg_send(s, reserve_msgs() ++ [msg_sync()], buffer) do
-      :ok ->
-        reserve_recv(s, status, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp reserve_msgs() do
-    for statement <- @reserved_queries do
-      name = @reserved_prefix <> statement
-      msg_parse(name: name, statement: statement, type_oids: [])
-    end
-  end
-
-  defp reserve_recv(s, status, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_parse_complete(), buffer} ->
-        reserve_recv(s, status, buffer)
-      {:ok, msg_ready(status: :idle), buffer} ->
-        activate(%{s | queries: queries_new()}, buffer)
-      {:ok, msg_ready(status: postgres), buffer} ->
-        sync_error(s, postgres, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
-      {:ok, msg, buffer} ->
-        reserve_recv(handle_msg(s, status, msg), status, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
   end
 
   defp type_fetch_error() do
@@ -1471,9 +1426,6 @@ defmodule Postgrex.Protocol do
   end
   defp handle_bind(query, _, _, _, %{postgres: {_, _}} = s) do
     lock_error(s, :bind, query)
-  end
-  defp handle_bind(%Query{name: @reserved_prefix <> _} = query, _, _, _, s) do
-    reserved_error(query, s)
   end
   defp handle_bind(%Query{types: nil} = query, _, _, _, s) do
     query_error(s, "query #{inspect query} has not been prepared")
@@ -2334,11 +2286,6 @@ defmodule Postgrex.Protocol do
 
   defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
-  end
-
-  defp reserved_error(query, s) do
-    err = ArgumentError.exception("query #{inspect query} uses reserved name")
-    {:error, err, s}
   end
 
   defp sync_recv(s, status, buffer) do
