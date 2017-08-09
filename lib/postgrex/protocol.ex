@@ -271,18 +271,16 @@ defmodule Postgrex.Protocol do
         copy_in_data(s, iodata)
       %{postgres: {_, _}} ->
         lock_error(s, :execute, copy)
-      %{buffer: buffer} ->
-        status = %{notify: notify(opts), mode: mode(opts), sync: :flush}
-        copy_in_data(%{s | buffer: nil}, status, copy, iodata, buffer)
+      _ ->
+        status = %{notify: notify(opts), mode: mode(opts)}
+        copy_in_data(s, status, copy, iodata)
     end
   end
   def handle_execute(%Copy{ref: ref} = copy, :copy_done, opts, s) do
     case s do
-      %{postgres: {postgres, ^ref}} ->
-        status = %{notify: notify(opts), mode: mode(opts), sync: :flushed_sync}
-        %{buffer: buffer} = s
-        s = %{s | postgres: postgres, buffer: nil}
-        copy_in_done(s, status, copy, buffer)
+      %{postgres: {_, ^ref}} ->
+        status = %{notify: notify(opts), mode: mode(opts)}
+        copy_in_done(s, status, copy)
       %{postgres: {_, _}} ->
         lock_error(s, :execute, copy)
       _ ->
@@ -1430,6 +1428,11 @@ defmodule Postgrex.Protocol do
     {:disconnect, RuntimeError.exception(msg), %{s | buffer: buffer}}
   end
 
+  defp copy_both_disconnect(s, query, buffer) do
+    msg = "query #{inspect query} is trying to copy both ways but it is not supported"
+    {:disconnect, RuntimeError.exception(msg), %{s | buffer: buffer}}
+  end
+
   defp recv_copy_out(s, status, query, acc \\ [], buffer) do
      case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(data: data), buffer} ->
@@ -1784,31 +1787,6 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, err, buffer)
   end
 
-  defp execute_recv(s, status, query, rows, buffer) do
-    %Query{result_types: types} = query
-    case rows_recv(s, types, rows, buffer) do
-      {:ok, msg_command_complete(tag: tag), rows, buffer} ->
-        complete(s, status, query, rows, tag, buffer)
-      {:ok, msg_error(fields: fields), _, buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg_empty_query(), [], buffer} ->
-        complete(s, status, query, [], nil, buffer)
-      {:ok, msg_copy_in_response(), [], buffer} ->
-        msg = "query #{inspect query} is trying to copying but no copy data to send"
-        err = ArgumentError.exception(msg)
-        copy_fail(s, status, err, buffer)
-      {:ok, msg_copy_out_response(), [], buffer} ->
-        copy_out(s, status, query, buffer)
-      {:ok, msg_copy_both_response(), [], buffer} ->
-        copy_both_disconnect(s, query, buffer)
-      {:ok, msg, rows, buffer} ->
-        execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
   defp execute_listener_recv(s, status, query, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
@@ -1835,68 +1813,6 @@ defmodule Postgrex.Protocol do
         {:halt, res, s}
       {error, _, _} = other when error in [:error, :disconnect] ->
         other
-    end
-  end
-
-  defp copy_fail(s, %{mode: :transaction} = status, err, buffer) do
-    msg = Exception.message(err)
-    messages = [msg_copy_fail(message: msg), msg_sync()]
-    case msg_send(s, messages, buffer) do
-      :ok ->
-        copy_fail_recv(s, status, err, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-  defp copy_fail(s, %{mode: :savepoint} = status, err, buffer) do
-    # Releasing savepoint will cause an error so receive that
-    copy_fail_recv(s, status, err, buffer)
-  end
-
-  defp copy_fail_recv(s, status, err, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        copy_fail_recv(handle_msg(s, status, msg), status, err, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_out(s, status, %Query{} = query, buffer) do
-    copy_out_recv(s, status, query, [], buffer)
-  end
-
-  defp copy_out_recv(s, status, query, acc, buffer) do
-     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_copy_data(data: data), buffer} ->
-        copy_out_recv(s, status, query, [data | acc], buffer)
-      {:ok, msg_copy_done(), buffer} ->
-        copy_out_done(s, status, query, acc, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        copy_out_recv(handle_msg(s, status, msg), status, query, acc, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp copy_out_done(s, status, query, acc, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, acc, tag, buffer)
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
-      {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
-        copy_out_done(s, status, query, acc, buffer)
-      {:disconnect, _, _} = dis ->
-        dis
     end
   end
 
@@ -1946,80 +1862,122 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp copy_in_data(s, status, %Copy{portal: portal} = copy, data, buffer) do
-    msgs = [
-      msg_execute(name_port: portal, max_rows: 0),
-      data]
-    send_and_recv(s, status, copy, buffer, msgs, &copy_in_ready/4)
+  defp copy_in_data(s, %{mode: :transaction}, copy, data) do
+    %Copy{portal: portal, ref: ref} = copy
+    msgs = [msg_execute(name_port: portal, max_rows: 0),
+            data]
+    %{postgres: postgres, buffer: buffer} = s
+    case msg_send(s, msgs, buffer) do
+      :ok ->
+        {:ok, copied(s), %{s | postgres: {postgres, ref}}}
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
   end
-
-  defp copy_in_ready(s, _status, %Copy{ref: ref}, buffer) do
-    %{connection_id: connection_id, postgres: postgres} = s
-    res = %Postgrex.Result{connection_id: connection_id, command: :copy_stream,
-                           rows: nil, num_rows: :copy_stream}
-    ok(s, res, {postgres, ref}, buffer)
+  defp copy_in_data(s, %{mode: :savepoint} = status, copy, data) do
+    %Copy{portal: portal, ref: ref} = copy
+    msgs = [msg_query(statement: "SAVEPOINT postgrex_query"),
+            msg_execute(name_port: portal, max_rows: 0),
+            data]
+    %{buffer: buffer} = s
+    with :ok <- msg_send(%{s | buffer: nil}, msgs,  buffer),
+         {:ok, _, %{postgres: postgres} = s} <-
+           recv_transaction(s, status, buffer) do
+      {:ok, copied(s), %{s | postgres: {postgres, ref}}}
+    else
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
   end
 
   defp copy_in_data(%{sock: {mod, sock}} = s, data) do
     case mod.send(sock, data) do
       :ok ->
-        %{connection_id: connection_id} = s
-        res = %Postgrex.Result{command: :copy_stream, num_rows: nil, rows: nil,
-                               columns: nil, connection_id: connection_id}
-        {:ok, res, s}
+        {:ok, copied(s), s}
       {:error, reason} ->
         disconnect(s, tag(mod), "send", reason)
     end
   end
 
-  defp copy_in_done(s, status, %Copy{query: query}, buffer) do
-    msgs = [msg_copy_done()]
-    send_and_recv(s, status, query, buffer, msgs, &copy_in_recv/4)
+  defp copied(%{connection_id: connection_id}) do
+    %Postgrex.Result{command: :copy_stream, num_rows: :copy_stream, rows: nil,
+      columns: nil, connection_id: connection_id}
   end
 
-  defp copy_in_recv(s, status, query, buffer) do
+  defp copy_in_done(s, %{mode: :transaction} = status, %Copy{query: query}) do
+    msgs = [msg_copy_done(),
+            msg_sync()]
+
+   %{buffer: buffer} = s
+    with :ok <- msg_send(%{s | buffer: nil}, msgs,  buffer),
+         {:ok, result, s, buffer} <- recv_copy_in(s, status, query, buffer),
+         {:ok, s} <- recv_ready(s, status, buffer) do
+      {:ok, result, s}
+    else
+      {:error, %Postgrex.Error{} = err, s, buffer} ->
+        error_ready(s, status, err, buffer)
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
+  end
+  defp copy_in_done(s, %{mode: :savepoint} = status, %Copy{query: query}) do
+    msgs = [msg_copy_done(),
+            msg_query(statement: "RELEASE SAVEPOINT postgrex_query")]
+
+   %{buffer: buffer} = s
+    with :ok <- msg_send(%{s | buffer: nil}, msgs,  buffer),
+         {:ok, result, s, buffer} <- recv_copy_in(s, status, query, buffer),
+         {:ok, _, s} <- recv_transaction(s, status, buffer) do
+      {:ok, result, s}
+    else
+      {:error, %Postgrex.Error{} = err, s, buffer} ->
+        rollback_flushed(s, status, err, buffer)
+      {:disconnect, _err, _s} = disconnect ->
+        disconnect
+    end
+  end
+
+  defp recv_copy_in(s, status, query, buffer) do
     %Query{result_types: types} = query
     case rows_recv(s, types, [], buffer) do
       {:ok, msg_copy_in_response(), [], buffer} ->
-        copy_in_done_recv(s, status, query, buffer)
+        recv_copy_in_done(s, status, query, buffer)
       {:ok, msg_command_complete(tag: tag), rows, buffer} ->
-        complete(s, status, query, rows, tag, buffer)
+        {:ok, done(s, query, rows, tag), s, buffer}
       {:ok, msg_empty_query(), [], buffer} ->
-        complete(s, status, query, [], nil, buffer)
+        {:ok, done(s, query, nil, nil), s, buffer}
       {:ok, msg_error(fields: fields), _, buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
+        {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
       {:ok, msg_copy_out_response(), [], buffer} ->
-        copy_out(s, status, query, buffer)
+        recv_copy_out(s, status, query, buffer)
       {:ok, msg_copy_both_response(), [], buffer} ->
         copy_both_disconnect(s, query, buffer)
       {:ok, msg, [], buffer} ->
-        copy_in_recv(handle_msg(s, status, msg), status, query, buffer)
+        s
+        |> handle_msg(status, msg)
+        |> recv_copy_in(status, query, buffer)
       {:ok, msg, [_|_] = rows, buffer} ->
-        execute_recv(handle_msg(s, status, msg), status, query, rows, buffer)
+        s
+        |> handle_msg(status, msg)
+        |> recv_execute(status, query, rows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
   end
 
-  defp copy_in_done_recv(s, status, query, buffer) do
+  defp recv_copy_in_done(s, status, query, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        complete(s, status, query, nil, tag, buffer)
+        {:ok, done(s, query, nil, tag), s, buffer}
       {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        sync_recv(s, status, err, buffer)
+        {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
       {:ok, msg, buffer} ->
-        copy_in_done_recv(handle_msg(s, status, msg), status, query, buffer)
+        s
+        |> handle_msg(status, msg)
+        |> recv_copy_in_done(status, query, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
-  end
-
-  defp copy_both_disconnect(s, query, buffer) do
-    msg = "query #{inspect query} is trying to copy both ways but it is not supported"
-    err = ArgumentError.exception(msg)
-    {:disconnect, err, %{s | buffer: buffer}}
   end
 
   ## close
