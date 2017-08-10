@@ -144,7 +144,7 @@ defmodule Postgrex.Protocol do
   @spec handle_prepare(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Query.t, state} |
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_prepare(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :prepare, query)
@@ -204,7 +204,7 @@ defmodule Postgrex.Protocol do
   @spec handle_execute(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_execute(%Query{ref: ref, name: name} = query, params, opts,
       %{postgres: {_, ref}} = s) do
@@ -239,7 +239,7 @@ defmodule Postgrex.Protocol do
   @spec handle_execute(Postgrex.Stream.t, list, Keyword.t, state) ::
     {:ok, Copy.t, state} |
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_execute(%Stream{query: query}, params, opts, s) do
     %{connection_id: connection_id} = s
@@ -252,7 +252,7 @@ defmodule Postgrex.Protocol do
                        Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_execute(%Copy{ref: ref} = copy, {:copy_data, iodata}, opts, s) do
     case s do
@@ -281,7 +281,7 @@ defmodule Postgrex.Protocol do
   @spec handle_close(Postgrex.Query.t | Postgrex.Stream.t, Keyword.t, state) ::
     {:ok, Postgrex.Result.t, state} |
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_close(%Query{ref: ref} = query, opts, %{postgres: {_, ref}} = s) do
     status = %{notify: notify(opts), mode: mode(opts)}
@@ -301,7 +301,7 @@ defmodule Postgrex.Protocol do
   @spec handle_declare(Postgrex.Query.t, list, Keyword.t, state) ::
     {:ok, Postgrex.Cursor.t, state} |
     {:error, %ArgumentError{} | Postgrex.Error.t, state} |
-    {:error | :disconnect, %RuntimeError{}, state} |
+    {:disconnect, %RuntimeError{}, state} |
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_declare(query, params, opts, s) do
     %{connection_id: connection_id} = s
@@ -1224,7 +1224,7 @@ defmodule Postgrex.Protocol do
   defp lock_error(s, fun, query) do
     msg = "connection is locked copying to or from the database and " <>
       "can not #{fun} #{inspect query}"
-    {:error, RuntimeError.exception(msg), s}
+    {:disconnect, RuntimeError.exception(msg), s}
   end
 
   defp transaction_error(s, status) do
