@@ -206,10 +206,42 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
-  test "transaction works after failure in savepoint query parsing state", context do
+  test "transaction works after execute failure in savepoint query", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
       P.query(conn, "insert into uniques values (1), (1);", [], [mode: :savepoint])
+
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+      :hi
+    end) == {:ok, :hi}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  test "transaction works after parse failure in savepoint query", context do
+    assert transaction(fn(conn) ->
+      assert {:error, %Postgrex.Error{postgres: %{code: :syntax_error}}} =
+        P.query(conn, "NOT SQL", [], [mode: :savepoint])
+
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+
+    :hi
+    end) == {:ok, :hi}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  test "transaction works after parse failure in savepoint prepare", context do
+    assert transaction(fn(conn) ->
+      assert {:error, %Postgrex.Error{postgres: %{code: :syntax_error}}} =
+      P.prepare(conn, "", "NOT SQL", [mode: :savepoint])
+
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :syntax_error}}} =
+      P.prepare(conn, "insert", "NOT SQL", [mode: :savepoint])
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
       :hi

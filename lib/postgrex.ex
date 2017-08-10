@@ -258,6 +258,8 @@ defmodule Postgrex do
     case DBConnection.execute(conn, query, params, defaults(opts)) do
       {:ok, _} = ok ->
         ok
+      {:ok, _query, result} ->
+        {:ok, result}
       {:error, %Postgrex.Error{}} = error ->
         error
       {:error, err} ->
@@ -269,9 +271,15 @@ defmodule Postgrex do
   Runs an (extended) prepared query and returns the result or raises
   `Postgrex.Error` if there was an error. See `execute/4`.
   """
-  @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) :: Postgrex.Result.t
+  @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) ::
+    Postgrex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    DBConnection.execute!(conn, query, params, defaults(opts))
+    case DBConnection.execute!(conn, query, params, defaults(opts)) do
+      {_query, result} ->
+        result
+      result ->
+        result
+    end
   end
 
   @doc """
