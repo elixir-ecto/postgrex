@@ -1,6 +1,7 @@
 defmodule StreamTest do
   use ExUnit.Case, async: true
   import Postgrex.TestHelper
+  import ExUnit.CaptureLog
   alias Postgrex.Result
 
   setup context do
@@ -312,37 +313,39 @@ defmodule StreamTest do
   end
 
   test "COPY TO STDOUT locks connection", context do
+    Process.flag(:trap_exit, true)
+
     query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
+
     transaction(fn(conn) ->
       map =
         fn
-          %{command: :copy_stream}= result ->
+          _ ->
             assert_raise RuntimeError, ~r"connection is locked",
               fn() -> Postgrex.prepare(conn, "", "BEGIN") end
-            assert_raise RuntimeError, ~r"connection is locked",
-              fn() -> Postgrex.execute(conn, query, []) end
-            assert_raise RuntimeError, ~r"connection is locked",
-              fn() -> Postgrex.close(conn, query, []) end
-            result
-          %{command: :copy} = result ->
-            result
+            true
         end
 
-      assert [%{command: :copy_stream, rows: ["1\t2\n"], num_rows: 1},
-              %{command: :copy_stream, rows: ["3\t4\n"], num_rows: 1},
-              %{command: :copy, rows: [], num_rows: 0}] =
-        stream(query, [], [max_rows: 1])
-        |> Stream.map(map)
-        |> Enum.to_list()
+      capture_log fn ->
+        assert_raise DBConnection.ConnectionError, "connection is closed",
+          fn -> query |> stream([], [max_rows: 1]) |> Enum.map(map) end
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
+      end
     end)
   end
 
   test "stream from COPY FROM STDIN disconnects", context do
+    Process.flag(:trap_exit, true)
     query = prepare("", "COPY uniques FROM STDIN")
     transaction(fn(conn) ->
-      assert_raise RuntimeError, ~r"trying to copy in but no copy data to send",
-        fn() -> stream(query, []) |> Enum.to_list() end
-      Postgrex.rollback(conn, :done)
+
+      capture_log fn ->
+        assert_raise RuntimeError, ~r"trying to copy in but no copy data to send",
+          fn() -> query |> stream([]) |> Enum.to_list() end
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
+      end
     end)
   end
 
