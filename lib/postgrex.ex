@@ -457,7 +457,7 @@ defmodule Postgrex do
   end
 
   defp ensure_deps_started!(opts) do
-    if Keyword.get(opts, :ssl) and Application.start(:ssl) != {:error, {:already_started, :ssl}} do
+    if Keyword.get(opts, :ssl, false) and Application.start(:ssl) != {:error, {:already_started, :ssl}} do
       raise """
       SSL connection can not be established because `:ssl` application is not started,
       you can add it to `extra_application` in your `mix.exs`:
