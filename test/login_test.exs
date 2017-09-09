@@ -162,6 +162,17 @@ defmodule LoginTest do
     end
   end
 
+  test "socket connection" do
+    Process.flag(:trap_exit, true)
+    opts = [ hostname: "/tmp", port: 5432, username: "postgrex_cleartext_pw",
+             password: "postgrex_cleartext_pw", database: "postgres", backoff_type: :stop ]
+
+    capture_log fn ->
+      assert {:ok, pid} = P.start_link(opts)
+      assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+    end
+  end
+
   test "after connect function run" do
     parent = self()
     after_connect = fn(conn) -> send(parent, P.query(conn, "SELECT 42", [])) end
