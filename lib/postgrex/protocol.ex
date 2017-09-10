@@ -57,6 +57,10 @@ defmodule Postgrex.Protocol do
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl?       = opts[:ssl] || false
     types_mod  = Keyword.fetch!(opts, :types)
+    local?     = List.first(host) == ?/
+
+    host = if local?, do: {:local, "#{host}/.s.PGSQL.#{port}"}, else: host
+    port = if local?, do: 0, else: port
 
     transactions =
       case opts[:transactions] || :naive do
