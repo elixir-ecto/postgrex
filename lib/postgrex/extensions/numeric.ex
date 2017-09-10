@@ -102,7 +102,7 @@ defmodule Postgrex.Extensions.Numeric do
     acc * 10
   end
 
-  defp pow10(num) when num > 100, do: pow10(100) * pow10(num-100)
+  defp pow10(num) when num > 100, do: pow10(100) * pow10(num - 100)
 
   defp decode_numeric_int("", weight, acc), do: {acc, weight}
 

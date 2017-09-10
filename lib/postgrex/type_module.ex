@@ -149,7 +149,7 @@ defmodule Postgrex.TypeModule do
       defp encode_tuple(tuple, n, [oid | oids], [type | types], acc) do
         param = :erlang.element(n, tuple)
         acc = [acc, <<oid::uint32>> | encode_value(param, type)]
-        encode_tuple(tuple, n+1, oids, types, acc)
+        encode_tuple(tuple, n + 1, oids, types, acc)
       end
       defp encode_tuple(tuple, n, [], [], acc) when tuple_size(tuple) < n do
         acc
@@ -325,7 +325,7 @@ defmodule Postgrex.TypeModule do
         end
       end
       defp decode_rows(<<?D, size::int32, rest::binary>>, rem, _, rows) do
-        more = (size+1) - rem
+        more = (size + 1) - rem
         {:more, [?D, <<size::int32>> | rest], rows, more}
       end
       defp decode_rows(<<?D, rest::binary>>, _, _, rows) do
@@ -466,7 +466,7 @@ defmodule Postgrex.TypeModule do
       quote do
         [{unquote(extension), sub_oids, sub_types} | types] ->
           unquote(extension)(unquote(rest), sub_oids, sub_types,
-                             unquote(oids), types, unquote(n)+1, unquote(acc))
+                             unquote(oids), types, unquote(n) + 1, unquote(acc))
       end
     clause
   end
@@ -475,7 +475,7 @@ defmodule Postgrex.TypeModule do
       quote do
         [unquote(extension) | types] ->
           unquote(extension)(unquote(rest), unquote(oids), types,
-                             unquote(n)+1, unquote(acc))
+                             unquote(n) + 1, unquote(acc))
       end
     clause
   end

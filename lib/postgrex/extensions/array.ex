@@ -52,7 +52,7 @@ defmodule Postgrex.Extensions.Array do
     {"", ndims, lengths}
   end
 
-  defp encode([head|tail]=list, ndims, lengths, encoder) when is_list(head) do
+  defp encode([head|tail] = list, ndims, lengths, encoder) when is_list(head) do
     lengths = [length(list)|lengths]
     {data, ndims, lengths} = encode(head, ndims, lengths, encoder)
     [dimlength|_] = lengths
@@ -65,7 +65,7 @@ defmodule Postgrex.Extensions.Array do
         [acc|data]
       end)
 
-    {[data|rest], ndims+1, lengths}
+    {[data|rest], ndims + 1, lengths}
   end
 
   defp encode(list, ndims, lengths, encoder) do
@@ -104,13 +104,13 @@ defmodule Postgrex.Extensions.Array do
   end
   defp nest(elems, n, lengths, acc) do
     {row, elems} = nest(elems, lengths)
-    nest(elems, n-1, lengths, [row | acc])
+    nest(elems, n - 1, lengths, [row | acc])
   end
 
   defp nest_inner(elems, 0, acc) do
     {acc, elems}
   end
   defp nest_inner([elem | elems], n, acc) do
-    nest_inner(elems, n-1, [elem | acc])
+    nest_inner(elems, n - 1, [elem | acc])
   end
 end
