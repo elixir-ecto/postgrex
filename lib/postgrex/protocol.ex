@@ -452,7 +452,7 @@ defmodule Postgrex.Protocol do
 
     host = if local?, do: {:local, host}, else: host
     port = if local?, do: 0, else: port
-    sock_opts = Keyword.delete(sock_opts, :local)
+    sock_opts = sock_opts |> Keyword.delete(:local)
 
     case :gen_tcp.connect(host, port, sock_opts ++ @sock_opts, timeout) do
       {:ok, sock} when buffer? ->
