@@ -164,7 +164,9 @@ defmodule LoginTest do
 
   test "unix domain socket connection" do
     Process.flag(:trap_exit, true)
-    opts = [ hostname: "/tmp", port: 5432, username: "postgrex_cleartext_pw",
+
+    hostname = System.get_env("PG_SOCKET_DIR") || "/tmp"
+    opts = [ hostname: hostname, port: 5432, username: "postgrex_cleartext_pw",
              password: "postgrex_cleartext_pw", database: "postgres", backoff_type: :stop ]
 
     capture_log fn ->
