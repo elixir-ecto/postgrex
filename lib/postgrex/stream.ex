@@ -121,7 +121,7 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
       encode_msg(msg_copy_data(data: data))
     rescue
       ArgumentError ->
-        raise ArgumentError,
+        reraise ArgumentError,
           "expected iodata to copy to database, got: " <> inspect(data)
     else
       iodata ->
