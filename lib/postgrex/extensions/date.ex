@@ -5,7 +5,7 @@ defmodule Postgrex.Extensions.Date do
 
   @gd_epoch :calendar.date_to_gregorian_days({2000, 1, 1})
   @max_year 9999
-  @max_days 3652424
+  @max_days 3_652_424
 
   def encode(_) do
     quote location: :keep do

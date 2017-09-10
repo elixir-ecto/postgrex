@@ -15,7 +15,7 @@ defmodule Postgrex.Protocol do
   require Logger
   @behaviour DBConnection
 
-  @timeout 15000
+  @timeout 15_000
   @sock_opts [packet: :raw, mode: :binary, active: false]
   @max_packet 64 * 1024 * 1024 # max raw receive length
   @nonposix_errors [:closed, :timeout]
