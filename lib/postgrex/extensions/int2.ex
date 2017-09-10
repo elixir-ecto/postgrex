@@ -3,6 +3,7 @@ defmodule Postgrex.Extensions.Int2 do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "int2send"
 
+  # credo:disable-for-next-line
   @int2_range -32768..32767
 
   def encode(_) do

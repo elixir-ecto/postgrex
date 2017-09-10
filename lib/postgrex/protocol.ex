@@ -1,3 +1,6 @@
+# credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
+# credo:disable-for-this-file Credo.Check.Refactor.FunctionArity
+# credo:disable-for-this-file Credo.Check.Refactor.PipeChainStart
 defmodule Postgrex.Protocol do
   @moduledoc false
 

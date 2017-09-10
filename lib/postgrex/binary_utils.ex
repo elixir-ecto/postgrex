@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Consistency.SpaceAroundOperators
 defmodule Postgrex.BinaryUtils do
   @moduledoc false
 
