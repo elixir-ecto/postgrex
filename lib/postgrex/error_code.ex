@@ -1,4 +1,5 @@
 defmodule Postgrex.ErrorCode do
+  @moduledoc false
   # We put this file in the repo because the last real change happened in 2011.
   # https://github.com/postgres/postgres/blob/master/src/backend/utils/errcodes.txt
   @external_resource errcodes_path = Path.join(__DIR__, "errcodes.txt")

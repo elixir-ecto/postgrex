@@ -1,20 +1,25 @@
 defmodule Postgrex.Stream do
+  @moduledoc false
   defstruct [:conn, :query, :params, :options, max_rows: 500]
   @type t :: %Postgrex.Stream{}
 end
 defmodule Postgrex.Cursor do
+  @moduledoc false
   defstruct [:portal, :ref, :connection_id, :max_rows]
   @type t :: %Postgrex.Cursor{}
 end
 defmodule Postgrex.Copy do
+  @moduledoc false
   defstruct [:portal, :ref, :connection_id, :query]
   @type t :: %Postgrex.Copy{}
 end
 defmodule Postgrex.CopyData do
+  @moduledoc false
   defstruct [:data, :ref]
   @type t :: %Postgrex.CopyData{}
 end
 defmodule Postgrex.CopyDone do
+  @moduledoc false
   defstruct [:ref]
   @type t :: %Postgrex.CopyDone{}
 end
