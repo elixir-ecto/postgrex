@@ -162,7 +162,7 @@ defmodule LoginTest do
     end
   end
 
-  test "socket connection" do
+  test "unix domain socket connection" do
     Process.flag(:trap_exit, true)
     opts = [ hostname: "/tmp", port: 5432, username: "postgrex_cleartext_pw",
              password: "postgrex_cleartext_pw", database: "postgres", backoff_type: :stop ]
@@ -170,6 +170,18 @@ defmodule LoginTest do
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
       assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+    end
+  end
+
+  test "non-existent unix domain socket" do
+    Process.flag(:trap_exit, true)
+    opts = [ hostname: "/not_a_dir", port: 5432, username: "postgrex_cleartext_pw",
+             password: "postgrex_cleartext_pw", database: "postgres", backoff_type: :stop ]
+
+    capture_log fn ->
+      assert {:ok, pid} = P.start_link(opts)
+      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{message: message}, [_|_]}}
+      assert message == "tcp connect (/not_a_dir/.s.PGSQL.5432): no such file or directory - :enoent"
     end
   end
 

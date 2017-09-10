@@ -465,7 +465,12 @@ defmodule Postgrex.Protocol do
         :ok = :inet.setopts(sock, [buffer: buffer])
         {:ok, %{s | sock: {:gen_tcp, sock}}}
       {:error, reason} ->
-        {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
+        case host do
+          {:local, socket_addr} ->
+            {:error, conn_error(:tcp, "connect (#{socket_addr})", reason)}
+          host -> {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
+        end
+
     end
   end
 
