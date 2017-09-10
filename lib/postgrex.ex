@@ -32,7 +32,7 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
+    * `:hostname` - Server hostname (default: PGHOST env variable, then localhost). Can be either a url, or a directory containing unix domain socket;
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
@@ -70,6 +70,11 @@ defmodule Postgrex do
   Run a query after connection has been established:
 
       iex> {:ok, pid} = Postgrex.start_link(after_connect: &Postgrex.query!(&1, "SET TIME ZONE 'UTC';", []))
+      {:ok, #PID<0.69.0>}
+
+  Connect to postgres instance through a unix domain socket
+
+      iex> {:ok, pid} = Postgrex.start_link(hostname: "/tmp" database: "postgres")
       {:ok, #PID<0.69.0>}
 
   ## PgBouncer
