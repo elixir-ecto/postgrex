@@ -165,9 +165,9 @@ defmodule LoginTest do
   test "unix domain socket connection" do
     Process.flag(:trap_exit, true)
 
-    hostname = System.get_env("PG_SOCKET_DIR") || "/tmp"
-    opts = [ hostname: hostname, port: 5432, username: "postgrex_cleartext_pw",
-             password: "postgrex_cleartext_pw", database: "postgres", backoff_type: :stop ]
+    hostname = System.get_env("PG_SOCKET_DIR")
+    opts = [ hostname: hostname, port: 5432, username: "postgres",
+             password: "postgres", database: "postgres", backoff_type: :stop ]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
@@ -177,8 +177,8 @@ defmodule LoginTest do
 
   test "non-existent unix domain socket" do
     Process.flag(:trap_exit, true)
-    opts = [ hostname: "/not_a_dir", port: 5432, username: "postgrex_cleartext_pw",
-             password: "postgrex_cleartext_pw", database: "postgres", backoff_type: :stop ]
+    opts = [ hostname: "/not_a_dir", port: 5432, username: "postgres",
+             password: "postgres", database: "postgres", backoff_type: :stop ]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts)
