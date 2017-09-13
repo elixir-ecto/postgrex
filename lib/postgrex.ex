@@ -83,6 +83,7 @@ defmodule Postgrex do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
+    ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
     DBConnection.start_link(Postgrex.Protocol, opts)
   end
@@ -453,5 +454,18 @@ defmodule Postgrex do
   ## Helpers
   defp defaults(opts) do
     Keyword.put_new(opts, :timeout, @timeout)
+  end
+
+  defp ensure_deps_started!(opts) do
+    if Keyword.get(opts, :ssl, false) and not List.keymember?(:application.which_applications(), :ssl, 0) do
+      raise """
+      SSL connection can not be established because `:ssl` application is not started,
+      you can add it to `extra_application` in your `mix.exs`:
+
+        def application do
+          [extra_applications: [:ssl]]
+        end
+      """
+    end
   end
 end
