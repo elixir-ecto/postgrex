@@ -27,6 +27,10 @@ defmodule Postgrex.Extensions.Numeric do
     <<0 :: int16, 0 :: int16, 0xC000 :: uint16, 0 :: int16>>
   end
 
+  def encode_numeric(%Decimal{coef: :inf} = decimal) do
+    raise ArgumentError, "cannot represent #{inspect decimal} as numeric type"
+  end
+
   def encode_numeric(%Decimal{sign: sign, coef: coef, exp: exp}) do
     sign = encode_sign(sign)
     scale = -exp
