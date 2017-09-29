@@ -75,7 +75,7 @@ defmodule Postgrex do
 
   Connect to postgres instance through a unix domain socket
 
-      iex> {:ok, pid} = Postgrex.start_link(socket: "/tmp" database: "postgres")
+      iex> {:ok, pid} = Postgrex.start_link(socket: "/tmp", database: "postgres")
       {:ok, #PID<0.69.0>}
 
   ## PgBouncer
