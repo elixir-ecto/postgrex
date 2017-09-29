@@ -241,7 +241,7 @@ defmodule Postgrex.Protocol do
       %{postgres: {_, _}} ->
         lock_error(s, :execute, copy)
       _ ->
-        handle_close_portal(copy, opts, s)
+        handle_close_portal(copy, mode(opts), opts, s)
     end
   end
 
@@ -279,7 +279,8 @@ defmodule Postgrex.Protocol do
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_declare(query, params, opts, s) do
     %{connection_id: connection_id} = s
-    cursor = %Cursor{portal: make_portal(), ref: make_ref(), connection_id: connection_id}
+    cursor = %Cursor{portal: make_portal(), ref: make_ref(),
+                     connection_id: connection_id, mode: mode(opts)}
     handle_bind(query, params, cursor, opts, s)
   end
 
@@ -290,18 +291,18 @@ defmodule Postgrex.Protocol do
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_fetch(query, cursor, opts, %{postgres: {postgres, ref}} = s) do
     case cursor do
-      %Cursor{ref: ^ref} ->
+      %Cursor{ref: ^ref, mode: mode} ->
         %{buffer: buffer} = s
         s = %{s | postgres: postgres, buffer: nil}
-        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+        status = %{notify: notify(opts), mode: mode, sync: :sync}
         max_rows = Keyword.get(opts, :max_rows, @max_rows)
         copy_out_portal(s, status, query, cursor, max_rows, buffer)
       _ ->
         lock_error(s, "fetch", cursor)
     end
   end
-  def handle_fetch(query, cursor, opts, %{buffer: buffer} = s) do
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+  def handle_fetch(query, %{mode: mode} = cursor, opts, %{buffer: buffer} = s) do
+    status = %{notify: notify(opts), mode: mode, sync: :sync}
     max_rows = Keyword.get(opts, :max_rows, @max_rows)
     execute_portal(%{s | buffer: nil}, status, query, cursor, max_rows, buffer)
   end
@@ -313,17 +314,17 @@ defmodule Postgrex.Protocol do
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_deallocate(_, cursor, opts, %{postgres: {postgres, ref}} = s) do
     case cursor do
-      %Cursor{ref: ^ref} ->
+      %Cursor{ref: ^ref, mode: mode} ->
         %{buffer: buffer} = s
         %{s | postgres: postgres, buffer: nil}
-        status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+        status = %{notify: notify(opts), mode: mode, sync: :sync}
         deallocate_copy_recv(s, status, buffer)
       _ ->
         lock_error(s, :deallocate, cursor)
     end
   end
-  def handle_deallocate(_, %Cursor{} = cursor, opts, s) do
-    handle_close_portal(cursor, opts, s)
+  def handle_deallocate(_, %Cursor{mode: mode} = cursor, opts, s) do
+    handle_close_portal(cursor, mode, opts, s)
   end
 
   @spec handle_begin(Keyword.t, state) ::
@@ -1644,12 +1645,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp handle_close_portal(%{portal: portal} = cursor, opts, s) do
+  defp handle_close_portal(%{portal: portal} = copy_or_cursor, mode, opts, s) do
     %{buffer: buffer} = s
     s = %{s | buffer: nil}
-    status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
+    status = %{notify: notify(opts), mode: mode, sync: :sync}
     messages = [msg_close(type: :portal, name: portal)]
-    send_and_recv(s, status, cursor, buffer, messages, &close_portal_recv/4)
+    send_and_recv(s, status, copy_or_cursor, buffer, messages, &close_portal_recv/4)
   end
 
   defp close_portal_recv(s, status, cursor, buffer) do

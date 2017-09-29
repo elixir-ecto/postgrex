@@ -3,7 +3,7 @@ defmodule Postgrex.Stream do
   @type t :: %Postgrex.Stream{}
 end
 defmodule Postgrex.Cursor do
-  defstruct [:portal, :ref, :connection_id]
+  defstruct [:portal, :ref, :connection_id, :mode]
   @type t :: %Postgrex.Cursor{}
 end
 defmodule Postgrex.Copy do
