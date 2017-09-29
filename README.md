@@ -127,6 +127,7 @@ $ mix test
 The tests requires some modifications to your [hba file](http://www.postgresql.org/docs/9.3/static/auth-pg-hba-conf.html). The path to it can be found by running `$ psql -U postgres -c "SHOW hba_file"` in your shell. Put the following above all other configurations (so that they override):
 
 ```
+local   all             all                     trust
 host    all             postgrex_md5_pw         127.0.0.1/32    md5
 host    all             postgrex_cleartext_pw   127.0.0.1/32    password
 ```

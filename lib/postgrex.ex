@@ -32,7 +32,8 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:hostname` - Server hostname (default: PGHOST env variable, then localhost). Can be either a url, or a directory containing unix domain socket;
+    * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
+    * `:socket` - The socket to connect to (takes precedence over the hostname);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
@@ -74,7 +75,7 @@ defmodule Postgrex do
 
   Connect to postgres instance through a unix domain socket
 
-      iex> {:ok, pid} = Postgrex.start_link(hostname: "/tmp" database: "postgres")
+      iex> {:ok, pid} = Postgrex.start_link(socket: "/tmp" database: "postgres")
       {:ok, #PID<0.69.0>}
 
   ## PgBouncer

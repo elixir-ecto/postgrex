@@ -13,9 +13,8 @@ version_exclusions = case System.get_env("PGVERSION") do
     []
 end
 
-ExUnit.configure exclude: version_exclusions ++ exclude
+ExUnit.start exclude: version_exclusions ++ exclude
 
-ExUnit.start
 {:ok, _} = :application.ensure_all_started(:crypto)
 
 run_cmd = fn cmd ->

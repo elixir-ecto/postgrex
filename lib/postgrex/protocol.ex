@@ -51,16 +51,27 @@ defmodule Postgrex.Protocol do
     {:ok, state} |
     {:error, Postgrex.Error.t | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    host       = Keyword.fetch!(opts, :hostname) |> to_charlist
-    port       = opts[:port] || 5432
+    port = opts[:port] || 5432
+
+    {host, port} =
+      case Keyword.fetch(opts, :socket) do
+        {:ok, socket} ->
+          {{:local, "#{socket}/.s.PGSQL.#{port}"}, 0}
+
+        :error ->
+          case Keyword.fetch(opts, :hostname) do
+            {:ok, hostname} ->
+              {to_charlist(hostname), port}
+
+            :error ->
+              raise ArgumentError, "expected :hostname or :socket to be given"
+          end
+      end
+
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl?       = opts[:ssl] || false
     types_mod  = Keyword.fetch!(opts, :types)
-    local?     = List.first(host) == ?/
-
-    host = if local?, do: {:local, "#{host}/.s.PGSQL.#{port}"}, else: host
-    port = if local?, do: 0, else: port
 
     transactions =
       case opts[:transactions] || :naive do
@@ -81,6 +92,7 @@ defmodule Postgrex.Protocol do
     status = %{opts: opts, types_mod: types_mod, types_key: types_key,
                types_lock: nil, prepare: prepare, ssl: ssl?}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
+
     case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
       {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
@@ -468,7 +480,8 @@ defmodule Postgrex.Protocol do
         case host do
           {:local, socket_addr} ->
             {:error, conn_error(:tcp, "connect (#{socket_addr})", reason)}
-          host -> {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
+          host ->
+            {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
         end
 
     end
