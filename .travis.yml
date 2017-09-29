@@ -36,6 +36,9 @@ matrix:
     - elixir: 1.5.1
       otp_release: 19.3
       env: PGVERSION=9.6
+    - elixir: 1.5.1
+      otp_release: 20.0
+      env: PGVERSION=9.6
 notifications:
   recipients:
     - eric.meadows.jonsson@gmail.com
