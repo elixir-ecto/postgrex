@@ -279,9 +279,7 @@ defmodule Postgrex.Protocol do
     {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_declare(query, params, opts, s) do
     %{connection_id: connection_id} = s
-    max_rows = Keyword.get(opts, :max_rows, @max_rows)
-    cursor = %Cursor{portal: make_portal(), ref: make_ref(), max_rows: max_rows,
-                     connection_id: connection_id}
+    cursor = %Cursor{portal: make_portal(), ref: make_ref(), connection_id: connection_id}
     handle_bind(query, params, cursor, opts, s)
   end
 
@@ -296,16 +294,16 @@ defmodule Postgrex.Protocol do
         %{buffer: buffer} = s
         s = %{s | postgres: postgres, buffer: nil}
         status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-        cursor = max_rows(cursor, opts)
-        copy_out_portal(s, status, query, cursor, buffer)
+        max_rows = Keyword.get(opts, :max_rows, @max_rows)
+        copy_out_portal(s, status, query, cursor, max_rows, buffer)
       _ ->
         lock_error(s, "fetch", cursor)
     end
   end
   def handle_fetch(query, cursor, opts, %{buffer: buffer} = s) do
     status = %{notify: notify(opts), mode: mode(opts), sync: :sync}
-    cursor = max_rows(cursor, opts)
-    execute_portal(%{s | buffer: nil}, status, query, cursor, buffer)
+    max_rows = Keyword.get(opts, :max_rows, @max_rows)
+    execute_portal(%{s | buffer: nil}, status, query, cursor, max_rows, buffer)
   end
 
   @spec handle_deallocate(Postgrex.Query.t, Postgrex.Cursor.t, Keyword.t, state) ::
@@ -1182,10 +1180,10 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp execute_portal(s, status, query, cursor, buffer) do
-    %Cursor{portal: portal, max_rows: max_rows} = cursor
+  defp execute_portal(s, status, query, cursor, max_rows, buffer) do
+    %Cursor{portal: portal} = cursor
     messages = [msg_execute(name_port: portal, max_rows: max_rows)]
-    execute_portal_recv = &execute_portal_recv(&1, &2, &3, cursor, &4)
+    execute_portal_recv = &execute_portal_recv(&1, &2, &3, cursor, max_rows, &4)
     send_and_recv(s, status, query, buffer, messages, execute_portal_recv)
   end
 
@@ -1349,13 +1347,13 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp execute_portal_recv(s, status, query, cursor, rows \\ [], buffer) do
+  defp execute_portal_recv(s, status, query, cursor, max_rows, rows \\ [], buffer) do
     %Query{result_types: types} = query
     case rows_recv(s, types, rows, buffer) do
       {:ok, msg_command_complete(tag: tag), rows, buffer} ->
         halt(s, status, query, rows, tag, buffer)
       {:ok, msg_portal_suspend(), rows, buffer} ->
-        cont(s, status, query, cursor, rows, buffer)
+        cont(s, status, query, max_rows, rows, buffer)
       {:ok, msg_error(fields: fields), _, buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         sync_recv(s, status, err, buffer)
@@ -1366,12 +1364,12 @@ defmodule Postgrex.Protocol do
         err = ArgumentError.exception(msg)
         copy_fail(s, status, err, buffer)
       {:ok, msg_copy_out_response(), [],  buffer} ->
-        copy_out_portal(s, status, query, cursor, buffer)
+        copy_out_portal(s, status, query, cursor, max_rows, buffer)
       {:ok, msg_copy_both_response(), [], buffer} ->
         copy_both_disconnect(s, query, buffer)
       {:ok, msg, rows, buffer} ->
         s = handle_msg(s, status, msg)
-        execute_portal_recv(s, status, query, cursor, rows, buffer)
+        execute_portal_recv(s, status, query, cursor, max_rows, rows, buffer)
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1409,10 +1407,9 @@ defmodule Postgrex.Protocol do
     sync_recv(s, status, result, buffer)
   end
 
-  defp cont(s, status, query, cursor, rows, buffer) do
+  defp cont(s, status, query, max_rows, rows, buffer) do
     %{connection_id: connection_id} = s
     %Query{columns: cols} = query
-    %Cursor{max_rows: max_rows} = cursor
 
     result = %Postgrex.Result{command: :stream, rows: rows, num_rows: max_rows,
                               columns: cols, connection_id: connection_id}
@@ -1497,8 +1494,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp copy_out_portal(s, status, query, cursor, buffer) do
-    %Cursor{max_rows: max_rows} = cursor
+  defp copy_out_portal(s, status, query, cursor, max_rows, buffer) do
     max_rows = if max_rows == 0, do: :infinity, else: max_rows
     copy_out_recv(s, status, query, cursor, max_rows, [], 0, buffer)
   end
@@ -1872,15 +1868,6 @@ defmodule Postgrex.Protocol do
     case opts[:mode] || :transaction do
       :transaction -> :transaction
       :savepoint   -> :savepoint
-    end
-  end
-
-  defp max_rows(cursor, opts) do
-    case Keyword.fetch(opts, :max_rows) do
-      {:ok, max_rows} ->
-        %Cursor{cursor | max_rows: max_rows}
-      _ ->
-        cursor
     end
   end
 
