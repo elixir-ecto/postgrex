@@ -3,7 +3,6 @@ defmodule Postgrex.Extensions.Int4 do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "int4send"
 
-  # credo:disable-for-next-line
   @int4_range -2147483648..2147483647
 
   def encode(_) do

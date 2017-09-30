@@ -1,4 +1,3 @@
-# credo:disable-for-this-file Credo.Check.Refactor.FunctionArity
 defmodule Postgrex.TypeModule do
   @moduledoc false
 
@@ -107,8 +106,6 @@ defmodule Postgrex.TypeModule do
     end)
   end
 
-
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp encode(config, define_opts) do
     encodes =
       for {extension, {opts, [_|_], format}} <- config do
@@ -403,7 +400,6 @@ defmodule Postgrex.TypeModule do
     clause
   end
 
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp decode_tuple(config) do
     rest = quote do: rest
     oids = quote do: oids
