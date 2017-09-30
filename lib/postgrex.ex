@@ -33,6 +33,7 @@ defmodule Postgrex do
   ## Options
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
+    * `:socket` - The socket to connect to (takes precedence over the hostname);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
@@ -72,6 +73,11 @@ defmodule Postgrex do
       iex> {:ok, pid} = Postgrex.start_link(after_connect: &Postgrex.query!(&1, "SET TIME ZONE 'UTC';", []))
       {:ok, #PID<0.69.0>}
 
+  Connect to postgres instance through a unix domain socket
+
+      iex> {:ok, pid} = Postgrex.start_link(socket: "/tmp", database: "postgres")
+      {:ok, #PID<0.69.0>}
+
   ## PgBouncer
 
   When using PgBouncer with transaction or statement pooling named prepared
@@ -83,6 +89,7 @@ defmodule Postgrex do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
+    ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
     DBConnection.start_link(Postgrex.Protocol, opts)
   end
@@ -453,5 +460,18 @@ defmodule Postgrex do
   ## Helpers
   defp defaults(opts) do
     Keyword.put_new(opts, :timeout, @timeout)
+  end
+
+  defp ensure_deps_started!(opts) do
+    if Keyword.get(opts, :ssl, false) and not List.keymember?(:application.which_applications(), :ssl, 0) do
+      raise """
+      SSL connection can not be established because `:ssl` application is not started,
+      you can add it to `extra_application` in your `mix.exs`:
+
+        def application do
+          [extra_applications: [:ssl]]
+        end
+      """
+    end
   end
 end

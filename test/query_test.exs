@@ -430,6 +430,16 @@ defmodule QueryTest do
     end)
   end
 
+  test "encode numeric rises for infinite values", context do
+    assert_raise ArgumentError, "cannot represent #Decimal<Infinity> as numeric type", fn ->
+      query("SELECT $1::numeric", [Decimal.new("Infinity")])
+    end
+
+    assert_raise ArgumentError, "cannot represent #Decimal<-Infinity> as numeric type", fn ->
+      query("SELECT $1::numeric", [Decimal.new("-Infinity")])
+    end
+  end
+
   test "encode integers and floats as numeric", context do
     dec = Decimal.new(1)
     assert [[dec]] == query("SELECT $1::numeric", [1])

@@ -1,6 +1,6 @@
 language: elixir
 elixir: 1.4.5
-otp_release: 18.3
+otp_release: 19.3
 cache: apt
 before_install:
   - sudo service postgresql stop
@@ -19,6 +19,7 @@ before_script:
 env:
   global:
     - PGUSER=postgres
+    - PG_SOCKET_DIR=/var/run/postgresql
   matrix:
     - PGVERSION=8.4
     - PGVERSION=9.0 PGPATH=/usr/share/postgresql/9.0/
@@ -35,6 +36,9 @@ matrix:
       env: PGVERSION=9.6
     - elixir: 1.5.1
       otp_release: 19.3
+      env: PGVERSION=9.6
+    - elixir: 1.5.1
+      otp_release: 20.0
       env: PGVERSION=9.6
 notifications:
   recipients:

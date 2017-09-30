@@ -15,7 +15,7 @@ defmodule Postgrex.TypeInfo do
     * `input` - The name of the "input" function (the function postgres uses
       to convert the type from its text format);
     * `array_elem` - If this is an array, the array elements' oid;
-    * `base_type` - If this is a domain type, the base type's oid;
+    * `base_type` - If this is a range type, the base type's oid;
     * `comp_elems` - If this is a composite type (record), the tuple
       elements' oid;
   """
