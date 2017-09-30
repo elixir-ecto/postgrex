@@ -30,7 +30,7 @@ defmodule Postgrex.Extensions.TSVector do
   end
 
   defp encode_lexemes(values) do
-    Enum.map(values, fn(x) -> encode_positions(x) end) |> IO.iodata_to_binary
+    values |> Enum.map(fn(x) -> encode_positions(x) end) |> IO.iodata_to_binary
   end
 
   defp encode_positions(%Postgrex.Lexeme{word: word, positions: positions}) do

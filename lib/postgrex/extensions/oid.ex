@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.OID do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, Enum.map(@oid_senders, &{:send, &1})
 
-  @oid_range 0..4294967295
+  @oid_range 0..4_294_967_295
 
   def encode(_) do
     range = Macro.escape(@oid_range)

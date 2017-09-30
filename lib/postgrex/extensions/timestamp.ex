@@ -4,7 +4,7 @@ defmodule Postgrex.Extensions.Timestamp do
   use Postgrex.BinaryExtension, [send: "timestamp_send"]
 
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
-  @max_year 294276
+  @max_year 294_276
 
   def encode(_) do
     quote location: :keep do

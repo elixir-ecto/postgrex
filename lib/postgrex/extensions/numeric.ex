@@ -70,12 +70,12 @@ defmodule Postgrex.Extensions.Numeric do
   defp pending_scale(0, scale), do: scale
   defp pending_scale(num, scale), do: pending_scale(div(num, 10), scale - 1)
 
-  defp encode_digits(coef, digits) when coef < 10000 do
+  defp encode_digits(coef, digits) when coef < 10_000 do
     [coef|digits]
   end
   defp encode_digits(coef, digits) do
-    digit = rem(coef, 10000)
-    coef = div(coef, 10000)
+    digit = rem(coef, 10_000)
+    coef = div(coef, 10_000)
     encode_digits(coef, [digit|digits])
   end
 
@@ -106,12 +106,12 @@ defmodule Postgrex.Extensions.Numeric do
     acc * 10
   end
 
-  defp pow10(num) when num > 100, do: pow10(100) * pow10(num-100)
+  defp pow10(num) when num > 100, do: pow10(100) * pow10(num - 100)
 
   defp decode_numeric_int("", weight, acc), do: {acc, weight}
 
   defp decode_numeric_int(<<digit :: int16, tail :: binary>>, weight, acc) do
-    acc = (acc * 10000) + digit
+    acc = (acc * 10_000) + digit
     decode_numeric_int(tail, weight - 1, acc)
   end
 end

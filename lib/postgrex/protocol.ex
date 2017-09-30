@@ -12,7 +12,7 @@ defmodule Postgrex.Protocol do
   require Logger
   @behaviour DBConnection
 
-  @timeout 15000
+  @timeout 15_000
   @sock_opts [packet: :raw, mode: :binary, active: false]
   @max_packet 64 * 1024 * 1024 # max raw receive length
   @nonposix_errors [:closed, :timeout]
@@ -1532,7 +1532,7 @@ defmodule Postgrex.Protocol do
      case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(data: data), buffer} ->
         acc = [data | acc]
-        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows+1, buffer)
+        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows + 1, buffer)
       {:ok, msg_copy_done(), buffer} ->
         copy_out_portal_done(s, status, query, acc, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -1691,7 +1691,7 @@ defmodule Postgrex.Protocol do
   defp deallocate_copy_recv(s, status, nrows \\ 0, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(), buffer} ->
-        deallocate_copy_recv(s, status, nrows+1, buffer)
+        deallocate_copy_recv(s, status, nrows + 1, buffer)
       {:ok, msg_copy_done(), buffer} ->
         deallocate_copy_done(s, status, nrows, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -1893,9 +1893,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp columns(fields) do
-    Enum.map(fields, fn row_field(type_oid: oid, name: name) ->
-      {oid, name}
-    end) |> :lists.unzip
+    fields
+    |> Enum.map(fn row_field(type_oid: oid, name: name) -> {oid, name} end)
+    |> :lists.unzip
   end
 
   defp column_oids(fields) do
@@ -1935,7 +1935,7 @@ defmodule Postgrex.Protocol do
   defp decode_tag(<<?\s, t::binary>>, acc),
     do: decode_tag(t, <<acc::binary, ?_>>)
   defp decode_tag(<<h, t::binary>>, acc) when h in ?A..?Z,
-    do: decode_tag(t, <<acc::binary, h+32>>)
+    do: decode_tag(t, <<acc::binary, h + 32>>)
   defp decode_tag(<<h, t::binary>>, acc),
     do: decode_tag(t, <<acc::binary, h>>)
 
@@ -2012,7 +2012,7 @@ defmodule Postgrex.Protocol do
   defp rows_recv(%{sock: {mod, sock}} = s, result_types, rows, buffer, more) do
     case mod.recv(sock, 0, :infinity) do
       {:ok, data} when byte_size(data) < more ->
-        rows_recv(s, result_types, rows, [buffer | data], more-byte_size(data))
+        rows_recv(s, result_types, rows, [buffer | data], more - byte_size(data))
       {:ok, data} when is_binary(buffer) ->
         rows_recv(s, result_types, rows, buffer <> data)
       {:ok, data} when is_list(buffer) ->

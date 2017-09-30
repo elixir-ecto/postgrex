@@ -87,7 +87,7 @@ defmodule Postgrex.Extensions.Range do
         flags
       end
 
-    [<<IO.iodata_length(bin)+1::int32>>, flags | bin]
+    [<<IO.iodata_length(bin) + 1::int32>>, flags | bin]
   end
 
   def decode(flags, _oid, [], null) when (flags &&& @range_empty) != 0 do
