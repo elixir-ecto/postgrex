@@ -51,10 +51,6 @@ defmodule Postgrex.Extensions.Range do
 
   ## Helpers
 
-  def encode(_, _, <<-1::int32>>, <<-1::int32>>) do
-    <<@range_empty>>
-  end
-
   def encode(%Postgrex.Range{lower_inclusive: lower_inc,
                              upper_inclusive: upper_inc}, _oid, lower, upper) do
     flags = 0
