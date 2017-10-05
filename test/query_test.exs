@@ -332,6 +332,10 @@ defmodule QueryTest do
            query("SELECT '(,2014-12-31)'::daterange", [])
     assert [[%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 2}, upper: nil}]] =
            query("SELECT '(2014-1-1,]'::daterange", [])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT '(,)'::daterange", [])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT '[,]'::daterange", [])
   end
 
   @tag min_pg_version: "9.0"
@@ -622,6 +626,10 @@ defmodule QueryTest do
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: true}])
     assert [[%Postgrex.Range{lower: 4, upper: 5, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: 5, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
 
     assert [[%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int8range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
@@ -635,6 +643,10 @@ defmodule QueryTest do
            query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Postgrex.Date{year: 2014, month: 12, day: 31}}])
     assert [[%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}]] =
            query("SELECT $1::daterange", [%Postgrex.Range{lower: %Postgrex.Date{year: 2014, month: 1, day: 1}, upper: nil}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
   end
 
   @tag min_pg_version: "9.2"
