@@ -121,6 +121,17 @@ queries after the transactions closes. To force unnamed prepared queries:
 Postgrex.start_link(prepare: :unnamed)
 ```
 
+This option can be set via the config for your Ecto Repo:
+
+```elixir
+# Configure your database
+config :myapp, MyApp.Repo,
+  priv: "priv/repo/myapp",
+  adapter: Ecto.Adapters.Postgres,
+  ...
+  prepare: :unnamed
+```
+
 ## Contributing
 
 To contribute you need to compile Postgrex from source and test it:
