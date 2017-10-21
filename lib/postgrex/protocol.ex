@@ -567,6 +567,7 @@ defmodule Postgrex.Protocol do
 
   defp startup(s, %{opts: opts} = status) do
     params = opts[:parameters] || []
+    params = Keyword.put_new(params, :fallback_application_name, "postgrex")
     user = Keyword.fetch!(opts, :username)
     database = Keyword.fetch!(opts, :database)
     msg = msg_startup(params: [user: user, database: database] ++ params)
