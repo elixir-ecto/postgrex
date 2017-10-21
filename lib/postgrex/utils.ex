@@ -91,7 +91,7 @@ defmodule Postgrex.Utils do
   @spec default_app_name(Keyword.t) :: Keyword.t
   defp default_app_name(opts) do
     if app_name = System.get_env("PGAPPNAME") do
-      params = Keyword.get(ops, :parameters, []) |> Keyword.put_new(:application_name, app_name)
+      params = Keyword.get(opts, :parameters, []) |> Keyword.put_new(:application_name, app_name)
       Keyword.put(opts, :parameters, params)
     else
       opts
