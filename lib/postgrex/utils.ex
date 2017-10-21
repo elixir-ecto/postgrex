@@ -90,12 +90,10 @@ defmodule Postgrex.Utils do
 
   @spec default_app_name(Keyword.t) :: Keyword.t
   defp default_app_name(opts) do
-    if app_name = System.get_env("PGAPPNAME") do
-      params = Keyword.get(opts, :parameters, []) |> Keyword.put_new(:application_name, app_name)
-      Keyword.put(opts, :parameters, params)
-    else
-      opts
-    end
+    app_name = System.get_env("PGAPPNAME") || "postgrex"
+    params = Keyword.get(opts, :parameters) || [] 
+    params = Keyword.put_new(params, :application_name, app_name)
+    Keyword.put(opts, :parameters, params)
   end
 
   defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
