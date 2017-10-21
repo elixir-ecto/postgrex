@@ -65,7 +65,7 @@ defmodule LoginTest do
              password: "postgres", database: "postgrex_test" ]
 
     assert {:ok, pid} = P.start_link(opts)
-    assert "postgres" == P.parameters(pid)["application_name"]
+    assert "postgrex" == P.parameters(pid)["application_name"]
 
     opts = opts ++ [parameters: [application_name: "my_app"]]
     assert {:ok, pid} = P.start_link(opts)
