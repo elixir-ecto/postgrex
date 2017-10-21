@@ -65,12 +65,12 @@ defmodule LoginTest do
              password: "postgres", database: "postgrex_test" ]
 
     assert {:ok, pid} = P.start_link(opts)
-    assert "" == P.parameters(pid)["application_name"]
+    assert "postgres" == P.parameters(pid)["application_name"]
 
-    opts = opts ++ [parameters: [application_name: "postgrex"]]
+    opts = opts ++ [parameters: [application_name: "my_app"]]
     assert {:ok, pid} = P.start_link(opts)
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
-    assert "postgrex" == P.parameters(pid)["application_name"]
+    assert "my_app" == P.parameters(pid)["application_name"]
   end
 
   test "infinity timeout" do
