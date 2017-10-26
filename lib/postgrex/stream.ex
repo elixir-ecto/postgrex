@@ -43,6 +43,10 @@ defimpl Enumerable, for: Postgrex.Stream do
   def count(_) do
     {:error, __MODULE__}
   end
+
+  def slice(_) do
+    {:error, __MODULE__}
+  end
 end
 
 defimpl Collectable, for: Postgrex.Stream do
