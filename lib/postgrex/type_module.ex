@@ -96,12 +96,10 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp rewrite(ast, [{:->, meta, _} | _original]) do
-    location = [file: meta[:file] || "nofile", line: meta[:keep] || 1]
-
+  defp rewrite(ast, [{:->, clause_meta, _} | _original]) do
     Macro.prewalk(ast, fn
-      {left, meta, right} ->
-        {left, location ++ meta, right}
+      {kind, meta, [{fun, _, args}, block]} when kind in [:def, :defp] and is_list(args) ->
+        {kind, meta, [{fun, clause_meta, args}, block]}
       other ->
         other
     end)
