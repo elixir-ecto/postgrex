@@ -172,8 +172,9 @@ defmodule QueryTest do
     p1 = %Postgrex.Point{x: 0.0, y: 0.0}
     p2 = %Postgrex.Point{x: 1.0, y: 3.0}
     p3 = %Postgrex.Point{x: -4.0, y: 3.14}
-    path = %Postgrex.Path{points: [p1, p2, p3], open: false}
+    path = %Postgrex.Path{points: [p1, p2, p3], open: true}
     assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
+    assert [[%{path | open: false}]] == query("SELECT '((0.0,0.0),(1.0,3.0),(-4.0,3.14))'::path", [])
     assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
     bad_path = %Postgrex.Path{points: "foo", open: false}
     assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))

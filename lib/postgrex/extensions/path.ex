@@ -29,13 +29,13 @@ defmodule Postgrex.Extensions.Path do
   end
 
   def decode_path(<<o::int8, n::int32, point_data::binary-size(n)-unit(128)>>) do
-    open = (o == 1)
+    open = (o == 0)
     points = decode_points(point_data, [])
     %Postgrex.Path{open: open, points: points}
   end
 
-  def open_to_byte(true), do: 1
-  def open_to_byte(false), do: 0
+  def open_to_byte(true), do: 0
+  def open_to_byte(false), do: 1
 
   defp decode_points(<<>>, points), do: Enum.reverse(points)
   defp decode_points(<<x::float64, y::float64, rest::bits>>, points) do
