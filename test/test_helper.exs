@@ -54,6 +54,12 @@ DROP TYPE IF EXISTS missing_comp;
 CREATE TABLE altering (a int2);
 
 CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);
+
+DROP DOMAIN IF EXISTS points_domain;
+CREATE DOMAIN points_domain AS point[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
+
+DROP DOMAIN IF EXISTS floats_domain;
+CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
 """
 
 sql_with_schemas = """

@@ -65,6 +65,24 @@ defmodule QueryTest do
     assert [[[[0]]]] = query("SELECT ARRAY[ARRAY[0]]", [])
   end
 
+  test "decode array domain", context do
+    assert [[[1.0, 2.0, 3.0]]] =
+           query("SELECT ARRAY[1, 2, 3]::floats_domain", [])
+
+    assert [[[%Postgrex.Point{x: 1.0, y: 1.0}, %Postgrex.Point{x: 2.0, y: 2.0}, %Postgrex.Point{x: 3.0, y: 3.0}]]] =
+           query("SELECT ARRAY[point '1,1', point '2,2', point '3,3']::points_domain", [])
+  end
+
+  test "encode array domain", context do
+    floats = [1.0, 2.0, 3.0]
+    floats_string = "{1,2,3}"
+    assert [[^floats_string]] = query("SELECT $1::floats_domain::text", [floats])
+
+    points = [%Postgrex.Point{x: 1.0, y: 1.0}, %Postgrex.Point{x: 2.0, y: 2.0}, %Postgrex.Point{x: 3.0, y: 3.0}]
+    points_string = "{\"(1,1)\",\"(2,2)\",\"(3,3)\"}"
+    assert [[^points_string]] = query("SELECT $1::points_domain::text", [points])
+  end
+
   test "decode interval", context do
     assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0}]] =
            query("SELECT interval '0'", [])
