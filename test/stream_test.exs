@@ -731,4 +731,30 @@ defmodule StreamTest do
 
     assert [[42]] = query("SELECT 42", [])
   end
+
+  test "stream obeys max rows on low level fetch", context do
+    assert transaction(fn(conn) ->
+      query = Postgrex.prepare!(conn, "rows", "SELECT * FROM generate_series(1, 2)")
+      cursor = DBConnection.declare!(conn, query, [], [])
+      assert {:cont, %Postgrex.Result{rows: [[1]]}} =
+        DBConnection.fetch(conn, query, cursor, [max_rows: 1])
+      assert {:halt, %Postgrex.Result{rows: [[2]]}} =
+        DBConnection.fetch(conn, query, cursor, [max_rows: 2])
+      DBConnection.deallocate!(conn, query, cursor, [])
+      :hi
+    end) == {:ok, :hi}
+  end
+
+  test "stream deallocates cursor on commit/rollback", context do
+    assert {:ok, {query, cursor}} = transaction(fn(conn) ->
+      query = Postgrex.prepare!(conn, "rows", "SELECT * FROM generate_series(1, 2)")
+      cursor = DBConnection.declare!(conn, query, [], [])
+      assert {:cont, %Postgrex.Result{rows: [[1]]}} =
+        DBConnection.fetch(conn, query, cursor, [max_rows: 1])
+      {query, cursor}
+    end)
+
+    assert_raise Postgrex.Error, ~r"\(invalid_cursor_name\)",
+      fn -> DBConnection.fetch!(context[:pid], query, cursor) end
+  end
 end
