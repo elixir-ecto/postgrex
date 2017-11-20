@@ -84,7 +84,16 @@ defmodule Postgrex.Utils do
     |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
     |> Keyword.update(:port, normalize_port(System.get_env("PGPORT")), &normalize_port/1)
     |> Keyword.put_new(:types, Postgrex.DefaultTypes)
+    |> default_app_name()
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+  end
+
+  @spec default_app_name(Keyword.t) :: Keyword.t
+  defp default_app_name(opts) do
+    app_name = System.get_env("PGAPPNAME") || "postgrex"
+    params = Keyword.get(opts, :parameters) || [] 
+    params = Keyword.put_new(params, :application_name, app_name)
+    Keyword.put(opts, :parameters, params)
   end
 
   defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
