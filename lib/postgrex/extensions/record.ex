@@ -25,7 +25,7 @@ defmodule Postgrex.Extensions.Record do
             raise ArgumentError,
               "expected a tuple of size #{length(oids)}, got: #{inspect tuple}"
           data ->
-            [<<IO.iodata_length(data)+4::int32, tuple_size(tuple)::int32>> |
+            [<<IO.iodata_length(data) + 4::int32, tuple_size(tuple)::int32>> |
               data]
         end
       other, _, _ ->

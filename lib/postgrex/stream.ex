@@ -1,4 +1,5 @@
 defmodule Postgrex.Stream do
+  @moduledoc false
   defstruct [:conn, :query, :params, :options, max_rows: 500]
   @type t :: %Postgrex.Stream{}
 end
@@ -7,14 +8,17 @@ defmodule Postgrex.Cursor do
   @type t :: %Postgrex.Cursor{}
 end
 defmodule Postgrex.Copy do
+  @moduledoc false
   defstruct [:portal, :ref, :connection_id, :query]
   @type t :: %Postgrex.Copy{}
 end
 defmodule Postgrex.CopyData do
+  @moduledoc false
   defstruct [:data, :ref]
   @type t :: %Postgrex.CopyData{}
 end
 defmodule Postgrex.CopyDone do
+  @moduledoc false
   defstruct [:ref]
   @type t :: %Postgrex.CopyDone{}
 end
@@ -41,6 +45,10 @@ defimpl Enumerable, for: Postgrex.Stream do
   end
 
   def count(_) do
+    {:error, __MODULE__}
+  end
+
+  def slice(_) do
     {:error, __MODULE__}
   end
 end
@@ -116,7 +124,7 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
       encode_msg(msg_copy_data(data: data))
     rescue
       ArgumentError ->
-        raise ArgumentError,
+        reraise ArgumentError,
           "expected iodata to copy to database, got: " <> inspect(data)
     else
       iodata ->

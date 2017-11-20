@@ -4,7 +4,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
   use Postgrex.BinaryExtension, [send: "timestamptz_send"]
 
   @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
-  @max_year 294276
+  @max_year 294_276
 
   @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
   @us_epoch (@gs_epoch - @gs_unix_epoch) * 1_000_000

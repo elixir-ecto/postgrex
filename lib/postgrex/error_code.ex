@@ -1,17 +1,18 @@
 defmodule Postgrex.ErrorCode do
+  @moduledoc false
   # We put this file in the repo because the last real change happened in 2011.
   # https://github.com/postgres/postgres/blob/master/src/backend/utils/errcodes.txt
   @external_resource errcodes_path = Path.join(__DIR__, "errcodes.txt")
 
   errcodes = for line <- File.stream!(errcodes_path),
-                 match?(<<_code::(5*8), "    ", _::binary>>, line) do
+                 match?(<<_code::(5 * 8), "    ", _::binary>>, line) do
     case String.split(line, " ", trim: true) do
       [code, _, _, name] -> {code, name |> String.trim |> String.to_atom}
       [code, _, _] -> {code} # duplicated code without name
     end
   end
 
-  {errcodes, duplicates} = Enum.partition(errcodes, &match?({_, _}, &1))
+  {errcodes, duplicates} = Enum.split_with(errcodes, &match?({_, _}, &1))
 
   # The errcodes.txt file does contain some codes twice, but the duplicates
   # don't have a name. Make sure every every code without a name has another

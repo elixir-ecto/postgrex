@@ -59,17 +59,24 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 
 Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, support new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
+## JSON support
+
+Postgrex comes with JSON support out of the box via the [Poison](https://github.com/devinus/poison) library. You can customize it to use another library via the `:json_library` configuration:
+
+```elixir
+config :postgrex, :json_library, SomeOtherLib
+```
+
 ## Extensions
 
 Extensions are used to extend Postgrex' built-in type encoding/decoding.
 
 Here is a [JSON extension](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the Postgres' JSON type.
 
-Extensions can be specified and configured when building custom type modules. For example, if you want to different a JSON encoder/decode, you can define a new type module as below.
+Extensions can be specified and configured when building custom type modules:
 
 ```elixir
-# Postgrex.Types.define(module_name, extra_extensions, options)
-Postgrex.Types.define(MyApp.PostgrexTypes, [], json: AnotherJSONLib)
+Postgrex.Types.define(MyApp.PostgrexTypes, [MyApp.Postgis.Extensions], [])
 ```
 
 `Postgrex.Types.define/3` must be called on its own file, outside of any module and function, as it only needs to be defined once during compilation.
@@ -127,6 +134,7 @@ $ mix test
 The tests requires some modifications to your [hba file](http://www.postgresql.org/docs/9.3/static/auth-pg-hba-conf.html). The path to it can be found by running `$ psql -U postgres -c "SHOW hba_file"` in your shell. Put the following above all other configurations (so that they override):
 
 ```
+local   all             all                     trust
 host    all             postgrex_md5_pw         127.0.0.1/32    md5
 host    all             postgrex_cleartext_pw   127.0.0.1/32    password
 ```

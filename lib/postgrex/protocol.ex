@@ -12,7 +12,7 @@ defmodule Postgrex.Protocol do
   require Logger
   use DBConnection
 
-  @timeout 15000
+  @timeout 15_000
   @sock_opts [packet: :raw, mode: :binary, active: false]
   @max_packet 64 * 1024 * 1024 # max raw receive length
   @nonposix_errors [:closed, :timeout]
@@ -52,8 +52,23 @@ defmodule Postgrex.Protocol do
     {:ok, state} |
     {:error, Postgrex.Error.t | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    host       = Keyword.fetch!(opts, :hostname) |> to_charlist
-    port       = opts[:port] || 5432
+    port = opts[:port] || 5432
+
+    {host, port} =
+      case Keyword.fetch(opts, :socket) do
+        {:ok, socket} ->
+          {{:local, "#{socket}/.s.PGSQL.#{port}"}, 0}
+
+        :error ->
+          case Keyword.fetch(opts, :hostname) do
+            {:ok, hostname} ->
+              {to_charlist(hostname), port}
+
+            :error ->
+              raise ArgumentError, "expected :hostname or :socket to be given"
+          end
+      end
+
     timeout    = opts[:timeout] || @timeout
     sock_opts  = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl?       = opts[:ssl] || false
@@ -78,6 +93,7 @@ defmodule Postgrex.Protocol do
     status = %{opts: opts, types_mod: types_mod, types_key: types_key,
                types_lock: nil, prepare: prepare, ssl: ssl?}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
+
     case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
       {:ok, s}            -> handshake(s, status)
       {:error, _} = error -> error
@@ -460,7 +476,13 @@ defmodule Postgrex.Protocol do
         :ok = :inet.setopts(sock, [buffer: buffer])
         {:ok, %{s | sock: {:gen_tcp, sock}}}
       {:error, reason} ->
-        {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
+        case host do
+          {:local, socket_addr} ->
+            {:error, conn_error(:tcp, "connect (#{socket_addr})", reason)}
+          host ->
+            {:error, conn_error(:tcp, "connect (#{host}:#{port})", reason)}
+        end
+
     end
   end
 
@@ -1512,7 +1534,7 @@ defmodule Postgrex.Protocol do
      case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(data: data), buffer} ->
         acc = [data | acc]
-        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows+1, buffer)
+        copy_out_recv(s, status, query, cursor, max_rows, acc, nrows + 1, buffer)
       {:ok, msg_copy_done(), buffer} ->
         copy_out_portal_done(s, status, query, acc, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -1671,7 +1693,7 @@ defmodule Postgrex.Protocol do
   defp deallocate_copy_recv(s, status, nrows \\ 0, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_copy_data(), buffer} ->
-        deallocate_copy_recv(s, status, nrows+1, buffer)
+        deallocate_copy_recv(s, status, nrows + 1, buffer)
       {:ok, msg_copy_done(), buffer} ->
         deallocate_copy_done(s, status, nrows, buffer)
       {:ok, msg_error(fields: fields), buffer} ->
@@ -1873,9 +1895,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp columns(fields) do
-    Enum.map(fields, fn row_field(type_oid: oid, name: name) ->
-      {oid, name}
-    end) |> :lists.unzip
+    fields
+    |> Enum.map(fn row_field(type_oid: oid, name: name) -> {oid, name} end)
+    |> :lists.unzip
   end
 
   defp column_oids(fields) do
@@ -1915,7 +1937,7 @@ defmodule Postgrex.Protocol do
   defp decode_tag(<<?\s, t::binary>>, acc),
     do: decode_tag(t, <<acc::binary, ?_>>)
   defp decode_tag(<<h, t::binary>>, acc) when h in ?A..?Z,
-    do: decode_tag(t, <<acc::binary, h+32>>)
+    do: decode_tag(t, <<acc::binary, h + 32>>)
   defp decode_tag(<<h, t::binary>>, acc),
     do: decode_tag(t, <<acc::binary, h>>)
 
@@ -1992,7 +2014,7 @@ defmodule Postgrex.Protocol do
   defp rows_recv(%{sock: {mod, sock}} = s, result_types, rows, buffer, more) do
     case mod.recv(sock, 0, :infinity) do
       {:ok, data} when byte_size(data) < more ->
-        rows_recv(s, result_types, rows, [buffer | data], more-byte_size(data))
+        rows_recv(s, result_types, rows, [buffer | data], more - byte_size(data))
       {:ok, data} when is_binary(buffer) ->
         rows_recv(s, result_types, rows, buffer <> data)
       {:ok, data} when is_list(buffer) ->

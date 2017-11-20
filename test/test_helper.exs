@@ -6,16 +6,15 @@ end
 
 version_exclusions = case System.get_env("PGVERSION") do
   v when is_binary(v) ->
-    ["8.4", "9.0", "9.1", "9.2", "9.3", "9.4"]
+    ["8.4", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5"]
     |> Enum.filter(fn x -> x > v end)
     |> Enum.map(&{:min_pg_version, &1})
   _ ->
     []
 end
 
-ExUnit.configure exclude: version_exclusions ++ exclude
+ExUnit.start exclude: version_exclusions ++ exclude
 
-ExUnit.start
 {:ok, _} = :application.ensure_all_started(:crypto)
 
 run_cmd = fn cmd ->
@@ -55,6 +54,12 @@ DROP TYPE IF EXISTS missing_comp;
 CREATE TABLE altering (a int2);
 
 CREATE TABLE calendar (a timestamp without time zone, b timestamp with time zone);
+
+DROP DOMAIN IF EXISTS points_domain;
+CREATE DOMAIN points_domain AS point[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
+
+DROP DOMAIN IF EXISTS floats_domain;
+CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
 """
 
 sql_with_schemas = """
@@ -63,12 +68,12 @@ CREATE SCHEMA test;
 """
 
 cmds = [
-  ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test;"),
-  ~s(psql -U postgres -c "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"),
-  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
-  ~s(psql -U postgres -c "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"),
-  ~s(psql -U postgres -d postgrex_test -c "#{sql}"),
-  ~s(psql -U postgres -d postgrex_test_with_schemas -c "#{sql_with_schemas}")
+  ["-U", "postgres", "-c", "DROP DATABASE IF EXISTS postgrex_test;"],
+  ["-U", "postgres", "-c", "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"],
+  ["-U", "postgres", "-c", "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
+  ["-U", "postgres", "-c", "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
+  ["-U", "postgres", "-d", "postgrex_test", "-c", sql],
+  ["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", sql_with_schemas]
 ]
 
 pg_version = System.get_env("PGVERSION")
@@ -77,24 +82,24 @@ pg_path = System.get_env("PGPATH")
 cmds =
   cond do
     !pg_version || String.to_float(pg_version) >= 9.1 ->
-      cmds ++ [~s(psql -U postgres -d postgrex_test_with_schemas -c "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"),
-               ~s(psql -U postgres -d postgrex_test -c "CREATE EXTENSION IF NOT EXISTS hstore;")]
+      cmds ++ [["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"],
+               ["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"]]
     String.to_float(pg_version) == 9.0 ->
-      cmds ++ [~s(psql -U postgres -d postgrex_test -f "#{pg_path}/contrib/hstore.sql")]
+      cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-f", "#{pg_path}/contrib/hstore.sql"]]
     String.to_float(pg_version) < 9.0 ->
-      cmds ++ [~s(psql -U postgres -d postgrex_test -c "CREATE LANGUAGE plpgsql;")]
+      cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE LANGUAGE plpgsql;"]]
     true ->
       cmds
 end
 
-Enum.each(cmds, fn cmd ->
-  {status, output} = run_cmd.(cmd)
+Enum.each(cmds, fn args ->
+  {output, status} = System.cmd("psql", args, stderr_to_stdout: true)
 
   if status != 0 do
     IO.puts """
     Command:
 
-    #{cmd}
+    psql #{Enum.join(args, " ")}
 
     error'd with:
 

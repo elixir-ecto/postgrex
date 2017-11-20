@@ -6,7 +6,7 @@ defmodule Postgrex.Mixfile do
   def project do
     [app: :postgrex,
      version: @version,
-     elixir: "~> 1.3.4 or ~> 1.4",
+     elixir: "~> 1.4",
      deps: deps(),
      name: "Postgrex",
      source_url: "https://github.com/elixir-ecto/postgrex",
@@ -19,11 +19,12 @@ defmodule Postgrex.Mixfile do
   def application do
     [applications: [:logger, :db_connection, :decimal, :crypto],
      mod: {Postgrex.App, []},
-     env: [type_server_reap_after: 3 * 60_000]]
+     env: [type_server_reap_after: 3 * 60_000, json_library: Poison]]
   end
 
   defp deps do
     [{:ex_doc, "~> 0.14", only: :docs},
+     {:poison, ">= 0.0.0", only: :test},
      {:decimal, "~> 1.0"},
      {:db_connection, "~> 1.1", github: "elixir-ecto/db_connection", ref: "24473f6"},
      {:connection, "~> 1.0"}]

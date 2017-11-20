@@ -99,7 +99,7 @@ defmodule Postgrex.Messages do
   end
 
   def parse(<<overflow_len :: uint16, _ :: binary>>, ?t, size) do
-    len = div(size-2, 4)
+    len = div(size - 2, 4)
     case <<len ::uint16>> do
       <<^overflow_len :: uint16>> ->
         msg_too_many_parameters(len: len, max_len: 0xFFFF)
@@ -354,7 +354,7 @@ defmodule Postgrex.Messages do
 
   defp decode_row_fields(rest, count) do
     {field, rest} = decode_row_field(rest)
-    [field | decode_row_fields(rest, count-1)]
+    [field | decode_row_fields(rest, count - 1)]
   end
 
   defp decode_row_field(rest) do

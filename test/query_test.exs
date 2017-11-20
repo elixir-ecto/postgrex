@@ -46,6 +46,12 @@ defmodule QueryTest do
     assert [[Decimal.new("NaN")]] == query("SELECT 'NaN'::numeric", [])
   end
 
+  @tag min_pg_version: "9.5"
+  test "decode json/jsonb", context do
+    assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::json", [])
+    assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::jsonb", [])
+  end
+
   test "decode uuid", context do
     uuid = <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
     assert [[^uuid]] = query("SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid", [])
@@ -57,6 +63,24 @@ defmodule QueryTest do
     assert [[[1,2]]] = query("SELECT ARRAY[1,2]", [])
     assert [[[[0],[1]]]] = query("SELECT ARRAY[[0],[1]]", [])
     assert [[[[0]]]] = query("SELECT ARRAY[ARRAY[0]]", [])
+  end
+
+  test "decode array domain", context do
+    assert [[[1.0, 2.0, 3.0]]] =
+           query("SELECT ARRAY[1, 2, 3]::floats_domain", [])
+
+    assert [[[%Postgrex.Point{x: 1.0, y: 1.0}, %Postgrex.Point{x: 2.0, y: 2.0}, %Postgrex.Point{x: 3.0, y: 3.0}]]] =
+           query("SELECT ARRAY[point '1,1', point '2,2', point '3,3']::points_domain", [])
+  end
+
+  test "encode array domain", context do
+    floats = [1.0, 2.0, 3.0]
+    floats_string = "{1,2,3}"
+    assert [[^floats_string]] = query("SELECT $1::floats_domain::text", [floats])
+
+    points = [%Postgrex.Point{x: 1.0, y: 1.0}, %Postgrex.Point{x: 2.0, y: 2.0}, %Postgrex.Point{x: 3.0, y: 3.0}]
+    points_string = "{\"(1,1)\",\"(2,2)\",\"(3,3)\"}"
+    assert [[^points_string]] = query("SELECT $1::points_domain::text", [points])
   end
 
   test "decode interval", context do
@@ -166,8 +190,9 @@ defmodule QueryTest do
     p1 = %Postgrex.Point{x: 0.0, y: 0.0}
     p2 = %Postgrex.Point{x: 1.0, y: 3.0}
     p3 = %Postgrex.Point{x: -4.0, y: 3.14}
-    path = %Postgrex.Path{points: [p1, p2, p3], open: false}
+    path = %Postgrex.Path{points: [p1, p2, p3], open: true}
     assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
+    assert [[%{path | open: false}]] == query("SELECT '((0.0,0.0),(1.0,3.0),(-4.0,3.14))'::path", [])
     assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
     bad_path = %Postgrex.Path{points: "foo", open: false}
     assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
@@ -253,6 +278,10 @@ defmodule QueryTest do
            query("SELECT '(,2014-12-31)'::daterange", [])
     assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 2}, upper: nil}]] =
            query("SELECT '(2014-1-1,]'::daterange", [])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT '(,)'::daterange", [])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT '[,]'::daterange", [])
   end
 
   @tag min_pg_version: "9.0"
@@ -424,12 +453,29 @@ defmodule QueryTest do
     end)
   end
 
+  test "encode numeric rises for infinite values", context do
+    assert_raise ArgumentError, "cannot represent #Decimal<Infinity> as numeric type", fn ->
+      query("SELECT $1::numeric", [Decimal.new("Infinity")])
+    end
+
+    assert_raise ArgumentError, "cannot represent #Decimal<-Infinity> as numeric type", fn ->
+      query("SELECT $1::numeric", [Decimal.new("-Infinity")])
+    end
+  end
+
   test "encode integers and floats as numeric", context do
     dec = Decimal.new(1)
     assert [[dec]] == query("SELECT $1::numeric", [1])
 
     dec = Decimal.new(1.0)
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
+  end
+
+  @tag min_pg_version: "9.5"
+  test "encode json/jsonb", context do
+    json = %{"foo" => 42}
+    assert [[json]] == query("SELECT $1::json", [json])
+    assert [[json]] == query("SELECT $1::jsonb", [json])
   end
 
   test "encode custom numerics", context do
@@ -510,6 +556,10 @@ defmodule QueryTest do
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: true}])
     assert [[%Postgrex.Range{lower: 4, upper: 5, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: 5, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
 
     assert [[%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int8range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
@@ -523,6 +573,10 @@ defmodule QueryTest do
            query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}])
     assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}]] =
            query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
   end
 
   @tag min_pg_version: "9.2"

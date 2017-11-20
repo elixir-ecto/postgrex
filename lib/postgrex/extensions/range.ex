@@ -51,10 +51,6 @@ defmodule Postgrex.Extensions.Range do
 
   ## Helpers
 
-  def encode(_, _, <<-1::int32>>, <<-1::int32>>) do
-    <<@range_empty>>
-  end
-
   def encode(%Postgrex.Range{lower_inclusive: lower_inc,
                              upper_inclusive: upper_inc}, _oid, lower, upper) do
     flags = 0
@@ -87,7 +83,7 @@ defmodule Postgrex.Extensions.Range do
         flags
       end
 
-    [<<IO.iodata_length(bin)+1::int32>>, flags | bin]
+    [<<IO.iodata_length(bin) + 1::int32>>, flags | bin]
   end
 
   def decode(flags, _oid, [], null) when (flags &&& @range_empty) != 0 do

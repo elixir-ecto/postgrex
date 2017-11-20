@@ -46,10 +46,18 @@ defmodule Postgrex.Types do
   def bootstrap_query(version, {_, table}) do
     oids = :ets.select(table, [{{:"$1", :_, :_}, [], [:"$1"]}])
 
+    {typelem, join_domain} =
+      if version >= {9, 0, 0} do
+        {"coalesce(d.typelem, t.typelem)",
+         "LEFT JOIN pg_type AS d ON t.typbasetype = d.oid"}
+      else
+        {"t.typelem", ""}
+      end
+
     {rngsubtype, join_range} =
       if version >= {9, 2, 0} do
         {"coalesce(r.rngsubtype, 0)",
-         "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid"}
+         "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype)"}
       else
         {"0", ""}
       end
@@ -71,13 +79,14 @@ defmodule Postgrex.Types do
 
     """
     SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
-           t.typelem, #{rngsubtype}, ARRAY (
+           #{typelem}, #{rngsubtype}, ARRAY (
       SELECT a.atttypid
       FROM pg_attribute AS a
       WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
       ORDER BY a.attnum
     )
     FROM pg_type AS t
+    #{join_domain}
     #{join_range}
     #{filter_oids}
     """
@@ -252,7 +261,8 @@ defmodule Postgrex.Types do
 
     * `:json` - The JSON module to encode and decode JSON binaries, calls
       `module.encode_to_iodata!/1` to encode and `module.decode!/1` to decode.
-      If `nil` then no default JSON handling (default: `nil`);
+      If `nil` then no default JSON handling
+      (default: `Application.get_env(:postgrex, :json_library, Poison)`);
 
     * `:bin_opt_info` - Either `true` to enable binary optimisation information,
       or `false` to disable, for more information see `Kernel.SpecialForms.<<>>/1`
