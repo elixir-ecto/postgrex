@@ -23,6 +23,10 @@ defmodule TypeModuleTest do
 
   @tag min_pg_version: "9.0"
   test "hstore references binaries when decode_binary: :reference", context do
+    text = "hello world"
+    assert [[bin]] = query("SELECT $1::text", [text])
+    assert :binary.referenced_byte_size(bin) > byte_size(text)
+
     assert [[%{"hello" => world}]] = query("SELECT $1::hstore", [%{"hello" => "world"}])
     assert :binary.referenced_byte_size(world) > byte_size("world")
   end
