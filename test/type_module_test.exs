@@ -23,12 +23,13 @@ defmodule TypeModuleTest do
 
   @tag min_pg_version: "9.0"
   test "hstore references binaries when decode_binary: :reference", context do
-    text = "hello world"
+    # For OTP 20+ refc binaries up to 64 bytes might be copied during a GC
+    text = String.duplicate("hello world", 6)
     assert [[bin]] = query("SELECT $1::text", [text])
     assert :binary.referenced_byte_size(bin) > byte_size(text)
 
-    assert [[%{"hello" => world}]] = query("SELECT $1::hstore", [%{"hello" => "world"}])
-    assert :binary.referenced_byte_size(world) > byte_size("world")
+    assert [[%{"hello" => value}]] = query("SELECT $1::hstore", [%{"hello" => text}])
+    assert :binary.referenced_byte_size(value) > byte_size(text)
   end
 
   test "decode null with custom mapping", context do
