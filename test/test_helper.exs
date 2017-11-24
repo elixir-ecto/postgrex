@@ -1,17 +1,25 @@
-exclude = if System.get_env("PGVERSION") == "8.4" do
+pg_version =
+  case System.get_env("PGVERSION") do
+    nil -> nil
+    version ->
+      destructure [major, minor], String.split(version, ".")
+      {String.to_integer(major), String.to_integer(minor || "0")}
+  end
+
+exclude = if pg_version == {8, 4} do
   [requires_notify_payload: true]
 else
   []
 end
 
-version_exclusions = case System.get_env("PGVERSION") do
-  v when is_binary(v) ->
-    ["8.4", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5"]
-    |> Enum.filter(fn x -> x > v end)
-    |> Enum.map(&{:min_pg_version, &1})
-  _ ->
+version_exclusions =
+  if pg_version do
+    [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}]
+    |> Enum.filter(fn x -> x > pg_version end)
+    |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
+  else
     []
-end
+  end
 
 ExUnit.start exclude: version_exclusions ++ exclude
 
@@ -76,17 +84,16 @@ cmds = [
   ["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", sql_with_schemas]
 ]
 
-pg_version = System.get_env("PGVERSION")
 pg_path = System.get_env("PGPATH")
 
 cmds =
   cond do
-    !pg_version || String.to_float(pg_version) >= 9.1 ->
+    !pg_version || pg_version >= {9, 1} ->
       cmds ++ [["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"],
                ["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"]]
-    String.to_float(pg_version) == 9.0 ->
+    pg_version == {9, 0} ->
       cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-f", "#{pg_path}/contrib/hstore.sql"]]
-    String.to_float(pg_version) < 9.0 ->
+    pg_version < {9, 0} ->
       cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE LANGUAGE plpgsql;"]]
     true ->
       cmds
