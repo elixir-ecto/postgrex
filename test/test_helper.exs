@@ -6,7 +6,17 @@ pg_version =
       {String.to_integer(major), String.to_integer(minor || "0")}
   end
 
-exclude = if pg_version == {8, 4} do
+otp_release = :otp_release |> :erlang.system_info() |> List.to_integer()
+unix_socket_dir = System.get_env("PG_SOCKET_DIR") || "/tmp"
+port = System.get_env("PGPORT") || "5432"
+unix_socket_path = Path.join(unix_socket_dir, ".s.PGSQL.#{port}")
+unix_exclude = if otp_release >= 20 and File.exists?(unix_socket_path) do
+  []
+else
+  [unix: true]
+end
+
+notify_exclude = if pg_version == {8, 4} do
   [requires_notify_payload: true]
 else
   []
@@ -21,7 +31,7 @@ version_exclusions =
     []
   end
 
-ExUnit.start exclude: version_exclusions ++ exclude
+ExUnit.start exclude: version_exclusions ++ notify_exclude ++ unix_exclude
 
 {:ok, _} = :application.ensure_all_started(:crypto)
 
@@ -76,12 +86,12 @@ CREATE SCHEMA test;
 """
 
 cmds = [
-  ["-U", "postgres", "-c", "DROP DATABASE IF EXISTS postgrex_test;"],
-  ["-U", "postgres", "-c", "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"],
-  ["-U", "postgres", "-c", "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
-  ["-U", "postgres", "-c", "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
-  ["-U", "postgres", "-d", "postgrex_test", "-c", sql],
-  ["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", sql_with_schemas]
+  ["-c", "DROP DATABASE IF EXISTS postgrex_test;"],
+  ["-c", "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"],
+  ["-c", "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
+  ["-c", "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
+  ["-d", "postgrex_test", "-c", sql],
+  ["-d", "postgrex_test_with_schemas", "-c", sql_with_schemas]
 ]
 
 pg_path = System.get_env("PGPATH")
@@ -89,18 +99,20 @@ pg_path = System.get_env("PGPATH")
 cmds =
   cond do
     !pg_version || pg_version >= {9, 1} ->
-      cmds ++ [["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"],
-               ["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"]]
+      cmds ++ [["-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"],
+               ["-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"]]
     pg_version == {9, 0} ->
-      cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-f", "#{pg_path}/contrib/hstore.sql"]]
+      cmds ++ [["-d", "postgrex_test", "-f", "#{pg_path}/contrib/hstore.sql"]]
     pg_version < {9, 0} ->
-      cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE LANGUAGE plpgsql;"]]
+      cmds ++ [["-d", "postgrex_test", "-c", "CREATE LANGUAGE plpgsql;"]]
     true ->
       cmds
 end
 
+psql_env = Map.put_new(System.get_env(), "PGUSER", "postgres")
+
 Enum.each(cmds, fn args ->
-  {output, status} = System.cmd("psql", args, stderr_to_stdout: true)
+  {output, status} = System.cmd("psql", args, stderr_to_stdout: true, env: psql_env)
 
   if status != 0 do
     IO.puts """
