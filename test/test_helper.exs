@@ -6,7 +6,7 @@ pg_version =
       {String.to_integer(major), String.to_integer(minor || "0")}
   end
 
-otp_release = :erlang.system_info(:otp_release) |> List.to_integer()
+otp_release = :otp_release |> :erlang.system_info() |> List.to_integer()
 unix_socket_dir = System.get_env("PG_SOCKET_DIR") || "/tmp"
 port = System.get_env("PGPORT") || "5432"
 unix_socket_path = Path.join(unix_socket_dir, ".s.PGSQL.#{port}")
@@ -15,7 +15,6 @@ unix_exclude = if otp_release >= 20 and File.exists?(unix_socket_path) do
 else
   [unix: true]
 end
-
 
 notify_exclude = if pg_version == {8, 4} do
   [requires_notify_payload: true]
@@ -110,7 +109,7 @@ cmds =
       cmds
 end
 
-psql_env = System.get_env() |> Map.put_new("PGUSER", "postgres")
+psql_env = Map.put_new(System.get_env(), "PGUSER", "postgres")
 
 Enum.each(cmds, fn args ->
   {output, status} = System.cmd("psql", args, stderr_to_stdout: true, env: psql_env)
