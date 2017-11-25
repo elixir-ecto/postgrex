@@ -36,9 +36,12 @@ defmodule Postgrex.TypeServer do
   @doc """
   Update the type server using the given reference and configuration.
   """
-  @spec update(pid, reference, [Postgrex.TypeInfo.t]) :: :go
-  def update(server, ref, type_infos) do
+  @spec update(pid, reference, [Postgrex.TypeInfo.t]) :: :ok
+  def update(server, ref, [_|_] = type_infos) do
     GenServer.call(server, {:update, ref, type_infos}, @timeout)
+  end
+  def update(server, ref, []) do
+    done(server, ref)
   end
 
   @doc """

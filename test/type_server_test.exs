@@ -10,7 +10,7 @@ defmodule TypeServerTest do
     server = TM.get(@types, key)
     assert {:lock, ref, {@types, table}} = TS.fetch(server)
     assert :ets.info(table, :name) == Postgrex.Types
-    assert TS.update(server, ref, []) == :go
+    assert TS.update(server, ref, []) == :ok
   end
 
   test "fetches and exits" do
