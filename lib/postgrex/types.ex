@@ -42,10 +42,26 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, state) :: binary
+  @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, state) :: binary | nil
   def bootstrap_query(version, {_, table}) do
-    oids = :ets.select(table, [{{:"$1", :_, :_}, [], [:"$1"]}])
+    case :ets.info(table, :size) do
+      0 ->
+        # avoid loading information about table-types
+        # since there might be a lot them and most likely
+        # they won't be used; subsequent bootstrap will
+        # fetch them along with any other "new" types
+        filter_oids =
+          """
+          WHERE (t.typrelid = 0)
+          AND (t.typelem = 0 OR t.typelem NOT IN (SELECT oid FROM pg_catalog.pg_type WHERE typrelid!=0))
+          """
+        build_bootstrap_query(version, filter_oids)
+      _ ->
+        nil
+    end
+  end
 
+  defp build_bootstrap_query(version, filter_oids) do
     {typelem, join_domain} =
       if version >= {9, 0, 0} do
         {"coalesce(d.typelem, t.typelem)",
@@ -62,28 +78,6 @@ defmodule Postgrex.Types do
         {"0", ""}
       end
 
-    filter_oids =
-      case oids do
-        [] ->
-          # avoid loading information about table-types
-          # since there might be a lot them and most likely
-          # they won't be used; subsequent bootstrap will
-          # fetch them along with any other "new" types
-          """
-          WHERE (t.typrelid=0)
-          AND (t.typelem = 0 OR t.typelem NOT IN (SELECT oid FROM pg_catalog.pg_type WHERE typrelid!=0))
-          """
-        _  ->
-          # equiv to `WHERE t.oid NOT IN (SELECT unnest(ARRAY[#{Enum.join(oids, ",")}]))`
-          # `unnest` is not supported in redshift or postgres version prior to 8.4
-          """
-          WHERE t.oid NOT IN (
-            SELECT (ARRAY[#{Enum.join(oids, ",")}])[i]
-            FROM generate_series(1, #{length(oids)}) AS i
-          )
-          """
-      end
-
     """
     SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
            #{typelem}, #{rngsubtype}, ARRAY (
@@ -97,6 +91,17 @@ defmodule Postgrex.Types do
     #{join_range}
     #{filter_oids}
     """
+  end
+
+  @doc false
+  @spec reload_query({pos_integer, non_neg_integer, non_neg_integer}, [oid, ...], state) :: binary | nil
+  def reload_query(version, oids, {_, table}) do
+    case Enum.reject(oids, &:ets.member(table, &1)) do
+      [] ->
+        nil
+      oids ->
+        build_bootstrap_query(version, "WHERE t.oid IN (#{Enum.join(oids, ", ")})")
+    end
   end
 
   @doc false

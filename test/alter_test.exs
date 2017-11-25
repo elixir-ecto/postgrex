@@ -200,6 +200,22 @@ defmodule AlterTest do
     assert [[{1, 2}]] = query("SELECT a FROM missing_comp_table", [])
   end
 
+  test "new oids in param and result are bootstrapped", context do
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TABLE missing_comp_table (a missing_comp, b missing_enum DEFAULT 'missing')", [])
+
+    assert [["missing"]] = query("INSERT INTO missing_comp_table VALUES ($1, DEFAULT) RETURNING b", [{1, 2}])
+  end
+
+  test "duplicate oid is bootstrapped", context do
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_comp_table (a missing_comp, b missing_comp)", [])
+
+    assert :ok = query("INSERT INTO missing_comp_table VALUES ($1, $2)", [{1, 2}, {3, 4}])
+    assert [[{1, 2}, {3, 4}]] = query("SELECT a, b FROM missing_comp_table", [])
+  end
+
   @tag prepare: :unnamed
   test "new oid is bootstrapped with unnamed", context do
     assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
