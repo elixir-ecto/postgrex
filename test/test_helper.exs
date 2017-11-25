@@ -6,10 +6,11 @@ pg_version =
       {String.to_integer(major), String.to_integer(minor || "0")}
   end
 
+otp_release = :erlang.system_info(:otp_release) |> List.to_integer()
 unix_socket_dir = System.get_env("PG_SOCKET_DIR") || "/tmp"
 port = System.get_env("PGPORT") || "5432"
 unix_socket_path = Path.join(unix_socket_dir, ".s.PGSQL.#{port}")
-unix_exclude = if File.exists?(unix_socket_path) do
+unix_exclude = if otp_release >= 20 and File.exists?(unix_socket_path) do
   []
 else
   [unix: true]
