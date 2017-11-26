@@ -1555,19 +1555,27 @@ defmodule Postgrex.Protocol do
     query_error(s, "query #{inspect query} has invalid types for the connection")
   end
 
-  defp handle_prepare_bind(%Query{name: ""} = query, params, res, opts, s) do
+  defp handle_prepare_bind(%Query{name: "", ref: ref} = query, params, res, opts, s) do
     status = %{notify: notify(opts), mode: mode(opts), function: :prepare_bind}
-    case parse_describe_flush(s, status, query) do
-      {:ok, query, s} ->
+    with {:ok, %Query{ref: new_ref} = new_query, s} when new_ref != ref <-
+           parse_describe_flush(s, status, query),
+         {:ok, cursor, s} <- bind(s, status, new_query, params, res) do
+      {:ok, new_query, cursor, s}
+    else
+      {:ok, %Query{ref: ^ref} = query, s} ->
         bind(s, status, query, params, res)
       {error, _, _} = other when error in [:error, :disconnect] ->
         other
     end
   end
-  defp handle_prepare_bind(query, params, res, opts, s) do
+  defp handle_prepare_bind(%Query{ref: ref} = query, params, res, opts, s) do
     status = %{notify: notify(opts), mode: mode(opts), function: :prepare_bind}
-    case close_parse_describe_flush(s, status, query) do
-      {:ok, query, s} ->
+    with {:ok, %Query{ref: new_ref} = new_query, s} when new_ref != ref <-
+           close_parse_describe_flush(s, status, query),
+         {:ok, cursor, s} <- bind(s, status, new_query, params, res) do
+      {:ok, new_query, cursor, s}
+    else
+      {:ok, %Query{ref: ^ref} = query, s} ->
         bind(s, status, query, params, res)
       {error, _, _} = other when error in [:error, :disconnect] ->
         other
