@@ -16,6 +16,8 @@ defmodule Postgrex.Notifications do
 
   ## PUBLIC API ##
 
+  @type server :: GenServer.server()
+
   @doc """
   Start the notification connection process and connect to postgres.
 
@@ -36,7 +38,7 @@ defmodule Postgrex.Notifications do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec listen(pid, String.t, Keyword.t) :: {:ok, reference}
+  @spec listen(server, String.t, Keyword.t) :: {:ok, reference}
   def listen(pid, channel, opts \\ []) do
     message = {:listen, channel}
     timeout = opts[:timeout] || @timeout
@@ -46,7 +48,7 @@ defmodule Postgrex.Notifications do
   @doc """
   Listens to an asynchronous notification channel `channel`. See `listen/2`.
   """
-  @spec listen!(pid, String.t, Keyword.t) :: reference
+  @spec listen!(server, String.t, Keyword.t) :: reference
   def listen!(pid, channel, opts \\ []) do
     {:ok, ref} = listen(pid, channel, opts)
     ref
@@ -60,7 +62,7 @@ defmodule Postgrex.Notifications do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec unlisten(pid, reference, Keyword.t) :: :ok
+  @spec unlisten(server, reference, Keyword.t) :: :ok
   def unlisten(pid, ref, opts \\ []) do
     message = {:unlisten, ref}
     timeout = opts[:timeout] || @timeout
@@ -74,7 +76,7 @@ defmodule Postgrex.Notifications do
   Stops listening on the given channel by passing the reference returned from
   `listen/2`.
   """
-  @spec unlisten!(pid, reference, Keyword.t) :: :ok
+  @spec unlisten!(server, reference, Keyword.t) :: :ok
   def unlisten!(pid, ref, opts \\ []) do
     unlisten(pid, ref, opts)
   end
