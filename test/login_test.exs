@@ -144,7 +144,7 @@ defmodule LoginTest do
   test "unix domain socket connection", context do
     socket = System.get_env("PG_SOCKET_DIR") || "/tmp"
 
-    opts = [socket: socket]
+    opts = [socket_dir: socket]
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts ++ context[:options])
       assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
@@ -154,7 +154,7 @@ defmodule LoginTest do
   @tag :unix
   test "non-existent unix domain socket", context do
     Process.flag(:trap_exit, true)
-    opts = [socket: "/doesntexist"]
+    opts = [socket_dir: "/doesntexist"]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts ++ context[:options])
