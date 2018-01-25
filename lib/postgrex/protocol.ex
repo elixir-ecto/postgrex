@@ -54,7 +54,7 @@ defmodule Postgrex.Protocol do
     port = opts[:port] || 5432
 
     {host, port} =
-      case Keyword.fetch(opts, :socket) do
+      case Keyword.fetch(opts, :socket_dir) do
         {:ok, socket} ->
           {{:local, "#{socket}/.s.PGSQL.#{port}"}, 0}
 
@@ -64,7 +64,7 @@ defmodule Postgrex.Protocol do
               {to_charlist(hostname), port}
 
             :error ->
-              raise ArgumentError, "expected :hostname or :socket to be given"
+              raise ArgumentError, "expected :hostname or :socket_dir to be given"
           end
       end
 
