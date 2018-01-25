@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.4 (2018-01-25)
+
+* Enhancements
+  * Support custom range domains
+  * Support custom array domains
+  * Add support for UNIX domain sockets via the `:socket_dir` option
+  * Remove warnings on Elixir v1.6
+
+* Bug fixes
+  * Fix encoding of empty ranges
+  * Fix Postgrex.Path open/closed byte parity
+
 ## v0.13.3 (2017-05-31)
 
 * Enhancements
