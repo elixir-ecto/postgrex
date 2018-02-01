@@ -262,7 +262,7 @@ defmodule Postgrex.Types do
     * `:json` - The JSON module to encode and decode JSON binaries, calls
       `module.encode_to_iodata!/1` to encode and `module.decode!/1` to decode.
       If `nil` then no default JSON handling
-      (default: `Application.get_env(:postgrex, :json_library, Poison)`);
+      (default: `Application.get_env(:postgrex, :json_library, Jason)`);
 
     * `:bin_opt_info` - Either `true` to enable binary optimisation information,
       or `false` to disable, for more information see `Kernel.SpecialForms.<<>>/1`
