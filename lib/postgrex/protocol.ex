@@ -555,6 +555,16 @@ defmodule Postgrex.Protocol do
         ssl_connect(s, status)
       {:ok, <<?N>>} ->
         disconnect(s, %Postgrex.Error{message: "ssl not available"}, "")
+      {:ok, <<?E>> = buffer} ->
+        # This can happen for "very ancient servers" according to docs,
+        # it shouldn't happen in regular operation
+        # See: https://www.postgresql.org/docs/10/static/protocol-flow.html#idm46428663878176
+        case msg_recv(s, :infinity, buffer) do
+          {:ok, msg_error(fields: fields), buffer} ->
+            disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+          {:disconnect, _, _} = dis ->
+            dis
+        end
       {:error, reason} ->
         disconnect(s, :tcp, "recv", reason)
     end
