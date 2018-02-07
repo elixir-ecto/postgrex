@@ -164,9 +164,9 @@ defmodule LoginTest do
   end
 
   @tag :unix
-  test "socket_file precedes socket_dir", context do
+  test "socket precedes socket_dir", context do
     Process.flag(:trap_exit, true)
-    opts = [socket_file: "/socketfile", socket_dir: "/socketdir"]
+    opts = [socket: "/socketfile", socket_dir: "/socketdir"]
 
     capture_log fn ->
       assert {:ok, pid} = P.start_link(opts ++ context[:options])

@@ -44,7 +44,7 @@ defmodule Postgrex.Protocol do
     port = opts[:port] || 5432
 
     {host, port} =
-      case Keyword.fetch(opts, :socket_file) do
+      case Keyword.fetch(opts, :socket) do
         {:ok, file} ->
           {{:local, file}, 0}
 
@@ -60,7 +60,7 @@ defmodule Postgrex.Protocol do
 
                 :error ->
                   raise ArgumentError,
-                        "expected :hostname, :socket_dir, or :socket_file to be given"
+                        "expected :hostname, :socket_dir, or :socket to be given"
               end
           end
       end
