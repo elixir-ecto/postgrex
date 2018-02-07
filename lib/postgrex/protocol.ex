@@ -44,17 +44,24 @@ defmodule Postgrex.Protocol do
     port = opts[:port] || 5432
 
     {host, port} =
-      case Keyword.fetch(opts, :socket_dir) do
-        {:ok, socket} ->
-          {{:local, "#{socket}/.s.PGSQL.#{port}"}, 0}
+      case Keyword.fetch(opts, :socket_file) do
+        {:ok, file} ->
+          {{:local, file}, 0}
 
         :error ->
-          case Keyword.fetch(opts, :hostname) do
-            {:ok, hostname} ->
-              {to_charlist(hostname), port}
+          case Keyword.fetch(opts, :socket_dir) do
+            {:ok, dir} ->
+              {{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}
 
             :error ->
-              raise ArgumentError, "expected :hostname or :socket_dir to be given"
+              case Keyword.fetch(opts, :hostname) do
+                {:ok, hostname} ->
+                  {to_charlist(hostname), port}
+
+                :error ->
+                  raise ArgumentError,
+                        "expected :hostname, :socket_dir, or :socket_file to be given"
+              end
           end
       end
 

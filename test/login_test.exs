@@ -163,6 +163,18 @@ defmodule LoginTest do
     end
   end
 
+  @tag :unix
+  test "socket_file precedes socket_dir", context do
+    Process.flag(:trap_exit, true)
+    opts = [socket_file: "/socketfile", socket_dir: "/socketdir"]
+
+    capture_log fn ->
+      assert {:ok, pid} = P.start_link(opts ++ context[:options])
+      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{message: message}, [_|_]}}
+      assert message =~ ~r"tcp connect \(/socketfile\): no such file or directory - :enoent"
+    end
+  end
+
   test "after connect function run", context do
     parent = self()
     after_connect = fn(conn) -> send(parent, P.query(conn, "SELECT 42", [])) end
