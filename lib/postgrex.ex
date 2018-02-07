@@ -34,7 +34,9 @@ defmodule Postgrex do
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:socket_dir` - Connect to Postgres via UNIX sockets in the given directory
-      (takes precedence over the hostname);
+      (takes precedence over the hostname, preferred method for configuring sockets);
+    * `:socket_file` - Connect to Postgres via UNIX sockets using the given file
+      (takes precedence over the hostname and socket_dir);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
