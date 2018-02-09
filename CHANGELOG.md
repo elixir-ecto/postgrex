@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.5 (2018-02-09)
+
+* Enhancements
+  * Support a specific `:socket` location besides `:socket_dir`
+
+* Bug fixes
+  * Parse PG10+ versions
+
 ## v0.13.4 (2018-01-25)
 
 * Enhancements
