@@ -210,6 +210,26 @@ defmodule LoginTest do
     end
   end
 
+  test "obtains credentials via .pgpass at default location" do
+    set_pgpass_file()
+
+    opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432",
+            sync_connect: true, backoff_type: :stop]
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "obtains credentials via .pgpass at passfile option" do
+    set_pgpass_file()
+
+    opts = [hostname: "localhost", username: "postgrex_cleartext_pw", database: "postgres", port: "5432",
+            sync_connect: true, backoff_type: :stop,
+            passfile: Path.join(__DIR__, "support/pgpass")]
+    assert "postgrex_cleartext_pw" == P.Utils.default_opts(opts)[:password]
+    assert {:ok, pid} = P.start_link(opts)
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
   defp set_port_number(nil) do
     System.delete_env("PGPORT")
   end
@@ -224,5 +244,11 @@ defmodule LoginTest do
 
   defp set_db_name(db_name) when is_binary(db_name) do
     System.put_env("PGDATABASE", db_name)
+  end
+
+  defp set_pgpass_file do
+    path = Path.join(__DIR__, "support/pgpass")
+    System.put_env("PGPASSFILE", path)
+    File.chmod!(path, 0o0600)
   end
 end
