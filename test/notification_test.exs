@@ -12,6 +12,11 @@ defmodule NotificationTest do
     {:ok, [pid: pid, pid_ps: pid_ps]}
   end
 
+  test "fails on sync connection by default" do
+    Process.flag(:trap_exit, true)
+    assert {:error, _} = PN.start_link(database: "nobody_knows_it")
+  end
+
   test "listening", context do
     assert {:ok, _} = PN.listen(context.pid_ps, "channel")
   end

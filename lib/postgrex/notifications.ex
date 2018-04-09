@@ -22,11 +22,14 @@ defmodule Postgrex.Notifications do
   Start the notification connection process and connect to postgres.
 
   The option that this function accepts are exactly the same accepted by
-  `Postgrex.start_link/1`.
+  `Postgrex.start_link/1`. Note `:sync_connect` defaults to `true`.
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
-    Connection.start_link(__MODULE__, Postgrex.Utils.default_opts(opts), [name: opts[:name]])
+    {server_opts, opts} = Keyword.split(opts, [:name])
+    opts = Keyword.put_new(opts, :sync_connect, true)
+    connection_opts = Postgrex.Utils.default_opts(opts)
+    Connection.start_link(__MODULE__, connection_opts, server_opts)
   end
 
   @doc """
