@@ -3,7 +3,7 @@ defmodule Postgrex.Error do
 
   @type t :: %Postgrex.Error{}
 
-  @metadata [:table, :column, :constraint]
+  @metadata [:table, :column, :constraint, :hint]
 
   def message(e) do
     if kw = e.postgres do
