@@ -20,7 +20,8 @@ defmodule Postgrex.Query do
     result_oids:    [Postgrex.Types.oid] | nil,
     result_formats: [:binary | :text] | nil,
     result_types:   [Postgrex.Types.type] | nil,
-    types:          Postgrex.Types.state | nil}
+    types:          Postgrex.Types.state | nil
+  }
 
   defstruct [:ref, :name, :statement, :param_oids, :param_formats, :param_types,
     :columns, :result_oids, :result_formats, :result_types, :types]

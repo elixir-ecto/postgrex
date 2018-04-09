@@ -3,12 +3,15 @@ defmodule ErrorTest do
 
   alias Postgrex, as: P
 
-  @tag min_pg_version: "9.3"
-  test "encodes code, detail, table and constraint" do
+  setup do
     opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = P.start_link(opts)
+    {:ok, pid: pid}
+  end
 
-    {:error, error} = P.query(pid, "insert into uniques values (1), (1);", [])
+  @tag min_pg_version: "9.3"
+  test "encodes code, detail, table and constraint", config do
+    {:error, error} = P.query(config.pid, "insert into uniques values (1), (1);", [])
     message = Exception.message(error)
     assert message =~ "duplicate key value violates unique constraint"
     assert message =~ "table: uniques"
@@ -17,10 +20,7 @@ defmodule ErrorTest do
   end
 
   @tag min_pg_version: "9.3"
-  test "encodes custom hint" do
-    opts = [database: "postgrex_test", backoff_type: :stop]
-    {:ok, pid} = P.start_link(opts)
-
+  test "encodes custom hint", config do
     query = """
     DO language plpgsql $$ BEGIN
       RAISE EXCEPTION 'oops' USING HINT = 'custom hint';
@@ -28,9 +28,17 @@ defmodule ErrorTest do
     $$;
     """
 
-    {:error, error} = P.query(pid, query, [])
+    {:error, error} = P.query(config.pid, query, [])
     message = Exception.message(error)
     assert message =~ "oops"
     assert message =~ "hint: custom hint"
+  end
+
+  @tag min_pg_version: "9.3"
+  test "includes query on invalid syntax", config do
+    {:error, error} = P.query(config.pid, "SELCT true;", [])
+    message = Exception.message(error)
+    assert message =~ "ERROR 42601 (syntax_error) syntax error at or near \"SELCT\""
+    assert message =~ "query: SELCT true"
   end
 end

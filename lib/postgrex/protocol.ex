@@ -839,10 +839,13 @@ defmodule Postgrex.Protocol do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
         {:ok, done(s, [tag]), s, buffer}
+
       {:ok, msg_error(fields: fields), buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
+
       {:ok, msg, buffer} ->
         recv_listener(handle_msg(s, status, msg), status, buffer)
+
       {:disconnect, _, _} = dis ->
         dis
     end
@@ -1093,6 +1096,12 @@ defmodule Postgrex.Protocol do
     with {:ok, s, buffer} <- recv_parse(s, status, buffer),
          {:ok, param_oids, result_oids, columns, s, buffer} <- recv_describe(s, status, buffer) do
       describe(s, query, param_oids, result_oids, columns, buffer)
+    else
+      {:error, %Postgrex.Error{} = error, s, buffer} ->
+        {:error, %{error | query: query.statement}, s, buffer}
+
+      {:disconnect, _, _} = disconnect ->
+        disconnect
     end
   end
   defp recv_parse_describe(s, status, query, buffer) do
