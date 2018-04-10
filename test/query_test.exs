@@ -257,13 +257,17 @@ defmodule QueryTest do
            query("SELECT '(1,5)'::int4range", [])
     assert [[%Postgrex.Range{lower: 1, upper: 7, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT '[1,6]'::int4range", [])
-    assert [[%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: 5, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '(,5)'::int4range", [])
-    assert [[%Postgrex.Range{lower: 1, upper: nil, lower_inclusive: true, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: 1, upper: :unbound, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT '[1,)'::int4range", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :empty, upper: :empty, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT '(1,1)'::int4range", [])
+    assert [[%Postgrex.Range{lower: 1, upper: 2, lower_inclusive: true, upper_inclusive: false}]] =
+           query("SELECT '[1,1]'::int4range", [])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '(,)'::int4range", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '[,]'::int4range", [])
 
     assert [[%Postgrex.Range{lower: 3, upper: 8, lower_inclusive: true, upper_inclusive: false}]] =
@@ -274,13 +278,13 @@ defmodule QueryTest do
 
     assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2014, month: 12, day: 31}}]] =
            query("SELECT '[2014-1-1,2014-12-31)'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: %Date{year: 2014, month: 12, day: 31}}]] =
            query("SELECT '(,2014-12-31)'::daterange", [])
-    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 2}, upper: nil}]] =
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 2}, upper: :unbound}]] =
            query("SELECT '(2014-1-1,]'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '(,)'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '[,]'::daterange", [])
   end
 
@@ -551,16 +555,19 @@ defmodule QueryTest do
   test "encode range", context do
     assert [[%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
-    assert [[%Postgrex.Range{lower: nil, upper: 6, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: true}])
-    assert [[%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: 6, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :unbound, upper: 5, lower_inclusive: false, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: 3, upper: :unbound, lower_inclusive: true, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: :unbound, lower_inclusive: true, upper_inclusive: true}])
     assert [[%Postgrex.Range{lower: 4, upper: 5, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: 5, lower_inclusive: false, upper_inclusive: false}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: true, upper_inclusive: true}])
+
+    assert [[%Postgrex.Range{lower: :empty, upper: :empty, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :empty, upper: :empty, lower_inclusive: true, upper_inclusive: true}])
 
     assert [[%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int8range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
@@ -570,14 +577,14 @@ defmodule QueryTest do
 
     assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2015, month: 1, day: 1}}]] =
            query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2014, month: 12, day: 31}}])
-    assert [[%Postgrex.Range{lower: nil, upper: %Date{year: 2015, month: 1, day: 1}}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}])
-    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: %Date{year: 2015, month: 1, day: 1}}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: :unbound, upper: %Date{year: 2014, month: 12, day: 31}}])
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: :unbound}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: :unbound}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: true, upper_inclusive: true}])
   end
 
   @tag min_pg_version: "9.2"
