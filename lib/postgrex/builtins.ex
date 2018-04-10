@@ -29,8 +29,8 @@ defmodule Postgrex.Range do
   """
 
   @type t :: %__MODULE__{
-          lower: term,
-          upper: term,
+          lower: term | :empty | :unbound,
+          upper: term | :empty | :unbound,
           lower_inclusive: boolean,
           upper_inclusive: boolean
         }
