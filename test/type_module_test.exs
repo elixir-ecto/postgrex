@@ -41,22 +41,12 @@ defmodule TypeModuleTest do
     assert [[{:custom, true, false}]] = query("SELECT ROW(NULL, true, false)", [])
   end
 
-  @tag min_pg_version: "9.2"
-  test "decode range with custom mapping", context do
-    assert [[%Postgrex.Range{lower: :custom, upper: 1}]] = query("SELECT int4range(NULL, 1)", [])
-  end
-
   test "encode null with custom mapping", context do
     assert [[:custom, :custom]] = query("SELECT $1::text, $2::int", [:custom, :custom])
     assert [[true, false, :custom]] = query("SELECT $1::bool, $2::bool, $3::bool", [true, false, :custom])
     assert [[true, :custom, false]] = query("SELECT $1::bool, $2::bool, $3::bool", [true, :custom, false])
     assert [[:custom, true, false]] = query("SELECT $1::bool, $2::bool, $3::bool", [:custom, true, false])
     assert [["{NULL,t,f}"]] = query("SELECT ($1::bool[])::text", [[:custom, true, false]])
-  end
-
-  @tag min_pg_version: "9.2"
-  test "encode range with custom mapping", context do
-  assert [["[1,)"]] = query("SELECT ($1::int4range)::text", [%Postgrex.Range{lower: 1, upper: :custom}])
   end
 
   test "prepare and execute query with connection mapping", context do
