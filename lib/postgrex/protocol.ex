@@ -745,7 +745,7 @@ defmodule Postgrex.Protocol do
 
   defp bootstrap(s, status, buffer) do
     %{types_mod: types_mod, types_key: types_key} = status
-    server = Postgrex.TypeManager.get(types_mod, types_key)
+    server = Postgrex.TypeSupervisor.locate(types_mod, types_key)
 
     case TypeServer.fetch(server) do
       {:lock, ref, types} ->
