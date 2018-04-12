@@ -44,7 +44,7 @@ defmodule Postgrex.TypeSupervisor do
   # Callbacks
 
   def init(:manager) do
-    manager = worker(Registry, [:unique, @manager])
+    manager = supervisor(Registry, [:unique, @manager])
     server_sup = supervisor(__MODULE__, [:servers])
     supervise([manager, server_sup], strategy: :rest_for_one)
   end
