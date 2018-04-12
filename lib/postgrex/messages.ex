@@ -129,13 +129,13 @@ defmodule Postgrex.Messages do
   # error
   def parse(rest, ?E, _size) do
     fields = decode_fields(rest)
-    msg_error(fields: fields)
+    msg_error(fields: Map.new(fields))
   end
 
   # notice
   def parse(rest, ?N, _size) do
     fields = decode_fields(rest)
-    msg_notice(fields: fields)
+    msg_notice(fields: Map.new(fields))
   end
 
   # parameter
