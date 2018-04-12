@@ -703,12 +703,6 @@ defmodule QueryTest do
     assert [[2,4], [6,8]] = query("VALUES (1, 2), (3, 4)", [], decode_mapper: map)
   end
 
-  test "notices", context do
-    {:ok, _} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
-    {:ok, result} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
-    assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
-  end
-
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
@@ -909,6 +903,13 @@ defmodule QueryTest do
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
     :timer.sleep(20)
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
+  end
+
+  @tag min_pg_version: "9.1"
+  test "notices", context do
+    {:ok, _} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    {:ok, result} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
   end
 
   test "notices raised by functions do not reset rows", context do
