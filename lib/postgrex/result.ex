@@ -17,7 +17,8 @@ defmodule Postgrex.Result do
           columns: [String.t()] | nil,
           rows: [[term] | binary] | nil,
           num_rows: integer,
-          connection_id: pos_integer
+          connection_id: pos_integer,
+          messages: [map()]
         }
 
   defstruct [:command, :columns, :rows, :num_rows, :connection_id, messages: nil]
