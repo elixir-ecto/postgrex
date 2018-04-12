@@ -8,10 +8,9 @@ defmodule Postgrex.Error do
   def exception(opts) do
     postgres =
       if fields = Keyword.get(opts, :postgres) do
-        code = fields[:code]
+        code = fields.code
 
         fields
-        |> Map.new()
         |> Map.put(:pg_code, code)
         |> Map.put(:code, Postgrex.ErrorCode.code_to_name(code))
       end
@@ -22,18 +21,18 @@ defmodule Postgrex.Error do
   end
 
   def message(e) do
-    if kw = e.postgres do
+    if map = e.postgres do
       IO.iodata_to_binary([
-        kw[:severity],
+        map.severity,
         ?\s,
-        kw[:pg_code],
+        map.pg_code,
         ?\s,
-        [?(, Atom.to_string(kw[:code]), ?)],
+        [?(, Atom.to_string(map.code), ?)],
         ?\s,
-        kw[:message],
+        map.message,
         build_query(e.query),
-        build_metadata(kw),
-        build_detail(kw)
+        build_metadata(map),
+        build_detail(map)
       ])
     else
       e.message
@@ -43,8 +42,8 @@ defmodule Postgrex.Error do
   defp build_query(nil), do: []
   defp build_query(query), do: ["\n\n    query: ", query]
 
-  defp build_metadata(kw) do
-    metadata = for k <- @metadata, v = kw[k], do: "\n    #{k}: #{v}"
+  defp build_metadata(map) do
+    metadata = for k <- @metadata, v = map[k], do: "\n    #{k}: #{v}"
 
     case metadata do
       [] -> []
@@ -52,7 +51,6 @@ defmodule Postgrex.Error do
     end
   end
 
-  defp build_detail(kw) do
-    if v = kw[:detail], do: ["\n\n" | v], else: []
-  end
+  defp build_detail(%{detail: detail}) when is_binary(detail), do: ["\n\n" | detail]
+  defp build_detail(_), do: []
 end

@@ -43,7 +43,7 @@ defmodule Postgrex.Protocol do
   @type notify :: (binary, binary -> any)
 
   defmacrop new_status(opts, fields \\ []) do
-    defaults = quote(do: [notify: notify(unquote(opts)), mode: mode(unquote(opts))])
+    defaults = quote(do: [notify: notify(unquote(opts)), mode: mode(unquote(opts)), messages: []])
     {:%{}, [], Keyword.merge(defaults, fields)}
   end
 
@@ -730,7 +730,8 @@ defmodule Postgrex.Protocol do
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
 
       {:ok, msg, buffer} ->
-        init_recv(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        init_recv(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -799,7 +800,7 @@ defmodule Postgrex.Protocol do
         bootstrap_fail(s, err, status, buffer)
 
       {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
+        {s, status} = handle_msg(s, status, msg)
         bootstrap_recv(s, status, type_infos, buffer, next)
 
       {:disconnect, err, s} ->
@@ -823,7 +824,8 @@ defmodule Postgrex.Protocol do
         sync_error(s, postgres, buffer)
 
       {:ok, msg, buffer} ->
-        bootstrap_sync_recv(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        bootstrap_sync_recv(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -882,13 +884,14 @@ defmodule Postgrex.Protocol do
   defp recv_listener(s, status, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        {:ok, done(s, [tag]), s, buffer}
+        {:ok, done(s, status, [tag]), s, buffer}
 
       {:ok, msg_error(fields: fields), buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        recv_listener(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_listener(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -1215,7 +1218,8 @@ defmodule Postgrex.Protocol do
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        recv_parse(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_parse(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -1243,7 +1247,8 @@ defmodule Postgrex.Protocol do
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        recv_describe(handle_msg(s, status, msg), status, param_oids, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_describe(s, status, param_oids, buffer)
 
       {:disconnect, _, _, _} = dis ->
         dis
@@ -1725,7 +1730,8 @@ defmodule Postgrex.Protocol do
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        recv_bind(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_bind(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -1737,13 +1743,13 @@ defmodule Postgrex.Protocol do
 
     case rows_recv(s, types, rows, buffer) do
       {:ok, msg_command_complete(tag: tag), rows, buffer} ->
-        {:ok, done(s, query, rows, tag), s, buffer}
+        {:ok, done(s, status, query, rows, tag), s, buffer}
 
       {:ok, msg_error(fields: fields), _, buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg_empty_query(), [], buffer} ->
-        {:ok, done(s, query, nil, nil), s, buffer}
+        {:ok, done(s, status, query, nil, nil), s, buffer}
 
       {:ok, msg_copy_in_response(), [], buffer} ->
         copy_in_disconnect(s, query, buffer)
@@ -1755,7 +1761,8 @@ defmodule Postgrex.Protocol do
         copy_both_disconnect(s, query, buffer)
 
       {:ok, msg, rows, buffer} ->
-        recv_execute(handle_msg(s, status, msg), status, query, rows, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_execute(s, status, query, rows, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -1781,15 +1788,14 @@ defmodule Postgrex.Protocol do
         recv_copy_out(s, status, query, acc, buffer)
 
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        {:ok, done(s, query, acc, tag), s, buffer}
+        {:ok, done(s, status, query, acc, tag), s, buffer}
 
       {:ok, msg_error(fields: fields), buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        s
-        |> handle_msg(status, msg)
-        |> recv_copy_out(status, query, acc, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_copy_out(s, status, query, acc, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2010,16 +2016,16 @@ defmodule Postgrex.Protocol do
 
     case rows_recv(s, types, rows, buffer) do
       {:ok, msg_command_complete(tag: tag), rows, buffer} ->
-        {:halt, halt(s, query, rows, tag), s, buffer}
+        {:halt, halt(s, status, query, rows, tag), s, buffer}
 
       {:ok, msg_portal_suspend(), rows, buffer} ->
-        {:cont, done(s, query, rows, :stream, max_rows), s, buffer}
+        {:cont, done(s, status, query, rows, :stream, max_rows), s, buffer}
 
       {:ok, msg_error(fields: fields), _, buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg_empty_query(), [], buffer} ->
-        {:halt, done(s, query, nil, nil), s, buffer}
+        {:halt, done(s, status, query, nil, nil), s, buffer}
 
       {:ok, msg_copy_in_response(), [], buffer} ->
         copy_in_disconnect(s, query, buffer)
@@ -2034,7 +2040,7 @@ defmodule Postgrex.Protocol do
         copy_both_disconnect(s, query, buffer)
 
       {:ok, msg, rows, buffer} ->
-        s = handle_msg(s, status, msg)
+        {s, status} = handle_msg(s, status, msg)
         recv_execute(s, status, query, cursor, max_rows, rows, buffer)
 
       {:disconnect, _, _} = dis ->
@@ -2083,9 +2089,9 @@ defmodule Postgrex.Protocol do
     recv_copy_out(s, status, query, max_rows, [], 0, buffer)
   end
 
-  defp recv_copy_out(s, _, query, max_rows, acc, max_rows, buffer) do
+  defp recv_copy_out(s, status, query, max_rows, acc, max_rows, buffer) do
     s = %{s | buffer: buffer}
-    {:copy_out, done(s, query, acc, :copy_stream, max_rows), s}
+    {:copy_out, done(s, status, query, acc, :copy_stream, max_rows), s}
   end
 
   defp recv_copy_out(s, status, query, max_rows, acc, nrows, buffer) do
@@ -2097,15 +2103,14 @@ defmodule Postgrex.Protocol do
         recv_copy_out(s, status, query, max_rows, acc, nrows, buffer)
 
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        {:halt, halt(s, query, acc, tag), s, buffer}
+        {:halt, halt(s, status, query, acc, tag), s, buffer}
 
       {:ok, msg_error(fields: fields), buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        s
-        |> handle_msg(status, msg)
-        |> recv_copy_out(status, query, max_rows, acc, nrows, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_copy_out(s, status, query, max_rows, acc, nrows, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2207,10 +2212,10 @@ defmodule Postgrex.Protocol do
         recv_copy_in_done(s, status, query, buffer)
 
       {:ok, msg_command_complete(tag: tag), rows, buffer} ->
-        {:ok, done(s, query, rows, tag), s, buffer}
+        {:ok, done(s, status, query, rows, tag), s, buffer}
 
       {:ok, msg_empty_query(), [], buffer} ->
-        {:ok, done(s, query, nil, nil), s, buffer}
+        {:ok, done(s, status, query, nil, nil), s, buffer}
 
       {:ok, msg_error(fields: fields), _, buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
@@ -2222,14 +2227,12 @@ defmodule Postgrex.Protocol do
         copy_both_disconnect(s, query, buffer)
 
       {:ok, msg, [], buffer} ->
-        s
-        |> handle_msg(status, msg)
-        |> recv_copy_in(status, query, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_copy_in(s, status, query, buffer)
 
       {:ok, msg, [_ | _] = rows, buffer} ->
-        s
-        |> handle_msg(status, msg)
-        |> recv_execute(status, query, rows, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_execute(s, status, query, rows, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2239,15 +2242,14 @@ defmodule Postgrex.Protocol do
   defp recv_copy_in_done(s, status, query, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        {:ok, done(s, query, nil, tag), s, buffer}
+        {:ok, done(s, status, query, nil, tag), s, buffer}
 
       {:ok, msg_error(fields: fields), buffer} ->
         {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
 
       {:ok, msg, buffer} ->
-        s
-        |> handle_msg(status, msg)
-        |> recv_copy_in_done(status, query, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_copy_in_done(s, status, query, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2371,7 +2373,8 @@ defmodule Postgrex.Protocol do
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
 
       {:ok, msg, buffer} ->
-        ping_recv(handle_msg(s, status, msg), status, old_buffer, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        ping_recv(s, status, old_buffer, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2407,10 +2410,11 @@ defmodule Postgrex.Protocol do
 
       {:ok, msg_ready(status: postgres), buffer} ->
         s = %{s | postgres: postgres, buffer: buffer}
-        {:ok, done(s, Enum.reverse(tags)), s}
+        {:ok, done(s, status, Enum.reverse(tags)), s}
 
       {:ok, msg, buffer} ->
-        recv_transaction(handle_msg(s, status, msg), status, tags, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_transaction(s, status, tags, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2427,7 +2431,8 @@ defmodule Postgrex.Protocol do
         {:disconnect, err, %{s | buffer: buffer}}
 
       {:ok, msg, buffer} ->
-        recv_close(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_close(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2440,7 +2445,8 @@ defmodule Postgrex.Protocol do
         {:ok, %{s | postgres: postgres, buffer: buffer}}
 
       {:ok, msg, buffer} ->
-        recv_ready(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_ready(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2467,7 +2473,8 @@ defmodule Postgrex.Protocol do
         sync_error(s, unexpected, buffer)
 
       {:ok, msg, buffer} ->
-        recv_strict_ready(handle_msg(s, status, msg), status, expected, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        recv_strict_ready(s, status, expected, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2492,7 +2499,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp done(%{connection_id: connection_id}, tags) do
+  defp done(%{connection_id: connection_id}, %{messages: messages}, tags) do
     {command, nil} = decode_tags(tags)
 
     %Postgrex.Result{
@@ -2500,17 +2507,19 @@ defmodule Postgrex.Protocol do
       num_rows: nil,
       rows: nil,
       columns: nil,
-      connection_id: connection_id
+      connection_id: connection_id,
+      messages: messages
     }
   end
 
-  defp done(s, %Query{} = query, rows, tag) do
+  defp done(s, status, %Query{} = query, rows, tag) do
     {command, nrows} = if tag, do: decode_tag(tag), else: {nil, nil}
-    done(s, query, rows, command, nrows)
+    done(s, status, query, rows, command, nrows)
   end
 
-  defp done(s, query, rows, command, nrows) do
+  defp done(s, status, query, rows, command, nrows) do
     %{connection_id: connection_id} = s
+    %{messages: messages} = status
     %Query{columns: cols} = query
 
     # Fix for PostgreSQL 8.4 (doesn't include number of selected rows in tag)
@@ -2522,12 +2531,13 @@ defmodule Postgrex.Protocol do
       num_rows: nrows || 0,
       rows: rows,
       columns: cols,
-      connection_id: connection_id
+      connection_id: connection_id,
+      messages: messages
     }
   end
 
-  defp halt(s, query, rows, tag) do
-    case done(s, query, rows, tag) do
+  defp halt(s, status, query, rows, tag) do
+    case done(s, status, query, rows, tag) do
       %Postgrex.Result{rows: rows} = result when is_list(rows) ->
         # shows rows for all streamed results but we only want for last chunk.
         %Postgrex.Result{result | num_rows: length(rows)}
@@ -2549,10 +2559,12 @@ defmodule Postgrex.Protocol do
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
 
       {:ok, msg, <<>>} ->
-        activate(handle_msg(s, status, msg), <<>>)
+        {s, _} = handle_msg(s, status, msg)
+        activate(s, <<>>)
 
       {:ok, msg, buffer} ->
-        data(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        data(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2746,7 +2758,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp handle_msg(s, _, msg_parameter(name: name, value: value)) do
+  defp handle_msg(s, status, msg_parameter(name: name, value: value)) do
     %{parameters: parameters} = s
 
     # Binaries likely part of much larger binary and
@@ -2757,22 +2769,21 @@ defmodule Postgrex.Protocol do
     cond do
       is_reference(parameters) ->
         _ = Postgrex.Parameters.put(parameters, name, value)
-        s
+        {s, status}
 
       is_map(parameters) ->
-        %{s | parameters: Map.put(parameters, name, value)}
+        {%{s | parameters: Map.put(parameters, name, value)}, status}
     end
   end
 
   defp handle_msg(s, status, msg_notify(channel: channel, payload: payload)) do
     %{notify: notify} = status
     notify.(channel, payload)
-    s
+    {s, status}
   end
 
-  defp handle_msg(s, _, msg_notice()) do
-    # TODO: subscribers
-    s
+  defp handle_msg(s, status, msg_notice(fields: fields)) do
+    {s, update_in(status.messages, &[fields | &1])}
   end
 
   defp disconnect(s, tag, action, reason, buffer) do
@@ -2828,7 +2839,8 @@ defmodule Postgrex.Protocol do
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
 
       {:ok, msg, buffer} ->
-        sync_recv(handle_msg(s, status, msg), status, buffer)
+        {s, status} = handle_msg(s, status, msg)
+        sync_recv(s, status, buffer)
 
       {:disconnect, _, _} = dis ->
         dis

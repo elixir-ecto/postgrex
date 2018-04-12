@@ -905,6 +905,13 @@ defmodule QueryTest do
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
   end
 
+  @tag min_pg_version: "9.1"
+  test "notices", context do
+    {:ok, _} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    {:ok, result} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
+  end
+
   test "notices raised by functions do not reset rows", context do
     assert :ok = query("""
     CREATE FUNCTION raise_notice_and_return(what integer) RETURNS integer AS $$
