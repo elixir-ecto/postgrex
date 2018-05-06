@@ -2,6 +2,11 @@
 
 ## v0.14.0-dev
 
+* Postgrex.INET will add a /32 netmask to an IPv4 address and a /128 netmask to
+  an IPv6 address during encoding where `netmask: nil`. When decoding, a /32
+  netmask (for IPv4) or /128 netmask (for IPv6) will be removed, resulting in
+  `netmask: nil` for the struct.
+
 * Backwards incompatible changes
   * Invoke `encode_to_iodata!` instead of `encode!` in JSON encoder
   * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as Postgres may perform implicit/explicit casting at any time)

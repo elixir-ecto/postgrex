@@ -290,15 +290,15 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.0"
   test "decode network types", context do
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
            query("SELECT '127.0.0.1/32'::inet", [])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: nil}]] =
            query("SELECT '2001:abcd::/128'::inet", [])
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}]] =
            query("SELECT '127.0.0.1/8'::inet", [])
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
            query("SELECT '127.0.0.1/32'::cidr", [])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: nil}]] =
            query("SELECT '2001:abcd::/128'::cidr", [])
     assert [[%Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16}]] =
            query("SELECT '192.168.0.0/16'::cidr", [])
@@ -610,16 +610,16 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.0"
   test "encode network types", context do
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-           query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
-           query("SELECT $1::inet", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}])
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
+           query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}])
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: nil}]] =
+           query("SELECT $1::inet", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: nil}])
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}]] =
            query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}])
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-           query("SELECT $1::cidr", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
-           query("SELECT $1::cidr", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}])
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
+           query("SELECT $1::cidr", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}])
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: nil}]] =
+           query("SELECT $1::cidr", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: nil}])
     assert [[%Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16}]] =
            query("SELECT $1::cidr", [%Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16}])
     assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
