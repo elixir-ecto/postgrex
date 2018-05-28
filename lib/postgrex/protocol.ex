@@ -22,7 +22,7 @@ defmodule Postgrex.Protocol do
             parameters: %{},
             queries: nil,
             postgres: :idle,
-            transactions: :naive,
+            transactions: :strict,
             buffer: nil
 
   @type state :: %__MODULE__{

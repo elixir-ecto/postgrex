@@ -47,9 +47,9 @@ defmodule Postgrex do
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);
     * `:connect_timeout` - Socket connect timeout in milliseconds (defaults to
-    `:timeout` value);
+      `:timeout` value);
     * `:handshake_timeout` - Connection handshake timeout in milliseconds
-    (defaults to `:timeout` value);
+      (defaults to `:timeout` value);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
     * `:socket_options` - Options to be given to the underlying socket
@@ -57,13 +57,13 @@ defmodule Postgrex do
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
-    state, otherwise set to `naive` (default: `:naive`);
+      state, otherwise set to `:naive` (default: `:strict`);
     * `:pool` - The pool module to use, see `DBConnection` for pool dependent
-    options, this option must be included with all requests contacting the pool
-    if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+      options, this option must be included with all requests contacting the pool
+      if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
-    option is only required when using custom encoding or decoding (default:
-    `Postgrex.DefaultTypes`);
+      option is only required when using custom encoding or decoding (default:
+      `Postgrex.DefaultTypes`);
 
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc.
