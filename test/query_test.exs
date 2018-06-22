@@ -291,51 +291,64 @@ defmodule QueryTest do
   @tag min_pg_version: "9.0"
   test "decode network types", context do
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
-      query("SELECT '127.0.0.1'::inet", [])
+             query("SELECT '127.0.0.1'::inet", [])
+
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
-      query("SELECT '127.0.0.1/32'::inet", [])
+             query("SELECT '127.0.0.1/32'::inet", [])
+
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-      query("SELECT '127.0.0.1/32'::inet::cidr", [])
+             query("SELECT '127.0.0.1/32'::inet::cidr", [])
+
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-      query("SELECT '127.0.0.1/32'::cidr", [])
+             query("SELECT '127.0.0.1/32'::cidr", [])
+
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}]] =
-      query("SELECT '127.0.0.1/4'::inet", [])
+             query("SELECT '127.0.0.1/4'::inet", [])
+
     assert [[%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}]] =
-      query("SELECT '127.0.0.1/4'::inet::cidr", [])
+             query("SELECT '127.0.0.1/4'::inet::cidr", [])
+
     assert %Postgrex.Error{
-              postgres: %{
-                code: :invalid_text_representation,
-                detail: "Value has bits set to right of mask.",
-                message: "invalid cidr value: \"127.0.0.1/4\"",
-              },
-              query: "SELECT '127.0.0.1/4'::cidr"
-            } = query("SELECT '127.0.0.1/4'::cidr", [])
+             postgres: %{
+               code: :invalid_text_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid cidr value: \"127.0.0.1/4\""
+             },
+             query: "SELECT '127.0.0.1/4'::cidr"
+           } = query("SELECT '127.0.0.1/4'::cidr", [])
+
     assert [[%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}]] =
-      query("SELECT '112.0.0.0/4'::cidr", [])
+             query("SELECT '112.0.0.0/4'::cidr", [])
 
     assert [[%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}]] =
-      query("SELECT '::1'::inet", [])
+             query("SELECT '::1'::inet", [])
+
     assert [[%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}]] =
-      query("SELECT '::1/128'::inet", [])
+             query("SELECT '::1/128'::inet", [])
+
     assert [[%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}]] =
-      query("SELECT '::1/128'::inet::cidr", [])
+             query("SELECT '::1/128'::inet::cidr", [])
+
     assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}]] =
-      query("SELECT '2001:abcd::/8'::inet", [])
+             query("SELECT '2001:abcd::/8'::inet", [])
+
     assert [[%Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}]] =
-      query("SELECT '2001:abcd::/8'::inet::cidr", [])
+             query("SELECT '2001:abcd::/8'::inet::cidr", [])
+
     assert %Postgrex.Error{
-              postgres: %{
-                code: :invalid_text_representation,
-                detail: "Value has bits set to right of mask.",
-                message: "invalid cidr value: \"2001:abcd::/8\"",
-              },
-              query: "SELECT '2001:abcd::/8'::cidr"
-            } = query("SELECT '2001:abcd::/8'::cidr", [])
+             postgres: %{
+               code: :invalid_text_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid cidr value: \"2001:abcd::/8\""
+             },
+             query: "SELECT '2001:abcd::/8'::cidr"
+           } = query("SELECT '2001:abcd::/8'::cidr", [])
+
     assert [[%Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}]] =
-      query("SELECT '2000::/8'::cidr", [])
+             query("SELECT '2000::/8'::cidr", [])
 
     assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
-           query("SELECT '08:01:2b:05:07:09'::macaddr", [])
+             query("SELECT '08:01:2b:05:07:09'::macaddr", [])
   end
 
   test "decode oid and its aliases", context do
@@ -643,47 +656,79 @@ defmodule QueryTest do
   @tag min_pg_version: "9.0"
   test "encode network types", context do
     assert [["127.0.0.1/32"]] =
-      query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}])
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}
+             ])
+
     assert [["127.0.0.1/32"]] =
-      query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+             query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+
     assert [["127.0.0.1/32"]] =
-      query("SELECT $1::inet::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+             query("SELECT $1::inet::cidr::text", [
+               %Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}
+             ])
+
     assert [["127.0.0.1/32"]] =
-      query("SELECT $1::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+             query("SELECT $1::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+
     assert [["127.0.0.1/4"]] =
-      query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}])
+             query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}])
+
     assert %Postgrex.Error{
-              postgres: %{
-                code: :invalid_binary_representation,
-                detail: "Value has bits set to right of mask.",
-                message: "invalid external \"cidr\" value",
-              }
-            } = query("SELECT $1::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}])
+             postgres: %{
+               code: :invalid_binary_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid external \"cidr\" value"
+             }
+           } =
+             query("SELECT $1::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}])
+
     assert [["112.0.0.0/4"]] =
-      query("SELECT $1::cidr::text", [%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}])
+             query("SELECT $1::cidr::text", [%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}])
 
     assert [["::1/128"]] =
-      query("SELECT $1::inet::text", [%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}])
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}
+             ])
+
     assert [["::1/128"]] =
-      query("SELECT $1::inet::text", [%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}])
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}
+             ])
+
     assert [["::1/128"]] =
-      query("SELECT $1::inet::cidr::text", [%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}])
+             query("SELECT $1::inet::cidr::text", [
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}
+             ])
+
     assert [["2001:abcd::/8"]] =
-      query("SELECT $1::inet::text", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}])
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
     assert [["2000::/8"]] =
-      query("SELECT $1::inet::cidr::text", [%Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}])
+             query("SELECT $1::inet::cidr::text", [
+               %Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
     assert %Postgrex.Error{
-              postgres: %{
-                code: :invalid_binary_representation,
-                detail: "Value has bits set to right of mask.",
-                message: "invalid external \"cidr\" value",
-              }
-            } = query("SELECT $1::cidr::text", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}])
+             postgres: %{
+               code: :invalid_binary_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid external \"cidr\" value"
+             }
+           } =
+             query("SELECT $1::cidr::text", [
+               %Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
     assert [["2000::/8"]] =
-      query("SELECT $1::cidr::text", [%Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}])
+             query("SELECT $1::cidr::text", [
+               %Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
 
     assert [["08:01:2b:05:07:09"]] =
-      query("SELECT $1::macaddr::text", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
+             query("SELECT $1::macaddr::text", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
   end
 
   test "encode bit string", context do
