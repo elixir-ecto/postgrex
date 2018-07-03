@@ -258,7 +258,7 @@
 
 * Enhancements
   * Add timeouts to all synchronous calls. When a timeout is hit an exit error will be raised in the caller process and the connection process will exit
-  * Add automatic fallback to environment variables `PGUSER`, `PGHOST` and `PGPASS`
+  * Add automatic fallback to environment variables `PGUSER`, `PGHOST` and `PGPASSWORD`
 
 ## v0.4.0 (2014-01-16)
 
