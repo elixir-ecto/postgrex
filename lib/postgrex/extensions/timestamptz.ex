@@ -30,7 +30,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
   ## Helpers
 
   def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
-    case DateTime.to_unix(datetime, :microseconds) do
+    case DateTime.to_unix(datetime, :microsecond) do
       microsecs when microsecs < @us_max ->
         <<8 :: int32, microsecs - @us_epoch :: int64>>
       _ ->
@@ -42,6 +42,6 @@ defmodule Postgrex.Extensions.TimestampTZ do
   end
 
   def microsecond_to_elixir(microsecs) do
-    DateTime.from_unix!(microsecs + @us_epoch, :microseconds)
+    DateTime.from_unix!(microsecs + @us_epoch, :microsecond)
   end
 end
