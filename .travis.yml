@@ -1,6 +1,6 @@
 language: elixir
 elixir: 1.4
-otp_release: 18.3
+otp_release: 19.3
 cache: apt
 before_install:
   - sudo service postgresql stop
@@ -32,9 +32,6 @@ env:
     - PGVERSION=10
 matrix:
   include:
-    - elixir: 1.4
-      otp_release: 19.3
-      env: PGVERSION=9.6
     - elixir: 1.5
       otp_release: 19.3
       env: PGVERSION=9.6
