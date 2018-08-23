@@ -49,7 +49,7 @@ defmodule Postgrex.INET do
 
   """
 
-  @type t :: %__MODULE__{address: :inet.ip_address(), netmask: 0..128}
+  @type t :: %__MODULE__{address: :inet.ip_address(), netmask: nil | 0..128}
 
   defstruct address: nil, netmask: nil
 end
