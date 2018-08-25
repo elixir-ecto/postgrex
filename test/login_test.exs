@@ -21,7 +21,7 @@ defmodule LoginTest do
     assert capture_log(fn ->
       assert {:ok, pid} = P.start_link(opts ++ context[:options])
       assert_receive {:EXIT, ^pid, :killed}
-    end) =~ "** (Postgrex.Error) FATAL 28P01 (invalid_password"
+    end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
   end
 
   test "login md5 password", context do
@@ -38,7 +38,7 @@ defmodule LoginTest do
     assert capture_log(fn ->
       assert {:ok, pid} = P.start_link(opts ++ context[:options])
       assert_receive {:EXIT, ^pid, :killed}
-    end)  =~ "** (Postgrex.Error) FATAL 28P01 (invalid_password"
+    end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
   end
 
   test "parameters", context do
