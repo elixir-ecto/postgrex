@@ -92,13 +92,13 @@ defmodule CustomExtensionsTest do
       :code.purge(@types)
     end)
     extensions = [BinaryExtension, TextExtension, BadExtension]
-    opts       = [decode_binary: :reference, null: :custom]
+    opts = [decode_binary: :reference, null: :custom]
     Postgrex.TypeModule.define(@types, extensions, opts)
     :ok
   end
 
   setup do
-    opts = [database: "postgrex_test", backoff_type: :stop, types: @types]
+    opts = [database: "postgrex_test", backoff_type: :stop, max_restarts: 0, types: @types]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -126,7 +126,7 @@ defmodule CustomExtensionsTest do
       end
 
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{}, _}}
+      assert_receive {:EXIT, ^pid, :killed}
     end) =~ "(RuntimeError) decode"
   end
 

@@ -58,9 +58,10 @@ defmodule Postgrex do
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
       state, otherwise set to `:naive` (default: `:strict`);
-    * `:pool` - The pool module to use, see `DBConnection` for pool dependent
-      options, this option must be included with all requests contacting the pool
-      if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+    * `:pool` - The pool module to use, defaults to `DBConnection.ConnectionPool`.
+      See the pool documentation for more options. The default `:pool_size` for
+      the default pool is 1. If you set a different pool, this option must be
+      included with all requests contacting the pool;
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);

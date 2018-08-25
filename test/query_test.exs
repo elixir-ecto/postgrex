@@ -5,8 +5,13 @@ defmodule QueryTest do
   alias Postgrex, as: P
 
   setup context do
-    opts = [database: "postgrex_test", backoff_type: :stop,
-            prepare: context[:prepare] || :named]
+    opts = [
+      database: "postgrex_test",
+      backoff_type: :stop,
+      prepare: context[:prepare] || :named,
+      max_restarts: 0
+    ]
+
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -1029,29 +1034,26 @@ defmodule QueryTest do
   test "too many parameters query disconnects", context do
     Process.flag(:trap_exit, true)
     params = 1..0x10000
-    query = ["INSERT INTO uniques VALUES (0)" |
-      (for n <- params, do: [", ($", to_string(n), "::int4)"])]
+    query = ["INSERT INTO uniques VALUES (0)" | Enum.map(params, &[", ($#{&1}::int4)"])]
     params = Enum.into(params, [])
+    message = "postgresql protocol can not handle 65536 parameters, the maximum is 65535"
 
-    capture_log fn ->
-      assert_raise RuntimeError,
-        "postgresql protocol can not handle 65536 parameters, the maximum is 65535",
-        fn() -> query(query, params) end
+    assert capture_log(fn ->
+      assert_raise RuntimeError, message, fn() -> query(query, params) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-    end
+      assert_receive {:EXIT, ^pid, :killed}
+    end) =~ message
   end
 
   test "COPY FROM STDIN disconnects", context do
     Process.flag(:trap_exit, true)
+    message = ~r"trying to copy in but no copy data to send"
 
-    capture_log fn ->
-      assert_raise RuntimeError,
-        ~r"trying to copy in but no copy data to send",
-        fn() -> query("COPY uniques FROM STDIN", []) end
+    assert capture_log(fn ->
+      assert_raise RuntimeError, message, fn -> query("COPY uniques FROM STDIN", []) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-    end
+      assert_receive {:EXIT, ^pid, :killed}
+    end) =~ message
   end
 
   test "COPY TO STDOUT", context do
@@ -1079,9 +1081,9 @@ defmodule QueryTest do
     %Postgrex.Result{connection_id: connection_id} =
       Postgrex.query!(pid, "SELECT 42", [])
 
-    capture_log(fn() ->
+    assert capture_log(fn ->
       assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
-      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{postgres: %{code: :admin_shutdown}}}}
-    end)
+      assert_receive {:EXIT, ^pid, :killed}, 2000
+    end) =~ "** (Postgrex.Error) FATAL 57P01 (admin_shutdown)"
   end
 end
