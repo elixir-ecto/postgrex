@@ -1083,7 +1083,7 @@ defmodule QueryTest do
 
     assert capture_log(fn ->
       assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
-      assert_receive {:EXIT, ^pid, :killed}, 2000
+      assert_receive {:EXIT, ^pid, :killed}, 5000
     end) =~ "** (Postgrex.Error) FATAL 57P01 (admin_shutdown)"
   end
 end
