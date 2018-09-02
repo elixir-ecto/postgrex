@@ -8,8 +8,7 @@ defmodule Postgrex.Extensions.TID do
       {block, tuple} ->
         <<6 :: int32, block :: uint32, tuple :: uint16>>
       other ->
-        raise ArgumentError,
-          Postgrex.Utils.encode_msg(other, "a tuple of 2 integers")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a tuple of 2 integers")
     end
   end
 

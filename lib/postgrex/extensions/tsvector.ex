@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.TSVector do
         encoded_tsvectors = unquote(__MODULE__).encode_tsvector(values)
         <<byte_size(encoded_tsvectors)::int32, encoded_tsvectors::binary>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a list of tsvectors")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a list of tsvectors")
     end
   end
 

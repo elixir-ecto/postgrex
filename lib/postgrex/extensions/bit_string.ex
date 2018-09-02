@@ -18,7 +18,7 @@ defmodule Postgrex.Extensions.BitString do
         [<<(bin_size + 4)::int32, bit_count::uint32>>, binary |
           <<last::bits, 0::size(pad)>>]
       val ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(val, "a bitstring")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(val, "a bitstring")
     end
   end
 

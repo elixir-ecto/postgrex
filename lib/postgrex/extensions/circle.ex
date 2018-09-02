@@ -9,7 +9,7 @@ defmodule Postgrex.Extensions.Circle do
       when is_number(x) and is_number(y) and is_number(r) and r >= 0 ->
         <<24::int32, x::float64, y::float64, r::float64>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
     end
   end
 

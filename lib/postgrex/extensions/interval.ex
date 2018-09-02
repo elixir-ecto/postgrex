@@ -9,7 +9,7 @@ defmodule Postgrex.Extensions.Interval do
         microsecs = secs * 1_000_000
         <<16 :: int32, microsecs :: int64, days :: int32, months :: int32>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Interval)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Interval)
     end
   end
 

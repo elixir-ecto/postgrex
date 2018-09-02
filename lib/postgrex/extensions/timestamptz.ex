@@ -16,7 +16,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
       %DateTime{} = datetime ->
         unquote(__MODULE__).encode_elixir(datetime)
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, DateTime)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, DateTime)
     end
   end
 

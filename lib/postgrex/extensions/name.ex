@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.Name do
         [<<byte_size(name) :: int32>> | name]
       other ->
         msg = "a binary string of less than 64 bytes"
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, msg)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, msg)
     end
   end
 
