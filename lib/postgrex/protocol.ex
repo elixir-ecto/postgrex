@@ -184,7 +184,13 @@ defmodule Postgrex.Protocol do
   def handle_prepare(%Query{ref: ref} = query, opts, s) when is_reference(ref) do
     # If the query already has a reference, then it means DBConnection rescued
     # a DBConnection.EncodeError and wants us to reprepare a query
-    opts = Keyword.put(opts, :function, :prepare_execute)
+    opts =
+      case Keyword.get(opts, :function) do
+        :execute -> Keyword.put(opts, :function, :prepare_execute)
+        :declare -> Keyword.put(opts, :function, :prepare_declare)
+        _ -> opts
+      end
+
     %{name: name, statement: statement} = query
     handle_prepare(%Query{name: name, statement: statement}, opts, s)
   end
