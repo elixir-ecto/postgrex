@@ -64,6 +64,24 @@ defmodule AlterTest do
     assert [[42]] = query("SELECT 42", [])
   end
 
+  test "prepare query, close, alter and execute with params that cast with error", context do
+    query1 = prepare("select", "SELECT a FROM altering WHERE a=$1")
+    query2 = prepare("select", "SELECT a FROM altering")
+    close(query1)
+    close(query2)
+
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE numeric", [])
+
+    assert execute(query1, [1]) == []
+    assert [[42]] = query("SELECT 42", [])
+
+    assert execute(query1, [Decimal.new(1)]) == []
+    assert [[42]] = query("SELECT 42", [])
+
+    assert execute(query2, []) == []
+    assert [[42]] = query("SELECT 42", [])
+  end
+
   test "transaction with prepare query, alter result and execute errors", context do
     query = prepare("select", "SELECT a FROM altering")
     assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
