@@ -17,7 +17,7 @@ defmodule Postgrex.Extensions.Polygon do
 
         [<<nbytes::int32>>, <<len::int32>> | vert]
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Polygon)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Polygon)
     end
   end
 

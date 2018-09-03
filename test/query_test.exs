@@ -126,9 +126,9 @@ defmodule QueryTest do
     p4 = %Postgrex.Point{x: -100.0, y: 99.9}
     polygon = %Postgrex.Polygon{vertices: [p1, p2, p3, p4]}
     assert [[polygon]] == query("SELECT $1::polygon", [polygon])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::polygon", [1]))
     bad_polygon = %Postgrex.Polygon{vertices: ["x"]}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [bad_polygon]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::polygon", [bad_polygon]))
   end
 
   @tag min_pg_version: "9.4"
@@ -144,9 +144,9 @@ defmodule QueryTest do
     # 98.6x - y = 0 <=> y = 98.6x
     line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
     assert [[line]] == query("SELECT $1::line", [line])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::line", ["foo"]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::line", ["foo"]))
     bad_line = %Postgrex.Line{a: nil, b: "foo"}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::line", [bad_line]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::line", [bad_line]))
   end
 
   test "decode line segment", context do
@@ -163,8 +163,8 @@ defmodule QueryTest do
       point2: %Postgrex.Point{x: 1.0,  y: 1.0}
     }
     assert [[segment]] == query("SELECT $1::lseg", [segment])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::lseg", [1.0]))
-    assert %ArgumentError{} =
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::lseg", [1.0]))
+    assert %DBConnection.EncodeError{} =
       catch_error(query("SELECT $1::lseg", [%Postgrex.LineSegment{}]))
   end
 
@@ -186,8 +186,8 @@ defmodule QueryTest do
       bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
     }
     assert [[box]] == query("SELECT $1::box", [box])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::box", [1.0]))
-    assert %ArgumentError{} =
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::box", [1.0]))
+    assert %DBConnection.EncodeError{} =
       catch_error(query("SELECT $1::box", [%Postgrex.Box{}]))
   end
 
@@ -198,12 +198,12 @@ defmodule QueryTest do
     path = %Postgrex.Path{points: [p1, p2, p3], open: true}
     assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
     assert [[%{path | open: false}]] == query("SELECT '((0.0,0.0),(1.0,3.0),(-4.0,3.14))'::path", [])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [1.0]))
     bad_path = %Postgrex.Path{points: "foo", open: false}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_path]))
     # open must be true/false
     bad_path = %Postgrex.Path{points: []}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_path]))
   end
 
   test "encode path", context do
@@ -224,11 +224,11 @@ defmodule QueryTest do
     center = %Postgrex.Point{x: 1.0, y: -3.5}
     circle = %Postgrex.Circle{center: center, radius: 100.0}
     assert [[circle]] == query("SELECT $1::circle", [circle])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", ["snu"]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", ["snu"]))
     bad_circle = %Postgrex.Circle{center: 1.5, radius: 1.0}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_circle]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_circle]))
     bad_circle = %Postgrex.Circle{center: %Postgrex.Point{x: 1.0, y: 0.0}, radius: "five"}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_circle]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_circle]))
   end
 
   test "decode name", context do
@@ -422,8 +422,8 @@ defmodule QueryTest do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])
     assert [[4294967295]] = query("select $1::oid;", [4294967295])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::oid", [0 - 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::oid", [0 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
 
     assert [["-"]] = query("select $1::regproc::text;", [0])
     assert [["regprocin"]] = query("select $1::regproc::text;", [44])
@@ -454,7 +454,7 @@ defmodule QueryTest do
   end
 
   test "fail on encoding wrong value", context do
-    assert %ArgumentError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
+    assert %DBConnection.EncodeError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
     assert message =~ "Postgrex expected an integer in -2147483648..2147483647"
   end
 
@@ -548,20 +548,20 @@ defmodule QueryTest do
     # int2's range is -32768 to +32767
     assert [[-32768]] = query("SELECT $1::int2", [-32768])
     assert [[32767]] = query("SELECT $1::int2", [32767])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int2", [32767 + 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int2", [-32768 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int2", [32767 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int2", [-32768 - 1]))
 
     # int4's range is -2147483648 to +2147483647
     assert [[-2147483648]] = query("SELECT $1::int4", [-2147483648])
     assert [[2147483647]] = query("SELECT $1::int4", [2147483647])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
 
     # int8's range is  -9223372036854775808 to 9223372036854775807
     assert [[-9223372036854775808]] = query("SELECT $1::int8", [-9223372036854775808])
     assert [[9223372036854775807]] = query("SELECT $1::int8", [9223372036854775807])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
   end
 
   test "encode uuid", context do
@@ -642,14 +642,14 @@ defmodule QueryTest do
     # int4's range is -2147483648 to +2147483647
     assert [[%Postgrex.Range{lower: -2147483648}]] = query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483648}])
     assert [[%Postgrex.Range{upper: 2147483647}]] = query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483647, upper_inclusive: false}])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
 
     # int8's range is -9223372036854775808 to 9223372036854775807
     assert [[%Postgrex.Range{lower: -9223372036854775807}]] = query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775807}])
     assert [[%Postgrex.Range{upper: 9223372036854775806}]] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
   end
 
   @tag min_pg_version: "9.0"
@@ -974,6 +974,11 @@ defmodule QueryTest do
   test "raise when trying to execute unprepared query", context do
     assert_raise ArgumentError, ~r/has not been prepared/,
       fn -> execute(%Postgrex.Query{name: "hi", statement: "BEGIN"}, []) end
+  end
+
+  test "raise when trying to parse prepared query", context do
+    assert_raise ArgumentError, ~r/has already been prepared/,
+      fn -> DBConnection.Query.parse(prepare("SELECT 42", []), []) end
   end
 
   test "query struct interpolates to statement" do

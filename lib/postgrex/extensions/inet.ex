@@ -19,7 +19,7 @@ defmodule Postgrex.Extensions.INET do
         <<20::int32, 3, n, 1, 16, a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
 
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.INET)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.INET)
     end
   end
 

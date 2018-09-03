@@ -181,7 +181,21 @@ defmodule Postgrex.Protocol do
     lock_error(s, :prepare, query)
   end
 
-  def handle_prepare(%Query{types: nil, name: ""} = query, opts, s) do
+  def handle_prepare(%Query{ref: ref} = query, opts, s) when is_reference(ref) do
+    # If the query already has a reference, then it means DBConnection rescued
+    # a DBConnection.EncodeError and wants us to reprepare a query
+    opts =
+      case Keyword.get(opts, :function) do
+        :execute -> Keyword.put(opts, :function, :prepare_execute)
+        :declare -> Keyword.put(opts, :function, :prepare_declare)
+        _ -> opts
+      end
+
+    %{name: name, statement: statement} = query
+    handle_prepare(%Query{name: name, statement: statement}, opts, s)
+  end
+
+  def handle_prepare(%Query{name: ""} = query, opts, s) do
     function = Keyword.get(opts, :function)
     status = new_status(opts, function: function)
 
@@ -191,12 +205,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  def handle_prepare(%Query{types: nil} = query, opts, %{queries: nil} = s) do
+  def handle_prepare(%Query{} = query, opts, %{queries: nil} = s) do
     # always use unnamed if no cache
     handle_prepare(%Query{query | name: ""}, opts, s)
   end
 
-  def handle_prepare(%Query{types: nil} = query, opts, s) do
+  def handle_prepare(%Query{} = query, opts, s) do
     function = Keyword.get(opts, :function)
     status = new_status(opts, function: function)
 
@@ -204,14 +218,6 @@ defmodule Postgrex.Protocol do
       :prepare -> close_parse_describe(s, status, query)
       _ -> close_parse_describe_flush(s, status, query)
     end
-  end
-
-  def handle_prepare(%Query{types: types} = query, _, %{types: types} = s) do
-    query_error(s, "query #{inspect(query)} has already been prepared")
-  end
-
-  def handle_prepare(%Query{} = query, _, s) do
-    query_error(s, "query #{inspect(query)} has invalid types for the connection")
   end
 
   def handle_prepare(%Stream{query: query} = stream, opts, s) do

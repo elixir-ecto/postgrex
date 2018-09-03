@@ -12,7 +12,7 @@ defmodule Postgrex.Extensions.Date do
       %Date{} = date ->
         unquote(__MODULE__).encode_elixir(date)
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Date)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Date)
     end
   end
   def decode(_) do

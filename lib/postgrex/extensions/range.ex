@@ -29,7 +29,7 @@ defmodule Postgrex.Extensions.Range do
         unquote(__MODULE__).encode(range, oid, lower, upper)
 
       other, _, _ ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Range)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Range)
     end
   end
 
