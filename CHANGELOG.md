@@ -2,10 +2,28 @@
 
 ## v0.14.0-dev
 
+* Enhancements
+  * Postgrex.INET will add a /32 netmask to an IPv4 address and a /128 netmask to
+    an IPv6 address during encoding where `netmask: nil`. When decoding, a /32
+    netmask (for IPv4) or /128 netmask (for IPv6) will be removed, resulting in
+    `netmask: nil` for the struct.
+
 * Backwards incompatible changes
   * Invoke `encode_to_iodata!` instead of `encode!` in JSON encoder
   * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as Postgres may perform implicit/explicit casting at any time)
   * Postgrex.Time, Postgrex.Date and Postgrex.Timestamp were deprecated and now have been effectively removed
+
+## v0.13.4 (2018-01-25)
+
+* Enhancements
+  * Support custom range domains
+  * Support custom array domains
+  * Add support for UNIX domain sockets via the `:socket_dir` option
+  * Remove warnings on Elixir v1.6
+
+* Bug fixes
+  * Fix encoding of empty ranges
+  * Fix Postgrex.Path open/closed byte parity
 
 ## v0.13.3 (2017-05-31)
 
@@ -246,7 +264,7 @@
 
 * Enhancements
   * Add timeouts to all synchronous calls. When a timeout is hit an exit error will be raised in the caller process and the connection process will exit
-  * Add automatic fallback to environment variables `PGUSER`, `PGHOST` and `PGPASS`
+  * Add automatic fallback to environment variables `PGUSER`, `PGHOST` and `PGPASSWORD`
 
 ## v0.4.0 (2014-01-16)
 

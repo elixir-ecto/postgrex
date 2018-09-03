@@ -5,8 +5,13 @@ defmodule StreamTest do
   alias Postgrex.Result
 
   setup context do
-    options = [database: "postgrex_test", backoff_type: :stop,
-             prepare: context[:prepare] || :named]
+    options = [
+      database: "postgrex_test",
+      backoff_type: :stop,
+      prepare: context[:prepare] || :named,
+      max_restarts: 0
+    ]
+
     {:ok, pid} = Postgrex.start_link(options)
     {:ok, [pid: pid, options: options]}
   end
@@ -314,38 +319,41 @@ defmodule StreamTest do
 
   test "COPY TO STDOUT locks connection", context do
     Process.flag(:trap_exit, true)
-
     query = prepare("", "COPY (VALUES (1, 2), (3, 4)) TO STDOUT")
 
     transaction(fn(conn) ->
       map =
-        fn
-          _ ->
-            assert_raise RuntimeError, ~r"connection is locked",
-              fn() -> Postgrex.prepare(conn, "", "BEGIN") end
-            true
+        fn _ ->
+          assert_raise RuntimeError, ~r"connection is locked", fn ->
+            Postgrex.prepare(conn, "", "BEGIN")
+          end
+          true
         end
 
-      capture_log fn ->
-        assert_raise DBConnection.ConnectionError, "connection is closed",
-          fn -> query |> stream([], [max_rows: 1]) |> Enum.map(map) end
+      assert capture_log(fn ->
+        assert_raise DBConnection.ConnectionError, "connection is closed", fn ->
+          query |> stream([], [max_rows: 1]) |> Enum.map(map)
+        end
+
         pid = context[:pid]
-        assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-      end
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "connection is locked copying to or from the database and can not prepare"
     end)
   end
 
   test "stream from COPY FROM STDIN disconnects", context do
     Process.flag(:trap_exit, true)
     query = prepare("", "COPY uniques FROM STDIN")
-    transaction(fn(conn) ->
 
-      capture_log fn ->
-        assert_raise RuntimeError, ~r"trying to copy in but no copy data to send",
-          fn() -> query |> stream([]) |> Enum.to_list() end
+    transaction(fn(conn) ->
+      assert capture_log(fn ->
+        assert_raise RuntimeError, ~r"trying to copy in but no copy data to send", fn ->
+          query |> stream([]) |> Enum.to_list()
+        end
+
         pid = context[:pid]
-        assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-      end
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "is trying to copy in but no copy data to send"
     end)
   end
 
@@ -703,36 +711,10 @@ defmodule StreamTest do
   test "stream prepares query but fails to encode", context do
     assert transaction(fn(conn) ->
       stream = stream("SELECT $1::integer", ["not_an_int"])
-      assert_raise ArgumentError, fn() -> Enum.to_list(stream) end
+      assert_raise DBConnection.EncodeError, fn() -> Enum.to_list(stream) end
       :hi
     end) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
-  end
-
-  test "stream obeys max rows on low level fetch", context do
-    assert transaction(fn(conn) ->
-      query = Postgrex.prepare!(conn, "rows", "SELECT * FROM generate_series(1, 2)")
-      cursor = DBConnection.declare!(conn, query, [], [])
-      assert {:cont, %Postgrex.Result{rows: [[1]]}} =
-        DBConnection.fetch(conn, query, cursor, [max_rows: 1])
-      assert {:halt, %Postgrex.Result{rows: [[2]]}} =
-        DBConnection.fetch(conn, query, cursor, [max_rows: 2])
-      DBConnection.deallocate!(conn, query, cursor, [])
-      :hi
-    end) == {:ok, :hi}
-  end
-
-  test "stream deallocates cursor on commit/rollback", context do
-    assert {:ok, {query, cursor}} = transaction(fn(conn) ->
-      query = Postgrex.prepare!(conn, "rows", "SELECT * FROM generate_series(1, 2)")
-      cursor = DBConnection.declare!(conn, query, [], [])
-      assert {:cont, %Postgrex.Result{rows: [[1]]}} =
-        DBConnection.fetch(conn, query, cursor, [max_rows: 1])
-      {query, cursor}
-    end)
-
-    assert_raise Postgrex.Error, ~r"\(invalid_cursor_name\)",
-      fn -> DBConnection.fetch!(context[:pid], query, cursor) end
   end
 end

@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.Timestamp do
       %NaiveDateTime{} = naive ->
         unquote(__MODULE__).encode_elixir(naive)
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, NaiveDateTime)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, NaiveDateTime)
     end
   end
 

@@ -19,7 +19,7 @@ defmodule Postgrex.Extensions.OID do
               "https://github.com/elixir-ecto/postgrex#oid-type-encoding"
         raise ArgumentError, msg
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, unquote(range))
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, unquote(range))
     end
   end
 

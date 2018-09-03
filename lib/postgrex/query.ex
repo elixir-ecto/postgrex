@@ -29,19 +29,24 @@ end
 defimpl DBConnection.Query, for: Postgrex.Query do
   require Postgrex.Messages
 
-  def parse(%{name: name} = query, _) do
+  def parse(%{types: nil, name: name} = query, _) do
     # for query table to match names must be equal
     %{query | name: IO.iodata_to_binary(name)}
   end
 
+  def parse(query, _) do
+    raise ArgumentError, "query #{inspect query} has already been prepared"
+  end
+
   def describe(query, _), do: query
 
-  def encode(%Postgrex.Query{types: nil} = query, _params, _) do
+  def encode(%{types: nil} = query, _params, _) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
   def encode(query, params, _) do
-    %Postgrex.Query{param_types: param_types, types: types} = query
+    %{param_types: param_types, types: types} = query
+
     case Postgrex.Types.encode_params(params, param_types, types) do
       encoded when is_list(encoded) ->
         encoded
@@ -51,7 +56,7 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     end
   end
 
-  def decode(%Postgrex.Query{result_types: nil}, res, opts) do
+  def decode(%{result_types: nil}, res, opts) do
     case res do
       %Postgrex.Result{command: copy, rows: rows}
           when copy in [:copy, :copy_stream] and rows != nil ->

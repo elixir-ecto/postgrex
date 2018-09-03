@@ -10,7 +10,7 @@ defmodule Postgrex.Extensions.Bool do
       false ->
         <<1 :: int32, 0>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a boolean")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a boolean")
     end
   end
 

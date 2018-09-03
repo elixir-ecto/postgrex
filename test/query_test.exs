@@ -5,8 +5,13 @@ defmodule QueryTest do
   alias Postgrex, as: P
 
   setup context do
-    opts = [database: "postgrex_test", backoff_type: :stop,
-            prepare: context[:prepare] || :named]
+    opts = [
+      database: "postgrex_test",
+      backoff_type: :stop,
+      prepare: context[:prepare] || :named,
+      max_restarts: 0
+    ]
+
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -121,9 +126,9 @@ defmodule QueryTest do
     p4 = %Postgrex.Point{x: -100.0, y: 99.9}
     polygon = %Postgrex.Polygon{vertices: [p1, p2, p3, p4]}
     assert [[polygon]] == query("SELECT $1::polygon", [polygon])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::polygon", [1]))
     bad_polygon = %Postgrex.Polygon{vertices: ["x"]}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::polygon", [bad_polygon]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::polygon", [bad_polygon]))
   end
 
   @tag min_pg_version: "9.4"
@@ -139,9 +144,9 @@ defmodule QueryTest do
     # 98.6x - y = 0 <=> y = 98.6x
     line = %Postgrex.Line{a: 98.6, b: -1.0, c: 0.0}
     assert [[line]] == query("SELECT $1::line", [line])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::line", ["foo"]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::line", ["foo"]))
     bad_line = %Postgrex.Line{a: nil, b: "foo"}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::line", [bad_line]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::line", [bad_line]))
   end
 
   test "decode line segment", context do
@@ -158,8 +163,8 @@ defmodule QueryTest do
       point2: %Postgrex.Point{x: 1.0,  y: 1.0}
     }
     assert [[segment]] == query("SELECT $1::lseg", [segment])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::lseg", [1.0]))
-    assert %ArgumentError{} =
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::lseg", [1.0]))
+    assert %DBConnection.EncodeError{} =
       catch_error(query("SELECT $1::lseg", [%Postgrex.LineSegment{}]))
   end
 
@@ -181,8 +186,8 @@ defmodule QueryTest do
       bottom_left: %Postgrex.Point{x: 0.0,  y: 0.0}
     }
     assert [[box]] == query("SELECT $1::box", [box])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::box", [1.0]))
-    assert %ArgumentError{} =
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::box", [1.0]))
+    assert %DBConnection.EncodeError{} =
       catch_error(query("SELECT $1::box", [%Postgrex.Box{}]))
   end
 
@@ -193,12 +198,12 @@ defmodule QueryTest do
     path = %Postgrex.Path{points: [p1, p2, p3], open: true}
     assert [[path]] == query("SELECT '[(0.0,0.0),(1.0,3.0),(-4.0,3.14)]'::path", [])
     assert [[%{path | open: false}]] == query("SELECT '((0.0,0.0),(1.0,3.0),(-4.0,3.14))'::path", [])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [1.0]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [1.0]))
     bad_path = %Postgrex.Path{points: "foo", open: false}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_path]))
     # open must be true/false
     bad_path = %Postgrex.Path{points: []}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_path]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_path]))
   end
 
   test "encode path", context do
@@ -219,11 +224,11 @@ defmodule QueryTest do
     center = %Postgrex.Point{x: 1.0, y: -3.5}
     circle = %Postgrex.Circle{center: center, radius: 100.0}
     assert [[circle]] == query("SELECT $1::circle", [circle])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", ["snu"]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", ["snu"]))
     bad_circle = %Postgrex.Circle{center: 1.5, radius: 1.0}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_circle]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_circle]))
     bad_circle = %Postgrex.Circle{center: %Postgrex.Point{x: 1.0, y: 0.0}, radius: "five"}
-    assert %ArgumentError{} = catch_error(query("SELECT $1::path", [bad_circle]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::path", [bad_circle]))
   end
 
   test "decode name", context do
@@ -257,13 +262,17 @@ defmodule QueryTest do
            query("SELECT '(1,5)'::int4range", [])
     assert [[%Postgrex.Range{lower: 1, upper: 7, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT '[1,6]'::int4range", [])
-    assert [[%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: 5, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '(,5)'::int4range", [])
-    assert [[%Postgrex.Range{lower: 1, upper: nil, lower_inclusive: true, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: 1, upper: :unbound, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT '[1,)'::int4range", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :empty, upper: :empty, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT '(1,1)'::int4range", [])
+    assert [[%Postgrex.Range{lower: 1, upper: 2, lower_inclusive: true, upper_inclusive: false}]] =
+           query("SELECT '[1,1]'::int4range", [])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '(,)'::int4range", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '[,]'::int4range", [])
 
     assert [[%Postgrex.Range{lower: 3, upper: 8, lower_inclusive: true, upper_inclusive: false}]] =
@@ -274,32 +283,77 @@ defmodule QueryTest do
 
     assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2014, month: 12, day: 31}}]] =
            query("SELECT '[2014-1-1,2014-12-31)'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: %Date{year: 2014, month: 12, day: 31}}]] =
            query("SELECT '(,2014-12-31)'::daterange", [])
-    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 2}, upper: nil}]] =
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 2}, upper: :unbound}]] =
            query("SELECT '(2014-1-1,]'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '(,)'::daterange", [])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
            query("SELECT '[,]'::daterange", [])
   end
 
   @tag min_pg_version: "9.0"
   test "decode network types", context do
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
+             query("SELECT '127.0.0.1'::inet", [])
+
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
+             query("SELECT '127.0.0.1/32'::inet", [])
+
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-           query("SELECT '127.0.0.1/32'::inet", [])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
-           query("SELECT '2001:abcd::/128'::inet", [])
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}]] =
-           query("SELECT '127.0.0.1/8'::inet", [])
+             query("SELECT '127.0.0.1/32'::inet::cidr", [])
+
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-           query("SELECT '127.0.0.1/32'::cidr", [])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
-           query("SELECT '2001:abcd::/128'::cidr", [])
-    assert [[%Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16}]] =
-           query("SELECT '192.168.0.0/16'::cidr", [])
+             query("SELECT '127.0.0.1/32'::cidr", [])
+
+    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}]] =
+             query("SELECT '127.0.0.1/4'::inet", [])
+
+    assert [[%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}]] =
+             query("SELECT '127.0.0.1/4'::inet::cidr", [])
+
+    assert %Postgrex.Error{
+             postgres: %{
+               code: :invalid_text_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid cidr value: \"127.0.0.1/4\""
+             },
+             query: "SELECT '127.0.0.1/4'::cidr"
+           } = query("SELECT '127.0.0.1/4'::cidr", [])
+
+    assert [[%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}]] =
+             query("SELECT '112.0.0.0/4'::cidr", [])
+
+    assert [[%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}]] =
+             query("SELECT '::1'::inet", [])
+
+    assert [[%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}]] =
+             query("SELECT '::1/128'::inet", [])
+
+    assert [[%Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}]] =
+             query("SELECT '::1/128'::inet::cidr", [])
+
+    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}]] =
+             query("SELECT '2001:abcd::/8'::inet", [])
+
+    assert [[%Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}]] =
+             query("SELECT '2001:abcd::/8'::inet::cidr", [])
+
+    assert %Postgrex.Error{
+             postgres: %{
+               code: :invalid_text_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid cidr value: \"2001:abcd::/8\""
+             },
+             query: "SELECT '2001:abcd::/8'::cidr"
+           } = query("SELECT '2001:abcd::/8'::cidr", [])
+
+    assert [[%Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}]] =
+             query("SELECT '2000::/8'::cidr", [])
+
     assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
-           query("SELECT '08:01:2b:05:07:09'::macaddr", [])
+             query("SELECT '08:01:2b:05:07:09'::macaddr", [])
   end
 
   test "decode oid and its aliases", context do
@@ -368,8 +422,8 @@ defmodule QueryTest do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])
     assert [[4294967295]] = query("select $1::oid;", [4294967295])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::oid", [0 - 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::oid", [0 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::oid", [4294967295 + 1]))
 
     assert [["-"]] = query("select $1::regproc::text;", [0])
     assert [["regprocin"]] = query("select $1::regproc::text;", [44])
@@ -400,7 +454,7 @@ defmodule QueryTest do
   end
 
   test "fail on encoding wrong value", context do
-    assert %ArgumentError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
+    assert %DBConnection.EncodeError{message: message} = catch_error(query("SELECT $1::integer", ["123"]))
     assert message =~ "Postgrex expected an integer in -2147483648..2147483647"
   end
 
@@ -494,20 +548,20 @@ defmodule QueryTest do
     # int2's range is -32768 to +32767
     assert [[-32768]] = query("SELECT $1::int2", [-32768])
     assert [[32767]] = query("SELECT $1::int2", [32767])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int2", [32767 + 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int2", [-32768 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int2", [32767 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int2", [-32768 - 1]))
 
     # int4's range is -2147483648 to +2147483647
     assert [[-2147483648]] = query("SELECT $1::int4", [-2147483648])
     assert [[2147483647]] = query("SELECT $1::int4", [2147483647])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4", [2147483647 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4", [-2147483648 - 1]))
 
     # int8's range is  -9223372036854775808 to 9223372036854775807
     assert [[-9223372036854775808]] = query("SELECT $1::int8", [-9223372036854775808])
     assert [[9223372036854775807]] = query("SELECT $1::int8", [9223372036854775807])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8", [9223372036854775807 + 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8", [-9223372036854775808 - 1]))
   end
 
   test "encode uuid", context do
@@ -551,16 +605,19 @@ defmodule QueryTest do
   test "encode range", context do
     assert [[%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
-    assert [[%Postgrex.Range{lower: nil, upper: 6, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: 5, lower_inclusive: false, upper_inclusive: true}])
-    assert [[%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: 6, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :unbound, upper: 5, lower_inclusive: false, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: 3, upper: :unbound, lower_inclusive: true, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: :unbound, lower_inclusive: true, upper_inclusive: true}])
     assert [[%Postgrex.Range{lower: 4, upper: 5, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int4range", [%Postgrex.Range{lower: 3, upper: 5, lower_inclusive: false, upper_inclusive: false}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::int4range", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: true, upper_inclusive: true}])
+
+    assert [[%Postgrex.Range{lower: :empty, upper: :empty, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::int4range", [%Postgrex.Range{lower: :empty, upper: :empty, lower_inclusive: true, upper_inclusive: true}])
 
     assert [[%Postgrex.Range{lower: 1, upper: 4, lower_inclusive: true, upper_inclusive: false}]] =
            query("SELECT $1::int8range", [%Postgrex.Range{lower: 1, upper: 3, lower_inclusive: true, upper_inclusive: true}])
@@ -570,14 +627,14 @@ defmodule QueryTest do
 
     assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2015, month: 1, day: 1}}]] =
            query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: %Date{year: 2014, month: 12, day: 31}}])
-    assert [[%Postgrex.Range{lower: nil, upper: %Date{year: 2015, month: 1, day: 1}}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: %Date{year: 2014, month: 12, day: 31}}])
-    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: nil}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}])
-    assert [[%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: false, upper_inclusive: false}]] =
-           query("SELECT $1::daterange", [%Postgrex.Range{lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: %Date{year: 2015, month: 1, day: 1}}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: :unbound, upper: %Date{year: 2014, month: 12, day: 31}}])
+    assert [[%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: :unbound}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: %Date{year: 2014, month: 1, day: 1}, upper: :unbound}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}])
+    assert [[%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: false, upper_inclusive: false}]] =
+           query("SELECT $1::daterange", [%Postgrex.Range{lower: :unbound, upper: :unbound, lower_inclusive: true, upper_inclusive: true}])
   end
 
   @tag min_pg_version: "9.2"
@@ -585,14 +642,14 @@ defmodule QueryTest do
     # int4's range is -2147483648 to +2147483647
     assert [[%Postgrex.Range{lower: -2147483648}]] = query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483648}])
     assert [[%Postgrex.Range{upper: 2147483647}]] = query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483647, upper_inclusive: false}])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{lower: -2147483649}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int4range", [%Postgrex.Range{upper: 2147483648}]))
 
     # int8's range is -9223372036854775808 to 9223372036854775807
     assert [[%Postgrex.Range{lower: -9223372036854775807}]] = query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775807}])
     assert [[%Postgrex.Range{upper: 9223372036854775806}]] = query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775806, upper_inclusive: false}])
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
-    assert %ArgumentError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{lower: -9223372036854775809}]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::int8range", [%Postgrex.Range{upper: 9223372036854775808}]))
   end
 
   @tag min_pg_version: "9.0"
@@ -603,23 +660,80 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.0"
   test "encode network types", context do
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-           query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
-           query("SELECT $1::inet", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}])
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}]] =
-           query("SELECT $1::inet", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}])
-    assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}]] =
-           query("SELECT $1::cidr", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
-    assert [[%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}]] =
-           query("SELECT $1::cidr", [%Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 128}])
-    assert [[%Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16}]] =
-           query("SELECT $1::cidr", [%Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16}])
-    assert [[%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}]] =
-           query("SELECT $1::macaddr", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
+    assert [["127.0.0.1/32"]] =
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}
+             ])
 
-    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
-           query("SELECT $1::cidr", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 8}])
+    assert [["127.0.0.1/32"]] =
+             query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+
+    assert [["127.0.0.1/32"]] =
+             query("SELECT $1::inet::cidr::text", [
+               %Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}
+             ])
+
+    assert [["127.0.0.1/32"]] =
+             query("SELECT $1::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 32}])
+
+    assert [["127.0.0.1/4"]] =
+             query("SELECT $1::inet::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}])
+
+    assert %Postgrex.Error{
+             postgres: %{
+               code: :invalid_binary_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid external \"cidr\" value"
+             }
+           } =
+             query("SELECT $1::cidr::text", [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: 4}])
+
+    assert [["112.0.0.0/4"]] =
+             query("SELECT $1::cidr::text", [%Postgrex.INET{address: {112, 0, 0, 0}, netmask: 4}])
+
+    assert [["::1/128"]] =
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}
+             ])
+
+    assert [["::1/128"]] =
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}
+             ])
+
+    assert [["::1/128"]] =
+             query("SELECT $1::inet::cidr::text", [
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}
+             ])
+
+    assert [["2001:abcd::/8"]] =
+             query("SELECT $1::inet::text", [
+               %Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
+    assert [["2000::/8"]] =
+             query("SELECT $1::inet::cidr::text", [
+               %Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
+    assert %Postgrex.Error{
+             postgres: %{
+               code: :invalid_binary_representation,
+               detail: "Value has bits set to right of mask.",
+               message: "invalid external \"cidr\" value"
+             }
+           } =
+             query("SELECT $1::cidr::text", [
+               %Postgrex.INET{address: {8193, 43981, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
+    assert [["2000::/8"]] =
+             query("SELECT $1::cidr::text", [
+               %Postgrex.INET{address: {8192, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}
+             ])
+
+    assert [["08:01:2b:05:07:09"]] =
+             query("SELECT $1::macaddr::text", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
   end
 
   test "encode bit string", context do
@@ -862,6 +976,11 @@ defmodule QueryTest do
       fn -> execute(%Postgrex.Query{name: "hi", statement: "BEGIN"}, []) end
   end
 
+  test "raise when trying to parse prepared query", context do
+    assert_raise ArgumentError, ~r/has already been prepared/,
+      fn -> DBConnection.Query.parse(prepare("SELECT 42", []), []) end
+  end
+
   test "query struct interpolates to statement" do
     assert "#{%Postgrex.Query{statement: "BEGIN"}}" == "BEGIN"
   end
@@ -898,6 +1017,13 @@ defmodule QueryTest do
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
   end
 
+  @tag min_pg_version: "9.1"
+  test "notices", context do
+    {:ok, _} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    {:ok, result} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
+  end
+
   test "notices raised by functions do not reset rows", context do
     assert :ok = query("""
     CREATE FUNCTION raise_notice_and_return(what integer) RETURNS integer AS $$
@@ -913,29 +1039,26 @@ defmodule QueryTest do
   test "too many parameters query disconnects", context do
     Process.flag(:trap_exit, true)
     params = 1..0x10000
-    query = ["INSERT INTO uniques VALUES (0)" |
-      (for n <- params, do: [", ($", to_string(n), "::int4)"])]
+    query = ["INSERT INTO uniques VALUES (0)" | Enum.map(params, &[", ($#{&1}::int4)"])]
     params = Enum.into(params, [])
+    message = "postgresql protocol can not handle 65536 parameters, the maximum is 65535"
 
-    capture_log fn ->
-      assert_raise RuntimeError,
-        "postgresql protocol can not handle 65536 parameters, the maximum is 65535",
-        fn() -> query(query, params) end
+    assert capture_log(fn ->
+      assert_raise RuntimeError, message, fn() -> query(query, params) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-    end
+      assert_receive {:EXIT, ^pid, :killed}
+    end) =~ message
   end
 
   test "COPY FROM STDIN disconnects", context do
     Process.flag(:trap_exit, true)
+    message = ~r"trying to copy in but no copy data to send"
 
-    capture_log fn ->
-      assert_raise RuntimeError,
-        ~r"trying to copy in but no copy data to send",
-        fn() -> query("COPY uniques FROM STDIN", []) end
+    assert capture_log(fn ->
+      assert_raise RuntimeError, message, fn -> query("COPY uniques FROM STDIN", []) end
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, %RuntimeError{}}}
-    end
+      assert_receive {:EXIT, ^pid, :killed}
+    end) =~ message
   end
 
   test "COPY TO STDOUT", context do
@@ -963,9 +1086,9 @@ defmodule QueryTest do
     %Postgrex.Result{connection_id: connection_id} =
       Postgrex.query!(pid, "SELECT 42", [])
 
-    capture_log(fn() ->
+    assert capture_log(fn ->
       assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
-      assert_receive {:EXIT, ^pid, {:shutdown, %Postgrex.Error{postgres: %{code: :admin_shutdown}}}}
-    end)
+      assert_receive {:EXIT, ^pid, :killed}, 5000
+    end) =~ "** (Postgrex.Error) FATAL 57P01 (admin_shutdown)"
   end
 end

@@ -14,7 +14,7 @@ defmodule Postgrex.Extensions.Float8 do
       :"-inf" ->
         <<8 :: int32, 1::1, 2047::11, 0::52>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a float")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a float")
     end
   end
 

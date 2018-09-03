@@ -4,6 +4,7 @@ defmodule Postgrex.Stream do
   @type t :: %Postgrex.Stream{}
 end
 defmodule Postgrex.Cursor do
+  @moduledoc false
   defstruct [:portal, :ref, :connection_id, :mode]
   @type t :: %Postgrex.Cursor{}
 end

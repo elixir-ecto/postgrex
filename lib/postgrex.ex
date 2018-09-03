@@ -33,7 +33,12 @@ defmodule Postgrex do
   ## Options
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
-    * `:socket` - The socket to connect to (takes precedence over the hostname);
+    * `:socket_dir` - Connect to Postgres via UNIX sockets in the given directory;
+      The socket name is derived based on the part. This is the preferred method
+      for configuring sockets and it takes precedence over the hostname. If you are
+      connecting to a socket outside of the Postgres convention, use `:socket` instead;
+    * `:socket` - Connect to Postgres via UNIX sockets in the given path.
+      This option takes precedence over the `:hostname` and `:socket_dir`;
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
@@ -42,22 +47,24 @@ defmodule Postgrex do
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);
     * `:connect_timeout` - Socket connect timeout in milliseconds (defaults to
-    `:timeout` value);
+      `:timeout` value);
     * `:handshake_timeout` - Connection handshake timeout in milliseconds
-    (defaults to `:timeout` value);
+      (defaults to `:timeout` value);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
-    * `:socket_options` - Options to be given to the underlying socket;
+    * `:socket_options` - Options to be given to the underlying socket
+      (applies to both TCP and UNIX sockets);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
-    state, otherwise set to `naive` (default: `:naive`);
-    * `:pool` - The pool module to use, see `DBConnection` for pool dependent
-    options, this option must be included with all requests contacting the pool
-    if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+      state, otherwise set to `:naive` (default: `:strict`);
+    * `:pool` - The pool module to use, defaults to `DBConnection.ConnectionPool`.
+      See the pool documentation for more options. The default `:pool_size` for
+      the default pool is 1. If you set a different pool, this option must be
+      included with all requests contacting the pool;
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
-    option is only required when using custom encoding or decoding (default:
-    `Postgrex.DefaultTypes`);
+      option is only required when using custom encoding or decoding (default:
+      `Postgrex.DefaultTypes`);
 
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc.
@@ -75,7 +82,7 @@ defmodule Postgrex do
 
   Connect to postgres instance through a unix domain socket
 
-      iex> {:ok, pid} = Postgrex.start_link(socket: "/tmp", database: "postgres")
+      iex> {:ok, pid} = Postgrex.start_link(socket_dir: "/tmp", database: "postgres")
       {:ok, #PID<0.69.0>}
 
   ## PgBouncer

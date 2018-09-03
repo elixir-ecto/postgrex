@@ -17,7 +17,7 @@ defmodule Postgrex.Extensions.Path do
         nbytes = 5 + 16 * len
         [<<nbytes::int32>>, open_byte, <<len::int32>> | encoded_points]
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
     end
   end
       

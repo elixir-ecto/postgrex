@@ -61,7 +61,13 @@ Postgrex does not automatically cast between types. For example, you can't pass 
 
 ## JSON support
 
-Postgrex comes with JSON support out of the box via the [Poison](https://github.com/devinus/poison) library. You can customize it to use another library via the `:json_library` configuration:
+Postgrex comes with JSON support out of the box via the [Jason](https://github.com/michalmuskala/jason) library. To use it, add :jason to your dependencies:
+
+```elixir
+{:jason, "~> 1.0"}
+```
+
+You can customize it to use another library via the `:json_library` configuration:
 
 ```elixir
 config :postgrex, :json_library, SomeOtherLib

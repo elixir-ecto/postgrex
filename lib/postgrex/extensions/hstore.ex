@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.HStore do
         data = unquote(__MODULE__).encode_hstore(map)
         [<<IO.iodata_length(data) :: int32>> | data]
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a map")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a map")
     end
   end
 

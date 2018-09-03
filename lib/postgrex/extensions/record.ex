@@ -29,8 +29,7 @@ defmodule Postgrex.Extensions.Record do
               data]
         end
       other, _, _ ->
-        raise ArgumentError,
-          Postgrex.Utils.encode_msg(other, "a tuple")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a tuple")
     end
   end
 

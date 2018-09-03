@@ -21,8 +21,7 @@ defmodule Postgrex.Extensions.Array do
         encoder = &encode_list(&1, type)
         unquote(__MODULE__).encode(list, oid, encoder)
       other, _, _ ->
-        raise ArgumentError,
-          Postgrex.Utils.encode_msg(other, "a list")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a list")
     end
   end
 

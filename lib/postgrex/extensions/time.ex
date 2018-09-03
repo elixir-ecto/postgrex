@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.Time do
       %Time{} = time ->
         unquote(__MODULE__).encode_elixir(time)
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Time)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Time)
     end
   end
 
