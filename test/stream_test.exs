@@ -152,13 +152,6 @@ defmodule StreamTest do
     end)
   end
 
-  test "stream struct interpolates to statement", context do
-    query = prepare("", "BEGIN")
-    transaction(fn(conn) ->
-      assert "#{stream(query, [])}" == "BEGIN"
-    end)
-  end
-
   test "connection_id", context do
     query = prepare("", "SELECT pg_backend_pid()")
     {:ok, connection_id} = transaction(fn(conn) ->
@@ -376,7 +369,7 @@ defmodule StreamTest do
       assert Enum.into(["5\n"], stream) == stream
 
       assert_received %DBConnection.LogEntry{} = entry
-      assert (entry.query).query == query
+      assert entry.query == query
       assert {:ok, ^query, %Postgrex.Copy{query: ^query}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
@@ -389,6 +382,7 @@ defmodule StreamTest do
 
       assert %Postgrex.Result{rows: [[2], [3], [4], [5]]} =
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
+
       Postgrex.rollback(conn, :done)
     end)
 
@@ -625,7 +619,7 @@ defmodule StreamTest do
       assert Enum.into(["2\n3\n"], stream) == stream
 
       assert_received %DBConnection.LogEntry{} = entry
-      assert (entry.query).query == query_in
+      assert entry.query == query_in
       assert {:ok, ^query_in, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
@@ -650,7 +644,7 @@ defmodule StreamTest do
       assert Enum.into(["2\n3\n"], stream) == stream
 
       assert_received %DBConnection.LogEntry{} = entry
-      assert (entry.query).query == query_in
+      assert entry.query == query_in
       assert {:ok, ^query_in, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
@@ -684,7 +678,7 @@ defmodule StreamTest do
       assert Enum.into(["2\n3\n"], stream) == stream
 
       assert_received %DBConnection.LogEntry{} = entry
-      assert (entry.query).query == query_in
+      assert entry.query == query_in
       assert {:ok, ^query_in, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry

@@ -58,13 +58,15 @@ defimpl Collectable, for: Postgrex.Stream do
 
   def into(%Stream{conn: %DBConnection{}} = stream) do
     %Stream{conn: conn, query: query, params: params, options: opts} = stream
+    opts = Keyword.put(opts, :copy, true)
+
     case query do
       %Query{} ->
-        copy = DBConnection.execute!(conn, stream, params, opts)
+        copy = DBConnection.execute!(conn, query, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
       query ->
-        internal = %Stream{stream | query: %Query{name: "", statement: query}}
-        {_, copy} = DBConnection.prepare_execute!(conn, internal, params, opts)
+        query = %Query{name: "", statement: query}
+        {_, copy} = DBConnection.prepare_execute!(conn, query, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
     end
   end
@@ -85,24 +87,6 @@ defimpl Collectable, for: Postgrex.Stream do
         stream
     end
   end
-end
-
-defimpl DBConnection.Query, for: Postgrex.Stream do
-  alias Postgrex.Stream
-
-  def parse(%Stream{query: query} = stream, opts) do
-    %Stream{stream | query: DBConnection.Query.parse(query, opts)}
-  end
-
-  def describe(%Stream{query: query} = stream, opts) do
-    %Stream{stream | query: DBConnection.Query.describe(query, opts)}
-  end
-
-  def encode(%Stream{query: query}, params, opts) do
-    DBConnection.Query.encode(query, params, opts)
-  end
-
-  def decode(stream, _, _), do: raise "cannot decode #{inspect stream}"
 end
 
 defimpl DBConnection.Query, for: Postgrex.Copy do
@@ -143,12 +127,6 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
       _ ->
         DBConnection.Query.decode(query, result, opts)
     end
-  end
-end
-
-defimpl String.Chars, for: Postgrex.Stream do
-  def to_string(%Postgrex.Stream{query: query}) do
-    String.Chars.to_string(query)
   end
 end
 
