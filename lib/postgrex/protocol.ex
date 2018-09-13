@@ -43,7 +43,14 @@ defmodule Postgrex.Protocol do
   @type notify :: (binary, binary -> any)
 
   defmacrop new_status(opts, fields \\ []) do
-    defaults = quote(do: [notify: notify(unquote(opts)), mode: mode(unquote(opts)), messages: []])
+    defaults =
+      quote(do: [
+        notify: notify(unquote(opts)),
+        mode: mode(unquote(opts)),
+        messages: [],
+        prepare: false
+      ])
+
     {:%{}, [], Keyword.merge(defaults, fields)}
   end
 
@@ -184,24 +191,17 @@ defmodule Postgrex.Protocol do
   def handle_prepare(%Query{ref: ref} = query, opts, s) when is_reference(ref) do
     # If the query already has a reference, then it means DBConnection rescued
     # a DBConnection.EncodeError and wants us to reprepare a query
-    opts =
-      case Keyword.get(opts, :function) do
-        :execute -> Keyword.put(opts, :function, :prepare_execute)
-        :declare -> Keyword.put(opts, :function, :prepare_declare)
-        _ -> opts
-      end
-
     %{name: name, statement: statement} = query
     handle_prepare(%Query{name: name, statement: statement}, opts, s)
   end
 
   def handle_prepare(%Query{name: ""} = query, opts, s) do
-    function = Keyword.get(opts, :function)
-    status = new_status(opts, function: function)
+    prepare = Keyword.get(opts, :prepare, false)
+    status = new_status(opts, prepare: prepare)
 
-    case function do
-      :prepare -> parse_describe_close(s, status, query)
-      _ -> parse_describe_flush(s, status, query)
+    case prepare do
+      true -> parse_describe_close(s, status, query)
+      false -> parse_describe_flush(s, status, query)
     end
   end
 
@@ -211,12 +211,12 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{} = query, opts, s) do
-    function = Keyword.get(opts, :function)
-    status = new_status(opts, function: function)
+    prepare = Keyword.get(opts, :prepare, false)
+    status = new_status(opts, prepare: prepare)
 
-    case function do
-      :prepare -> close_parse_describe(s, status, query)
-      _ -> close_parse_describe_flush(s, status, query)
+    case prepare do
+      true -> close_parse_describe(s, status, query)
+      false -> close_parse_describe_flush(s, status, query)
     end
   end
 
@@ -1509,15 +1509,15 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reload_prepare(s, %{function: function} = status, query) do
+  defp reload_prepare(s, %{prepare: prepare} = status, query) do
     %Query{name: name} = query
 
-    case function do
-      :prepare when name == "" ->
+    case prepare do
+      true when name == "" ->
         # unnamed queries closed on prepare when not re-using
         parse_describe_close(s, status, query)
 
-      :prepare ->
+      true ->
         # named queries closed when oid not found
         parse_describe(s, status, query)
 
@@ -1557,7 +1557,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_execute(%Query{name: "", ref: ref} = query, params, opts, s) do
-    status = new_status(opts, function: :prepare_execute)
+    status = new_status(opts)
 
     with {:ok, %Query{ref: new_ref} = new_query, s} when new_ref != ref <-
            parse_describe_flush(s, status, query) do
@@ -1572,7 +1572,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_execute(%Query{ref: ref} = query, params, opts, s) do
-    status = new_status(opts, function: :prepare_execute)
+    status = new_status(opts)
 
     with {:ok, %Query{ref: new_ref} = new_query, s} when new_ref != ref <-
            close_parse_describe_flush(s, status, query) do
@@ -1838,7 +1838,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_bind(%Query{name: ""} = query, params, res, opts, s) do
-    status = new_status(opts, function: :prepare_bind)
+    status = new_status(opts)
 
     case parse_describe_flush(s, status, query) do
       {:ok, query, s} ->
@@ -1850,7 +1850,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_bind(query, params, res, opts, s) do
-    status = new_status(opts, function: :prepare_bind)
+    status = new_status(opts)
 
     case close_parse_describe_flush(s, status, query) do
       {:ok, query, s} ->

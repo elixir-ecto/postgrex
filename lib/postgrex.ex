@@ -141,12 +141,8 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare_execute)
 
-    case DBConnection.prepare_execute(conn, query, params, opts) do
+    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
       {:ok, _, result} ->
         {:ok, result}
       {:error, _} = error ->
@@ -161,12 +157,7 @@ defmodule Postgrex do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare_execute)
-
-    {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
+    {_, result} = DBConnection.prepare_execute!(conn, query, params, defaults(opts))
     result
   end
 
@@ -199,10 +190,11 @@ defmodule Postgrex do
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
+
     opts =
       opts
       |> defaults()
-      |> Keyword.put(:function, :prepare)
+      |> Keyword.put(:prepare, true)
 
     DBConnection.prepare(conn, query, opts)
   end
@@ -216,7 +208,7 @@ defmodule Postgrex do
     opts =
       opts
       |> defaults()
-      |> Keyword.put(:function, :prepare)
+      |> Keyword.put(:prepare, true)
 
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end

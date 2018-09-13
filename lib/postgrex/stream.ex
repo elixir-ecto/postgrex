@@ -64,7 +64,6 @@ defimpl Collectable, for: Postgrex.Stream do
         {:ok, make_into(conn, stream, copy, opts)}
       query ->
         internal = %Stream{stream | query: %Query{name: "", statement: query}}
-        opts = Keyword.put(opts, :function, :prepare_into)
         {_, copy} = DBConnection.prepare_execute!(conn, internal, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
     end
