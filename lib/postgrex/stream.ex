@@ -13,16 +13,6 @@ defmodule Postgrex.Copy do
   defstruct [:portal, :ref, :connection_id, :query]
   @type t :: %Postgrex.Copy{}
 end
-defmodule Postgrex.CopyData do
-  @moduledoc false
-  defstruct [:data, :ref]
-  @type t :: %Postgrex.CopyData{}
-end
-defmodule Postgrex.CopyDone do
-  @moduledoc false
-  defstruct [:ref]
-  @type t :: %Postgrex.CopyDone{}
-end
 
 defimpl Enumerable, for: Postgrex.Stream do
   alias Postgrex.Query
@@ -31,6 +21,7 @@ defimpl Enumerable, for: Postgrex.Stream do
     stream = %DBConnection.Stream{conn: conn, query: query, params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
   end
+
   def reduce(%Postgrex.Stream{query: statement} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
     query = %Query{name: "" , statement: statement}
@@ -78,12 +69,10 @@ defimpl Collectable, for: Postgrex.Stream do
   defp make_into(conn, stream, %Postgrex.Copy{ref: ref} = copy, opts) do
     fn
       :ok, {:cont, data} ->
-        copy_data = %Postgrex.CopyData{ref: ref, data: data}
-        _ = DBConnection.execute!(conn, copy, copy_data, opts)
+        _ = DBConnection.execute!(conn, copy, {:copy_data, ref, data}, opts)
         :ok
       :ok, close when close in [:done, :halt] ->
-        copy_done = %Postgrex.CopyDone{ref: ref}
-        _ = DBConnection.execute!(conn, copy, copy_done, opts)
+        _ = DBConnection.execute!(conn, copy, {:copy_done, ref}, opts)
         stream
     end
   end
@@ -101,7 +90,7 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
     raise "can not describe #{inspect copy}"
   end
 
-  def encode(%Copy{ref: ref}, %Postgrex.CopyData{data: data, ref: ref}, _) do
+  def encode(%Copy{ref: ref}, {:copy_data, ref, data}, _) do
     try do
       encode_msg(msg_copy_data(data: data))
     rescue
@@ -114,19 +103,12 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
     end
   end
 
-  def encode(%Copy{ref: ref}, %Postgrex.CopyDone{ref: ref}, _) do
+  def encode(%Copy{ref: ref}, {:copy_done, ref}, _) do
     :copy_done
   end
 
-  def decode(%Copy{query: query}, result, opts) do
-    case result do
-      %Postgrex.Result{command: :copy_stream} ->
-        result
-      %Postgrex.Result{command: :close} ->
-        result
-      _ ->
-        DBConnection.Query.decode(query, result, opts)
-    end
+  def decode(copy, _result, _opts) do
+    raise "can not describe #{inspect copy}"
   end
 end
 
