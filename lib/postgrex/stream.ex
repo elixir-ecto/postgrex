@@ -28,16 +28,14 @@ defimpl Enumerable, for: Postgrex.Stream do
   alias Postgrex.Query
   def reduce(%Postgrex.Stream{query: %Query{} = query} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
-    stream = %DBConnection.Stream{conn: conn, query: query, params: params,
-                                  opts: opts}
+    stream = %DBConnection.Stream{conn: conn, query: query, params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
   end
   def reduce(%Postgrex.Stream{query: statement} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
     query = %Query{name: "" , statement: statement}
     opts = Keyword.put(opts, :function, :prepare_open)
-    stream = %DBConnection.PrepareStream{conn: conn, query: query,
-                                         params: params, opts: opts}
+    stream = %DBConnection.PrepareStream{conn: conn, query: query, params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
   end
 
@@ -71,9 +69,9 @@ defimpl Collectable, for: Postgrex.Stream do
         {:ok, make_into(conn, stream, copy, opts)}
     end
   end
+
   def into(_) do
-    msg = "data can only be copied to database inside a transaction"
-    raise ArgumentError, msg
+    raise ArgumentError, "data can only be copied to database inside a transaction"
   end
 
   defp make_into(conn, stream, %Postgrex.Copy{ref: ref} = copy, opts) do
@@ -105,7 +103,7 @@ defimpl DBConnection.Query, for: Postgrex.Stream do
     DBConnection.Query.encode(query, params, opts)
   end
 
-  def decode(_, copy, _), do: copy
+  def decode(stream, _, _), do: raise "cannot decode #{inspect stream}"
 end
 
 defimpl DBConnection.Query, for: Postgrex.Copy do

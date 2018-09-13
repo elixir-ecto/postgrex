@@ -231,14 +231,14 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_execute(Postgrex.Parameters.t(), nil, Keyword.t(), state) ::
-          {:ok, %{binary => binary}, state}
+          {:ok, Postgrex.Parameters.t(), %{binary => binary}, state}
           | {:error, Postgrex.Error.t(), state}
-  def handle_execute(%Postgrex.Parameters{}, nil, _, s) do
+  def handle_execute(%Postgrex.Parameters{} = p, nil, _, s) do
     %{parameters: parameters} = s
 
     case Postgrex.Parameters.fetch(parameters) do
       {:ok, parameters} ->
-        {:ok, parameters, s}
+        {:ok, p, parameters, s}
 
       :error ->
         {:error, %Postgrex.Error{message: "parameters not available"}, s}
@@ -246,7 +246,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_execute(Postgrex.Query.t(), list, Keyword.t(), state) ::
-          {:ok, Postgrex.Result.t(), state}
+          {:ok, Postgrex.Query.t(), Postgrex.Result.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:error, %DBConnection.TransactionError{}, state}
           | {:disconnect, %RuntimeError{}, state}
@@ -282,7 +282,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_execute(Postgrex.Stream.t(), list, Keyword.t(), state) ::
-          {:ok, Copy.t(), state}
+          {:ok, Postgrex.Query.t(), Copy.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:disconnect, %RuntimeError{}, state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
@@ -300,14 +300,14 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_execute(Postgrex.Copy.t(), {:copy_data, iodata} | :copy_done, Keyword.t(), state) ::
-          {:ok, Postgrex.Result.t(), state}
+          {:ok, Postgrex.Query.t(), Postgrex.Result.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:disconnect, %RuntimeError{}, state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_execute(%Copy{ref: ref} = copy, {:copy_data, iodata}, opts, s) do
     case s do
       %{postgres: {_, ^ref}} ->
-        copy_in_data(s, iodata)
+        copy_in_data(s, copy, iodata)
 
       %{postgres: {_, _}} ->
         lock_error(s, :execute, copy)
@@ -317,7 +317,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  def handle_execute(%Copy{ref: ref} = copy, :copy_done, opts, s) do
+  def handle_execute(%Copy{ref: ref, query: query} = copy, :copy_done, opts, s) do
     case s do
       %{postgres: {_, ^ref}} ->
         copy_in_done(s, new_status(opts), copy)
@@ -326,7 +326,9 @@ defmodule Postgrex.Protocol do
         lock_error(s, :execute, copy)
 
       _ ->
-        close(s, new_status(opts), copy)
+        with {:ok, result, s} <- close(s, new_status(opts), copy) do
+          {:ok, query, result, s}
+        end
     end
   end
 
@@ -352,7 +354,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_declare(Postgrex.Query.t(), list, Keyword.t(), state) ::
-          {:ok, Postgrex.Cursor.t(), state}
+          {:ok, Postgrex.Query.t(), Postgrex.Cursor.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:disconnect, %RuntimeError{}, state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
@@ -1558,9 +1560,8 @@ defmodule Postgrex.Protocol do
     status = new_status(opts, function: :prepare_execute)
 
     with {:ok, %Query{ref: new_ref} = new_query, s} when new_ref != ref <-
-           parse_describe_flush(s, status, query),
-         {:ok, result, s} <- bind_execute_close(s, status, new_query, params) do
-      {:ok, new_query, result, s}
+           parse_describe_flush(s, status, query) do
+      bind_execute_close(s, status, new_query, params)
     else
       {:ok, %Query{ref: ^ref} = query, s} ->
         bind_execute_close(s, status, query, params)
@@ -1574,9 +1575,8 @@ defmodule Postgrex.Protocol do
     status = new_status(opts, function: :prepare_execute)
 
     with {:ok, %Query{ref: new_ref} = new_query, s} when new_ref != ref <-
-           close_parse_describe_flush(s, status, query),
-         {:ok, result, s} <- bind_execute(s, status, new_query, params) do
-      {:ok, new_query, result, s}
+           close_parse_describe_flush(s, status, query) do
+      bind_execute(s, status, new_query, params)
     else
       {:ok, %Query{ref: ^ref} = query, s} ->
         bind_execute(s, status, query, params)
@@ -1608,7 +1608,7 @@ defmodule Postgrex.Protocol do
          {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
-      {:ok, result, s}
+      {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         error_ready(s, status, err, buffer)
@@ -1643,7 +1643,7 @@ defmodule Postgrex.Protocol do
          {:ok, s, buffer} <- recv_bind(s, status, buffer),
          {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
-      {:ok, result, s}
+      {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         error_ready(s, status, err, buffer)
@@ -1673,7 +1673,7 @@ defmodule Postgrex.Protocol do
          {:ok, s, buffer} <- recv_bind(s, status, buffer),
          {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
-      {:ok, result, s}
+      {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)
@@ -1712,7 +1712,7 @@ defmodule Postgrex.Protocol do
          {:ok, s, buffer} <- recv_bind(%{s | buffer: nil}, status, buffer),
          {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
-      {:ok, result, s}
+      {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)
@@ -1880,7 +1880,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_bind(s, status, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
-      {:ok, cursor, s}
+      {:ok, query, cursor, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         error_ready(s, status, err, buffer)
@@ -1909,7 +1909,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_bind(s, status, buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
-      {:ok, cursor, s}
+      {:ok, query, cursor, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)
@@ -1946,7 +1946,7 @@ defmodule Postgrex.Protocol do
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
          {:ok, s, buffer} <- recv_bind(s, status, buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
-      {:ok, cursor, s}
+      {:ok, query, cursor, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)
@@ -2124,13 +2124,13 @@ defmodule Postgrex.Protocol do
   end
 
   defp copy_in_data(s, %{mode: :transaction}, copy, data) do
-    %Copy{portal: portal, ref: ref} = copy
+    %Copy{portal: portal, ref: ref, query: query} = copy
     %{postgres: postgres, buffer: buffer} = s
     msgs = [msg_execute(name_port: portal, max_rows: 0), data]
 
     case msg_send(s, msgs, buffer) do
       :ok ->
-        {:ok, copied(s), %{s | postgres: {postgres, ref}}}
+        {:ok, query, copied(s), %{s | postgres: {postgres, ref}}}
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -2138,7 +2138,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp copy_in_data(s, %{mode: :savepoint} = status, copy, data) do
-    %Copy{portal: portal, ref: ref} = copy
+    %Copy{portal: portal, ref: ref, query: query} = copy
     %{buffer: buffer} = s
 
     msgs = [
@@ -2149,17 +2149,17 @@ defmodule Postgrex.Protocol do
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{postgres: postgres} = s} <- recv_transaction(s, status, buffer) do
-      {:ok, copied(s), %{s | postgres: {postgres, ref}}}
+      {:ok, query, copied(s), %{s | postgres: {postgres, ref}}}
     else
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
   end
 
-  defp copy_in_data(%{sock: {mod, sock}} = s, data) do
+  defp copy_in_data(%{sock: {mod, sock}} = s, %{query: query}, data) do
     case mod.send(sock, data) do
       :ok ->
-        {:ok, copied(s), s}
+        {:ok, query, copied(s), s}
 
       {:error, reason} ->
         disconnect(s, tag(mod), "send", reason)
@@ -2183,7 +2183,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, result, s, buffer} <- recv_copy_in(s, status, query, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
-      {:ok, result, s}
+      {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         error_ready(s, status, err, buffer)
@@ -2200,7 +2200,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, result, s, buffer} <- recv_copy_in(s, status, query, buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
-      {:ok, result, s}
+      {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)

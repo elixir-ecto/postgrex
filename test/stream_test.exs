@@ -324,9 +324,8 @@ defmodule StreamTest do
     transaction(fn(conn) ->
       map =
         fn _ ->
-          assert_raise RuntimeError, ~r"connection is locked", fn ->
-            Postgrex.prepare(conn, "", "BEGIN")
-          end
+          {:error, %RuntimeError{message: message}} = Postgrex.prepare(conn, "", "BEGIN")
+          assert message =~ "connection is locked"
           true
         end
 
@@ -378,15 +377,15 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query
-      assert {:ok, %Postgrex.Copy{query: ^query}} = entry.result
+      assert {:ok, ^query, %Postgrex.Copy{query: ^query}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, ^query, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query
-      assert {:ok, %{command: :copy, rows: nil, num_rows: 1}} = entry.result
+      assert {:ok, ^query, %{command: :copy, rows: nil, num_rows: 1}} = entry.result
 
       assert %Postgrex.Result{rows: [[2], [3], [4], [5]]} =
         Postgrex.query!(conn, "SELECT * FROM uniques", [])
@@ -627,15 +626,15 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %Postgrex.Copy{query: ^query_in}} = entry.result
+      assert {:ok, ^query_in, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: nil, rows: nil, num_rows: 0}} = entry.result
+      assert {:ok, ^query_in, %{command: nil, rows: nil, num_rows: 0}} = entry.result
     end)
   end
 
@@ -652,15 +651,15 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %Postgrex.Copy{query: ^query_in}} = entry.result
+      assert {:ok, ^query_in, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :savepoint, rows: nil, num_rows: 0}} = entry.result
+      assert {:ok, ^query_in, %{command: :savepoint, rows: nil, num_rows: 0}} = entry.result
     end)
   end
 
@@ -686,15 +685,15 @@ defmodule StreamTest do
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %Postgrex.Copy{query: ^query_in}} = entry.result
+      assert {:ok, ^query_in, %Postgrex.Copy{query: ^query_in}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
+      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} = entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
       assert (entry.query).query == query_in
-      assert {:ok, %{command: :insert, rows: [[2], [3]], num_rows: 2}} = entry.result
+      assert {:ok, ^query_in, %{command: :insert, rows: [[2], [3]], num_rows: 2}} = entry.result
 
       Postgrex.rollback(conn, :done)
     end)

@@ -860,7 +860,7 @@ defmodule QueryTest do
     query = prepare("S42", "SELECT 42")
 
     {:ok, pid2} = Postgrex.start_link(context[:options])
-    assert {:ok, %Postgrex.Result{rows: [[42]]}} = Postgrex.execute(pid2, query, [])
+    assert {:ok, ^query, %Postgrex.Result{rows: [[42]]}} = Postgrex.execute(pid2, query, [])
     assert {:ok, %Postgrex.Result{rows: [[41]]}} = Postgrex.query(pid2, "SELECT 41", [])
   end
 
@@ -1044,7 +1044,7 @@ defmodule QueryTest do
     message = "postgresql protocol can not handle 65536 parameters, the maximum is 65535"
 
     assert capture_log(fn ->
-      assert_raise RuntimeError, message, fn() -> query(query, params) end
+      %RuntimeError{message: ^message} = query(query, params)
       pid = context[:pid]
       assert_receive {:EXIT, ^pid, :killed}
     end) =~ message
@@ -1052,10 +1052,11 @@ defmodule QueryTest do
 
   test "COPY FROM STDIN disconnects", context do
     Process.flag(:trap_exit, true)
-    message = ~r"trying to copy in but no copy data to send"
+    message = "trying to copy in but no copy data to send"
 
     assert capture_log(fn ->
-      assert_raise RuntimeError, message, fn -> query("COPY uniques FROM STDIN", []) end
+      assert %RuntimeError{message: runtime} = query("COPY uniques FROM STDIN", [])
+      assert runtime =~ message
       pid = context[:pid]
       assert_receive {:EXIT, ^pid, :killed}
     end) =~ message

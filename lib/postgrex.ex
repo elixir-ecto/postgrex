@@ -138,20 +138,19 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
   """
-  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
     opts =
       opts
       |> defaults()
       |> Keyword.put(:function, :prepare_execute)
+
     case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} ->
         {:ok, result}
-      {:error, %Postgrex.Error{}} = error ->
+      {:error, _} = error ->
         error
-      {:error, err} ->
-        raise err
     end
   end
 
@@ -166,6 +165,7 @@ defmodule Postgrex do
       opts
       |> defaults()
       |> Keyword.put(:function, :prepare_execute)
+
     {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
     result
   end
@@ -196,21 +196,15 @@ defmodule Postgrex do
 
       Postgrex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
-  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
+  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
     opts =
       opts
       |> defaults()
       |> Keyword.put(:function, :prepare)
-    case DBConnection.prepare(conn, query, opts) do
-      {:ok, _} = ok ->
-        ok
-      {:error, %Postgrex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
-    end
+
+    DBConnection.prepare(conn, query, opts)
   end
 
   @doc """
@@ -223,20 +217,20 @@ defmodule Postgrex do
       opts
       |> defaults()
       |> Keyword.put(:function, :prepare)
+
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
-  Runs an (extended) prepared query and returns the result as
-  `{:ok, %Postgrex.Result{}}` or `{:error, %Postgrex.Error{}}` if there was an
-  error. Parameters are given as part of the prepared query, `%Postgrex.Query{}`.
+  Runs an (extended) prepared query.
+
+  It returns the result as `{:ok, %Postgrex.Query{}, %Postgrex.Result{}}` or
+  `{:error, %Postgrex.Error{}}` if there was an error. Parameters are given as
+  part of the prepared query, `%Postgrex.Query{}`.
+
   See the README for information on how Postgrex encodes and decodes Elixir
   values by default. See `Postgrex.Query` for the query data and
   `Postgrex.Result` for the result data.
-
-  This function may still raise an exception if there is an issue with types
-  (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
-  (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
 
   ## Options
 
@@ -262,16 +256,7 @@ defmodule Postgrex do
   @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
-    case DBConnection.execute(conn, query, params, defaults(opts)) do
-      {:ok, _} = ok ->
-        ok
-      {:ok, _query, result} ->
-        {:ok, result}
-      {:error, %Postgrex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
-    end
+    DBConnection.execute(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -281,12 +266,7 @@ defmodule Postgrex do
   @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) ::
     Postgrex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    case DBConnection.execute!(conn, query, params, defaults(opts)) do
-      {_query, result} ->
-        result
-      result ->
-        result
-    end
+    DBConnection.execute!(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -315,15 +295,13 @@ defmodule Postgrex do
       query = Postgrex.prepare!(conn, "", "CREATE TABLE posts (id serial, title text)")
       Postgrex.close(conn, query)
   """
-  @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Exception.t}
   def close(conn, query, opts \\ []) do
     case DBConnection.close(conn, query, defaults(opts)) do
       {:ok, _} ->
         :ok
-      {:error, %Postgrex.Error{}} = error ->
+      {:error, _} = error ->
         error
-      {:error, err} ->
-        raise err
     end
   end
 

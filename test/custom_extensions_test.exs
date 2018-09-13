@@ -136,8 +136,8 @@ defmodule CustomExtensionsTest do
     opts = [types: Postgrex.DefaultTypes] ++ context[:options]
     {:ok, pid2} = Postgrex.start_link(opts)
 
-    assert_raise ArgumentError, ~r"invalid types for the connection",
-      fn() -> Postgrex.execute(pid2, query, []) end
+    {:error, %ArgumentError{message: message}} = Postgrex.execute(pid2, query, [])
+    assert message =~ ~r"invalid types for the connection"
   end
 
   test "raise when streaming prepared query on connection with different types", context do

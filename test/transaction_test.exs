@@ -233,6 +233,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -247,8 +248,8 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
         P.query(conn, "INSERT INTO uniques VALUES (1), (1)", [])
 
-      assert_raise DBConnection.TransactionError, "transaction is aborted",
-        fn -> P.query(conn, "SELECT 42", [], [mode: :savepoint]) end
+      assert {:error, %DBConnection.TransactionError{message: "transaction is aborted"}} =
+        P.query(conn, "SELECT 42", [], [mode: :savepoint])
 
       assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
         P.query(conn, "SELECT 42", [])
@@ -267,8 +268,8 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [], [mode: :savepoint])
 
-      assert_raise DBConnection.ConnectionError, "connection is closed",
-        fn -> P.query(conn, "SELECT 42", []) end
+      assert {:error, %DBConnection.ConnectionError{message: "connection is closed"}} =
+        P.query(conn, "SELECT 42", [])
 
       P.rollback(conn, :oops)
     end) == {:error, :oops}
@@ -282,6 +283,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -297,6 +299,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -311,6 +314,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -321,6 +325,7 @@ defmodule TransactionTest do
   test "transaction works after failure in savepoint query binding state", context do
     assert transaction(fn(conn) ->
       statement = "insert into uniques values (CAST($1::text AS int))"
+
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_text_representation}}} =
         P.query(conn, statement, ["invalid"], [mode: :savepoint])
 

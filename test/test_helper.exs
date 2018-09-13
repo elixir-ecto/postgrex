@@ -140,7 +140,7 @@ defmodule Postgrex.TestHelper do
                                      unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
-        {:error, %Postgrex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
@@ -150,7 +150,7 @@ defmodule Postgrex.TestHelper do
       case Postgrex.prepare(var!(context)[:pid], unquote(name),
                                      unquote(stat), unquote(opts)) do
         {:ok, %Postgrex.Query{} = query} -> query
-        {:error, %Postgrex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
@@ -159,9 +159,9 @@ defmodule Postgrex.TestHelper do
     quote do
       case Postgrex.execute(var!(context)[:pid], unquote(query),
                                        unquote(params), unquote(opts)) do
-        {:ok, %Postgrex.Result{rows: nil}} -> :ok
-        {:ok, %Postgrex.Result{rows: rows}} -> rows
-        {:error, %Postgrex.Error{} = err} -> err
+        {:ok, %Postgrex.Query{}, %Postgrex.Result{rows: nil}} -> :ok
+        {:ok, %Postgrex.Query{}, %Postgrex.Result{rows: rows}} -> rows
+        {:error, err} -> err
       end
     end
   end
@@ -174,18 +174,16 @@ defmodule Postgrex.TestHelper do
 
   defmacro close(query, opts \\ []) do
     quote do
-      case Postgrex.close(var!(context)[:pid], unquote(query),
-                                     unquote(opts)) do
+      case Postgrex.close(var!(context)[:pid], unquote(query), unquote(opts)) do
         :ok -> :ok
-        {:error, %Postgrex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
 
   defmacro transaction(fun, opts \\ []) do
     quote do
-      Postgrex.transaction(var!(context)[:pid], unquote(fun),
-                                      unquote(opts))
+      Postgrex.transaction(var!(context)[:pid], unquote(fun), unquote(opts))
     end
   end
 end
