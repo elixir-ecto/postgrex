@@ -210,6 +210,51 @@ defmodule Postgrex do
   end
 
   @doc """
+  Prepares and executes a query in a single step.
+
+  It returns the result as `{:ok, %Postgrex.Query{}, %Postgrex.Result{}}` or
+  `{:error, %Postgrex.Error{}}` if there was an error. Parameters are given as
+  part of the prepared query, `%Postgrex.Query{}`.
+
+  See the README for information on how Postgrex encodes and decodes Elixir
+  values by default. See `Postgrex.Query` for the query data and
+  `Postgrex.Result` for the result data.
+
+  ## Options
+
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
+    * `:timeout` - Execute request timeout (default: `#{@timeout}`);
+    * `:decode_mapper` - Fun to map each row in the result to a term after
+    decoding, (default: `fn x -> x end`);
+    * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
+    execute on error, otherwise set to `:transaction` (default: `:transaction`);
+
+  ## Examples
+
+      Postgrex.prepare_and_execute(conn, "", "SELECT id FROM posts WHERE title like $1", ["%my%"])
+
+  """
+  @spec prepare_execute(conn, iodata, iodata, list, Keyword.t) ::
+    {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  def prepare_execute(conn, name, statement, params, opts \\ []) do
+    query = %Query{name: name, statement: statement}
+    DBConnection.prepare_execute(conn, query, params, defaults(opts))
+  end
+
+  @doc """
+  Prepares and runs a query and returns the result or raises
+  `Postgrex.Error` if there was an error. See `prepare_execute/5`.
+  """
+  @spec prepare_execute!(conn, iodata, iodata, list, Keyword.t) ::
+    {Postgrex.Query.t, Postgrex.Result.t}
+  def prepare_execute!(conn, name, statement, params, opts \\ []) do
+    query = %Query{name: name, statement: statement}
+    DBConnection.prepare_execute!(conn, query, params, defaults(opts))
+  end
+
+  @doc """
   Runs an (extended) prepared query.
 
   It returns the result as `{:ok, %Postgrex.Query{}, %Postgrex.Result{}}` or

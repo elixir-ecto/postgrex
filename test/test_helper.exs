@@ -155,6 +155,16 @@ defmodule Postgrex.TestHelper do
     end
   end
 
+  defmacro prepare_execute(name, stat, params, opts \\ []) do
+    quote do
+      case Postgrex.prepare_execute(var!(context)[:pid], unquote(name),
+                                     unquote(stat), unquote(params), unquote(opts)) do
+        {:ok, %Postgrex.Query{} = query, %Postgrex.Result{rows: rows}} -> {query, rows}
+        {:error, err} -> err
+      end
+    end
+  end
+
   defmacro execute(query, params, opts \\ []) do
     quote do
       case Postgrex.execute(var!(context)[:pid], unquote(query),
