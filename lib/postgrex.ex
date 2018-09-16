@@ -121,8 +121,6 @@ defmodule Postgrex do
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -141,12 +139,8 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare_execute)
 
-    case DBConnection.prepare_execute(conn, query, params, opts) do
+    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
       {:ok, _, result} ->
         {:ok, result}
       {:error, _} = error ->
@@ -161,12 +155,7 @@ defmodule Postgrex do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare_execute)
-
-    {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
+    {_, result} = DBConnection.prepare_execute!(conn, query, params, defaults(opts))
     result
   end
 
@@ -187,8 +176,6 @@ defmodule Postgrex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -199,10 +186,11 @@ defmodule Postgrex do
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
+
     opts =
       opts
       |> defaults()
-      |> Keyword.put(:function, :prepare)
+      |> Keyword.put(:postgrex_prepare, true)
 
     DBConnection.prepare(conn, query, opts)
   end
@@ -216,7 +204,7 @@ defmodule Postgrex do
     opts =
       opts
       |> defaults()
-      |> Keyword.put(:function, :prepare)
+      |> Keyword.put(:postgrex_prepare, true)
 
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
@@ -240,8 +228,6 @@ defmodule Postgrex do
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -285,8 +271,6 @@ defmodule Postgrex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     close on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -337,16 +321,14 @@ defmodule Postgrex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`;
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
 
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool` and `:mode` will be used for all
-  requests inside the transaction function.
+  transactions and requests. The `:mode` will be used for all requests inside
+  the transaction function.
 
   ## Example
 
@@ -382,8 +364,6 @@ defmodule Postgrex do
   ## Options
 
     * `:pool_timeout` - Call timeout (default: `#{@pool_timeout}`)
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
 
   """
   @spec parameters(conn, Keyword.t) :: %{binary => binary}

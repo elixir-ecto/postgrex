@@ -1,7 +1,7 @@
 defmodule Postgrex.Protocol do
   @moduledoc false
 
-  alias Postgrex.{Types, TypeServer, Query, Cursor, Stream, Copy}
+  alias Postgrex.{Types, TypeServer, Query, Cursor, Copy}
   import Postgrex.{Messages, BinaryUtils}
   require Logger
   use DBConnection
@@ -43,7 +43,14 @@ defmodule Postgrex.Protocol do
   @type notify :: (binary, binary -> any)
 
   defmacrop new_status(opts, fields \\ []) do
-    defaults = quote(do: [notify: notify(unquote(opts)), mode: mode(unquote(opts)), messages: []])
+    defaults =
+      quote(do: [
+        notify: notify(unquote(opts)),
+        mode: mode(unquote(opts)),
+        messages: [],
+        prepare: false
+      ])
+
     {:%{}, [], Keyword.merge(defaults, fields)}
   end
 
@@ -171,7 +178,7 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
 
-  @spec handle_prepare(Postgrex.Query.t() | Postgrex.Stream.t(), Keyword.t(), state) ::
+  @spec handle_prepare(Postgrex.Query.t(), Keyword.t(), state) ::
           {:ok, Postgrex.Query.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:error, %DBConnection.TransactionError{}, state}
@@ -184,24 +191,17 @@ defmodule Postgrex.Protocol do
   def handle_prepare(%Query{ref: ref} = query, opts, s) when is_reference(ref) do
     # If the query already has a reference, then it means DBConnection rescued
     # a DBConnection.EncodeError and wants us to reprepare a query
-    opts =
-      case Keyword.get(opts, :function) do
-        :execute -> Keyword.put(opts, :function, :prepare_execute)
-        :declare -> Keyword.put(opts, :function, :prepare_declare)
-        _ -> opts
-      end
-
     %{name: name, statement: statement} = query
     handle_prepare(%Query{name: name, statement: statement}, opts, s)
   end
 
   def handle_prepare(%Query{name: ""} = query, opts, s) do
-    function = Keyword.get(opts, :function)
-    status = new_status(opts, function: function)
+    prepare = Keyword.get(opts, :postgrex_prepare, false)
+    status = new_status(opts, prepare: prepare)
 
-    case function do
-      :prepare -> parse_describe_close(s, status, query)
-      _ -> parse_describe_flush(s, status, query)
+    case prepare do
+      true -> parse_describe_close(s, status, query)
+      false -> parse_describe_flush(s, status, query)
     end
   end
 
@@ -211,22 +211,12 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{} = query, opts, s) do
-    function = Keyword.get(opts, :function)
-    status = new_status(opts, function: function)
+    prepare = Keyword.get(opts, :postgrex_prepare, false)
+    status = new_status(opts, prepare: prepare)
 
-    case function do
-      :prepare -> close_parse_describe(s, status, query)
-      _ -> close_parse_describe_flush(s, status, query)
-    end
-  end
-
-  def handle_prepare(%Stream{query: query} = stream, opts, s) do
-    case handle_prepare(query, opts, s) do
-      {:ok, %Query{} = query, s} ->
-        {:ok, %Stream{stream | query: query}, s}
-
-      {error, _, _} = other when error in [:error, :disconnect] ->
-        other
+    case prepare do
+      true -> close_parse_describe(s, status, query)
+      false -> close_parse_describe_flush(s, status, query)
     end
   end
 
@@ -246,57 +236,16 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_execute(Postgrex.Query.t(), list, Keyword.t(), state) ::
-          {:ok, Postgrex.Query.t(), Postgrex.Result.t(), state}
+          {:ok, Postgrex.Query.t(), Postgrex.Result.t() | Postgrex.Copy.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:error, %DBConnection.TransactionError{}, state}
           | {:disconnect, %RuntimeError{}, state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_execute(%Query{ref: ref} = query, params, opts, %{postgres: {_, ref}} = s) do
-    # ref in lock so query is prepared
-    status = new_status(opts)
-
-    case query do
-      %{name: ""} -> bind_execute_close(s, status, query, params)
-      _ -> bind_execute(s, status, query, params)
+  def handle_execute(%Query{} = query, params, opts, s) do
+    case Keyword.get(opts, :postgrex_copy, false) do
+      true -> handle_execute_copy(query, params, opts, s)
+      false -> handle_execute_result(query, params, opts, s)
     end
-  end
-
-  def handle_execute(%Query{} = query, _, _, %{postgres: {_, _ref}} = s) do
-    lock_error(s, :execute, query)
-  end
-
-  def handle_execute(%Query{types: nil} = query, _, _, s) do
-    query_error(s, "query #{inspect(query)} has not been prepared")
-  end
-
-  def handle_execute(%Query{types: types} = query, params, opts, %{types: types} = s) do
-    if query_member?(s, query) do
-      rebind_execute(s, new_status(opts), query, params)
-    else
-      handle_prepare_execute(query, params, opts, s)
-    end
-  end
-
-  def handle_execute(%Query{} = query, _, _, s) do
-    query_error(s, "query #{inspect(query)} has invalid types for the connection")
-  end
-
-  @spec handle_execute(Postgrex.Stream.t(), list, Keyword.t(), state) ::
-          {:ok, Postgrex.Query.t(), Copy.t(), state}
-          | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
-          | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_execute(%Stream{query: query}, params, opts, s) do
-    %{connection_id: connection_id} = s
-
-    copy = %Copy{
-      portal: make_portal(),
-      ref: make_ref(),
-      query: query,
-      connection_id: connection_id
-    }
-
-    handle_bind(query, params, copy, opts, s)
   end
 
   @spec handle_execute(Postgrex.Copy.t(), {:copy_data, iodata} | :copy_done, Keyword.t(), state) ::
@@ -332,7 +281,50 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_close(Postgrex.Query.t() | Postgrex.Stream.t(), Keyword.t(), state) ::
+  defp handle_execute_result(%{ref: ref} = query, params, opts, %{postgres: {_, ref}} = s) do
+    # ref in lock so query is prepared
+    status = new_status(opts)
+
+    case query do
+      %{name: ""} -> bind_execute_close(s, status, query, params)
+      _ -> bind_execute(s, status, query, params)
+    end
+  end
+
+  defp handle_execute_result(%{} = query, _, _, %{postgres: {_, _ref}} = s) do
+    lock_error(s, :execute, query)
+  end
+
+  defp handle_execute_result(%{types: nil} = query, _, _, s) do
+    query_error(s, "query #{inspect(query)} has not been prepared")
+  end
+
+  defp handle_execute_result(%{types: types} = query, params, opts, %{types: types} = s) do
+    if query_member?(s, query) do
+      rebind_execute(s, new_status(opts), query, params)
+    else
+      handle_prepare_execute(query, params, opts, s)
+    end
+  end
+
+  defp handle_execute_result(query, _, _, s) do
+    query_error(s, "query #{inspect(query)} has invalid types for the connection")
+  end
+
+  defp handle_execute_copy(query, params, opts, s) do
+    %{connection_id: connection_id} = s
+
+    copy = %Copy{
+      portal: make_portal(),
+      ref: make_ref(),
+      query: query,
+      connection_id: connection_id
+    }
+
+    handle_bind(query, params, copy, opts, s)
+  end
+
+  @spec handle_close(Postgrex.Query.t(), Keyword.t(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:disconnect, %RuntimeError{}, state}
@@ -347,10 +339,6 @@ defmodule Postgrex.Protocol do
 
   def handle_close(%Query{} = query, opts, s) do
     close(s, new_status(opts), query)
-  end
-
-  def handle_close(%Stream{query: query}, opts, s) do
-    handle_close(query, opts, s)
   end
 
   @spec handle_declare(Postgrex.Query.t(), list, Keyword.t(), state) ::
@@ -1509,15 +1497,15 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reload_prepare(s, %{function: function} = status, query) do
+  defp reload_prepare(s, %{prepare: prepare} = status, query) do
     %Query{name: name} = query
 
-    case function do
-      :prepare when name == "" ->
+    case prepare do
+      true when name == "" ->
         # unnamed queries closed on prepare when not re-using
         parse_describe_close(s, status, query)
 
-      :prepare ->
+      true ->
         # named queries closed when oid not found
         parse_describe(s, status, query)
 
@@ -1557,7 +1545,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_execute(%Query{name: ""} = query, params, opts, s) do
-    status = new_status(opts, function: :prepare_execute)
+    status = new_status(opts)
 
     case parse_describe_flush(s, status, query) do
       {:ok, query, s} ->
@@ -1569,7 +1557,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_execute(%Query{} = query, params, opts, s) do
-    status = new_status(opts, function: :prepare_execute)
+    status = new_status(opts)
 
     case close_parse_describe_flush(s, status, query) do
       {:ok, query, s} ->
@@ -1832,7 +1820,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_bind(%Query{name: ""} = query, params, res, opts, s) do
-    status = new_status(opts, function: :prepare_bind)
+    status = new_status(opts)
 
     case parse_describe_flush(s, status, query) do
       {:ok, query, s} ->
@@ -1844,7 +1832,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp handle_prepare_bind(%Query{} = query, params, res, opts, s) do
-    status = new_status(opts, function: :prepare_bind)
+    status = new_status(opts)
 
     case close_parse_describe_flush(s, status, query) do
       {:ok, query, s} ->
