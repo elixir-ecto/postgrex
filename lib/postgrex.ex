@@ -194,7 +194,7 @@ defmodule Postgrex do
     opts =
       opts
       |> defaults()
-      |> Keyword.put(:prepare, true)
+      |> Keyword.put(:postgrex_prepare, true)
 
     DBConnection.prepare(conn, query, opts)
   end
@@ -208,7 +208,7 @@ defmodule Postgrex do
     opts =
       opts
       |> defaults()
-      |> Keyword.put(:prepare, true)
+      |> Keyword.put(:postgrex_prepare, true)
 
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end

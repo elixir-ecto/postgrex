@@ -196,7 +196,7 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{name: ""} = query, opts, s) do
-    prepare = Keyword.get(opts, :prepare, false)
+    prepare = Keyword.get(opts, :postgrex_prepare, false)
     status = new_status(opts, prepare: prepare)
 
     case prepare do
@@ -211,7 +211,7 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{} = query, opts, s) do
-    prepare = Keyword.get(opts, :prepare, false)
+    prepare = Keyword.get(opts, :postgrex_prepare, false)
     status = new_status(opts, prepare: prepare)
 
     case prepare do
@@ -242,7 +242,7 @@ defmodule Postgrex.Protocol do
           | {:disconnect, %RuntimeError{}, state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_execute(%Query{} = query, params, opts, s) do
-    case Keyword.get(opts, :copy, false) do
+    case Keyword.get(opts, :postgrex_copy, false) do
       true -> handle_execute_copy(query, params, opts, s)
       false -> handle_execute_result(query, params, opts, s)
     end

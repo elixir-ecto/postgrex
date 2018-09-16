@@ -49,7 +49,7 @@ defimpl Collectable, for: Postgrex.Stream do
 
   def into(%Stream{conn: %DBConnection{}} = stream) do
     %Stream{conn: conn, query: query, params: params, options: opts} = stream
-    opts = Keyword.put(opts, :copy, true)
+    opts = Keyword.put(opts, :postgrex_copy, true)
 
     case query do
       %Query{} ->
