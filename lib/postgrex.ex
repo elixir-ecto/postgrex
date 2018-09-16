@@ -21,9 +21,12 @@ defmodule Postgrex do
   """
   @type conn :: DBConnection.conn
 
+  @max_rows 500
+
+  # Inherited from DBConnection
+
   @pool_timeout 5000
   @timeout 15_000
-  @max_rows 500
 
   ### PUBLIC API ###
 
@@ -140,7 +143,7 @@ defmodule Postgrex do
   def query(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
 
-    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+    case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} ->
         {:ok, result}
       {:error, _} = error ->
@@ -155,7 +158,7 @@ defmodule Postgrex do
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
     query = %Query{name: "", statement: statement}
-    {_, result} = DBConnection.prepare_execute!(conn, query, params, defaults(opts))
+    {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
     result
   end
 
@@ -186,12 +189,7 @@ defmodule Postgrex do
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:postgrex_prepare, true)
-
+    opts = Keyword.put(opts, :postgrex_prepare, true)
     DBConnection.prepare(conn, query, opts)
   end
 
@@ -201,11 +199,7 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, Keyword.t) :: Postgrex.Query.t
   def prepare!(conn, name, statement, opts \\ []) do
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:postgrex_prepare, true)
-
+    opts = Keyword.put(opts, :postgrex_prepare, true)
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
@@ -240,7 +234,7 @@ defmodule Postgrex do
     {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def prepare_execute(conn, name, statement, params, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    DBConnection.prepare_execute(conn, query, params, defaults(opts))
+    DBConnection.prepare_execute(conn, query, params, opts)
   end
 
   @doc """
@@ -251,7 +245,7 @@ defmodule Postgrex do
     {Postgrex.Query.t, Postgrex.Result.t}
   def prepare_execute!(conn, name, statement, params, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    DBConnection.prepare_execute!(conn, query, params, defaults(opts))
+    DBConnection.prepare_execute!(conn, query, params, opts)
   end
 
   @doc """
@@ -287,7 +281,7 @@ defmodule Postgrex do
   @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
     {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
-    DBConnection.execute(conn, query, params, defaults(opts))
+    DBConnection.execute(conn, query, params, opts)
   end
 
   @doc """
@@ -297,7 +291,7 @@ defmodule Postgrex do
   @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) ::
     Postgrex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    DBConnection.execute!(conn, query, params, defaults(opts))
+    DBConnection.execute!(conn, query, params, opts)
   end
 
   @doc """
@@ -326,7 +320,7 @@ defmodule Postgrex do
   """
   @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Exception.t}
   def close(conn, query, opts \\ []) do
-    case DBConnection.close(conn, query, defaults(opts)) do
+    case DBConnection.close(conn, query, opts) do
       {:ok, _} ->
         :ok
       {:error, _} = error ->
@@ -340,7 +334,7 @@ defmodule Postgrex do
   """
   @spec close!(conn, Postgrex.Query.t, Keyword.t) :: :ok
   def close!(conn, query, opts \\ []) do
-    DBConnection.close!(conn, query, defaults(opts))
+    DBConnection.close!(conn, query, opts)
   end
 
   @doc """
@@ -384,7 +378,7 @@ defmodule Postgrex do
   @spec transaction(conn, ((DBConnection.t) -> result), Keyword.t) ::
     {:ok, result} | {:error, any} when result: var
   def transaction(conn, fun, opts \\ []) do
-    DBConnection.transaction(conn, fun, defaults(opts))
+    DBConnection.transaction(conn, fun, opts)
   end
 
   @doc """
@@ -413,7 +407,7 @@ defmodule Postgrex do
   """
   @spec parameters(conn, Keyword.t) :: %{binary => binary}
   def parameters(conn, opts \\ []) do
-    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, defaults(opts))
+    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, opts)
   end
 
   @doc """
@@ -468,17 +462,11 @@ defmodule Postgrex do
   @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, Keyword.t) ::
     Postgrex.Stream.t
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
-    options =
-      options
-      |> defaults()
-      |> Keyword.put_new(:max_rows, @max_rows)
+    options = Keyword.put_new(options, :max_rows, @max_rows)
     %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
   end
 
   ## Helpers
-  defp defaults(opts) do
-    Keyword.put_new(opts, :timeout, @timeout)
-  end
 
   defp ensure_deps_started!(opts) do
     if Keyword.get(opts, :ssl, false) and not List.keymember?(:application.which_applications(), :ssl, 0) do
