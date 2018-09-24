@@ -141,7 +141,12 @@ defmodule Postgrex do
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement}
+    query =
+      if name = Keyword.get(opts, :cache_statement) do
+        %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
+      else
+        %Query{name: "", statement: statement}
+      end
 
     case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} ->
@@ -362,7 +367,6 @@ defmodule Postgrex do
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
-
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal

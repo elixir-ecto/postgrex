@@ -10,6 +10,7 @@ defmodule Postgrex.Query do
   """
 
   @type t :: %__MODULE__{
+    cache:          :reference | :statement,
     ref:            reference | nil,
     name:           iodata,
     statement:      iodata,
@@ -23,7 +24,7 @@ defmodule Postgrex.Query do
     types:          Postgrex.Types.state | nil}
 
   defstruct [:ref, :name, :statement, :param_oids, :param_formats, :param_types,
-    :columns, :result_oids, :result_formats, :result_types, :types]
+    :columns, :result_oids, :result_formats, :result_types, :types, cache: :reference]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
