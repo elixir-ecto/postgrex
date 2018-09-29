@@ -24,7 +24,7 @@ end
 
 version_exclusions =
   if pg_version do
-    [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}]
+    [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}]
     |> Enum.filter(fn x -> x > pg_version end)
     |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
   else
@@ -79,6 +79,16 @@ CREATE DOMAIN points_domain AS point[] CONSTRAINT is_populated CHECK (COALESCE(a
 DROP DOMAIN IF EXISTS floats_domain;
 CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
 """
+
+sql = sql <> if pg_version >= {10, 0} do
+    """
+    DROP ROLE IF EXISTS postgrex_scram_pw;
+    SET password_encryption = 'scram-sha-256';
+    CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';
+    """
+  else
+    ""
+  end
 
 sql_with_schemas = """
 DROP SCHEMA IF EXISTS test;

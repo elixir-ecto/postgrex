@@ -11,6 +11,7 @@ defmodule Postgrex.Protocol do
   @max_packet 64 * 1024 * 1024
   @nonposix_errors [:closed, :timeout]
   @max_rows 500
+  @nonce_length 24
 
   defstruct sock: nil,
             connection_id: nil,
@@ -683,6 +684,15 @@ defmodule Postgrex.Protocol do
       {:ok, msg_auth(type: :md5, data: salt), buffer} ->
         auth_md5(s, status, salt, buffer)
 
+      {:ok, msg_auth(type: :sasl, data: _), buffer} ->
+        auth_sasl(s, status, buffer)
+
+      {:ok, msg_auth(type: :sasl_cont, data: data), buffer} ->
+        auth_cont(s, status, data, buffer)
+
+      {:ok, msg_auth(type: :sasl_fin, data: _), buffer} ->
+        auth_recv(s, status, buffer)
+
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
 
@@ -693,7 +703,7 @@ defmodule Postgrex.Protocol do
 
   defp auth_cleartext(s, %{opts: opts} = status, buffer) do
     pass = Keyword.fetch!(opts, :password)
-    auth_send(s, msg_password(pass: pass), status, buffer)
+    auth_send(s, msg_password(pass: [pass, 0]), status, buffer)
   end
 
   defp auth_md5(s, %{opts: opts} = status, salt, buffer) do
@@ -702,7 +712,43 @@ defmodule Postgrex.Protocol do
 
     digest = :crypto.hash(:md5, [pass, user]) |> Base.encode16(case: :lower)
     digest = :crypto.hash(:md5, [digest, salt]) |> Base.encode16(case: :lower)
-    auth_send(s, msg_password(pass: ["md5", digest]), status, buffer)
+    auth_send(s, msg_password(pass: ["md5", digest, 0]), status, buffer)
+  end
+
+  defp auth_sasl(s, status = _, buffer) do
+    nonce = Enum.join(
+      for _ <- 1..@nonce_length do
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/"
+        |> String.codepoints
+        |> Enum.random
+      end
+    )
+    message = "n,,n=,r=" <> nonce
+    auth_send(s, msg_password(pass: ["SCRAM-SHA-256", 0, << byte_size(message) :: signed-size(32) >>, message]), status, buffer)
+  end
+
+  defp auth_cont(s, %{opts: opts} = status, data, buffer) do
+    server = for kv <- String.split data, "," do
+          {:erlang.binary_to_atom(String.at(kv, 0), :utf8), String.slice(kv, 2, String.length(kv)-2)}
+        end
+    client_nonce = String.slice(server[:r], 0, @nonce_length)
+    pass = Keyword.fetch!(opts, :password)
+    {i, ""} = Integer.parse(server[:i])
+    salted_pass_hex = Pbkdf2.Base.hash_password(pass, :base64.decode(server[:s]), [rounds: i, digest: :sha256, length: 32, format: :hex])
+    {:ok, salted_pass} = Base.decode16(salted_pass_hex, case: :lower)
+    client_key = :crypto.hmac(:sha256, salted_pass, "Client Key")
+    client_first_message_bare = "n=,r=" <> client_nonce
+    server_first_message = Enum.join(["r=", server[:r], ",s=", server[:s], ",i=", server[:i]], "")
+    client_final_message_without_proof = "c=biws,r=" <> server[:r]
+    auth_msg = Enum.join([
+      client_first_message_bare,
+      server_first_message,
+      client_final_message_without_proof
+    ], ",")
+
+    client_sig = :crypto.hmac(:sha256, :crypto.hash(:sha256, client_key), auth_msg)
+    proof = :base64.encode(:crypto.exor(client_key, client_sig))
+    auth_send(s, msg_password(pass: [client_final_message_without_proof, ",p=", proof]), status, buffer)
   end
 
   defp auth_send(s, msg, status, buffer) do
