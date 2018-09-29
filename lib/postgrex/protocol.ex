@@ -716,30 +716,28 @@ defmodule Postgrex.Protocol do
   end
 
   defp auth_sasl(s, status = _, buffer) do
-    nonce = Enum.join(
-      for _ <- 1..@nonce_length do
-        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/"
-        |> String.codepoints
-        |> Enum.random
-      end
-    )
-    message = "n,,n=,r=" <> nonce
+    nonce = :crypto.strong_rand_bytes(div(@nonce_length*6, 8)) |> Base.encode64
+    message = IO.iodata_to_binary(["n,,n=,r=", nonce])
     auth_send(s, msg_password(pass: ["SCRAM-SHA-256", 0, << byte_size(message) :: signed-size(32) >>, message]), status, buffer)
   end
 
   defp auth_cont(s, %{opts: opts} = status, data, buffer) do
-    server = for kv <- String.split data, "," do
-          {:erlang.binary_to_atom(String.at(kv, 0), :utf8), String.slice(kv, 2, String.length(kv)-2)}
-        end
-    client_nonce = String.slice(server[:r], 0, @nonce_length)
+    kv_list = for kv <- String.split(data, ",") do
+        << k :: utf8, "=", v :: binary >> = kv
+        {k, v}
+      end
+    server = for {k, v} <- kv_list, into: %{}, do: {k, v}
+    client_nonce = String.slice(server[?r], 0, @nonce_length)
+
     pass = Keyword.fetch!(opts, :password)
-    {i, ""} = Integer.parse(server[:i])
-    salted_pass_hex = Pbkdf2.Base.hash_password(pass, :base64.decode(server[:s]), [rounds: i, digest: :sha256, length: 32, format: :hex])
+    {server_i, ""} = Integer.parse(server[?i])
+    {:ok, server_s} = Base.decode64(server[?s])
+    salted_pass_hex = Pbkdf2.Base.hash_password(pass, server_s, [rounds: server_i, digest: :sha256, length: 32, format: :hex])
     {:ok, salted_pass} = Base.decode16(salted_pass_hex, case: :lower)
     client_key = :crypto.hmac(:sha256, salted_pass, "Client Key")
     client_first_message_bare = "n=,r=" <> client_nonce
-    server_first_message = Enum.join(["r=", server[:r], ",s=", server[:s], ",i=", server[:i]], "")
-    client_final_message_without_proof = "c=biws,r=" <> server[:r]
+    server_first_message = IO.iodata_to_binary(["r=", server[?r], ",s=", server[?s], ",i=", server[?i]])
+    client_final_message_without_proof = IO.iodata_to_binary(["c=biws,r=", server[?r]])
     auth_msg = Enum.join([
       client_first_message_bare,
       server_first_message,
@@ -747,7 +745,7 @@ defmodule Postgrex.Protocol do
     ], ",")
 
     client_sig = :crypto.hmac(:sha256, :crypto.hash(:sha256, client_key), auth_msg)
-    proof = :base64.encode(:crypto.exor(client_key, client_sig))
+    proof = Base.encode64(:crypto.exor(client_key, client_sig))
     auth_send(s, msg_password(pass: [client_final_message_without_proof, ",p=", proof]), status, buffer)
   end
 
