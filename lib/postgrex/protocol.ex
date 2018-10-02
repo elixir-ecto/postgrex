@@ -714,41 +714,12 @@ defmodule Postgrex.Protocol do
     auth_send(s, msg_password(pass: ["md5", digest, 0]), status, buffer)
   end
 
-  @nonce_length 24
-  @nonce_rand_bytes div(@nonce_length * 6, 8)
-  @nonce_prefix "n,,n=,r="
-  @nonce_encoded_size <<byte_size(@nonce_prefix) + @nonce_length :: signed-size(32)>>
-
   defp auth_sasl(s, status = _, buffer) do
-    nonce = @nonce_rand_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()
-    password = msg_password(pass: ["SCRAM-SHA-256", 0, @nonce_encoded_size, @nonce_prefix, nonce])
-    auth_send(s, password, status, buffer)
+    auth_send(s, msg_password(pass: Postgrex.SCRAM.challenge()), status, buffer)
   end
 
   defp auth_cont(s, %{opts: opts} = status, data, buffer) do
-    server =
-      for kv <- :binary.split(data, ",", [:global]), into: %{} do
-        <<k, "=", v::binary>> = kv
-        {k, v}
-      end
-
-    {:ok, server_s} = Base.decode64(server[?s])
-    server_i = String.to_integer(server[?i])
-
-    pass = Keyword.fetch!(opts, :password)
-    salted_pass_hex = Pbkdf2.Base.hash_password(pass, server_s, [rounds: server_i, digest: :sha256, length: 32, format: :hex])
-
-    {:ok, salted_pass} = Base.decode16(salted_pass_hex, case: :lower)
-    client_key = :crypto.hmac(:sha256, salted_pass, "Client Key")
-    client_nonce = binary_part(server[?r], 0, @nonce_length)
-
-    message = ["n=,r=", client_nonce, ",r=", server[?r], ",s=", server[?s], ",i=", server[?i], ?,]
-    message_without_proof = ["c=biws,r=", server[?r]]
-
-    auth_message = IO.iodata_to_binary([message | message_without_proof])
-    client_sig = :crypto.hmac(:sha256, :crypto.hash(:sha256, client_key), auth_message)
-    proof = Base.encode64(:crypto.exor(client_key, client_sig))
-    auth_send(s, msg_password(pass: [message_without_proof, ",p=", proof]), status, buffer)
+    auth_send(s, msg_password(pass: Postgrex.SCRAM.verify(data, opts)), status, buffer)
   end
 
   defp auth_send(s, msg, status, buffer) do
