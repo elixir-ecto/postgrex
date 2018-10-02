@@ -143,7 +143,7 @@ The tests requires some modifications to your [hba file](http://www.postgresql.o
 local   all             all                     trust
 host    all             postgrex_md5_pw         127.0.0.1/32    md5
 host    all             postgrex_cleartext_pw   127.0.0.1/32    password
-host    all             postgrex_scram_pw   127.0.0.1/32    scram-sha-256
+host    all             postgrex_scram_pw       127.0.0.1/32    scram-sha-256
 ```
 
 The server needs to be restarted for the changes to take effect. Additionally you need to setup a Postgres user with the same username as the local user and give it trust or ident in your hba file. Or you can export $PGUSER and $PGPASSWORD before running tests.
