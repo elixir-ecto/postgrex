@@ -1631,6 +1631,7 @@ defmodule Postgrex.Protocol do
       {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        query_delete(s, err, query)
         error_ready(s, status, err, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
@@ -1661,6 +1662,7 @@ defmodule Postgrex.Protocol do
       {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        query_delete(s, err, query)
         rollback_flushed(s, status, err, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
@@ -1700,6 +1702,7 @@ defmodule Postgrex.Protocol do
       {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        query_delete(s, err, query)
         rollback_flushed(s, status, err, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
@@ -3000,6 +3003,23 @@ defmodule Postgrex.Protocol do
       true -> :ok
     end
   end
+
+  defp query_delete(
+         %{queries: queries},
+         %{postgres: %{code: :feature_not_supported}},
+         %Query{name: name}
+       )
+       when queries != nil do
+    try do
+      :ets.delete(queries, name)
+    rescue
+      ArgumentError -> :ok
+    else
+      true -> :ok
+    end
+  end
+
+  defp query_delete(_, _, _), do: :ok
 
   defp query_member?(%{queries: nil}, _), do: false
 

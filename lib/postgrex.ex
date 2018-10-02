@@ -141,18 +141,28 @@ defmodule Postgrex do
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
-    query =
-      if name = Keyword.get(opts, :cache_statement) do
-        %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
-      else
-        %Query{name: "", statement: statement}
-      end
+    if name = Keyword.get(opts, :cache_statement) do
+      query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 
+      case DBConnection.prepare_execute(conn, query, params, opts) do
+        {:ok, _, result} ->
+          {:ok, result}
+
+        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} ->
+          query_prepare_execute(conn, query, params, opts)
+
+        {:error, _} = error ->
+          error
+      end
+    else
+      query_prepare_execute(conn, %Query{name: "", statement: statement}, params, opts)
+    end
+  end
+
+  defp query_prepare_execute(conn, query, params, opts) do
     case DBConnection.prepare_execute(conn, query, params, opts) do
-      {:ok, _, result} ->
-        {:ok, result}
-      {:error, _} = error ->
-        error
+      {:ok, _, result} -> {:ok, result}
+      {:error, _} = error -> error
     end
   end
 

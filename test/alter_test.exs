@@ -24,6 +24,15 @@ defmodule AlterTest do
     {:ok, [pid: pid, options: options]}
   end
 
+  describe "cache statement" do
+    test "after alter returns ok", context do
+      query = fn -> query("SELECT a FROM altering", [], cache_statement: "select") end
+      assert [] = query.()
+      assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+      assert [] = query.()
+    end
+  end
+
   test "prepare query, alter result and execute returns error", context do
     query = prepare("select", "SELECT a FROM altering")
 
