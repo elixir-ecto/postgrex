@@ -34,6 +34,21 @@ defmodule LoginTest do
     end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
   end
 
+  @tag min_pg_version: "10.0"
+  test "login scram password", context do
+    opts = [username: "postgrex_scram_pw", password: "postgrex_scram_pw"]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  @tag min_pg_version: "10.0"
+  test "login scram password failure", context do
+    assert capture_log(fn ->
+      opts = [username: "postgrex_scram_pw", password: "wrong_password"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
+  end
+
   test "parameters", context do
     assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
