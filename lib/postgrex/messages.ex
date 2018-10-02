@@ -8,8 +8,7 @@ defmodule Postgrex.Messages do
   @protocol_vsn_minor 0
 
   @auth_types [ ok: 0, kerberos: 2, cleartext: 3, md5: 5, scm: 6, gss: 7,
-                sspi: 9, gss_cont: 8, sspi: 9, sasl: 10, sasl_cont: 11,
-                sasl_fin: 12 ]
+                gss_cont: 8, sspi: 9, sasl: 10, sasl_cont: 11, sasl_fin: 12 ]
 
   @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
                   position: ?P, internal_position: ?p, internal_query: ?q,
