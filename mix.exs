@@ -13,7 +13,8 @@ defmodule Postgrex.Mixfile do
       description: "PostgreSQL driver for Elixir",
       source_url: "https://github.com/elixir-ecto/postgrex",
       docs: docs(),
-      package: package()
+      package: package(),
+      xref: [exclude: [Jason]]
     ]
   end
 
