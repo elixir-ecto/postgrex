@@ -211,12 +211,16 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{} = query, opts, s) do
-    prepare = Keyword.get(opts, :postgrex_prepare, false)
-    status = new_status(opts, prepare: prepare)
+    if new_query = cached_query(s, query) do
+      {:ok, new_query, s}
+    else
+      prepare = Keyword.get(opts, :postgrex_prepare, false)
+      status = new_status(opts, prepare: prepare)
 
-    case prepare do
-      true -> close_parse_describe(s, status, query)
-      false -> close_parse_describe_flush(s, status, query)
+      case prepare do
+        true -> close_parse_describe(s, status, query)
+        false -> close_parse_describe_flush(s, status, query)
+      end
     end
   end
 
@@ -1544,15 +1548,14 @@ defmodule Postgrex.Protocol do
 
   defp lock_error(s, fun) do
     msg =
-      "connection is locked copying to or from the database and " <> "can not #{fun} transaction"
+      "connection is locked copying to or from the database and can not #{fun} transaction"
 
     {:disconnect, RuntimeError.exception(msg), s}
   end
 
   defp lock_error(s, fun, query) do
     msg =
-      "connection is locked copying to or from the database and " <>
-        "can not #{fun} #{inspect(query)}"
+      "connection is locked copying to or from the database and can not #{fun} #{inspect(query)}"
 
     {:disconnect, RuntimeError.exception(msg), s}
   end
@@ -1645,6 +1648,7 @@ defmodule Postgrex.Protocol do
       {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        query_delete(s, err, query)
         error_ready(s, status, err, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
@@ -1675,6 +1679,7 @@ defmodule Postgrex.Protocol do
       {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        query_delete(s, err, query)
         rollback_flushed(s, status, err, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
@@ -1714,6 +1719,7 @@ defmodule Postgrex.Protocol do
       {:ok, query, result, s}
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        query_delete(s, err, query)
         rollback_flushed(s, status, err, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
@@ -2977,7 +2983,20 @@ defmodule Postgrex.Protocol do
   defp query_put(_, %Query{ref: nil}), do: :ok
   defp query_put(_, %Query{name: ""}), do: :ok
 
-  defp query_put(%{queries: queries}, %Query{name: name, ref: ref}) do
+  defp query_put(%{queries: queries}, %Query{name: name, cache: :statement, ref: ref} = query) do
+    try do
+      :ets.insert(queries, {name, ref, query})
+    rescue
+      ArgumentError ->
+        # ets table deleted, socket will be closed, rescue here and get nice
+        # error when trying to recv on socket.
+        :ok
+    else
+      true -> :ok
+    end
+  end
+
+  defp query_put(%{queries: queries}, %Query{name: name, cache: :reference, ref: ref}) do
     try do
       :ets.insert(queries, {name, ref})
     rescue
@@ -3002,6 +3021,23 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp query_delete(
+         %{queries: queries},
+         %{postgres: %{code: :feature_not_supported}},
+         %Query{name: name}
+       )
+       when queries != nil do
+    try do
+      :ets.delete(queries, name)
+    rescue
+      ArgumentError -> :ok
+    else
+      true -> :ok
+    end
+  end
+
+  defp query_delete(_, _, _), do: :ok
+
   defp query_member?(%{queries: nil}, _), do: false
 
   defp query_member?(%{queries: queries}, %Query{name: name, ref: ref}) do
@@ -3013,5 +3049,22 @@ defmodule Postgrex.Protocol do
       ^ref -> true
       _ -> false
     end
+  end
+
+  defp cached_query(%{queries: queries}, %Query{cache: :statement} = query) do
+    %{name: name, statement: statement} = query
+
+    try do
+      :ets.lookup_element(queries, name, 3)
+    rescue
+      ArgumentError -> nil
+    else
+      %{statement: ^statement} = query -> query
+      _ -> nil
+    end
+  end
+
+  defp cached_query(_, _) do
+    nil
   end
 end

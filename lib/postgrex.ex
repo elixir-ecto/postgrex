@@ -141,13 +141,33 @@ defmodule Postgrex do
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement}
+    if name = Keyword.get(opts, :cache_statement) do
+      query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 
+      case DBConnection.prepare_execute(conn, query, params, opts) do
+        {:ok, _, result} ->
+          {:ok, result}
+
+        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} = error->
+          with %DBConnection{} <- conn,
+               :error <- DBConnection.status(conn) do
+            error
+          else
+            _ -> query_prepare_execute(conn, query, params, opts)
+          end
+
+        {:error, _} = error ->
+          error
+      end
+    else
+      query_prepare_execute(conn, %Query{name: "", statement: statement}, params, opts)
+    end
+  end
+
+  defp query_prepare_execute(conn, query, params, opts) do
     case DBConnection.prepare_execute(conn, query, params, opts) do
-      {:ok, _, result} ->
-        {:ok, result}
-      {:error, _} = error ->
-        error
+      {:ok, _, result} -> {:ok, result}
+      {:error, _} = error -> error
     end
   end
 
@@ -362,7 +382,6 @@ defmodule Postgrex do
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
-
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
