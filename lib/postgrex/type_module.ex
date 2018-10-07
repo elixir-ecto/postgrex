@@ -441,8 +441,7 @@ defmodule Postgrex.TypeModule do
                   "be decoded inside an anonymous record"
             raise RuntimeError, msg
           {:error, %TypeInfo{type: pg_type}, _mod} ->
-            msg = "type `#{pg_type}` can not be handled by the configured " <>
-                  "extensions"
+            msg = "type `#{pg_type}` can not be handled by the configured extensions"
             raise RuntimeError, msg
           {:error, nil, _mod} ->
             msg = "oid `#{oid}` was not bootstrapped and lacks type information"

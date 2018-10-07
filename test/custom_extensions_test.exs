@@ -136,7 +136,7 @@ defmodule CustomExtensionsTest do
     opts = [types: Postgrex.DefaultTypes] ++ context[:options]
     {:ok, pid2} = Postgrex.start_link(opts)
 
-    {:error, %ArgumentError{message: message}} = Postgrex.execute(pid2, query, [])
+    {:error, %Postgrex.QueryError{message: message}} = Postgrex.execute(pid2, query, [])
     assert message =~ ~r"invalid types for the connection"
   end
 
@@ -147,7 +147,7 @@ defmodule CustomExtensionsTest do
     {:ok, pid2} = Postgrex.start_link(opts)
 
     Postgrex.transaction(pid2, fn(conn) ->
-      assert_raise ArgumentError, ~r"invalid types for the connection",
+      assert_raise Postgrex.QueryError, ~r"invalid types for the connection",
         fn() -> stream(query, []) |> Enum.take(1) end
     end)
   end
@@ -159,7 +159,7 @@ defmodule CustomExtensionsTest do
     {:ok, pid2} = Postgrex.start_link(opts)
 
     Postgrex.transaction(pid2, fn(conn) ->
-      assert_raise ArgumentError, ~r"invalid types for the connection",
+      assert_raise Postgrex.QueryError, ~r"invalid types for the connection",
         fn() -> Enum.into(["1\n"], stream(query, [])) end
     end)
   end

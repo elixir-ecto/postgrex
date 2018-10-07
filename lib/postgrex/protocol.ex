@@ -295,10 +295,6 @@ defmodule Postgrex.Protocol do
     lock_error(s, :execute, query)
   end
 
-  defp handle_execute_result(%{types: nil} = query, _, _, s) do
-    query_error(s, "query #{inspect(query)} has not been prepared")
-  end
-
   defp handle_execute_result(%{types: types} = query, params, opts, %{types: types} = s) do
     if query_member?(s, query) do
       rebind_execute(s, new_status(opts), query, params)
@@ -862,7 +858,7 @@ defmodule Postgrex.Protocol do
 
   defp type_fetch_error() do
     msg = "awaited on another connection that failed to bootstrap types"
-    RuntimeError.exception(message: msg)
+    DBConnection.ConnectionError.exception(msg)
   end
 
   ## listener
@@ -1253,7 +1249,7 @@ defmodule Postgrex.Protocol do
 
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, the maximum is #{max}"
-        err = RuntimeError.exception(message: msg)
+        err = Postgrex.QueryError.exception(msg)
         {:disconnect, err, %{s | buffer: buffer}}
 
       {:ok, msg_error(fields: fields), buffer} ->
@@ -1439,7 +1435,7 @@ defmodule Postgrex.Protocol do
 
       {:error, %Postgrex.TypeInfo{} = info, mod} ->
         msg = Postgrex.Utils.type_msg(info, mod)
-        {:error, RuntimeError.exception(message: msg)}
+        {:error, Postgrex.QueryError.exception(msg)}
 
       {:error, nil, _} ->
         {:reload, oid}
@@ -1533,13 +1529,13 @@ defmodule Postgrex.Protocol do
   end
 
   defp reload_error(s, msg, buffer) do
-    {:disconnect, RuntimeError.exception(message: msg), %{s | buffer: buffer}}
+    {:disconnect, Postgrex.QueryError.exception(msg), %{s | buffer: buffer}}
   end
 
   ## execute
 
   defp query_error(s, msg) do
-    {:error, ArgumentError.exception(msg), s}
+    {:error, Postgrex.QueryError.exception(msg), s}
   end
 
   defp lock_error(s, fun) do
@@ -1818,10 +1814,6 @@ defmodule Postgrex.Protocol do
 
   defp handle_bind(query, _, _, _, %{postgres: {_, _}} = s) do
     lock_error(s, :bind, query)
-  end
-
-  defp handle_bind(%Query{types: nil} = query, _, _, _, s) do
-    query_error(s, "query #{inspect(query)} has not been prepared")
   end
 
   defp handle_bind(%Query{types: types} = query, params, res, opts, %{types: types} = s) do
