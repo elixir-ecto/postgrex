@@ -148,8 +148,13 @@ defmodule Postgrex do
         {:ok, _, result} ->
           {:ok, result}
 
-        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} ->
-          query_prepare_execute(conn, query, params, opts)
+        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} = error->
+          with %DBConnection{} <- conn,
+               :error <- DBConnection.status(conn) do
+            error
+          else
+            _ -> query_prepare_execute(conn, query, params, opts)
+          end
 
         {:error, _} = error ->
           error
