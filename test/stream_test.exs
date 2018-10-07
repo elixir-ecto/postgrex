@@ -323,7 +323,7 @@ defmodule StreamTest do
         end
 
       assert capture_log(fn ->
-        assert_raise DBConnection.ConnectionError, "connection is closed", fn ->
+        assert_raise DBConnection.ConnectionError, ~r"connection is closed", fn ->
           query |> stream([], [max_rows: 1]) |> Enum.map(map)
         end
 

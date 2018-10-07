@@ -268,7 +268,7 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [], [mode: :savepoint])
 
-      assert {:error, %DBConnection.ConnectionError{message: "connection is closed"}} =
+      assert {:error, %DBConnection.ConnectionError{message: "connection is closed" <> _}} =
         P.query(conn, "SELECT 42", [])
 
       P.rollback(conn, :oops)
