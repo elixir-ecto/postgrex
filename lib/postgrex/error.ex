@@ -54,3 +54,7 @@ defmodule Postgrex.Error do
   defp build_detail(%{detail: detail}) when is_binary(detail), do: ["\n\n" | detail]
   defp build_detail(_), do: []
 end
+
+defmodule Postgrex.QueryError do
+  defexception [:message]
+end
