@@ -110,12 +110,12 @@ defmodule TransactionTest do
       {:ok, query} = P.prepare(conn, "query_1", "insert into uniques values (1);", [])
 
       assert capture_log(fn ->
-        {:error, %Postgrex.Error{postgres: %{message: "cannot execute INSERT in a read-only transaction"}}} =
+        {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
           P.execute(conn, query, [])
 
         pid = context[:pid]
         assert_receive {:EXIT, ^pid, :killed}
-      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction) cannot execute INSERT"
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)"
     end)
   end
 
@@ -128,12 +128,12 @@ defmodule TransactionTest do
       P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
 
       assert capture_log(fn ->
-        {:error, %Postgrex.Error{postgres: %{message: "cannot execute INSERT in a read-only transaction"}}} =
+        {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
           P.query(conn, "insert into uniques values (1);", [])
 
         pid = context[:pid]
         assert_receive {:EXIT, ^pid, :killed}
-      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction) cannot execute INSERT"
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)"
     end)
   end
 

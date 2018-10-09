@@ -1694,13 +1694,15 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp maybe_disconnect({:error, %Postgrex.Error{postgres: %{code: code}} = error, state}) do
-    if code == :read_only_sql_transaction and state.disconnect_on_read_only_transaction_error do
-      {:disconnect, error, state}
-    else
-      {:error, error, state}
-    end
+  defp maybe_disconnect({
+         :error,
+         %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}} = error,
+         %{disconnect_on_read_only_transaction_error: true} = state
+       }) do
+    {:disconnect, error, state}
   end
+
+  defp maybe_disconnect(other), do: other
 
   defp rebind_execute(s, %{mode: :transaction} = status, query, params) do
     # using a cached query is same as using it for the first time when don't
