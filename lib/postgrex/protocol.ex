@@ -1694,6 +1694,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp maybe_disconnect({:error, _, %{disconnect_on_error_codes: []}} = result), do: result
+
   defp maybe_disconnect({:error,
          %Postgrex.Error{postgres: %{code: code}} = error,
          %{disconnect_on_error_codes: codes} = state
