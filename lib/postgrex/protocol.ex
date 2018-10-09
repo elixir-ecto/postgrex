@@ -24,7 +24,7 @@ defmodule Postgrex.Protocol do
             postgres: :idle,
             transactions: :strict,
             buffer: nil,
-            disconnect_on_errors: []
+            disconnect_on_error_codes: []
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -39,7 +39,7 @@ defmodule Postgrex.Protocol do
           postgres: DBConnection.status() | {DBConnection.status(), reference},
           transactions: :strict | :naive,
           buffer: nil | binary | :active_once,
-          disconnect_on_errors: [atom()]
+          disconnect_on_error_codes: [atom()]
         }
 
   @type notify :: (binary, binary -> any)
@@ -66,7 +66,7 @@ defmodule Postgrex.Protocol do
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
-    disconnect_on_errors = opts[:disconnect_on_errors] || []
+    disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
 
     transactions =
       case opts[:transactions] || :naive do
@@ -84,7 +84,7 @@ defmodule Postgrex.Protocol do
       timeout: timeout,
       postgres: :idle,
       transactions: transactions,
-      disconnect_on_errors: disconnect_on_errors
+      disconnect_on_error_codes: disconnect_on_error_codes
     }
 
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
@@ -1696,7 +1696,7 @@ defmodule Postgrex.Protocol do
 
   defp maybe_disconnect({:error,
          %Postgrex.Error{postgres: %{code: code}} = error,
-         %{disconnect_on_errors: codes} = state
+         %{disconnect_on_error_codes: codes} = state
        } = result) do
     if code in codes do
       {:disconnect, error, state}
