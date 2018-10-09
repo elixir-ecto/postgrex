@@ -23,7 +23,8 @@ defmodule Postgrex.Protocol do
             queries: nil,
             postgres: :idle,
             transactions: :strict,
-            buffer: nil
+            buffer: nil,
+            disconnect_on_read_only_transaction_error: false
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -37,7 +38,8 @@ defmodule Postgrex.Protocol do
           queries: nil | :ets.tid(),
           postgres: DBConnection.status() | {DBConnection.status(), reference},
           transactions: :strict | :naive,
-          buffer: nil | binary | :active_once
+          buffer: nil | binary | :active_once,
+          disconnect_on_read_only_transaction_error: boolean
         }
 
   @type notify :: (binary, binary -> any)
@@ -64,6 +66,7 @@ defmodule Postgrex.Protocol do
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
+    disconnect_on_read_only_transaction_error = opts[:disconnect_on_read_only_transaction_error] || false
 
     transactions =
       case opts[:transactions] || :naive do
@@ -77,7 +80,13 @@ defmodule Postgrex.Protocol do
         :unnamed -> :unnamed
       end
 
-    s = %__MODULE__{timeout: timeout, postgres: :idle, transactions: transactions}
+    s = %__MODULE__{
+      timeout: timeout,
+      postgres: :idle,
+      transactions: transactions,
+      disconnect_on_read_only_transaction_error: disconnect_on_read_only_transaction_error
+    }
+
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
@@ -1686,7 +1695,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp maybe_disconnect({:error, %Postgrex.Error{postgres: %{code: code}} = error, state}) do
-    if code == :read_only_sql_transaction do
+    if code == :read_only_sql_transaction and state.disconnect_on_read_only_transaction_error do
       {:disconnect, error, state}
     else
       {:error, error, state}

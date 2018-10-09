@@ -17,7 +17,8 @@ defmodule TransactionTest do
       idle: :active,
       backoff_type: :stop,
       prepare: context[:prepare] || :named,
-      max_restarts: 0
+      max_restarts: 0,
+      disconnect_on_read_only_transaction_error: context[:disconnect_on_read_only_transaction_error]
     ]
 
     {:ok, pid} = P.start_link(opts)
@@ -99,6 +100,7 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  @tag disconnect_on_read_only_transaction_error: true
   test "transaction read-only only error disconnects with prepare and execute", context do
     Process.flag(:trap_exit, true)
 
@@ -118,6 +120,7 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  @tag disconnect_on_read_only_transaction_error: true
   test "transaction read-only only error disconnects with prepare, execute, and close", context do
     Process.flag(:trap_exit, true)
 
