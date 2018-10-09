@@ -20,7 +20,7 @@ defmodule Postgrex.Protocol do
 
   defstruct [sock: nil, connection_id: nil, connection_key: nil, peer: nil,
              types: nil, null: nil, timeout: nil, parameters: %{}, queries: nil,
-             postgres: :idle, transactions: :naive, buffer: nil]
+             postgres: :idle, transactions: :naive, buffer: nil, disconnect_on_error_codes: []]
 
   @type state :: %__MODULE__{sock: {module, any},
                              connection_id: nil | pos_integer,
@@ -33,7 +33,8 @@ defmodule Postgrex.Protocol do
                              queries: nil | :ets.tid,
                              postgres: :idle | :transaction | :failed,
                              transactions: :strict | :naive,
-                             buffer: nil | binary | :active_once}
+                             buffer: nil | binary | :active_once,
+                             disconnect_on_error_codes: [atom()]}
   @type notify :: ((binary, binary) -> any)
 
   @reserved_prefix "POSTGREX_"
@@ -92,8 +93,14 @@ defmodule Postgrex.Protocol do
         :unnamed -> :unnamed
       end
 
-    s = %__MODULE__{timeout: timeout, postgres: :idle,
-                    transactions: transactions}
+    disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
+
+    s = %__MODULE__{
+      timeout: timeout,
+      postgres: :idle,
+      transactions: transactions,
+      disconnect_on_error_codes: disconnect_on_error_codes
+    }
 
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     status = %{opts: opts, types_mod: types_mod, types_key: types_key,
@@ -218,7 +225,7 @@ defmodule Postgrex.Protocol do
       execute when is_function(execute, 4) ->
         %{buffer: buffer} = s
         s = %{s | buffer: nil}
-        execute.(s, status, params, buffer)
+        execute.(s, status, params, buffer) |> maybe_disconnect()
       {kind, _, _} = error when kind in [:error, :disconnect] ->
         error
     end
@@ -1187,6 +1194,7 @@ defmodule Postgrex.Protocol do
         lock_error(s, :bind, query)
     end
   end
+
   defp bind(s, _, %Query{name: @reserved_prefix <> _} = query, _, _) do
     reserved_error(query, s)
   end
@@ -1261,6 +1269,21 @@ defmodule Postgrex.Protocol do
         dis
     end
   end
+
+  defp maybe_disconnect({:error, _, %{disconnect_on_error_codes: []}} = result), do: result
+
+  defp maybe_disconnect({:error,
+         %Postgrex.Error{postgres: %{code: code}} = error,
+         %{disconnect_on_error_codes: codes} = state
+       } = result) do
+    if code in codes do
+      {:disconnect, error, state}
+    else
+      result
+    end
+  end
+
+  defp maybe_disconnect(other), do: other
 
   defp savepoint_msgs(s, :sync, msgs) do
     savepoint = transaction_msgs(s, ["SAVEPOINT postgrex_query"])
