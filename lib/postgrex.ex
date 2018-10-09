@@ -98,6 +98,24 @@ defmodule Postgrex do
   and discards named queries after the transactions closes.
   To force unnamed prepared queries set the `:prepare` option to `:unnamed`.
 
+  ## Handling failover
+
+  Some services, such as AWS Aurora, support failovers. This means the
+  database you are currently connected to may suddenly become read-only,
+  and an attempt to do any write operation, such as INSERT/UPDATE/DELETE
+  will lead to errors such as:
+
+      11:11:03.089 [error] Postgrex.Protocol (#PID<0.189.0>) disconnected:
+      ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)
+      cannot execute INSERT in a read-only transaction
+
+  Luckily, you can instruct `Postgrex` to disconnect in such cases by
+  using the following configuration:
+
+      disconnect_on_error_codes: [:read_only_sql_transaction]
+
+  This cause the connection process to attempt to reconnect according
+  to the backoff configuration.
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
