@@ -1610,6 +1610,7 @@ defmodule Postgrex.Protocol do
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         error_ready(s, status, err, buffer)
+        |> maybe_disconnect()
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1646,6 +1647,7 @@ defmodule Postgrex.Protocol do
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         query_delete(s, err, query)
         error_ready(s, status, err, buffer)
+        |> maybe_disconnect()
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1680,6 +1682,14 @@ defmodule Postgrex.Protocol do
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
+    end
+  end
+
+  defp maybe_disconnect({:error, %Postgrex.Error{postgres: %{code: code}} = error, state}) do
+    if code == :read_only_sql_transaction do
+      {:disconnect, error, state}
+    else
+      {:error, error, state}
     end
   end
 

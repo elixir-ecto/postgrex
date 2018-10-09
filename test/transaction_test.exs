@@ -98,6 +98,42 @@ defmodule TransactionTest do
     assert query("SELECT 42", []) == [[42]]
   end
 
+  @tag mode: :transaction
+  test "transaction read-only only error disconnects with prepare and execute", context do
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn  ->
+      P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
+
+      {:ok, query} = P.prepare(conn, "query_1", "insert into uniques values (1);", [])
+
+      assert capture_log(fn ->
+        {:error, %Postgrex.Error{postgres: %{message: "cannot execute INSERT in a read-only transaction"}}} =
+          P.execute(conn, query, [])
+
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction) cannot execute INSERT"
+    end)
+  end
+
+  @tag mode: :transaction
+  test "transaction read-only only error disconnects with prepare, execute, and close", context do
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn  ->
+      P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
+
+      assert capture_log(fn ->
+        {:error, %Postgrex.Error{postgres: %{message: "cannot execute INSERT in a read-only transaction"}}} =
+          P.query(conn, "insert into uniques values (1);", [])
+
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction) cannot execute INSERT"
+    end)
+  end
+
   @tag mode: :savepoint
   test "savepoint transaction releases savepoint", context do
     :ok = query("BEGIN", [])
