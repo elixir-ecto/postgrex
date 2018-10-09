@@ -68,6 +68,8 @@ defmodule Postgrex do
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
+    * `:disconnect_on_error_codes` - List of error code atoms that when encountered
+      will disconnect the connection (default: `[]`);
 
   `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc.

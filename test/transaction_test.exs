@@ -17,7 +17,8 @@ defmodule TransactionTest do
       idle: :active,
       backoff_type: :stop,
       prepare: context[:prepare] || :named,
-      max_restarts: 0
+      max_restarts: 0,
+      disconnect_on_error_codes: context[:disconnect_on_error_codes] || []
     ]
 
     {:ok, pid} = P.start_link(opts)
@@ -96,6 +97,44 @@ defmodule TransactionTest do
       P.rollback(conn, :oops)
     end) == {:error, :oops}
     assert query("SELECT 42", []) == [[42]]
+  end
+
+  @tag mode: :transaction
+  @tag disconnect_on_error_codes: [:read_only_sql_transaction]
+  test "transaction read-only only error disconnects with prepare and execute", context do
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn  ->
+      P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
+
+      {:ok, query} = P.prepare(conn, "query_1", "insert into uniques values (1);", [])
+
+      assert capture_log(fn ->
+        {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
+          P.execute(conn, query, [])
+
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)"
+    end)
+  end
+
+  @tag mode: :transaction
+  @tag disconnect_on_error_codes: [:read_only_sql_transaction]
+  test "transaction read-only only error disconnects with prepare, execute, and close", context do
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn  ->
+      P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
+
+      assert capture_log(fn ->
+        {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
+          P.query(conn, "insert into uniques values (1);", [])
+
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)"
+    end)
   end
 
   @tag mode: :savepoint

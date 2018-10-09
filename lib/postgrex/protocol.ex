@@ -23,7 +23,8 @@ defmodule Postgrex.Protocol do
             queries: nil,
             postgres: :idle,
             transactions: :strict,
-            buffer: nil
+            buffer: nil,
+            disconnect_on_error_codes: []
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -37,7 +38,8 @@ defmodule Postgrex.Protocol do
           queries: nil | :ets.tid(),
           postgres: DBConnection.status() | {DBConnection.status(), reference},
           transactions: :strict | :naive,
-          buffer: nil | binary | :active_once
+          buffer: nil | binary | :active_once,
+          disconnect_on_error_codes: [atom()]
         }
 
   @type notify :: (binary, binary -> any)
@@ -64,6 +66,7 @@ defmodule Postgrex.Protocol do
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
+    disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
 
     transactions =
       case opts[:transactions] || :naive do
@@ -77,7 +80,13 @@ defmodule Postgrex.Protocol do
         :unnamed -> :unnamed
       end
 
-    s = %__MODULE__{timeout: timeout, postgres: :idle, transactions: transactions}
+    s = %__MODULE__{
+      timeout: timeout,
+      postgres: :idle,
+      transactions: transactions,
+      disconnect_on_error_codes: disconnect_on_error_codes
+    }
+
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
@@ -1610,6 +1619,7 @@ defmodule Postgrex.Protocol do
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         error_ready(s, status, err, buffer)
+        |> maybe_disconnect()
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1646,6 +1656,7 @@ defmodule Postgrex.Protocol do
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         query_delete(s, err, query)
         error_ready(s, status, err, buffer)
+        |> maybe_disconnect()
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1682,6 +1693,21 @@ defmodule Postgrex.Protocol do
         disconnect
     end
   end
+
+  defp maybe_disconnect({:error, _, %{disconnect_on_error_codes: []}} = result), do: result
+
+  defp maybe_disconnect({:error,
+         %Postgrex.Error{postgres: %{code: code}} = error,
+         %{disconnect_on_error_codes: codes} = state
+       } = result) do
+    if code in codes do
+      {:disconnect, error, state}
+    else
+      result
+    end
+  end
+
+  defp maybe_disconnect(other), do: other
 
   defp rebind_execute(s, %{mode: :transaction} = status, query, params) do
     # using a cached query is same as using it for the first time when don't
