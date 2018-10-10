@@ -2328,7 +2328,7 @@ defmodule Postgrex.Protocol do
   defp flushed_close(s, %{mode: :savepoint} = status, query) do
     %Query{name: name} = query
     %{buffer: buffer} = s
-    stmt = "ROLLBACK TO SAVEPOINT postgrex_savepoint;RELEASE SAVEPOINT postgrex_savepoint"
+    stmt = "ROLLBACK TO SAVEPOINT postgrex_query;RELEASE SAVEPOINT postgrex_query"
     msgs = [msg_close(type: :statement, name: name), msg_query(statement: stmt)]
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),

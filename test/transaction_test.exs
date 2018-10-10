@@ -220,6 +220,20 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  test "transaction works after encode failure in savepoint query", context do
+    assert transaction(fn(conn) ->
+      assert_raise ArgumentError, fn ->
+        P.query(conn, "SELECT $1::numeric", [Decimal.new("Inf")], [mode: :savepoint])
+      end
+
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+      :hi
+    end) == {:ok, :hi}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
   test "transaction works after execute failure in savepoint query", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
@@ -239,8 +253,7 @@ defmodule TransactionTest do
         P.query(conn, "NOT SQL", [], [mode: :savepoint])
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
-
-    :hi
+      :hi
     end) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
