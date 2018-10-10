@@ -37,7 +37,7 @@ defmodule Postgrex do
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:socket_dir` - Connect to Postgres via UNIX sockets in the given directory;
-      The socket name is derived based on the part. This is the preferred method
+      The socket name is derived based on the port. This is the preferred method
       for configuring sockets and it takes precedence over the hostname. If you are
       connecting to a socket outside of the Postgres convention, use `:socket` instead;
     * `:socket` - Connect to Postgres via UNIX sockets in the given path.
