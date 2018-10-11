@@ -3,15 +3,18 @@
 ## v0.14.0-dev
 
 * Enhancements
-  * Postgrex.INET will add a /32 netmask to an IPv4 address and a /128 netmask to
-    an IPv6 address during encoding where `netmask: nil`. When decoding, a /32
-    netmask (for IPv4) or /128 netmask (for IPv6) will be removed, resulting in
-    `netmask: nil` for the struct.
+  * Postgrex.INET will add a /32 netmask to an IPv4 address and a /128 netmask to an IPv6 address during encoding where `netmask: nil`. When decoding, a /32 netmask (for IPv4) or /128 netmask (for IPv6) will be removed, resulting in `netmask: nil` for the struct
+  * Add `:disconnect_on_error_codes` which allows Postgrex to automatically disconnect and then reconnect on certain errors. This is useful when using Postgrex against systems that support failover, which would emit certain errors on failover. This change allow those errors to be recovered from transparently
+  * Add `:cache_statement` to `Postgrex.query/4` as a built-in statement cache
+  * Support scram-sha-256 authentication from PostgreSQL 10
+  * Add `Postgrex.prepare_execute/4`
+  * Automatically reprepare queries that faild to encode due to a database type change
 
 * Backwards incompatible changes
   * Invoke `encode_to_iodata!` instead of `encode!` in JSON encoder
   * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as Postgres may perform implicit/explicit casting at any time)
   * Postgrex.Time, Postgrex.Date and Postgrex.Timestamp were deprecated and now have been effectively removed
+  * `Postgrex.execute/4` now always returns the prepared query
 
 ## v0.13.4 (2018-01-25)
 
