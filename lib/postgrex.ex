@@ -319,7 +319,7 @@ defmodule Postgrex do
       Postgrex.execute(conn, query, ["%my%"])
   """
   @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
-    {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+    {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
     DBConnection.execute(conn, query, params, opts)
   end
