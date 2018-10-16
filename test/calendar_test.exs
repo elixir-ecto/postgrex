@@ -175,6 +175,9 @@ defmodule CalendarTest do
 
     assert [["1980-01-01 00:00:00.123456"]] =
       query("SELECT $1::timestamp::text", [~N[1980-01-01 00:00:00.123456]])
+
+    assert [["1980-01-01 00:00:00.123456"]] =
+      query("SELECT $1::timestamp::text", [DateTime.from_naive!(~N[1980-01-01 00:00:00.123456], "Etc/UTC")])
   end
 
   test "encode timestamptz", context do
