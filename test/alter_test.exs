@@ -32,6 +32,14 @@ defmodule AlterTest do
       assert [] = query.()
     end
 
+    test "after alter returns ok for bang queries", context do
+      pid = context[:pid]
+      query = fn -> Postgrex.query!(pid, "SELECT a FROM altering", [], cache_statement: "select") end
+      assert %Postgrex.Result{rows: []} = query.()
+      assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+      assert %Postgrex.Result{rows: []} = query.()
+    end
+
     test "after alter returns ok in transaction", context do
       transaction(fn conn ->
         query = fn -> Postgrex.query(conn, "SELECT a FROM altering", [], cache_statement: "select") end

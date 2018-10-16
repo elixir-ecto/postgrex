@@ -197,9 +197,10 @@ defmodule Postgrex do
   """
   @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement}
-    {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
-    result
+    case query(conn, statement, params, opts) do
+      {:ok, result} -> result
+      {:error, err} -> raise err
+    end
   end
 
   @doc """
