@@ -294,14 +294,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  # ref in lock so query is prepared
   defp handle_execute_result(%{ref: ref} = query, params, opts, %{postgres: {_, ref}} = s) do
-    # ref in lock so query is prepared
-    status = new_status(opts)
-
-    case query do
-      %{name: ""} -> bind_execute_close(s, status, query, params)
-      _ -> bind_execute(s, status, query, params)
-    end
+    bind_execute(s, new_status(opts), query, params)
   end
 
   defp handle_execute_result(%{} = query, _, _, %{postgres: {_, _ref}} = s) do
@@ -1574,7 +1569,7 @@ defmodule Postgrex.Protocol do
 
     case parse_describe_flush(s, status, query) do
       {:ok, query, s} ->
-        bind_execute_close(s, status, query, params)
+        bind_execute(s, status, query, params)
 
       {error, _, _} = other when error in [:error, :disconnect] ->
         other
@@ -1591,44 +1586,6 @@ defmodule Postgrex.Protocol do
       {error, _, _} = other when error in [:error, :disconnect] ->
         other
     end
-  end
-
-  defp bind_execute_close(s, %{mode: :transaction} = status, query, params) do
-    %Query{param_formats: pfs, result_formats: rfs, name: name} = query
-    %{buffer: buffer} = s
-
-    msgs = [
-      msg_bind(
-        name_port: "",
-        name_stat: name,
-        param_formats: pfs,
-        params: params,
-        result_formats: rfs
-      ),
-      msg_execute(name_port: "", max_rows: 0),
-      msg_close(type: :statement, name: name),
-      msg_sync()
-    ]
-
-    with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
-         {:ok, s, buffer} <- recv_bind(s, status, buffer),
-         {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
-         {:ok, s, buffer} <- recv_close(s, status, buffer),
-         {:ok, s} <- recv_ready(s, status, buffer) do
-      {:ok, query, result, s}
-    else
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        error_ready(s, status, err, buffer)
-        |> maybe_disconnect()
-
-      {:disconnect, _err, _s} = disconnect ->
-        disconnect
-    end
-  end
-
-  defp bind_execute_close(s, %{mode: :savepoint} = status, query, params) do
-    # only used for un-named and query will always get closed by release
-    bind_execute(s, status, query, params)
   end
 
   defp bind_execute(s, %{mode: :transaction} = status, query, params) do
