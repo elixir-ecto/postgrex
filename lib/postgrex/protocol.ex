@@ -937,7 +937,7 @@ defmodule Postgrex.Protocol do
   ## prepare
 
   defp parse_describe(s, %{mode: :transaction} = status, query) do
-    msgs = parse_describe_msgs(query) ++ [msg_sync()]
+    msgs = parse_describe_msgs(query, [msg_sync()])
     %{buffer: buffer} = s
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
@@ -961,7 +961,7 @@ defmodule Postgrex.Protocol do
 
     msgs =
       [msg_query(statement: "SAVEPOINT postgrex_query")] ++
-        parse_describe_msgs(query) ++ [msg_query(statement: "RELEASE SAVEPOINT postgrex_query")]
+        parse_describe_msgs(query, [msg_query(statement: "RELEASE SAVEPOINT postgrex_query")])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
@@ -988,7 +988,7 @@ defmodule Postgrex.Protocol do
   defp parse_describe_close(s, %{mode: :transaction} = status, query) do
     %Query{name: name} = query
     %{buffer: buffer} = s
-    msgs = parse_describe_msgs(query) ++ [msg_close(type: :statement, name: name), msg_sync()]
+    msgs = parse_describe_msgs(query, [msg_close(type: :statement, name: name), msg_sync()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, query, s, buffer} <- recv_parse_describe(s, status, query, buffer),
@@ -1015,7 +1015,7 @@ defmodule Postgrex.Protocol do
 
   defp parse_describe_flush(s, %{mode: :transaction} = status, query) do
     %{buffer: buffer} = s
-    msgs = parse_describe_msgs(query) ++ [msg_flush()]
+    msgs = parse_describe_msgs(query, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, %Query{ref: ref} = query, %{postgres: postgres} = s, buffer} <-
@@ -1041,7 +1041,7 @@ defmodule Postgrex.Protocol do
        ) do
     msgs =
       [msg_query(statement: "SAVEPOINT postgrex_query")] ++
-        parse_describe_msgs(query) ++ [msg_flush()]
+        parse_describe_msgs(query, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
@@ -1070,7 +1070,7 @@ defmodule Postgrex.Protocol do
     %Query{name: name} = query
     %{buffer: buffer} = s
 
-    msgs = [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query) ++ [msg_sync()]
+    msgs = [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query, [msg_sync()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
@@ -1099,7 +1099,7 @@ defmodule Postgrex.Protocol do
         msg_query(statement: "SAVEPOINT postgrex_query"),
         msg_close(type: :statement, name: name)
       ] ++
-        parse_describe_msgs(query) ++ [msg_query(statement: "RELEASE SAVEPOINT postgrex_query")]
+        parse_describe_msgs(query, [msg_query(statement: "RELEASE SAVEPOINT postgrex_query")])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
@@ -1130,7 +1130,7 @@ defmodule Postgrex.Protocol do
     %{buffer: buffer} = s
 
     msgs =
-      [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query) ++ [msg_flush()]
+      [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
@@ -1162,7 +1162,7 @@ defmodule Postgrex.Protocol do
       [
         msg_query(statement: "SAVEPOINT postgrex_query"),
         msg_close(type: :statement, name: name)
-      ] ++ parse_describe_msgs(query) ++ [msg_flush()]
+      ] ++ parse_describe_msgs(query, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
@@ -1188,13 +1188,13 @@ defmodule Postgrex.Protocol do
     transaction_error(s, postgres)
   end
 
-  defp parse_describe_msgs(query) do
+  defp parse_describe_msgs(query, tail) do
     %Query{name: name, statement: statement, param_oids: param_oids} = query
     type_oids = param_oids || []
 
     [
       msg_parse(name: name, statement: statement, type_oids: type_oids),
-      msg_describe(type: :statement, name: name)
+      msg_describe(type: :statement, name: name) | tail
     ]
   end
 
