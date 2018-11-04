@@ -1272,7 +1272,7 @@ defmodule Postgrex.Protocol do
         {s, status} = handle_msg(s, status, msg)
         recv_describe(s, status, param_oids, buffer)
 
-      {:disconnect, _, _, _} = dis ->
+      {:disconnect, _, _} = dis ->
         dis
     end
   end
