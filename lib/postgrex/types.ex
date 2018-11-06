@@ -241,6 +241,8 @@ defmodule Postgrex.Types do
   extensions when the `matching/1` callback returns have conflicting
   matches. If an extension is not provided for a type then Postgrex
   will fallback to default encoding/decoding methods where possible.
+  All extensions that ship as part of Postgrex are included out of the
+  box.
 
   See `Postgrex.Extension` for more information on extensions.
 
