@@ -15,6 +15,7 @@
   * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as Postgres may perform implicit/explicit casting at any time)
   * Postgrex.Time, Postgrex.Date and Postgrex.Timestamp were deprecated and now have been effectively removed
   * `Postgrex.execute/4` now always returns the prepared query
+  * `:pool_timeout` is removed in favor of `:queue_target` and `:queue_interval`. See `DBConnection.start_link/2` for more information
 
 ## v0.13.4 (2018-01-25)
 

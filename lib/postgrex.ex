@@ -22,10 +22,6 @@ defmodule Postgrex do
   @type conn :: DBConnection.conn
 
   @max_rows 500
-
-  # Inherited from DBConnection
-
-  @pool_timeout 5000
   @timeout 15_000
 
   ### PUBLIC API ###
@@ -71,9 +67,9 @@ defmodule Postgrex do
     * `:disconnect_on_error_codes` - List of error code atoms that when encountered
       will disconnect the connection (default: `[]`);
 
-  `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
-  options like `:idle`, `:after_connect` etc.
-  See `DBConnection.start_link/2` for more information.
+  `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
+  options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
+  for more information.
 
   ## Examples
 
@@ -138,8 +134,6 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
@@ -216,8 +210,6 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
@@ -257,8 +249,6 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
@@ -302,8 +292,6 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
@@ -347,8 +335,6 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
@@ -397,8 +383,6 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
@@ -442,7 +426,7 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Call timeout (default: `#{@pool_timeout}`)
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
 
   """
   @spec parameters(conn, Keyword.t) :: %{binary => binary}
