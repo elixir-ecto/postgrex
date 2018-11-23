@@ -522,7 +522,7 @@ defmodule QueryTest do
     dec = Decimal.new(1)
     assert [[dec]] == query("SELECT $1::numeric", [1])
 
-    dec = Decimal.new(1.0)
+    dec = Decimal.from_float(1.0)
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
   end
 
@@ -534,7 +534,7 @@ defmodule QueryTest do
   end
 
   test "encode custom numerics", context do
-    assert [[%Decimal{sign: 1, coef: 1500, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1500.0)])
+    assert [[%Decimal{sign: 1, coef: 1500, exp: 0}]] == query("SELECT $1::numeric", [Decimal.from_float(1500.0)])
     assert [[%Decimal{sign: 1, coef: 1, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 0)])
     assert [[%Decimal{sign: 1, coef: 10, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 1)])
     assert [[%Decimal{sign: 1, coef: 100, exp: 0}]] == query("SELECT $1::numeric", [Decimal.new(1, 1, 2)])
