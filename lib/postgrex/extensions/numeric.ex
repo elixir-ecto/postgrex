@@ -8,7 +8,10 @@ defmodule Postgrex.Extensions.Numeric do
       %Decimal{} = decimal ->
         data = unquote(__MODULE__).encode_numeric(decimal)
         [<<IO.iodata_length(data)::int32>> | data]
-      n when is_number(n) ->
+      n when is_float(n) ->
+        data = unquote(__MODULE__).encode_numeric(Decimal.from_float(n))
+        [<<IO.iodata_length(data)::int32>> | data]
+      n when is_integer(n) ->
         data = unquote(__MODULE__).encode_numeric(Decimal.new(n))
         [<<IO.iodata_length(data)::int32>> | data]
     end
