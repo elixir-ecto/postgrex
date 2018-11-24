@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.1 (2018-11-24)
+
+* Bug fixes
+  * Bump decimal dependency to avoid runtime warnings
+
 ## v0.14.0 (2018-10-29)
 
 * Enhancements
