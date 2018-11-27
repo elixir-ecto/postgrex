@@ -1015,7 +1015,7 @@ defmodule QueryTest do
   end
 
   test "query before and after idle ping" do
-    opts = [ database: "postgrex_test", backoff_type: :stop, idle_timeout: 1]
+    opts = [ database: "postgrex_test", backoff_type: :stop, idle_interval: 1]
     {:ok, pid} = P.start_link(opts)
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
     :timer.sleep(20)
@@ -1089,7 +1089,7 @@ defmodule QueryTest do
 
   test "terminate backend", context do
     Process.flag(:trap_exit, true)
-    assert {:ok, pid} = P.start_link([idle_timeout: 10] ++ context[:options])
+    assert {:ok, pid} = P.start_link([idle_interval: 10] ++ context[:options])
 
     %Postgrex.Result{connection_id: connection_id} =
       Postgrex.query!(pid, "SELECT 42", [])
