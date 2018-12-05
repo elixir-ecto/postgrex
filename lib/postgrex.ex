@@ -65,7 +65,9 @@ defmodule Postgrex do
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
     * `:disconnect_on_error_codes` - List of error code atoms that when encountered
-      will disconnect the connection (default: `[]`);
+      will disconnect the connection. This is useful when using Postgrex against systems that
+      support failover, which when it occurs will emit certain error codes
+      e.g. `:read_only_sql_transaction` (default: `[]`);
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
