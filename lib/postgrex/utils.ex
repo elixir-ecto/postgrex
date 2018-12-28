@@ -63,6 +63,7 @@ defmodule Postgrex.Utils do
     [version_string | _] = String.split(version, " ", parts: 2)
     segments =
       version_string
+      |> String.trim("devel")
       |> String.split(".", parts: 3)
       |> Enum.map(&String.to_integer/1)
 
