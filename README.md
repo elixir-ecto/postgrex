@@ -73,6 +73,12 @@ You can customize it to use another library via the `:json_library` configuratio
 config :postgrex, :json_library, SomeOtherLib
 ```
 
+Once you change the value, you have to recompile Postgrex, which can be donoe by cleaning its current build:
+
+```sh
+mix deps.clean postgrex --build
+```
+
 ## Extensions
 
 Extensions are used to extend Postgrex' built-in type encoding/decoding.
