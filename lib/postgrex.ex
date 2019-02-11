@@ -68,6 +68,10 @@ defmodule Postgrex do
       will disconnect the connection. This is useful when using Postgrex against systems that
       support failover, which when it occurs will emit certain error codes
       e.g. `:read_only_sql_transaction` (default: `[]`);
+    * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
+      hides all information during connection errors to avoid leaking credentials
+      or other sensitive information. You can set this option if you wish to
+      see complete errors and stacktraces during connection errors
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
