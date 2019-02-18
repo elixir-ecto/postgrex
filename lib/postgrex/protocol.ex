@@ -2643,7 +2643,7 @@ defmodule Postgrex.Protocol do
   defp decode_tag("FETCH " <> int), do: {:fetch, String.to_integer(int)}
   defp decode_tag("MOVE " <> int), do: {:move, String.to_integer(int)}
   defp decode_tag("COPY " <> int), do: {:copy, String.to_integer(int)}
-  defp decode_tag("BEGIN"), do: {:commit, nil}
+  defp decode_tag("BEGIN"), do: {:begin, nil}
   defp decode_tag("COMMIT"), do: {:commit, nil}
   defp decode_tag("ROLLBACK"), do: {:rollback, nil}
   defp decode_tag(tag), do: decode_tag(tag, "")
