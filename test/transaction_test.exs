@@ -26,32 +26,6 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
-  test "commit log entries", context do
-    assert transaction(fn conn ->
-      P.query(conn, "SELECT 42", [])
-    end, log: &send(self(), &1))
-
-    assert_receive %DBConnection.LogEntry{} = entry
-    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
-
-    assert_receive %DBConnection.LogEntry{} = entry
-    assert {:ok, %Postgrex.Result{command: :commit}} = entry.result
-  end
-
-  @tag mode: :transaction
-  test "rollback log entries", context do
-    assert transaction(fn conn ->
-      P.rollback(conn, :reasons)
-    end, log: &send(self(), &1))
-
-    assert_receive %DBConnection.LogEntry{} = entry
-    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
-
-    assert_receive %DBConnection.LogEntry{} = entry
-    assert {:ok, %Postgrex.Result{command: :rollback}} = entry.result
-  end
-
-  @tag mode: :transaction
   test "connection works after failure during commit transaction", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
@@ -564,5 +538,46 @@ defmodule TransactionTest do
     assert DBConnection.status(pid, opts) == :idle
     assert query("SELECT 42", []) == [[42]]
     assert DBConnection.status(pid) == :idle
+  end
+
+  @tag mode: :transaction
+  test "commit log entries", context do
+    assert transaction(fn conn ->
+      P.query(conn, "SELECT 42", [])
+    end, log: &send(self(), &1))
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %Postgrex.Result{command: :commit}} = entry.result
+  end
+
+  @tag mode: :transaction
+  test "rollback log entries", context do
+    assert transaction(fn conn ->
+      P.rollback(conn, :hi)
+    end, log: &send(self(), &1)) == {:error, :hi}
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %Postgrex.Result{command: :rollback}} = entry.result
+  end
+
+  @tag mode: :transaction
+  test "rollback from failed query log entries", context do
+    assert transaction(fn conn ->
+             assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+                      P.query(conn, "insert into uniques values (1), (1);", [])
+                    :hi
+             end, log: &send(self(), &1)) == {:error, :rollback}
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %Postgrex.Result{command: :rollback}} = entry.result
   end
 end
