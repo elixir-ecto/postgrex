@@ -11,5 +11,15 @@ defmodule UtilsTest do
       segments = Postgrex.Utils.parse_version("10.2 (Debian 10.2-1.pgdg90+1)")
       assert segments == {10, 2, 0}
     end
+
+    test "parses 3 part version strings" do
+      segments = Postgrex.Utils.parse_version("10.2.1 (Debian 10.2-1.pgdg90+1)")
+      assert segments == {10, 2, 1}
+    end
+
+    test "parses 4 part version strings" do
+      segments = Postgrex.Utils.parse_version("9.5.5.10 ___")
+      assert segments == {9, 5, 5}
+    end
   end
 end
