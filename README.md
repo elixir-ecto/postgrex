@@ -38,7 +38,8 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
     numeric         #Decimal<42.0> *
     date            %Date{year: 2013, month: 10, day: 12}
     time(tz)        %Time{hour: 0, minute: 37, second: 14} **
-    timestamp(tz)   %DateTime{year: 2013 month: 10, day: 12, hour: 0, minute: 37, second: 14} **
+    timestamp       %NaiveDateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14}
+    timestamptz     %DateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14, time_zone: "Etc/UTC"} **
     interval        %Postgrex.Interval{months: 14, days: 40, secs: 10920}
     array           [1, 2, 3]
     composite type  {42, "title", "content"}
