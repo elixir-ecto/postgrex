@@ -35,7 +35,7 @@ defmodule Postgrex do
           | {:handshake_timeout, timeout}
           | {:ssl, boolean}
           | {:ssl_opts, [:ssl.ssl_option]}
-          | {:socket_options, [:gen_tcp.connect_option()]}
+          | {:socket_options, [:gen_tcp.connect_option]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
           | {:types, module}
@@ -47,7 +47,7 @@ defmodule Postgrex do
           | DBConnection.option
 
   @type execute_option ::
-          {:decode_mapper, (list() -> term)}
+          {:decode_mapper, (list -> term)}
           | option
 
   @max_rows 500
@@ -464,7 +464,8 @@ defmodule Postgrex do
     * `:timeout` - Call timeout (default: `#{@timeout}`)
 
   """
-  @spec parameters(conn, [{:timeout, timeout}]) :: %{binary => binary}
+  @spec parameters(conn, [option]) :: %{binary => binary}
+        when option: {:timeout, timeout}
   def parameters(conn, opts \\ []) do
     DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, opts)
   end
@@ -518,10 +519,8 @@ defmodule Postgrex do
         Enum.into(File.stream!("posts"), stream)
       end)
   """
-  @spec stream(DBConnection.t(), iodata | Postgrex.Query.t(), list, [
-          execute_option | {:max_rows, pos_integer()}
-        ]) ::
-          Postgrex.Stream.t()
+  @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, [option]) :: Postgrex.Stream.t
+        when option: execute_option | {:max_rows, pos_integer}
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
     options = Keyword.put_new(options, :max_rows, @max_rows)
     %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
