@@ -64,10 +64,11 @@ defmodule Postgrex.Utils do
     segments =
       version_string
       |> String.trim_trailing("devel")
-      |> String.split(".", parts: 3)
+      |> String.split(".", parts: 4)
       |> Enum.map(&String.to_integer/1)
 
     case segments do
+      [major, minor, patch, _] -> {major, minor, patch}
       [major, minor, patch] -> {major, minor, patch}
       [major, minor] -> {major, minor, 0}
       [major] -> {major, 0, 0}
