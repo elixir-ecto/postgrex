@@ -518,8 +518,10 @@ defmodule Postgrex do
         Enum.into(File.stream!("posts"), stream)
       end)
   """
-  @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, [execute_option | {:max_rows, pos_integer()}]) ::
-    Postgrex.Stream.t
+  @spec stream(DBConnection.t(), iodata | Postgrex.Query.t(), list, [
+          execute_option | {:max_rows, pos_integer()}
+        ]) ::
+          Postgrex.Stream.t()
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
     options = Keyword.put_new(options, :max_rows, @max_rows)
     %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
