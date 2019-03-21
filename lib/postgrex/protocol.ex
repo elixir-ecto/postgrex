@@ -96,6 +96,7 @@ defmodule Postgrex.Protocol do
       types_key: types_key,
       types_lock: nil,
       prepare: prepare,
+      messages: [],
       ssl: ssl?
     }
 
