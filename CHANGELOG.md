@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.2 (2019-04-12)
+
+* Bug fixes
+  * Fix Elixir deprecation warnings
+  * Do not crash when receiving notices during authentication
+  * Do not crash when receiving an error (caused by a raise) during query execution
+
 ## v0.14.1 (2018-11-24)
 
 * Bug fixes

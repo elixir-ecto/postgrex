@@ -1,7 +1,7 @@
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
-  @version "0.14.1"
+  @version "0.14.2"
 
   def project do
     [
@@ -29,7 +29,7 @@ defmodule Postgrex.Mixfile do
 
   defp deps do
     [
-      {:ex_doc, "~> 0.14", only: :docs},
+      {:ex_doc, "~> 0.20", only: :docs},
       {:jason, "~> 1.0", optional: true},
       {:decimal, "~> 1.5"},
       {:db_connection, "~> 2.0"},
