@@ -119,7 +119,7 @@ defmodule Postgrex.Notifications do
 
     # If this is the first listener for the given channel,
     # we need to actually issue the LISTEN query.
-    if Map.size(s.listener_channels[channel]) == 1 do
+    if map_size(s.listener_channels[channel]) == 1 do
       listener_query("LISTEN \"#{channel}\"", {:ok, ref}, from, s)
     else
       {:reply, {:ok, ref}, s, s.idle_timeout}
@@ -135,7 +135,7 @@ defmodule Postgrex.Notifications do
         Process.demonitor(ref, [:flush])
         s = remove_monitored_listener(s, ref, channel)
 
-        if Map.size(s.listener_channels[channel]) == 0 do
+        if map_size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &Map.delete(&1, channel))
           listener_query("UNLISTEN \"#{channel}\"", :ok, from, s)
         else
@@ -152,7 +152,7 @@ defmodule Postgrex.Notifications do
       {:ok, {channel, _pid}} ->
         s = remove_monitored_listener(s, ref, channel)
 
-        if Map.size(s.listener_channels[channel]) == 0 do
+        if map_size(s.listener_channels[channel]) == 0 do
           s = update_in(s.listener_channels, &Map.delete(&1, channel))
           listener_query("UNLISTEN \"#{channel}\"", :ok, nil, s)
         else

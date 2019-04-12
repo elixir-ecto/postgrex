@@ -28,7 +28,7 @@ defmodule Postgrex.Extensions.HStore do
     keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
         [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end
-    [<<Map.size(hstore_map)::int32>> | keys_and_values]
+    [<<map_size(hstore_map)::int32>> | keys_and_values]
   end
 
   defp encode_hstore_key(key) when is_binary(key) do
