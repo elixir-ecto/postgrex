@@ -41,4 +41,41 @@ defmodule ErrorTest do
     assert message =~ "ERROR 42601 (syntax_error) syntax error at or near \"SELCT\""
     assert message =~ "query: SELCT true"
   end
+
+  @tag min_pg_version: "9.1"
+  test "notices", config do
+    {:ok, _} = P.query(config.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    {:ok, result} = P.query(config.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+    assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
+  end
+
+  test "notices raised by functions do not reset rows", config do
+    {:ok, _} = P.query(config.pid, """
+    CREATE FUNCTION raise_notice_and_return(what integer) RETURNS integer AS $$
+    BEGIN
+      RAISE NOTICE 'notice %', what;
+      RETURN what;
+    END;
+    $$ LANGUAGE plpgsql;
+    """, [])
+
+    assert {:ok, result} =
+             P.query(config.pid, "SELECT raise_notice_and_return(x) FROM generate_series(1, 2) AS x", [])
+
+    assert [_, _] = result.messages
+    assert [[1], [2]] = result.rows
+  end
+
+  test "errors raised by functions disconnect", config do
+    {:ok, _} = P.query(config.pid, """
+    CREATE FUNCTION raise_exception(what integer) RETURNS integer AS $$
+    BEGIN
+      RAISE EXCEPTION 'error %', what;
+    END;
+    $$ LANGUAGE plpgsql;
+    """, [])
+
+    assert {:error, %Postgrex.Error{postgres: %{message: "error 1"}}} =
+             P.query(config.pid, "SELECT raise_exception(1)", [])
+  end
 end

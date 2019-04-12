@@ -1024,25 +1024,6 @@ defmodule QueryTest do
     assert {:ok, _} = P.query(pid, "SELECT 42", [])
   end
 
-  @tag min_pg_version: "9.1"
-  test "notices", context do
-    {:ok, _} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
-    {:ok, result} = P.query(context.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
-    assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
-  end
-
-  test "notices raised by functions do not reset rows", context do
-    assert :ok = query("""
-    CREATE FUNCTION raise_notice_and_return(what integer) RETURNS integer AS $$
-    BEGIN
-      RAISE NOTICE 'notice %', what;
-      RETURN what;
-    END;
-    $$ LANGUAGE plpgsql;
-    """, [])
-    assert [[1], [2]] = query("SELECT raise_notice_and_return(x) FROM generate_series(1, 2) AS x", [])
-  end
-
   test "too many parameters query disconnects", context do
     Process.flag(:trap_exit, true)
     params = 1..0x10000
