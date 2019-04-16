@@ -138,6 +138,14 @@ defmodule Postgrex.TypeModule do
       defp encode_params([], [], encoded), do: Enum.reverse(encoded)
       defp encode_params(params, _, _) when is_list(params), do: :error
 
+      def encode_tuple(tuple, nil, _types) do
+        raise """
+        cannot encode anonymous tuple #{inspect(tuple)}. \
+        Please define a custom Postgrex extension that matches on its underlying type:
+
+            use Postgrex.BinaryExtension, type: "typeinthedb"
+        """
+      end
       def encode_tuple(tuple, oids, types) do
         encode_tuple(tuple, 1, oids, types, [])
       end
