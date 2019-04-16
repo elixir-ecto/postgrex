@@ -139,7 +139,7 @@ defmodule Postgrex.TypeModule do
       defp encode_params(params, _, _) when is_list(params), do: :error
 
       def encode_tuple(tuple, nil, _types) do
-        raise """
+        raise DBConnection.EncodeError, """
         cannot encode anonymous tuple #{inspect(tuple)}. \
         Please define a custom Postgrex extension that matches on its underlying type:
 
@@ -157,7 +157,10 @@ defmodule Postgrex.TypeModule do
       defp encode_tuple(tuple, n, [], [], acc) when tuple_size(tuple) < n do
         acc
       end
-      defp encode_tuple(tuple, _, [], [], _) when is_tuple(tuple), do: :error
+      defp encode_tuple(tuple, n, [], [], _) when is_tuple(tuple) do
+        raise DBConnection.EncodeError,
+              "expected a tuple of size #{n - 1}, got: #{inspect tuple}"
+      end
 
       def encode_list(list, type) do
         encode_list(list, type, [])
