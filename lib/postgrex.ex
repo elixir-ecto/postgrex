@@ -344,9 +344,7 @@ defmodule Postgrex do
   """
   @spec execute(conn, Postgrex.Query.t, list, [execute_option]) ::
     {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
-  def execute(conn, query, params, opts \\ []) do
-    DBConnection.execute(conn, query, params, opts)
-  end
+  defdelegate execute(conn, query, params, opts \\ []), to: DBConnection
 
   @doc """
   Runs an (extended) prepared query and returns the result or raises
@@ -426,9 +424,7 @@ defmodule Postgrex do
   """
   @spec transaction(conn, ((DBConnection.t) -> result), [option]) ::
     {:ok, result} | {:error, any} when result: var
-  def transaction(conn, fun, opts \\ []) do
-    DBConnection.transaction(conn, fun, opts)
-  end
+  defdelegate transaction(conn, fun, opts \\ []), to: DBConnection
 
   @doc """
   Rollback a transaction, does not return.
