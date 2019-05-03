@@ -59,7 +59,7 @@ defmodule StreamTest do
     transaction(fn(conn) ->
       assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
       assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
-      assert Postgrex.close(conn, query) == :ok
+      assert {:ok, _} = Postgrex.close(conn, query)
     end)
   end
 
@@ -88,7 +88,7 @@ defmodule StreamTest do
     transaction(fn(conn) ->
       assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
       assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
-      assert :ok = Postgrex.close(conn, query)
+      assert {:ok, _} = Postgrex.close(conn, query)
       assert %Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
     end)
   end

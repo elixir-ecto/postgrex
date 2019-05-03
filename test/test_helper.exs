@@ -174,7 +174,7 @@ defmodule Postgrex.TestHelper do
   defmacro close(query, opts \\ []) do
     quote do
       case Postgrex.close(var!(context)[:pid], unquote(query), unquote(opts)) do
-        :ok -> :ok
+        {:ok, _} -> :ok
         {:error, err} -> err
       end
     end

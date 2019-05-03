@@ -354,12 +354,10 @@ defmodule Postgrex do
   """
   @spec execute!(conn, Postgrex.Query.t, list, [execute_option]) ::
     Postgrex.Result.t
-  def execute!(conn, query, params, opts \\ []) do
-    DBConnection.execute!(conn, query, params, opts)
-  end
+  defdelegate execute!(conn, query, params, opts \\ []), to: DBConnection
 
   @doc """
-  Closes an (extended) prepared query and returns `:ok` or
+  Closes an (extended) prepared query and returns `{:ok, %Postgrex.Result{}}` or
   `{:error, %Postgrex.Error{}}` if there was an error. Closing a query releases
   any resources held by postgresql for a prepared query with that name. See
   `Postgrex.Query` for the query data.
@@ -380,24 +378,16 @@ defmodule Postgrex do
       query = Postgrex.prepare!(conn, "", "CREATE TABLE posts (id serial, title text)")
       Postgrex.close(conn, query)
   """
-  @spec close(conn, Postgrex.Query.t, [option]) :: :ok | {:error, Exception.t}
-  def close(conn, query, opts \\ []) do
-    case DBConnection.close(conn, query, opts) do
-      {:ok, _} ->
-        :ok
-      {:error, _} = error ->
-        error
-    end
-  end
+  @spec close(conn, Postgrex.Query.t(), [option]) ::
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
+  defdelegate close(conn, query, opts \\ []), to: DBConnection
 
   @doc """
-  Closes an (extended) prepared query and returns `:ok` or raises
+  Closes an (extended) prepared query and returns `%Postgrex.Result{}` or raises
   `Postgrex.Error` if there was an error. See `close/3`.
   """
-  @spec close!(conn, Postgrex.Query.t, [option]) :: :ok
-  def close!(conn, query, opts \\ []) do
-    DBConnection.close!(conn, query, opts)
-  end
+  @spec close!(conn, Postgrex.Query.t, [option]) :: Postgrex.Result.t
+  defdelegate close!(conn, query, opts \\ []), to: DBConnection
 
   @doc """
   Acquire a lock on a connection and run a series of requests inside a
