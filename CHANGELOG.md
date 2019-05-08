@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.3 (2019-05-08)
+
+* Enhancements
+  * Make bootstrap query compatible with CockroackDB 19.1
+  * Improve error message when encoding bad tuple
+
 ## v0.14.2 (2019-04-12)
 
 * Bug fixes
