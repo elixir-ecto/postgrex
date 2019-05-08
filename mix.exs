@@ -1,7 +1,7 @@
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
-  @version "0.14.2"
+  @version "0.15.0-dev"
 
   def project do
     [
