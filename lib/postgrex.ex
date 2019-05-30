@@ -473,6 +473,7 @@ defmodule Postgrex do
   """
   @spec child_spec([start_option]) :: Supervisor.Spec.spec
   def child_spec(opts) do
+    ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
     DBConnection.child_spec(Postgrex.Protocol, opts)
   end
