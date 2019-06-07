@@ -1,5 +1,5 @@
 language: elixir
-elixir: 1.4
+elixir: 1.6
 otp_release: 19.3
 cache: apt
 before_install:
@@ -33,14 +33,11 @@ env:
     - PGVERSION=10
 matrix:
   include:
-    - elixir: 1.5
-      otp_release: 19.3
+    - elixir: 1.7
+      otp_release: 20.3
       env: PGVERSION=9.6
-    - elixir: 1.5
-      otp_release: 20.0
-      env: PGVERSION=9.6
-    - elixir: 1.6
-      otp_release: 20.1
+    - elixir: 1.8
+      otp_release: 21.3
       env: PGVERSION=9.6
 notifications:
   recipients:

@@ -4,20 +4,14 @@ defmodule Postgrex.TypeSupervisor do
   use Supervisor
 
   @manager Postgrex.TypeManager
-  @servers Postgrex.TypeSupervisor
+  @supervisor Postgrex.TypeSupervisor
 
   @doc """
   Starts a type supervisor with a manager and a simple
   one for one supervisor for each server.
   """
-  def start_link(mode \\ :manager)
-
-  def start_link(:manager) do
-    Supervisor.start_link(__MODULE__, :manager)
-  end
-
-  def start_link(:servers) do
-    Supervisor.start_link(__MODULE__, :servers, name: @servers)
+  def start_link(_) do
+    Supervisor.start_link(__MODULE__, :ok)
   end
 
   @doc """
@@ -33,9 +27,9 @@ defmodule Postgrex.TypeSupervisor do
   end
 
   defp start_server(module, pair) do
-    args = [module, self(), [name: {:via, Registry, {Postgrex.TypeManager, pair}}]]
+    opts = [name: {:via, Registry, {Postgrex.TypeManager, pair}}]
 
-    case Supervisor.start_child(@servers, args) do
+    case DynamicSupervisor.start_child(@supervisor, {Postgrex.TypeServer, {module, self(), opts}}) do
       {:ok, pid} -> pid
       {:error, {:already_started, pid}} -> pid
     end
@@ -43,17 +37,9 @@ defmodule Postgrex.TypeSupervisor do
 
   # Callbacks
 
-  def init(:manager) do
-    manager = supervisor(Registry, [:unique, @manager])
-    server_sup = supervisor(__MODULE__, [:servers])
-    supervise([manager, server_sup], strategy: :rest_for_one)
-  end
-
-  def init(:servers) do
-    # TypeServer is temporary so that a bad extension does not bubble up the
-    # Postgrex supervision tree. Instead it should bubble up the supervision
-    # tree of the application starting the Postgrex pool.
-    type_server = worker(Postgrex.TypeServer, [], restart: :temporary)
-    supervise([type_server], strategy: :simple_one_for_one)
+  def init(:ok) do
+    manager = {Registry, keys: :unique, name: @manager}
+    server_sup = {DynamicSupervisor, strategy: :one_for_one, name: @supervisor}
+    Supervisor.init([manager, server_sup], strategy: :rest_for_one)
   end
 end

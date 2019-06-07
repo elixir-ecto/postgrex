@@ -7,7 +7,7 @@ defmodule Postgrex.Mixfile do
     [
       app: :postgrex,
       version: @version,
-      elixir: "~> 1.4",
+      elixir: "~> 1.6",
       deps: deps(),
       name: "Postgrex",
       description: "PostgreSQL driver for Elixir",
@@ -32,7 +32,7 @@ defmodule Postgrex.Mixfile do
       {:ex_doc, "~> 0.20", only: :docs},
       {:jason, "~> 1.0", optional: true},
       {:decimal, "~> 1.5"},
-      {:db_connection, "~> 2.0"},
+      {:db_connection, "~> 2.1"},
       {:connection, "~> 1.0"}
     ]
   end

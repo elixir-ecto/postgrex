@@ -4,7 +4,7 @@
 
 * Enhancements
   * Make bootstrap query compatible with CockroachDB 19.1
-  * Improve error message when encoding bad tuplee
+  * Improve error message when encoding bad tuple
 
 ## v0.14.2 (2019-04-12)
 
