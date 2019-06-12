@@ -125,7 +125,6 @@ defmodule Postgrex.Utils do
   end
 
   ## Helpers
-  
 
   defp parse_version_bit(bit) do
     {int, _} = Integer.parse(bit)
