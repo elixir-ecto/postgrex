@@ -21,5 +21,17 @@ defmodule UtilsTest do
       segments = Postgrex.Utils.parse_version("9.5.5.10 ___")
       assert segments == {9, 5, 5}
     end
+
+    test "parses beta version strings" do
+      segments = Postgrex.Utils.parse_version("12beta1 (Debian 10.2-1.pgdg90+1)")
+
+      assert segments == {12, -157, 1}
+
+      assert Postgrex.Utils.parse_version("12alpha1 (Debian 10.2-1.pgdg90+1)") <
+               Postgrex.Utils.parse_version("12beta1 (Debian 10.2-1.pgdg90+1)")
+
+      assert Postgrex.Utils.parse_version("12beta1 (Debian 10.2-1.pgdg90+1)") <
+               Postgrex.Utils.parse_version("12.0.0 (Debian 10.2-1.pgdg90+1)")
+    end
   end
 end

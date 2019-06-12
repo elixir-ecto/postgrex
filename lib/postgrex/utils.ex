@@ -63,9 +63,16 @@ defmodule Postgrex.Utils do
     [version_string | _] = String.split(version, " ", parts: 2)
     segments =
       version_string
-      |> String.trim_trailing("devel")
-      |> String.split(".", parts: 4)
-      |> Enum.map(&String.to_integer/1)
+      |> String.split(" ")
+      |> hd()
+      |> String.split(~r/\.|(?<=\d)(?=[^\d.])|(?<=[^\d.])(?=\d)/, parts: 4)
+      |> Enum.map(fn number_or_name ->
+        # we want "alpha" < beta" < 0
+        case Integer.parse(number_or_name) do
+          :error -> number_or_name |> String.to_charlist() |> hd() |> Kernel.-(255)
+          {i, ""} -> i
+        end
+      end)
 
     case segments do
       [major, minor, patch, _] -> {major, minor, patch}
