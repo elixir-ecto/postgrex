@@ -67,7 +67,7 @@ defmodule Postgrex.Utils do
       |> hd()
       |> String.split(~r/\.|(?<=\d)(?=[^\d.])|(?<=[^\d.])(?=\d)/, parts: 4)
       |> Enum.map(fn number_or_name ->
-        # we want "alpha" < beta" < 0
+        # we want "alpha" < "beta" < 0
         case Integer.parse(number_or_name) do
           :error -> number_or_name |> String.to_charlist() |> hd() |> Kernel.-(255)
           {i, ""} -> i
