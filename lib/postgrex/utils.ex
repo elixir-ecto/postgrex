@@ -60,12 +60,12 @@ defmodule Postgrex.Utils do
   Converts pg major.minor.patch (http://www.postgresql.org/support/versioning) version to an integer
   """
   def parse_version(version) do
-    [version_string | _] = String.split(version, " ", parts: 2)
     segments =
-      version_string
-      |> String.trim_trailing("devel")
+      version
+      |> String.split(" ", parts: 2)
+      |> hd()
       |> String.split(".", parts: 4)
-      |> Enum.map(&String.to_integer/1)
+      |> Enum.map(&parse_version_bit/1)
 
     case segments do
       [major, minor, patch, _] -> {major, minor, patch}
@@ -125,6 +125,11 @@ defmodule Postgrex.Utils do
   end
 
   ## Helpers
+
+  defp parse_version_bit(bit) do
+    {int, _} = Integer.parse(bit)
+    int
+  end
 
   defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"
   defp to_desc(%Range{} = range), do: "an integer in #{inspect range}"
