@@ -63,16 +63,8 @@ defmodule Postgrex.Utils do
     [version_string | _] = String.split(version, " ", parts: 2)
     segments =
       version_string
-      |> String.split(" ")
-      |> hd()
-      |> String.split(~r/\.|(?<=\d)(?=[^\d.])|(?<=[^\d.])(?=\d)/, parts: 4)
-      |> Enum.map(fn number_or_name ->
-        # we want "alpha" < "beta" < 0
-        case Integer.parse(number_or_name) do
-          :error -> number_or_name |> String.to_charlist() |> hd() |> Kernel.-(255)
-          {i, ""} -> i
-        end
-      end)
+      |> do_parse()
+      |> Enum.reverse()
 
     case segments do
       [major, minor, patch, _] -> {major, minor, patch}
@@ -132,6 +124,27 @@ defmodule Postgrex.Utils do
   end
 
   ## Helpers
+  
+  defp do_parse(s, acc \\ []) do
+    case Integer.parse(s) do
+      {i, ""} ->
+        [i | acc]
+
+      {i, " " <> _} ->
+        [i | acc]
+
+      {i, "." <> rest} ->
+        do_parse(rest, [i | acc])
+
+      {i, <<c::binary-size(1), rest::binary()>>} ->
+        [ver] = String.to_charlist(c)
+        do_parse(rest, [ver - 255, i | acc])
+
+      :error ->
+        <<_::binary-size(1), rest::binary()>> = s
+        do_parse(rest, acc)
+    end
+  end
 
   defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"
   defp to_desc(%Range{} = range), do: "an integer in #{inspect range}"
