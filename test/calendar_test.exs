@@ -171,20 +171,10 @@ defmodule CalendarTest do
         [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}])
     end
 
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %DateTime{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::timestamp::text",
-        [%{~U[2010-10-10 10:10:10Z] | calendar: OtherCalendar}])
-    end
-
     # Timestampz
     assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/, fn ->
       assert [["1999-12-31"]] = query("SELECT $1::timestamp with time zone::text",
         [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}])
-    end
-
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %DateTime{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::timestamp with time zone::text",
-        [%{~U[2010-10-10 10:10:10Z] | calendar: OtherCalendar}])
     end
 
     # Time
