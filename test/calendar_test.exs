@@ -157,6 +157,15 @@ defmodule CalendarTest do
     assert [["1999-12-31"]] = query("SELECT $1::date::text", [~D[1999-12-31]])
   end
 
+  test "encode non Calendar.ISO date", context do
+    defmodule OtherCalendar do
+    end
+
+    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Date{} in the `Calendar.ISO` calendar/, fn ->
+      assert [["1999-12-31"]] = query("SELECT $1::date::text", [%{~D[1999-12-31] | calendar: OtherCalendar}])
+    end
+  end
+
   test "encode timestamp", context do
     assert [["2001-01-01 00:00:00"]] =
       query("SELECT $1::timestamp::text", [~N[2001-01-01 00:00:00.000000]])
