@@ -157,7 +157,7 @@ defmodule CalendarTest do
     assert [["1999-12-31"]] = query("SELECT $1::date::text", [~D[1999-12-31]])
   end
 
-  test "encode non Calendar.ISO date, datetime and naive datetime", context do
+  test "encode non Calendar.ISO data types", context do
     defmodule OtherCalendar do
     end
 
