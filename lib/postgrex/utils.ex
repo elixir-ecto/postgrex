@@ -106,7 +106,7 @@ defmodule Postgrex.Utils do
   @doc """
   Return encode error message.
   """
-  def encode_msg(%Date{calendar: calendar}= observed, _expected) when calendar != Calendar.ISO do
+  def encode_msg(%Date{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
     "Postgrex expected a %Date{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
     "Postgrex (and Postgres) support dates in the `Calendar.ISO` calendar only."
   end
