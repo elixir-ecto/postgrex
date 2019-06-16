@@ -114,6 +114,30 @@ defmodule Postgrex.Utils do
   @doc """
   Return encode error message.
   """
+  def encode_msg(%NaiveDateTime{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support naive datetimes in the `Calendar.ISO` calendar only."
+  end
+
+  @doc """
+  Return encode error message.
+  """
+  def encode_msg(%DateTime{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %DateTime{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support datetimes in the `Calendar.ISO` calendar only."
+  end
+
+  @doc """
+  Return encode error message.
+  """
+  def encode_msg(%Time{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %Time{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support times in the `Calendar.ISO` calendar only."
+  end
+
+  @doc """
+  Return encode error message.
+  """
   def encode_msg(observed, expected) do
     "Postgrex expected #{to_desc(expected)}, got #{inspect observed}. " <>
     "Please make sure the value you are passing matches the definition in " <>

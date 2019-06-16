@@ -8,10 +8,10 @@ defmodule Postgrex.Extensions.Timestamp do
 
   def encode(_) do
     quote location: :keep do
-      %NaiveDateTime{} = naive ->
+      %NaiveDateTime{calendar: Calendar.ISO} = naive ->
         unquote(__MODULE__).encode_elixir(naive)
 
-      %DateTime{} = dt ->
+      %DateTime{calendar: Calendar.ISO} = dt ->
         unquote(__MODULE__).encode_elixir(dt)
 
       other ->
