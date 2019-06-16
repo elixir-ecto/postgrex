@@ -9,7 +9,7 @@ defmodule Postgrex.Extensions.Date do
 
   def encode(_) do
     quote location: :keep do
-      %Date{} = date ->
+      %Date{calendar: Calendar.ISO} = date ->
         unquote(__MODULE__).encode_elixir(date)
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Date)
