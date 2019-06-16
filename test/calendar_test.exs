@@ -154,6 +154,7 @@ defmodule CalendarTest do
     assert [["0001-01-01"]] = query("SELECT $1::date::text", [~D[0001-01-01]])
     assert [["0001-02-03"]] = query("SELECT $1::date::text", [~D[0001-02-03]])
     assert [["2013-09-23"]] = query("SELECT $1::date::text", [~D[2013-09-23]])
+    assert [["1999-12-31"]] = query("SELECT $1::date::text", [~D[1999-12-31]])
   end
 
   test "encode non Calendar.ISO date", context do
