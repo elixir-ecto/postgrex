@@ -175,6 +175,7 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
+    * `:cache_statement` - Caches the query with the given name
 
   ## Examples
 
