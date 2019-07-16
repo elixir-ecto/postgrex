@@ -774,10 +774,7 @@ defmodule Postgrex.Protocol do
     case TypeServer.fetch(server) do
       {:lock, ref, types} ->
         status = %{status | types_lock: {server, ref}}
-        bootstrap_send(%{s | types: types}, status, types, buffer)
-
-      {:go, types} ->
-        bootstrap_done(%{s | types: types}, status, buffer)
+        bootstrap_send(%{s | types: types}, status, buffer)
 
       :noproc ->
         bootstrap(s, status, buffer)
@@ -787,55 +784,60 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_send(s, status, types, buffer) do
+  defp bootstrap_send(%{types: types} = s, status, buffer) do
     %{parameters: parameters} = s
-    bootstrap_send(s, status, types, parameters, buffer, &bootstrap_sync_recv/3)
+    version = Postgrex.Utils.parse_version(parameters["server_version"])
+    statement = Types.bootstrap_query(version, types)
+    if statement do
+      bootstrap_send(s, status, statement, buffer)
+    else
+      %{types_lock: {server, ref}} = status
+      TypeServer.done(server, ref)
+      bootstrap_done(s, status, buffer)
+    end
   end
 
-  defp bootstrap_send(s, status, types, parameters, buffer, next) do
-    version = parameters["server_version"] |> Postgrex.Utils.parse_version()
-    statement = Types.bootstrap_query(version, types)
+  defp bootstrap_send(s, status, statement, buffer) do
     msg = msg_query(statement: statement)
 
     case msg_send(s, msg, buffer) do
       :ok ->
-        bootstrap_recv(s, status, [], buffer, next)
+        bootstrap_recv(s, status, [], buffer)
 
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_recv(s, status, type_infos, buffer, next) do
+  defp bootstrap_recv(s, status, type_infos, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(), buffer} ->
-        bootstrap_recv(s, status, type_infos, buffer, next)
+        bootstrap_recv(s, status, type_infos, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
         type_infos = [Types.build_type_info(values) | type_infos]
-        bootstrap_recv(s, status, type_infos, buffer, next)
+        bootstrap_recv(s, status, type_infos, buffer)
 
       {:ok, msg_command_complete(), buffer} ->
-        bootstrap_types(s, status, Enum.reverse(type_infos), buffer, next)
+        bootstrap_types(s, status, Enum.reverse(type_infos), buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         bootstrap_fail(s, err, status, buffer)
 
       {:ok, msg, buffer} ->
-        {s, status} = handle_msg(s, status, msg)
-        bootstrap_recv(s, status, type_infos, buffer, next)
+        s = handle_msg(s, status, msg)
+        bootstrap_recv(s, status, type_infos, buffer)
 
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
   end
 
-  defp bootstrap_types(s, status, type_infos, buffer, next) do
-    query_delete(s, %Query{name: "", statement: ""})
+  defp bootstrap_types(s, status, type_infos, buffer) do
     %{types_lock: {server, ref}} = status
     TypeServer.update(server, ref, type_infos)
-    next.(s, status, buffer)
+    bootstrap_sync_recv(s, status, buffer)
   end
 
   defp bootstrap_sync_recv(s, status, buffer) do
@@ -862,7 +864,7 @@ defmodule Postgrex.Protocol do
     do: activate(%{s | queries: queries_new()}, buffer)
 
   defp bootstrap_fail(s, err, %{types_lock: {server, ref}}) do
-    TypeServer.fail(server, ref)
+    TypeServer.done(server, ref)
     {:disconnect, err, s}
   end
 
@@ -946,8 +948,8 @@ defmodule Postgrex.Protocol do
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, query, s}
     else
-      {:reload, oid, s, buffer} ->
-        reload_ready(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_ready(s, status, query, oids, buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -970,8 +972,8 @@ defmodule Postgrex.Protocol do
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
       {:ok, query, s}
     else
-      {:reload, oid, s, buffer} ->
-        reload_transaction(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_transaction(s, status, query, oids, buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -998,8 +1000,8 @@ defmodule Postgrex.Protocol do
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, query, s}
     else
-      {:reload, oid, s, buffer} ->
-        reload_closed(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_closed(s, status, query, oids, buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -1027,8 +1029,8 @@ defmodule Postgrex.Protocol do
       {:error, err, s, buffer} ->
         error_flushed(s, status, err, buffer)
 
-      {:reload, oid, s, buffer} ->
-        reload_flushed(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_flushed(s, status, query, oids, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1054,8 +1056,8 @@ defmodule Postgrex.Protocol do
       {:error, err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)
 
-      {:reload, oid, s, buffer} ->
-        reload_flushed(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_flushed(s, status, query, oids, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1080,8 +1082,8 @@ defmodule Postgrex.Protocol do
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, query, s}
     else
-      {:reload, oid, s, buffer} ->
-        reload_ready(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_ready(s, status, query, oids, buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -1110,8 +1112,8 @@ defmodule Postgrex.Protocol do
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
       {:ok, query, s}
     else
-      {:reload, oid, s, buffer} ->
-        reload_transaction(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_transaction(s, status, query, oids, buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -1144,8 +1146,8 @@ defmodule Postgrex.Protocol do
       {:error, err, s, buffer} ->
         error_flushed(s, status, err, buffer)
 
-      {:reload, oid, s, buffer} ->
-        reload_flushed(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_flushed(s, status, query, oids, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1176,8 +1178,8 @@ defmodule Postgrex.Protocol do
       {:error, err, s, buffer} ->
         rollback_flushed(s, status, err, buffer)
 
-      {:reload, oid, s, buffer} ->
-        reload_flushed(s, status, query, oid, buffer)
+      {:reload, oids, s, buffer} ->
+        reload_flushed(s, status, query, oids, buffer)
 
       {:disconnect, _err, _s} = disconnect ->
         disconnect
@@ -1279,13 +1281,12 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe(s, query, param_oids, result_oids, columns, buffer) do
-    with {:ok, query} <- describe_params(s, query, param_oids),
-         {:ok, query} <- describe_result(s, query, result_oids, columns) do
-      query_put(s, query)
-      {:ok, query, s, buffer}
-    else
-      {:reload, oid} ->
-        {:reload, oid, s, buffer}
+    case describe_params(s, query, param_oids) do
+      {:ok, query} ->
+        redescribe(s, query, result_oids, columns, buffer)
+
+      {:reload, oids} ->
+        reload_describe_result(s, oids, result_oids, buffer)
 
       {:error, err} ->
         {:disconnect, err, %{s | buffer: buffer}}
@@ -1297,8 +1298,8 @@ defmodule Postgrex.Protocol do
       query_put(s, query)
       {:ok, query, s, buffer}
     else
-      {:reload, oid} ->
-        {:reload, oid, s, buffer}
+      {:reload, oids} ->
+        {:reload, oids, s, buffer}
 
       {:error, err} ->
         {:disconnect, err, %{s | buffer: buffer}}
@@ -1316,6 +1317,20 @@ defmodule Postgrex.Protocol do
       }
 
       {:ok, query}
+    end
+  end
+
+  defp reload_describe_result(s, param_oids, nil, buffer) do
+    {:reload, param_oids, s, buffer}
+  end
+  defp reload_describe_result(%{types: types} = s, param_oids, result_oids, buffer) do
+    case fetch_type_info(result_oids, types) do
+      {:ok, _} ->
+        {:reload, param_oids, s, buffer}
+      {:reload, reload_oids} ->
+        {:reload, MapSet.union(param_oids, reload_oids), s, buffer}
+      {:error, err} ->
+        {:disconnect, err, %{s | buffer: buffer}}
     end
   end
 
@@ -1373,117 +1388,120 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reload_transaction(s, status, query, oid, buffer) do
+  defp reload_transaction(s, status, query, oids, buffer) do
     %Query{name: name} = query
     msgs = [msg_close(type: :statement, name: name), msg_sync()]
 
     with {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
          :ok <- msg_send(s, msgs, buffer) do
-      reload_closed(s, status, query, oid, buffer)
+      reload_closed(s, status, query, oids, buffer)
     else
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
   end
 
-  defp reload_flushed(s, %{mode: :transaction} = status, query, oid, buffer) do
+  defp reload_flushed(s, %{mode: :transaction} = status, query, oids, buffer) do
     %Query{name: name} = query
     msgs = [msg_close(type: :statement, name: name), msg_sync()]
 
     with :ok <- msg_send(s, msgs, buffer) do
-      reload_closed(s, status, query, oid, buffer)
+      reload_closed(s, status, query, oids, buffer)
     else
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
   end
 
-  defp reload_flushed(s, %{mode: :savepoint} = status, query, oid, buffer) do
+  defp reload_flushed(s, %{mode: :savepoint} = status, query, oids, buffer) do
     %Query{name: name} = query
     stmt = "ROLLBACK TO SAVEPOINT postgrex_query;RELEASE SAVEPOINT postgrex_query"
     msgs = [msg_close(type: :statement, name: name), msg_query(statement: stmt)]
 
     with :ok <- msg_send(s, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer) do
-      reload_spawn(%{s | buffer: nil}, status, query, oid, buffer)
+         {:ok, _, %{buffer: buffer} = s}
+          <- recv_transaction(s, status, buffer) do
+      reload_spawn(%{s | buffer: nil}, status, query, oids, buffer)
     else
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
   end
 
-  defp reload_ready(s, status, query, oid, buffer) do
+  defp reload_ready(s, status, query, oids, buffer) do
     %Query{name: name} = query
     msgs = [msg_close(type: :statement, name: name), msg_sync()]
 
     with {:ok, %{buffer: buffer} = s} <- recv_ready(s, status, buffer),
          :ok <- msg_send(s, msgs, buffer) do
-      reload_closed(s, status, query, oid, buffer)
+      reload_closed(s, status, query, oids, buffer)
     else
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
   end
 
-  defp reload_closed(s, status, query, oid, buffer) do
+  defp reload_closed(s, status, query, oids, buffer) do
     with {:ok, s, buffer} <- recv_close(s, status, buffer),
          {:ok, %{buffer: buffer} = s} <- recv_ready(s, status, buffer) do
-      reload_spawn(%{s | buffer: nil}, status, query, oid, buffer)
+      reload_spawn(%{s | buffer: nil}, status, query, oids, buffer)
     else
       {:disconnect, _err, _s} = disconnect ->
         disconnect
     end
   end
 
-  defp fetch_type_info(oids, types, infos \\ [])
-
-  defp fetch_type_info([], _, infos) do
-    {:ok, Enum.reverse(infos)}
+  defp fetch_type_info(oids, types, infos \\ [], reloads \\ MapSet.new())
+  defp fetch_type_info([], _, infos, reloads) do
+    case MapSet.size(reloads) do
+      0 ->
+        {:ok, Enum.reverse(infos)}
+      _ ->
+        {:reload, reloads}
+    end
   end
-
-  defp fetch_type_info([oid | oids], types, infos) do
+  defp fetch_type_info([oid | oids], types, infos, reloads) do
     case Postgrex.Types.fetch(oid, types) do
       {:ok, info} ->
-        fetch_type_info(oids, types, [info | infos])
+        fetch_type_info(oids, types, [info | infos], reloads)
 
       {:error, %Postgrex.TypeInfo{} = info, mod} ->
         msg = Postgrex.Utils.type_msg(info, mod)
         {:error, Postgrex.QueryError.exception(msg)}
 
       {:error, nil, _} ->
-        {:reload, oid}
+        fetch_type_info(oids, types, infos, MapSet.put(reloads, oid))
     end
   end
 
-  defp reload_spawn(s, status, query, oid, buffer) do
-    Logger.warn(fn ->
-      [inspect(query) | " uses unknown oid `#{oid}` causing bootstrap"]
+  defp reload_spawn(s, status, query, oids, buffer) do
+    Logger.warn(fn() ->
+      [inspect(query) |
+       " uses unknown oid(s) #{Enum.join(oids, ", ")} causing bootstrap"]
     end)
 
     ref = make_ref()
-    {_, mon} = spawn_monitor(fn -> reload_lock(s, status, ref, buffer) end)
+    {_, mon} = spawn_monitor(fn() -> reload_init(s, status, oids, ref, buffer) end)
 
     receive do
       {:DOWN, ^mon, _, _, {^ref, s, buffer}} ->
-        reload_fetch(s, status, query, oid, buffer)
+        reload_fetch(s, status, query, oids, buffer)
 
       {:DOWN, ^mon, _, _, _} ->
         {:disconnect, type_fetch_error(), %{s | buffer: buffer}}
     end
   end
 
-  defp reload_lock(%{types: types} = s, status, exit_ref, buffer) do
+  defp reload_init(%{types: types} = s, status, oids, exit_ref, buffer) do
     with {:ok, server} <- Postgrex.Types.owner(types),
          {:lock, lock_ref, ^types} <- TypeServer.fetch(server),
          status = Map.put(status, :types_lock, {server, lock_ref}),
-         {:ok, s} <- reload_send(s, status, types, buffer) do
+         acc = {[], MapSet.new(), MapSet.new(), MapSet.new()},
+         {:ok, s} <- reload(s, status, oids, acc, buffer) do
       %{buffer: buffer} = s
       exit({exit_ref, %{s | buffer: nil}, buffer})
     else
-      {:go, ^types} ->
-        exit({exit_ref, s, buffer})
-
       :noproc ->
         exit(:normal)
 
@@ -1495,32 +1513,112 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reload_send(s, status, types, buffer) do
+  defp reload(%{types: types} = s, status, oids, acc, buffer) do
     %{parameters: parameters} = s
 
-    case Postgrex.Parameters.fetch(parameters) do
-      {:ok, parameters} ->
-        status = %{status | mode: :transaction}
-        bootstrap_send(s, status, types, parameters, buffer, &sync_recv/3)
+    with {:ok, parameters} <- Postgrex.Parameters.fetch(parameters) do
+      version = Postgrex.Utils.parse_version(parameters["server_version"])
+      statement = Types.reload_query(version, Enum.to_list(oids), types)
 
+      if statement do
+        reload_send(s, status, statement, acc, buffer)
+      else
+        %{types_lock: {server, ref}} = status
+        {type_infos, _, _, _} = acc
+        sorted_infos = Enum.sort_by(type_infos, &(&1.oid))
+        TypeServer.update(server, ref, sorted_infos)
+        {:ok, %{s | buffer: buffer}}
+      end
+    else
       :error ->
         s = %{s | buffer: buffer}
         {:error, %Postgrex.Error{message: "parameters not available"}, s}
     end
   end
 
-  defp reload_fetch(%{types: types} = s, status, query, oid, buffer) do
+  defp reload_send(s, status, statement, acc, buffer) do
+    msg = msg_query(statement: statement)
+    case msg_send(s, msg, buffer) do
+      :ok ->
+        reload_recv(s, status, acc, buffer)
+      {:disconnect, err, s} ->
+        bootstrap_fail(s, err, status)
+    end
+  end
+
+  defp reload_recv(%{types: types} = s, status, acc, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_row_desc(), buffer} ->
+        reload_recv(s, status, acc, buffer)
+      {:ok, msg_data_row(values: values), buffer} ->
+        reload_recv(s, status, reload_row(acc, values, types), buffer)
+      {:ok, msg_command_complete(), buffer} ->
+        reload_complete(s, status, acc, buffer)
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        bootstrap_fail(s, err, status, buffer)
+      {:ok, msg, buffer} ->
+        s = handle_msg(s, status, msg)
+        reload_recv(s, status, acc, buffer)
+      {:disconnect, err, s} ->
+        bootstrap_fail(s, err, status)
+    end
+  end
+
+  defp reload_row({type_infos, oids, missing, current}, values, types) do
+    %Postgrex.TypeInfo{oid: oid} = type_info = Types.build_type_info(values)
+    missing =
+      missing
+      |> put_missing_oids(type_info, oids, types)
+      |> MapSet.delete(oid)
+    {[type_info | type_infos], MapSet.put(oids, oid), missing, current}
+  end
+
+  defp put_missing_oids(missing, type_info, new, types) do
+    %Postgrex.TypeInfo{array_elem: array_elem, base_type: base_type,
+                       comp_elems: comp_elems} = type_info
+    for oid <- [array_elem, base_type | comp_elems],
+        oid !== 0,
+        not MapSet.member?(new, oid),
+        not bootstrapped?(types, oid),
+      do: oid,
+      into: missing
+  end
+
+  defp bootstrapped?(types, oid) do
     case Postgrex.Types.fetch(oid, types) do
       {:ok, _} ->
-        reload_prepare(%{s | buffer: buffer}, status, query)
+        true
 
-      {:error, %Postgrex.TypeInfo{} = info, mod} ->
-        msg = Postgrex.Utils.type_msg(info, mod)
-        reload_error(s, msg, buffer)
+      {:error, %Postgrex.TypeInfo{}, _} ->
+        true
 
       {:error, nil, _} ->
-        msg = "oid `#{oid}` lacks type information after bootstrap"
-        reload_error(s, msg, buffer)
+        false
+    end
+  end
+
+  defp reload_complete(s, status, {type_infos, new, missing, prev}, buffer) do
+    case sync_recv(s, status, buffer) do
+      {:ok, %{buffer: buffer} = s} ->
+        s = %{s | buffer: nil}
+        next = MapSet.delete(missing, prev)
+        current = MapSet.union(next, prev)
+        reload(s, status, Enum.to_list(next), {type_infos, new, MapSet.new(), current}, buffer)
+      {:disconnect, _, _} = error ->
+        error
+    end
+  end
+
+  defp reload_fetch(%{types: types} = s, status, query, oids, buffer) do
+    case oids |> Enum.to_list() |> fetch_type_info(types) do
+      {:ok, _} ->
+        reload_prepare(%{s | buffer: buffer}, status, query)
+      {:error, err} ->
+        disconnect(s, err, buffer)
+      {:reload, oids} ->
+        msg = "oid(s) #{Enum.join(oids, ", ")} lack type information after bootstrap"
+        disconnect(s, RuntimeError.exception(message: msg), buffer)
     end
   end
 
@@ -1540,10 +1638,6 @@ defmodule Postgrex.Protocol do
         # flush awaiting execute or declare
         parse_describe_flush(s, status, query)
     end
-  end
-
-  defp reload_error(s, msg, buffer) do
-    {:disconnect, Postgrex.QueryError.exception(msg), %{s | buffer: buffer}}
   end
 
   ## execute
@@ -2859,6 +2953,9 @@ defmodule Postgrex.Protocol do
 
   defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
+  end
+  defp disconnect(s, %RuntimeError{} = err, buffer) do
+    {:disconnect, err, %{s | buffer: buffer}}
   end
 
   defp sync_recv(s, status, buffer) do

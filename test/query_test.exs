@@ -247,6 +247,7 @@ defmodule QueryTest do
     assert [["x"]] == query("SELECT $1::\"char\"", ["x"])
   end
 
+  @tag :capture_log
   test "decode record", context do
     assert [[{1, "2"}]] = query("SELECT (1, '2')::composite1", [])
     assert [[[{1, "2"}]]] = query("SELECT ARRAY[(1, '2')::composite1]", [])
@@ -591,6 +592,7 @@ defmodule QueryTest do
     assert [[[1, nil, 3]]] = query("SELECT $1::integer[]", [[1, nil, 3]])
   end
 
+  @tag :capture_log
   test "encode record", context do
     assert [[{1, "2"}]] = query("SELECT $1::composite1", [{1, "2"}])
     assert [[[{1, "2"}]]] = query("SELECT $1::composite1[]", [[{1, "2"}]])

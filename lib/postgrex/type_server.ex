@@ -19,12 +19,10 @@ defmodule Postgrex.TypeServer do
   Fetches a lock for the given type server.
 
   We attempt to achieve a lock on the type server for updating the entries.
-  If another process got the lock, we wait until the entries are available
-  or the other process crashes. If the module is unknown returns `:not_found`.
+  If another process got the lock we wait for it to finish.
   """
   @spec fetch(pid) ::
-    {:lock, reference, Postgrex.Types.state} | {:go, Postgrex.Types.state} |
-    :noproc | :error
+    {:lock, reference, Postgrex.Types.state} | :noproc | :error
   def fetch(server) do
     try do
       GenServer.call(server, :fetch, @timeout)
@@ -38,17 +36,20 @@ defmodule Postgrex.TypeServer do
   @doc """
   Update the type server using the given reference and configuration.
   """
-  @spec update(pid, reference, [Postgrex.TypeInfo.t]) :: :go
-  def update(server, ref, type_infos) do
+  @spec update(pid, reference, [Postgrex.TypeInfo.t]) :: :ok
+  def update(server, ref, [_|_] = type_infos) do
     GenServer.call(server, {:update, ref, type_infos}, @timeout)
+  end
+  def update(server, ref, []) do
+    done(server, ref)
   end
 
   @doc """
-  Unlocks the given reference for a given module after types query failed.
+  Unlocks the given reference for a given module if no update.
   """
-  @spec fail(pid, reference) :: :ok
-  def fail(server, ref) do
-    GenServer.cast(server, {:fail, ref})
+  @spec done(pid, reference) :: :ok
+  def done(server, ref) do
+    GenServer.cast(server, {:done, ref})
   end
 
   ## Callbacks
@@ -57,7 +58,8 @@ defmodule Postgrex.TypeServer do
     _ = Process.flag(:trap_exit, true)
     Process.link(starter)
     state = %__MODULE__{types: Postgrex.Types.new(module),
-                        connections: MapSet.new([starter]), waiting: %{}}
+                        connections: MapSet.new([starter]),
+                        waiting: :queue.new()}
     {:ok, state}
   end
 
@@ -68,25 +70,19 @@ defmodule Postgrex.TypeServer do
     wait(state, from)
   end
 
-  def handle_call({:update, ref, type_infos}, _, %{lock: ref} = state)
+  def handle_call({:update, ref, type_infos}, from, %{lock: ref} = state)
       when is_reference(ref) do
-    associate(state, type_infos)
+    associate(state, type_infos, from)
   end
 
-  def handle_cast({:fail, ref}, %{lock: ref} = state) when is_reference(ref) do
+  def handle_cast({:done, ref}, %{lock: ref} = state) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
-    failure(state)
-  end
-
-
-  def handle_info({:go, ref}, %{lock: ref} = state)
-    when is_reference(ref) do
-    go(state)
+    next(state)
   end
 
   def handle_info({:DOWN, ref, _, _, _}, %{lock: ref} = state)
       when is_reference(ref) do
-    failure(state)
+    next(state)
   end
   def handle_info({:DOWN, ref, _, _, _}, state) do
     down(state, ref)
@@ -114,39 +110,29 @@ defmodule Postgrex.TypeServer do
     Process.link(pid)
     mref = Process.monitor(pid)
     state = %{state | connections: MapSet.put(connections, pid),
-                      waiting: Map.put(waiting, mref, from)}
+                      waiting: :queue.in({mref, from}, waiting)}
     {:noreply, state}
   end
 
-  defp associate(%{types: types, lock: ref} = state, type_infos) do
+  defp associate(%{types: types, lock: ref} = state, type_infos, from) do
     Postgrex.Types.associate_type_infos(type_infos, types)
     Process.demonitor(ref, [:flush])
-    # flush message queue of waiters
-    send(self(), {:go, ref})
-    {:reply, :go, state}
+    GenServer.reply(from, :go)
+    next(state)
   end
 
-  defp go(%{types: types} = state) do
-    %{state | lock: nil}
-    |> reply({:go, types})
-    |> check_processes()
-  end
-
-  defp failure(state) do
-    %{state | lock: nil}
-    |> reply(:error)
-    |> check_processes()
-  end
-
-  defp reply(%{waiting: waiting} = state, resp) do
-    _ = for {mref, from} <- waiting do
-      Process.demonitor(mref, [:flush, :info]) && GenServer.reply(from, resp)
+  defp next(%{types: types, waiting: waiting} = state) do
+    case :queue.out(waiting) do
+      {{:value, {mref, from}}, waiting} ->
+        GenServer.reply(from, {:lock, mref, types})
+        {:noreply, %{state | lock: mref, waiting: waiting}}
+      {:empty, waiting} ->
+        check_processes(%{state | lock: nil, waiting: waiting})
     end
-    %{state | waiting: %{}}
   end
 
   defp down(%{waiting: waiting} = state, ref) do
-    check_processes(%{state | waiting: Map.delete(waiting, ref)})
+    check_processes(%{state | waiting: :queue.filter(fn {mref, _} -> mref != ref end, waiting)})
   end
 
   defp exit(%{connections: connections} = state, pid) do

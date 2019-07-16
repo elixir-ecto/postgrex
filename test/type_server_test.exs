@@ -10,7 +10,7 @@ defmodule TypeServerTest do
     server = TM.locate(@types, key)
     assert {:lock, ref, {@types, table}} = TS.fetch(server)
     assert :ets.info(table, :name) == Postgrex.Types
-    assert TS.update(server, ref, []) == :go
+    assert TS.update(server, ref, []) == :ok
   end
 
   test "fetches and exits" do
@@ -22,7 +22,7 @@ defmodule TypeServerTest do
     assert {:lock, _, ^types} = TS.fetch(server)
   end
 
-  test "blocks on initial fetch until lock is returned" do
+  test "blocks on initial fetch until update returns lock" do
     key = make_ref()
     server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
@@ -30,10 +30,10 @@ defmodule TypeServerTest do
     task = Task.async fn -> TS.fetch(server) end
     :timer.sleep(100)
     TS.update(server, ref, [])
-    assert {:go, ^types} = Task.await(task)
+    assert {:lock, _, ^types} = Task.await(task)
   end
 
-  test "blocks on later fetch until lock is returned" do
+  test "blocks on later fetch until update returns lock" do
     key = make_ref()
     server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
@@ -43,22 +43,24 @@ defmodule TypeServerTest do
 
     task = Task.async fn -> TS.fetch(server) end
     :timer.sleep(100)
+    assert Task.yield(task, 0) == nil
     TS.update(server, ref, [])
-    assert {:go, ^types} = Task.await(task)
+    assert {:lock, _, ^types} = Task.await(task)
   end
 
-  test "blocks on initial fetch until fail is returned" do
+  test "blocks on initial fetch until done returns lock" do
     key = make_ref()
     server = TM.locate(@types, key)
-    {:lock, ref, _} = TS.fetch(server)
+    {:lock, ref, types} = TS.fetch(server)
 
     task = Task.async fn -> TS.fetch(server) end
     :timer.sleep(100)
-    TS.fail(server, ref)
-    assert :error = Task.await(task)
+    assert Task.yield(task, 0) == nil
+    TS.done(server, ref)
+    assert {:lock, _, ^types} = Task.await(task)
   end
 
-  test "blocks on later fetch until fail is returned" do
+  test "blocks on later fetch until done returns lock" do
     key = make_ref()
     server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
@@ -68,9 +70,9 @@ defmodule TypeServerTest do
 
     task = Task.async fn -> TS.fetch(server) end
     :timer.sleep(100)
-    nil = Task.yield(task, 0)
-    TS.fail(server, ref)
-    assert :error = Task.await(task)
+    assert Task.yield(task, 0) == nil
+    TS.done(server, ref)
+    assert {:lock, _, ^types} = Task.await(task)
   end
 
   test "fetches existing table even if parent crashes" do
@@ -89,31 +91,38 @@ defmodule TypeServerTest do
     assert {:lock, _, ^types} = Task.await(task)
   end
 
-  test "locks existing table even if other waiting processes crash" do
+  test "the lock is granted to single process one by one" do
     key = make_ref()
     server = TM.locate(@types, key)
 
     {:lock, ref, types} = TS.fetch(server)
     TS.update(server, ref, [])
 
+    parent = self()
     task =
       fn() ->
-        case TS.fetch(server) do
-          {:lock, ref2, _} = result ->
-            :timer.sleep(100)
+        result = TS.fetch(server)
+        send(parent, {self(), result})
+        case result do
+          {:lock, ref2, _}  ->
+            assert_receive {^parent, :go}
             TS.update(server, ref2, [])
-            result
-          result ->
-            result
+          _ ->
+            :ok
         end
       end
 
-    task1 = Task.async(task)
-    task2 = Task.async(task)
-    task3 = Task.async(task)
+    {:ok, _} = Task.start_link(task)
+    {:ok, _} = Task.start_link(task)
+    {:ok, _} = Task.start_link(task)
 
-    assert [{:go, ^types}, {:go, ^types}, {:lock, _, ^types}] =
-      Enum.sort([Task.await(task1), Task.await(task2), Task.await(task3)])
+    for _ <- 1..3 do
+      assert_receive {pid, {:lock, _, ^types}}
+      :timer.sleep(100)
+      :sys.get_state(server)
+      refute_received _
+      send(pid, {parent, :go})
+    end
 
     assert {:lock, _, ^types} = TS.fetch(server)
   end
@@ -167,12 +176,12 @@ defmodule TypeServerTest do
       :timer.sleep(:infinity)
     end
 
-    assert_receive {:lock, _, _}
+    assert_receive {:lock, _, types}
     task = Task.async(fn -> TS.fetch(server) end)
 
     Process.exit(pid, :kill)
     wait_until_dead(pid)
-    assert :error = Task.await(task)
+    assert {:lock, _, ^types} = Task.await(task)
   end
 
   defp wait_until_dead(pid) do

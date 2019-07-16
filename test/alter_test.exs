@@ -13,8 +13,8 @@ defmodule AlterTest do
       Postgrex.query!(pid, "ALTER TABLE altering ALTER a type int2 USING 0", [])
       Postgrex.query!(pid, "DROP TABLE IF EXISTS missing_enum_table", [])
       Postgrex.query!(pid, "DROP TABLE IF EXISTS missing_comp_table", [])
-      Postgrex.query!(pid, "DROP TYPE IF EXISTS missing_enum", [])
       Postgrex.query!(pid, "DROP TYPE IF EXISTS missing_comp", [])
+      Postgrex.query!(pid, "DROP TYPE IF EXISTS missing_enum", [])
       pid
     end
 
@@ -340,6 +340,30 @@ defmodule AlterTest do
 
     assert :ok = query("INSERT INTO missing_comp_table VALUES ($1)", [{1, 2}])
     assert [[{1, 2}]] = query("SELECT a FROM missing_comp_table", [])
+  end
+
+  test "new oids in param and result are bootstrapped", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_comp_table (a missing_comp, b missing_enum DEFAULT 'missing')", [])
+
+    assert [["missing"]] = query("INSERT INTO missing_comp_table VALUES ($1, DEFAULT) RETURNING b", [{1, 2}])
+  end
+
+  test "new oids and their sub-type oids are bootstrapped", context do
+    assert :ok = query("CREATE TYPE missing_enum AS ENUM ('missing')", [])
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b missing_enum)", [])
+    assert :ok = query("CREATE TABLE missing_comp_table (a missing_comp)", [])
+
+    assert :ok = query("INSERT INTO missing_comp_table VALUES ($1)", [{1, "missing"}])
+  end
+
+  test "duplicate oid is bootstrapped", context do
+    assert :ok = query("CREATE TYPE missing_comp AS (a int, b int)", [])
+    assert :ok = query("CREATE TABLE missing_comp_table (a missing_comp, b missing_comp)", [])
+
+    assert :ok = query("INSERT INTO missing_comp_table VALUES ($1, $2)", [{1, 2}, {3, 4}])
+    assert [[{1, 2}, {3, 4}]] = query("SELECT a, b FROM missing_comp_table", [])
   end
 
   @tag prepare: :unnamed
