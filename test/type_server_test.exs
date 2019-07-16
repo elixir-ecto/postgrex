@@ -50,7 +50,7 @@ defmodule TypeServerTest do
 
   test "blocks on initial fetch until done returns lock" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
 
     task = Task.async fn -> TS.fetch(server) end
