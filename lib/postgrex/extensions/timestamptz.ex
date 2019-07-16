@@ -13,10 +13,12 @@ defmodule Postgrex.Extensions.TimestampTZ do
 
   def encode(_) do
     quote location: :keep do
-      %DateTime{} = datetime ->
-        unquote(__MODULE__).encode_elixir(datetime)
+      %DateTime{calendar: Calendar.ISO} = dt ->
+        unquote(__MODULE__).encode_elixir(dt)
+
       other ->
-        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, DateTime)
+        raise DBConnection.EncodeError,
+              Postgrex.Utils.encode_msg(other, {DateTime, NaiveDateTime})
     end
   end
 

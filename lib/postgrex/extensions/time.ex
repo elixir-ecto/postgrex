@@ -5,8 +5,9 @@ defmodule Postgrex.Extensions.Time do
 
   def encode(_) do
     quote location: :keep do
-      %Time{} = time ->
+      %Time{calendar: Calendar.ISO} = time ->
         unquote(__MODULE__).encode_elixir(time)
+
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Time)
     end
