@@ -6,8 +6,8 @@ defmodule Postgrex.Parameters do
   defstruct []
   @type t :: %__MODULE__{}
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, nil, [name: __MODULE__])
+  def start_link(_) do
+    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
 
   @spec insert(%{binary => binary}) :: reference

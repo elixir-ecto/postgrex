@@ -5,7 +5,7 @@ defmodule Postgrex.Extensions.JSONB do
   def init(opts) do
     json =
       Keyword.get_lazy(opts, :json, fn ->
-        Application.get_env(:postgrex, :json_library, Poison)
+        Application.get_env(:postgrex, :json_library, Jason)
       end)
     {json, Keyword.get(opts, :decode_binary, :copy)}
   end

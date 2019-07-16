@@ -7,9 +7,21 @@ defmodule Postgrex.Query do
     * `name` - The name of the prepared statement;
     * `statement` - The prepared statement;
     * `columns` - The column names;
+    * `ref` - A reference used to identify prepared queries;
+
+  ## Prepared queries
+
+  Once a query is prepared with `Postgrex.prepare/4`, the
+  returned query will have its `ref` field set to a reference.
+  When `Postgrex.execute/4` is called with the prepared query,
+  it always returns a query. If the `ref` field in the query
+  given to `execute` and the one returned are the same, it
+  means the cached prepared query was used. If the `ref` field
+  is not the same, it means the query had to be re-prepared.
   """
 
   @type t :: %__MODULE__{
+    cache:          :reference | :statement,
     ref:            reference | nil,
     name:           iodata,
     statement:      iodata,
@@ -23,25 +35,30 @@ defmodule Postgrex.Query do
     types:          Postgrex.Types.state | nil}
 
   defstruct [:ref, :name, :statement, :param_oids, :param_formats, :param_types,
-    :columns, :result_oids, :result_formats, :result_types, :types]
+    :columns, :result_oids, :result_formats, :result_types, :types, cache: :reference]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
   require Postgrex.Messages
 
-  def parse(%{name: name} = query, _) do
+  def parse(%{types: nil, name: name} = query, _) do
     # for query table to match names must be equal
     %{query | name: IO.iodata_to_binary(name)}
   end
 
+  def parse(query, _) do
+    raise ArgumentError, "query #{inspect query} has already been prepared"
+  end
+
   def describe(query, _), do: query
 
-  def encode(%Postgrex.Query{types: nil} = query, _params, _) do
+  def encode(%{types: nil} = query, _params, _) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
 
   def encode(query, params, _) do
-    %Postgrex.Query{param_types: param_types, types: types} = query
+    %{param_types: param_types, types: types} = query
+
     case Postgrex.Types.encode_params(params, param_types, types) do
       encoded when is_list(encoded) ->
         encoded
@@ -51,17 +68,14 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     end
   end
 
-  def decode(%Postgrex.Query{result_types: nil}, res, opts) do
-    case res do
-      %Postgrex.Result{command: copy, rows: rows}
-          when copy in [:copy, :copy_stream] and rows != nil ->
-        %Postgrex.Result{res | rows: decode_map(rows, opts)}
-      _ ->
-        res
-    end
+  def decode(_, %Postgrex.Result{rows: nil} = res, _opts) do
+    res
   end
   def decode(_, %Postgrex.Result{rows: rows} = res, opts) do
     %Postgrex.Result{res | rows: decode_map(rows, opts)}
+  end
+  def decode(_, %Postgrex.Copy{} = copy, _opts) do
+    copy
   end
 
   ## Helpers

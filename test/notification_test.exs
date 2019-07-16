@@ -4,15 +4,17 @@ defmodule NotificationTest do
   alias Postgrex, as: P
   alias Postgrex.Notifications, as: PN
 
-  setup do
-    opts = [ database: "postgrex_test", sync_connect: true ]
-    {:ok, pid} = P.start_link(opts)
-    {:ok, pid_ps} = PN.start_link(opts)
-    {:ok, other_pid_ps} = PN.start_link(opts)
-    {:ok, _named_pid} = P.start_link(Keyword.put_new(opts, :name, :client))
-    {:ok, _named_ps} = PN.start_link(Keyword.put_new(opts, :name, :notifications))
+  @opts [database: "postgrex_test", sync_connect: true]
 
-    {:ok, [pid: pid, pid_ps: pid_ps, other_pid_ps: other_pid_ps]}
+  setup do
+    {:ok, pid} = P.start_link(@opts)
+    {:ok, pid_ps} = PN.start_link(@opts)
+    {:ok, [pid: pid, pid_ps: pid_ps]}
+  end
+
+  test "fails on sync connection by default" do
+    Process.flag(:trap_exit, true)
+    assert {:error, _} = PN.start_link(database: "nobody_knows_it")
   end
 
   test "listening", context do
@@ -29,7 +31,6 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel, 'hello'", [])
     receiver_pid = context.pid_ps
-    ref = ref
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", "hello"}
   end
 
@@ -38,16 +39,16 @@ defmodule NotificationTest do
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
     receiver_pid = context.pid_ps
-    ref = ref
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
   end
 
   test "listening, notify, then receive (using registered names)", _context do
+    {:ok, _} = P.start_link(Keyword.put(@opts, :name, :client))
+    {:ok, _} = PN.start_link(Keyword.put(@opts, :name, :notifications))
     assert {:ok, ref} = PN.listen(:notifications, "channel")
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(:client, "NOTIFY channel", [])
     receiver_pid = Process.whereis(:notifications)
-    ref = ref
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
   end
 
@@ -61,14 +62,15 @@ defmodule NotificationTest do
   end
 
   test "listening x2, unlistening, notify, receive", context do
+    {:ok, other_pid_ps} = PN.start_link(@opts)
+
     assert {:ok, ref1} = PN.listen(context.pid_ps, "channel")
-    assert {:ok, ref2} = PN.listen(context.other_pid_ps, "channel")
+    assert {:ok, ref2} = PN.listen(other_pid_ps, "channel")
 
-    assert :ok = PN.unlisten(context.other_pid_ps, ref2)
-
+    assert :ok = PN.unlisten(other_pid_ps, ref2)
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
+
     pid = context.pid_ps
-    ref1 = ref1
     assert_receive {:notification, ^pid, ^ref1, "channel", ""}, 1_000
   end
 

@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.Int8 do
       int when is_integer(int) and int in unquote(range) ->
         <<8 :: int32, int :: int64>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, unquote(range))
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, unquote(range))
     end
   end
 

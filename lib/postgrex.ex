@@ -21,9 +21,37 @@ defmodule Postgrex do
   """
   @type conn :: DBConnection.conn
 
-  @pool_timeout 5000
-  @timeout 15_000
+  @type start_option ::
+          {:hostname, String.t}
+          | {:socket_dir, Path.t}
+          | {:socket, Path.t}
+          | {:port, :inet.port_number}
+          | {:database, String.t}
+          | {:username, String.t}
+          | {:password, String.t}
+          | {:parameters, keyword}
+          | {:timeout, timeout}
+          | {:connect_timeout, timeout}
+          | {:handshake_timeout, timeout}
+          | {:ssl, boolean}
+          | {:ssl_opts, [:ssl.ssl_option]}
+          | {:socket_options, [:gen_tcp.connect_option]}
+          | {:prepare, :named | :unnamed}
+          | {:transactions, :strict | :naive}
+          | {:types, module}
+          | {:disconnect_on_error_codes, [atom]}
+          | DBConnection.start_option
+
+  @type option ::
+          {:mode, :transaction | :savepoint}
+          | DBConnection.option
+
+  @type execute_option ::
+          {:decode_mapper, (list -> term)}
+          | option
+
   @max_rows 500
+  @timeout 15_000
 
   ### PUBLIC API ###
 
@@ -33,7 +61,12 @@ defmodule Postgrex do
   ## Options
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
-    * `:socket` - The socket to connect to (takes precedence over the hostname);
+    * `:socket_dir` - Connect to Postgres via UNIX sockets in the given directory;
+      The socket name is derived based on the port. This is the preferred method
+      for configuring sockets and it takes precedence over the hostname. If you are
+      connecting to a socket outside of the Postgres convention, use `:socket` instead;
+    * `:socket` - Connect to Postgres via UNIX sockets in the given path.
+      This option takes precedence over the `:hostname` and `:socket_dir`;
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
@@ -42,26 +75,36 @@ defmodule Postgrex do
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);
     * `:connect_timeout` - Socket connect timeout in milliseconds (defaults to
-    `:timeout` value);
+      `:timeout` value);
     * `:handshake_timeout` - Connection handshake timeout in milliseconds
-    (defaults to `:timeout` value);
+      (defaults to `:timeout` value);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
     * `:ssl_opts` - A list of ssl options, see ssl docs;
-    * `:socket_options` - Options to be given to the underlying socket;
+    * `:socket_options` - Options to be given to the underlying socket
+      (applies to both TCP and UNIX sockets);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
-    state, otherwise set to `naive` (default: `:naive`);
-    * `:pool` - The pool module to use, see `DBConnection` for pool dependent
-    options, this option must be included with all requests contacting the pool
-    if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+      state, otherwise set to `:naive` (default: `:strict`);
+    * `:pool` - The pool module to use, defaults to `DBConnection.ConnectionPool`.
+      See the pool documentation for more options. The default `:pool_size` for
+      the default pool is 1. If you set a different pool, this option must be
+      included with all requests contacting the pool;
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
-    option is only required when using custom encoding or decoding (default:
-    `Postgrex.DefaultTypes`);
+      option is only required when using custom encoding or decoding (default:
+      `Postgrex.DefaultTypes`);
+    * `:disconnect_on_error_codes` - List of error code atoms that when encountered
+      will disconnect the connection. This is useful when using Postgrex against systems that
+      support failover, which when it occurs will emit certain error codes
+      e.g. `:read_only_sql_transaction` (default: `[]`);
+    * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
+      hides all information during connection errors to avoid leaking credentials
+      or other sensitive information. You can set this option if you wish to
+      see complete errors and stacktraces during connection errors
 
-  `Postgrex` uses the `DBConnection` framework and supports all `DBConnection`
-  options like `:idle`, `:after_connect` etc.
-  See `DBConnection.start_link/2` for more information.
+  `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
+  options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
+  for more information.
 
   ## Examples
 
@@ -75,7 +118,7 @@ defmodule Postgrex do
 
   Connect to postgres instance through a unix domain socket
 
-      iex> {:ok, pid} = Postgrex.start_link(socket: "/tmp", database: "postgres")
+      iex> {:ok, pid} = Postgrex.start_link(socket_dir: "/tmp", database: "postgres")
       {:ok, #PID<0.69.0>}
 
   ## PgBouncer
@@ -86,8 +129,26 @@ defmodule Postgrex do
   and discards named queries after the transactions closes.
   To force unnamed prepared queries set the `:prepare` option to `:unnamed`.
 
+  ## Handling failover
+
+  Some services, such as AWS Aurora, support failovers. This means the
+  database you are currently connected to may suddenly become read-only,
+  and an attempt to do any write operation, such as INSERT/UPDATE/DELETE
+  will lead to errors such as:
+
+      11:11:03.089 [error] Postgrex.Protocol (#PID<0.189.0>) disconnected:
+      ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)
+      cannot execute INSERT in a read-only transaction
+
+  Luckily, you can instruct `Postgrex` to disconnect in such cases by
+  using the following configuration:
+
+      disconnect_on_error_codes: [:read_only_sql_transaction]
+
+  This cause the connection process to attempt to reconnect according
+  to the backoff configuration.
   """
-  @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
+  @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
   def start_link(opts) do
     ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
@@ -108,16 +169,13 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Query request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
+    * `:cache_statement` - Caches the query with the given name
 
   ## Examples
 
@@ -131,20 +189,35 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
   """
-  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec query(conn, iodata, list, [execute_option]) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare_execute)
+    if name = Keyword.get(opts, :cache_statement) do
+      query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
+
+      case DBConnection.prepare_execute(conn, query, params, opts) do
+        {:ok, _, result} ->
+          {:ok, result}
+
+        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} = error->
+          with %DBConnection{} <- conn,
+               :error <- DBConnection.status(conn) do
+            error
+          else
+            _ -> query_prepare_execute(conn, query, params, opts)
+          end
+
+        {:error, _} = error ->
+          error
+      end
+    else
+      query_prepare_execute(conn, %Query{name: "", statement: statement}, params, opts)
+    end
+  end
+
+  defp query_prepare_execute(conn, query, params, opts) do
     case DBConnection.prepare_execute(conn, query, params, opts) do
-      {:ok, _, result} ->
-        {:ok, result}
-      {:error, %Postgrex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
+      {:ok, _, result} -> {:ok, result}
+      {:error, _} = error -> error
     end
   end
 
@@ -152,15 +225,12 @@ defmodule Postgrex do
   Runs an (extended) query and returns the result or raises `Postgrex.Error` if
   there was an error. See `query/3`.
   """
-  @spec query!(conn, iodata, list, Keyword.t) :: Postgrex.Result.t
+  @spec query!(conn, iodata, list, [execute_option]) :: Postgrex.Result.t
   def query!(conn, statement, params, opts \\ []) do
-    query = %Query{name: "", statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare_execute)
-    {_, result} = DBConnection.prepare_execute!(conn, query, params, opts)
-    result
+    case query(conn, statement, params, opts) do
+      {:ok, result} -> result
+      {:error, err} -> raise err
+    end
   end
 
   @doc """
@@ -176,12 +246,8 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -189,58 +255,83 @@ defmodule Postgrex do
 
       Postgrex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
-  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Postgrex.Query.t} | {:error, Postgrex.Error.t}
+  @spec prepare(conn, iodata, iodata, [option]) :: {:ok, Postgrex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare)
-    case DBConnection.prepare(conn, query, opts) do
-      {:ok, _} = ok ->
-        ok
-      {:error, %Postgrex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
-    end
+    opts = Keyword.put(opts, :postgrex_prepare, true)
+    DBConnection.prepare(conn, query, opts)
   end
 
   @doc """
   Prepares an (extended) query and returns the prepared query or raises
   `Postgrex.Error` if there was an error. See `prepare/4`.
   """
-  @spec prepare!(conn, iodata, iodata, Keyword.t) :: Postgrex.Query.t
+  @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t
   def prepare!(conn, name, statement, opts \\ []) do
-    opts =
-      opts
-      |> defaults()
-      |> Keyword.put(:function, :prepare)
+    opts = Keyword.put(opts, :postgrex_prepare, true)
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
   @doc """
-  Runs an (extended) prepared query and returns the result as
-  `{:ok, %Postgrex.Result{}}` or `{:error, %Postgrex.Error{}}` if there was an
-  error. Parameters are given as part of the prepared query, `%Postgrex.Query{}`.
+  Prepares and executes a query in a single step.
+
+  It returns the result as `{:ok, %Postgrex.Query{}, %Postgrex.Result{}}` or
+  `{:error, %Postgrex.Error{}}` if there was an error. Parameters are given as
+  part of the prepared query, `%Postgrex.Query{}`.
+
   See the README for information on how Postgrex encodes and decodes Elixir
   values by default. See `Postgrex.Query` for the query data and
   `Postgrex.Result` for the result data.
 
-  This function may still raise an exception if there is an issue with types
-  (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
-  (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
-
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
+    * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
+    execute on error, otherwise set to `:transaction` (default: `:transaction`);
+
+  ## Examples
+
+      Postgrex.prepare_and_execute(conn, "", "SELECT id FROM posts WHERE title like $1", ["%my%"])
+
+  """
+  @spec prepare_execute(conn, iodata, iodata, list, [execute_option]) ::
+    {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  def prepare_execute(conn, name, statement, params, opts \\ []) do
+    query = %Query{name: name, statement: statement}
+    DBConnection.prepare_execute(conn, query, params, opts)
+  end
+
+  @doc """
+  Prepares and runs a query and returns the result or raises
+  `Postgrex.Error` if there was an error. See `prepare_execute/5`.
+  """
+  @spec prepare_execute!(conn, iodata, iodata, list, [execute_option]) ::
+    {Postgrex.Query.t, Postgrex.Result.t}
+  def prepare_execute!(conn, name, statement, params, opts \\ []) do
+    query = %Query{name: name, statement: statement}
+    DBConnection.prepare_execute!(conn, query, params, opts)
+  end
+
+  @doc """
+  Runs an (extended) prepared query.
+
+  It returns the result as `{:ok, %Postgrex.Query{}, %Postgrex.Result{}}` or
+  `{:error, %Postgrex.Error{}}` if there was an error. Parameters are given as
+  part of the prepared query, `%Postgrex.Query{}`.
+
+  See the README for information on how Postgrex encodes and decodes Elixir
+  values by default. See `Postgrex.Query` for the query data and
+  `Postgrex.Result` for the result data.
+
+  ## Options
+
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
+    * `:timeout` - Execute request timeout (default: `#{@timeout}`);
+    * `:decode_mapper` - Fun to map each row in the result to a term after
+    decoding, (default: `fn x -> x end`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -252,34 +343,20 @@ defmodule Postgrex do
       query = Postgrex.prepare!(conn, "", "SELECT id FROM posts WHERE title like $1")
       Postgrex.execute(conn, query, ["%my%"])
   """
-  @spec execute(conn, Postgrex.Query.t, list, Keyword.t) ::
-    {:ok, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec execute(conn, Postgrex.Query.t, list, [execute_option]) ::
+    {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
   def execute(conn, query, params, opts \\ []) do
-    case DBConnection.execute(conn, query, params, defaults(opts)) do
-      {:ok, _} = ok ->
-        ok
-      {:ok, _query, result} ->
-        {:ok, result}
-      {:error, %Postgrex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
-    end
+    DBConnection.execute(conn, query, params, opts)
   end
 
   @doc """
   Runs an (extended) prepared query and returns the result or raises
   `Postgrex.Error` if there was an error. See `execute/4`.
   """
-  @spec execute!(conn, Postgrex.Query.t, list, Keyword.t) ::
+  @spec execute!(conn, Postgrex.Query.t, list, [execute_option]) ::
     Postgrex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    case DBConnection.execute!(conn, query, params, defaults(opts)) do
-      {_query, result} ->
-        result
-      result ->
-        result
-    end
+    DBConnection.execute!(conn, query, params, opts)
   end
 
   @doc """
@@ -294,12 +371,8 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Close request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     close on error, otherwise set to `:transaction` (default: `:transaction`);
 
@@ -308,15 +381,10 @@ defmodule Postgrex do
       query = Postgrex.prepare!(conn, "", "CREATE TABLE posts (id serial, title text)")
       Postgrex.close(conn, query)
   """
-  @spec close(conn, Postgrex.Query.t, Keyword.t) :: :ok | {:error, Postgrex.Error.t}
+  @spec close(conn, Postgrex.Query.t, [option]) :: :ok | {:error, Exception.t}
   def close(conn, query, opts \\ []) do
-    case DBConnection.close(conn, query, defaults(opts)) do
-      {:ok, _} ->
-        :ok
-      {:error, %Postgrex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
+    with {:ok, _} <- DBConnection.close(conn, query, opts) do
+      :ok
     end
   end
 
@@ -324,9 +392,10 @@ defmodule Postgrex do
   Closes an (extended) prepared query and returns `:ok` or raises
   `Postgrex.Error` if there was an error. See `close/3`.
   """
-  @spec close!(conn, Postgrex.Query.t, Keyword.t) :: :ok
+  @spec close!(conn, Postgrex.Query.t, [option]) :: :ok
   def close!(conn, query, opts \\ []) do
-    DBConnection.close!(conn, query, defaults(opts))
+    DBConnection.close!(conn, query, opts)
+    :ok
   end
 
   @doc """
@@ -348,20 +417,15 @@ defmodule Postgrex do
 
   ## Options
 
-    * `:pool_timeout` - Time to wait in the queue for the connection
-    (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`;
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
 
-
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool` and `:mode` will be used for all
-  requests inside the transaction function.
+  transactions and requests. The `:mode` will be used for all requests inside
+  the transaction function.
 
   ## Example
 
@@ -369,10 +433,10 @@ defmodule Postgrex do
         Postgrex.query!(conn, "SELECT title FROM posts", [])
       end)
   """
-  @spec transaction(conn, ((DBConnection.t) -> result), Keyword.t) ::
+  @spec transaction(conn, ((DBConnection.t) -> result), [option]) ::
     {:ok, result} | {:error, any} when result: var
   def transaction(conn, fun, opts \\ []) do
-    DBConnection.transaction(conn, fun, defaults(opts))
+    DBConnection.transaction(conn, fun, opts)
   end
 
   @doc """
@@ -388,29 +452,29 @@ defmodule Postgrex do
         IO.puts "never reaches here!"
       end)
   """
-  @spec rollback(DBConnection.t, any) :: no_return()
-  defdelegate rollback(conn, any), to: DBConnection
+  @spec rollback(DBConnection.t, reason :: any) :: no_return()
+  defdelegate rollback(conn, reason), to: DBConnection
 
   @doc """
   Returns a cached map of connection parameters.
 
   ## Options
 
-    * `:pool_timeout` - Call timeout (default: `#{@pool_timeout}`)
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
 
   """
-  @spec parameters(conn, Keyword.t) :: %{binary => binary}
+  @spec parameters(conn, [option]) :: %{binary => binary}
+        when option: {:timeout, timeout}
   def parameters(conn, opts \\ []) do
-    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, defaults(opts))
+    DBConnection.execute!(conn, %Postgrex.Parameters{}, nil, opts)
   end
 
   @doc """
   Returns a supervisor child specification for a DBConnection pool.
   """
-  @spec child_spec(Keyword.t) :: Supervisor.Spec.spec
+  @spec child_spec([start_option]) :: Supervisor.Spec.spec
   def child_spec(opts) do
+    ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
     DBConnection.child_spec(Postgrex.Protocol, opts)
   end
@@ -455,20 +519,14 @@ defmodule Postgrex do
         Enum.into(File.stream!("posts"), stream)
       end)
   """
-  @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, Keyword.t) ::
-    Postgrex.Stream.t
+  @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, [option]) :: Postgrex.Stream.t
+        when option: execute_option | {:max_rows, pos_integer}
   def stream(%DBConnection{} = conn, query, params, options \\ [])  do
-    options =
-      options
-      |> defaults()
-      |> Keyword.put_new(:max_rows, @max_rows)
+    options = Keyword.put_new(options, :max_rows, @max_rows)
     %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
   end
 
   ## Helpers
-  defp defaults(opts) do
-    Keyword.put_new(opts, :timeout, @timeout)
-  end
 
   defp ensure_deps_started!(opts) do
     if Keyword.get(opts, :ssl, false) and not List.keymember?(:application.which_applications(), :ssl, 0) do

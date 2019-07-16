@@ -20,17 +20,10 @@ defmodule Postgrex.Extensions.Record do
     quote location: :keep do
       tuple, oids, types when is_tuple(tuple) ->
         # encode_tuple/3 defined by TypeModule
-        case encode_tuple(tuple, oids, types) do
-          :error ->
-            raise ArgumentError,
-              "expected a tuple of size #{length(oids)}, got: #{inspect tuple}"
-          data ->
-            [<<IO.iodata_length(data) + 4::int32, tuple_size(tuple)::int32>> |
-              data]
-        end
+        data = encode_tuple(tuple, oids, types)
+        [<<IO.iodata_length(data) + 4::int32, tuple_size(tuple)::int32>> | data]
       other, _, _ ->
-        raise ArgumentError,
-          Postgrex.Utils.encode_msg(other, "a tuple")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a tuple")
     end
   end
 

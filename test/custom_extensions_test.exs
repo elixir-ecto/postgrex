@@ -92,13 +92,13 @@ defmodule CustomExtensionsTest do
       :code.purge(@types)
     end)
     extensions = [BinaryExtension, TextExtension, BadExtension]
-    opts       = [decode_binary: :reference, null: :custom]
+    opts = [decode_binary: :reference, null: :custom]
     Postgrex.TypeModule.define(@types, extensions, opts)
     :ok
   end
 
   setup do
-    opts = [database: "postgrex_test", backoff_type: :stop, types: @types]
+    opts = [database: "postgrex_test", backoff_type: :stop, max_restarts: 0, types: @types]
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid, options: opts]}
   end
@@ -126,7 +126,7 @@ defmodule CustomExtensionsTest do
       end
 
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{}, _}}
+      assert_receive {:EXIT, ^pid, :killed}
     end) =~ "(RuntimeError) decode"
   end
 
@@ -136,8 +136,8 @@ defmodule CustomExtensionsTest do
     opts = [types: Postgrex.DefaultTypes] ++ context[:options]
     {:ok, pid2} = Postgrex.start_link(opts)
 
-    assert_raise ArgumentError, ~r"invalid types for the connection",
-      fn() -> Postgrex.execute(pid2, query, []) end
+    {:error, %Postgrex.QueryError{message: message}} = Postgrex.execute(pid2, query, [])
+    assert message =~ ~r"invalid types for the connection"
   end
 
   test "raise when streaming prepared query on connection with different types", context do
@@ -147,7 +147,7 @@ defmodule CustomExtensionsTest do
     {:ok, pid2} = Postgrex.start_link(opts)
 
     Postgrex.transaction(pid2, fn(conn) ->
-      assert_raise ArgumentError, ~r"invalid types for the connection",
+      assert_raise Postgrex.QueryError, ~r"invalid types for the connection",
         fn() -> stream(query, []) |> Enum.take(1) end
     end)
   end
@@ -159,7 +159,7 @@ defmodule CustomExtensionsTest do
     {:ok, pid2} = Postgrex.start_link(opts)
 
     Postgrex.transaction(pid2, fn(conn) ->
-      assert_raise ArgumentError, ~r"invalid types for the connection",
+      assert_raise Postgrex.QueryError, ~r"invalid types for the connection",
         fn() -> Enum.into(["1\n"], stream(query, [])) end
     end)
   end

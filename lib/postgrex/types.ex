@@ -56,6 +56,7 @@ defmodule Postgrex.Types do
           AND (t.typelem = 0 OR t.typelem NOT IN (SELECT oid FROM pg_catalog.pg_type WHERE typrelid!=0))
           """
         build_bootstrap_query(version, filter_oids)
+
       _ ->
         nil
     end
@@ -253,6 +254,8 @@ defmodule Postgrex.Types do
   extensions when the `matching/1` callback returns have conflicting
   matches. If an extension is not provided for a type then Postgrex
   will fallback to default encoding/decoding methods where possible.
+  All extensions that ship as part of Postgrex are included out of the
+  box.
 
   See `Postgrex.Extension` for more information on extensions.
 
@@ -274,7 +277,7 @@ defmodule Postgrex.Types do
     * `:json` - The JSON module to encode and decode JSON binaries, calls
       `module.encode_to_iodata!/1` to encode and `module.decode!/1` to decode.
       If `nil` then no default JSON handling
-      (default: `Application.get_env(:postgrex, :json_library, Poison)`);
+      (default: `Application.get_env(:postgrex, :json_library, Jason)`);
 
     * `:bin_opt_info` - Either `true` to enable binary optimisation information,
       or `false` to disable, for more information see `Kernel.SpecialForms.<<>>/1`

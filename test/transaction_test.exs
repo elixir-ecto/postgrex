@@ -10,8 +10,17 @@ defmodule TransactionTest do
         :transaction -> :strict
         :savepoint   -> :naive
       end
-    opts = [ database: "postgrex_test", transactions: transactions, idle: :active,
-             backoff_type: :stop, prepare: context[:prepare] || :named]
+
+    opts = [
+      database: "postgrex_test",
+      transactions: transactions,
+      idle: :active,
+      backoff_type: :stop,
+      prepare: context[:prepare] || :named,
+      max_restarts: 0,
+      disconnect_on_error_codes: context[:disconnect_on_error_codes] || []
+    ]
+
     {:ok, pid} = P.start_link(opts)
     {:ok, [pid: pid]}
   end
@@ -32,11 +41,14 @@ defmodule TransactionTest do
   test "connection works after failure during rollback transaction", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
-       P.query(conn, "insert into uniques values (1), (1);", [])
-     assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
-       P.query(conn, "SELECT 42", [])
-       P.rollback(conn, :oops)
+               P.query(conn, "insert into uniques values (1), (1);", [])
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+               P.query(conn, "SELECT 42", [])
+
+      P.rollback(conn, :oops)
     end) == {:error, :oops}
+
     assert [[42]] = query("SELECT 42", [])
   end
 
@@ -44,12 +56,11 @@ defmodule TransactionTest do
   test "query begin returns error", context do
     Process.flag(:trap_exit, true)
 
-    capture_log fn ->
-      assert (%Postgrex.Error{message: "unexpected postgres status: transaction"} = err) = query("BEGIN", [])
-
+    assert capture_log(fn ->
+      assert %Postgrex.Error{message: "unexpected postgres status: transaction"} = query("BEGIN", [])
       pid = context[:pid]
-      assert_receive {:EXIT, ^pid, {:shutdown, ^err}}
-    end
+      assert_receive {:EXIT, ^pid, :killed}
+    end) =~ "** (Postgrex.Error) unexpected postgres status: transaction"
   end
 
   @tag mode: :transaction
@@ -57,51 +68,16 @@ defmodule TransactionTest do
     Process.flag(:trap_exit, true)
 
     assert transaction(fn(conn) ->
-      capture_log fn ->
-        assert {:error, %Postgrex.Error{message: "unexpected postgres status: idle"} = err} =
+      assert capture_log(fn ->
+        assert {:error, %Postgrex.Error{message: "unexpected postgres status: idle"}} =
           P.query(conn, "ROLLBACK", [])
 
         pid = context[:pid]
-        assert_receive {:EXIT, ^pid, {:shutdown, ^err}}
-      end
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "** (Postgrex.Error) unexpected postgres status: idle"
+
       :hi
     end) == {:error, :rollback}
-  end
-
-  @tag mode: :transaction
-  test "checkout when in transaction disconnects", context do
-    Process.flag(:trap_exit, true)
-
-    pid = context[:pid]
-    :sys.replace_state(pid,
-      fn(%{mod_state: %{state: state} = mod} = conn) ->
-        %{conn | mod_state: %{mod | state: %{state | postgres: :transaction}}}
-      end)
-    capture_log fn ->
-      assert {{:shutdown,
-          %Postgrex.Error{message: "unexpected postgres status: transaction"} = err}, _} =
-        catch_exit(query("SELECT 42", []))
-
-      assert_receive {:EXIT, ^pid, {:shutdown, ^err}}
-    end
-  end
-
-  @tag mode: :transaction
-  test "ping when transaction state mismatch disconnects" do
-    Process.flag(:trap_exit, true)
-
-    opts = [ database: "postgrex_test", transactions: :strict,
-             idle_timeout: 10, backoff_type: :stop ]
-    {:ok, pid} = P.start_link(opts)
-
-    capture_log fn ->
-      :sys.replace_state(pid,
-        fn(%{mod_state: %{state: state} = mod} = conn) ->
-          %{conn | mod_state: %{mod | state: %{state | postgres: :transaction}}}
-        end)
-      assert_receive {:EXIT, ^pid, {:shutdown,
-          %Postgrex.Error{message: "unexpected postgres status: transaction"}}}
-    end
   end
 
   @tag mode: :transaction
@@ -121,6 +97,44 @@ defmodule TransactionTest do
       P.rollback(conn, :oops)
     end) == {:error, :oops}
     assert query("SELECT 42", []) == [[42]]
+  end
+
+  @tag mode: :transaction
+  @tag disconnect_on_error_codes: [:read_only_sql_transaction]
+  test "transaction read-only only error disconnects with prepare and execute", context do
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn  ->
+      P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
+
+      {:ok, query} = P.prepare(conn, "query_1", "insert into uniques values (1);", [])
+
+      assert capture_log(fn ->
+        {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
+          P.execute(conn, query, [])
+
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)"
+    end)
+  end
+
+  @tag mode: :transaction
+  @tag disconnect_on_error_codes: [:read_only_sql_transaction]
+  test "transaction read-only only error disconnects with prepare, execute, and close", context do
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn  ->
+      P.query!(conn, "SET TRANSACTION READ ONLY", []).connection_id
+
+      assert capture_log(fn ->
+        {:error, %Postgrex.Error{postgres: %{code: :read_only_sql_transaction}}} =
+          P.query(conn, "insert into uniques values (1);", [])
+
+        pid = context[:pid]
+        assert_receive {:EXIT, ^pid, :killed}
+      end) =~ "disconnected: ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)"
+    end)
   end
 
   @tag mode: :savepoint
@@ -206,6 +220,42 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  test "transaction works after encode failure in savepoint query", context do
+    assert transaction(fn(conn) ->
+      assert_raise ArgumentError, fn ->
+        P.query(conn, "SELECT $1::numeric", [Decimal.new("Inf")], [mode: :savepoint])
+      end
+
+      assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+      :hi
+    end) == {:ok, :hi}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag mode: :transaction
+  test "transaction works after encode failure in savepoint query with cache_statement", context do
+    assert transaction(fn(conn) ->
+      stmt = "SELECT $1::numeric"
+      opts = [mode: :savepoint, cache_statement: "select_numeric"]
+      {:ok, _} = P.query(conn, stmt, [1.0], opts)
+
+      assert_raise ArgumentError, fn ->
+        P.query(conn, stmt, [Decimal.new("Inf")], opts)
+      end
+
+      {:ok, _} = P.query(conn, "SELECT 42", [], [])
+
+      assert_raise ArgumentError, fn ->
+        P.query(conn, stmt, [Decimal.new("Inf")], opts)
+      end
+
+      {:ok, _} = P.query(conn, "SELECT 42", [], [])
+      :hi
+    end) == {:ok, :hi}
+  end
+
+  @tag mode: :transaction
   test "transaction works after execute failure in savepoint query", context do
     assert transaction(fn(conn) ->
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
@@ -225,8 +275,7 @@ defmodule TransactionTest do
         P.query(conn, "NOT SQL", [], [mode: :savepoint])
 
       assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
-
-    :hi
+      :hi
     end) == {:ok, :hi}
 
     assert [[42]] = query("SELECT 42", [])
@@ -258,6 +307,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -272,8 +322,8 @@ defmodule TransactionTest do
       assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
         P.query(conn, "INSERT INTO uniques VALUES (1), (1)", [])
 
-      assert_raise DBConnection.TransactionError, "transaction is aborted",
-        fn -> P.query(conn, "SELECT 42", [], [mode: :savepoint]) end
+      assert {:error, %DBConnection.TransactionError{message: "transaction is aborted"}} =
+        P.query(conn, "SELECT 42", [], [mode: :savepoint])
 
       assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
         P.query(conn, "SELECT 42", [])
@@ -286,12 +336,14 @@ defmodule TransactionTest do
 
   @tag mode: :transaction
   test "savepoint query disconnects on release savepoint error", context do
-    assert transaction(fn(conn) ->
+    Process.flag(:trap_exit, true)
+
+    assert transaction(fn conn ->
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [], [mode: :savepoint])
 
-      assert_raise DBConnection.ConnectionError, "connection is closed",
-        fn -> P.query(conn, "SELECT 42", []) end
+      assert {:error, %DBConnection.ConnectionError{message: "connection is closed" <> _}} =
+        P.query(conn, "SELECT 42", [])
 
       P.rollback(conn, :oops)
     end) == {:error, :oops}
@@ -305,6 +357,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -320,6 +373,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -334,6 +388,7 @@ defmodule TransactionTest do
 
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_savepoint_specification}}} =
         P.query(conn, "RELEASE SAVEPOINT postgrex_query", [])
+
       P.rollback(conn, :oops)
     end) == {:error, :oops}
 
@@ -344,6 +399,7 @@ defmodule TransactionTest do
   test "transaction works after failure in savepoint query binding state", context do
     assert transaction(fn(conn) ->
       statement = "insert into uniques values (CAST($1::text AS int))"
+
       assert {:error, %Postgrex.Error{postgres: %{code: :invalid_text_representation}}} =
         P.query(conn, statement, ["invalid"], [mode: :savepoint])
 
@@ -464,18 +520,64 @@ defmodule TransactionTest do
     assert DBConnection.status(pid, opts) == :idle
     assert query("SELECT 42", []) == [[42]]
     assert DBConnection.status(pid, opts) == :idle
-    {conn, _} = DBConnection.begin!(pid, opts)
-    assert DBConnection.status(conn, opts) == :transaction
-    assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
-        P.query(conn, "insert into uniques values (1), (1);", [], opts)
-    assert DBConnection.status(conn, opts) == :error
-    assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
-        P.query(conn, "SELECT 42", [], opts)
-    assert DBConnection.status(conn, opts) == :error
-    assert {:error, %DBConnection.TransactionError{status: :error}} =
-      DBConnection.commit(conn, opts)
+
+    assert DBConnection.transaction(pid, fn conn ->
+             assert DBConnection.status(conn, opts) == :transaction
+
+             assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+                      P.query(conn, "insert into uniques values (1), (1);", [], opts)
+
+             assert DBConnection.status(conn, opts) == :error
+
+             assert {:error, %Postgrex.Error{postgres: %{code: :in_failed_sql_transaction}}} =
+                      P.query(conn, "SELECT 42", [], opts)
+
+             assert DBConnection.status(conn, opts) == :error
+           end, opts) == {:error, :rollback}
+
     assert DBConnection.status(pid, opts) == :idle
     assert query("SELECT 42", []) == [[42]]
     assert DBConnection.status(pid) == :idle
+  end
+
+  @tag mode: :transaction
+  test "commit log entries", context do
+    assert transaction(fn conn ->
+      P.query(conn, "SELECT 42", [])
+    end, log: &send(self(), &1))
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %Postgrex.Result{command: :commit}} = entry.result
+  end
+
+  @tag mode: :transaction
+  test "rollback log entries", context do
+    assert transaction(fn conn ->
+      P.rollback(conn, :hi)
+    end, log: &send(self(), &1)) == {:error, :hi}
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %Postgrex.Result{command: :rollback}} = entry.result
+  end
+
+  @tag mode: :transaction
+  test "rollback from failed query log entries", context do
+    assert transaction(fn conn ->
+             assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
+                      P.query(conn, "insert into uniques values (1), (1);", [])
+                    :hi
+             end, log: &send(self(), &1)) == {:error, :rollback}
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %DBConnection{}, %Postgrex.Result{command: :begin}} = entry.result
+
+    assert_receive %DBConnection.LogEntry{} = entry
+    assert {:ok, %Postgrex.Result{command: :rollback}} = entry.result
   end
 end

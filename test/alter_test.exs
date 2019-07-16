@@ -24,6 +24,32 @@ defmodule AlterTest do
     {:ok, [pid: pid, options: options]}
   end
 
+  describe "cache statement" do
+    test "after alter returns ok", context do
+      query = fn -> query("SELECT a FROM altering", [], cache_statement: "select") end
+      assert [] = query.()
+      assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+      assert [] = query.()
+    end
+
+    test "after alter returns ok for bang queries", context do
+      pid = context[:pid]
+      query = fn -> Postgrex.query!(pid, "SELECT a FROM altering", [], cache_statement: "select") end
+      assert %Postgrex.Result{rows: []} = query.()
+      assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+      assert %Postgrex.Result{rows: []} = query.()
+    end
+
+    test "after alter returns ok in transaction", context do
+      transaction(fn conn ->
+        query = fn -> Postgrex.query(conn, "SELECT a FROM altering", [], cache_statement: "select") end
+        assert {:ok, %{rows: []}} = query.()
+        assert {:ok, _} = Postgrex.query(conn, "ALTER TABLE altering ALTER a TYPE int4", [])
+        assert {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} = query.()
+      end)
+    end
+  end
+
   test "prepare query, alter result and execute returns error", context do
     query = prepare("select", "SELECT a FROM altering")
 
@@ -61,6 +87,24 @@ defmodule AlterTest do
 
     assert execute(query2, []) == []
 
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "prepare query, close, alter and execute with params that cast with error", context do
+    query1 = prepare("select", "SELECT a FROM altering WHERE a=$1")
+    query2 = prepare("select", "SELECT a FROM altering")
+    close(query1)
+    close(query2)
+
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE numeric", [])
+
+    assert execute(query1, [1]) == []
+    assert [[42]] = query("SELECT 42", [])
+
+    assert execute(query1, [Decimal.new(1)]) == []
+    assert [[42]] = query("SELECT 42", [])
+
+    assert execute(query2, []) == []
     assert [[42]] = query("SELECT 42", [])
   end
 
@@ -186,6 +230,104 @@ defmodule AlterTest do
 
     assert transaction(fn(conn) ->
         %Postgrex.Result{} = Postgrex.execute!(conn, query2, [], [mode: :savepoint])
+        :done
+    end) == {:ok, :done}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "transaction with prepare query, alter result and stream errors", context do
+    query = prepare("select", "SELECT a FROM altering")
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+
+    transaction(fn(conn) ->
+        assert_raise Postgrex.Error, ~r"\(feature_not_supported\)",
+          fn -> conn |> Postgrex.stream(query, []) |> Enum.to_list() end
+    end)
+  end
+
+  test "transaction with prepare query, alter param and stream errors", context do
+    query = prepare("select", "SELECT a FROM altering WHERE a=$1")
+    close(query)
+
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE timestamp USING CURRENT_TIMESTAMP", [])
+
+    transaction(fn(conn) ->
+        assert_raise Postgrex.Error, ~r"\(undefined_function\)",
+          fn -> conn |>  Postgrex.stream(query, [1])  |> Enum.to_list() end
+    end)
+  end
+
+  test "transaction with prepare query, alter, close and stream with param cast succeeds", context do
+    query1 = prepare("select", "SELECT a FROM altering WHERE a=$1")
+    query2 = prepare("select", "SELECT a FROM altering")
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+    assert :ok = close(query1)
+    assert :ok = close(query2)
+
+    assert transaction(fn(conn) ->
+        stream = Postgrex.stream(conn, query1, [1])
+        assert [%Postgrex.Result{}] = Enum.to_list(stream)
+        :done
+    end) == {:ok, :done}
+
+    assert [[42]] = query("SELECT 42", [])
+
+    assert transaction(fn(conn) ->
+        stream = Postgrex.stream(conn, query2, [])
+        assert [%Postgrex.Result{}] = Enum.to_list(stream)
+        :done
+    end) == {:ok, :done}
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "transaction with prepare query, alter result and savepoint stream errors", context do
+    query = prepare("select", "SELECT a FROM altering")
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+
+    transaction(fn(conn) ->
+        assert_raise Postgrex.Error, ~r"\(feature_not_supported\)",
+          fn -> conn |> Postgrex.stream(query, [], [mode: :savepoint]) |> Enum.to_list() end
+
+        assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
+    end)
+
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  test "transaction with prepare query, alter param and savepoint stream errors", context do
+    query = prepare("select", "SELECT a FROM altering WHERE a=$1")
+    close(query)
+
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE timestamp USING CURRENT_TIMESTAMP", [])
+
+    transaction(fn(conn) ->
+        assert_raise Postgrex.Error, ~r"\(undefined_function\)",
+          fn -> conn |>  Postgrex.stream(query, [1], [mode: :savepoint])  |> Enum.to_list() end
+
+        assert %Postgrex.Result{rows: [[42]]} = Postgrex.query!(conn, "SELECT 42", [])
+    end)
+  end
+
+  test "transaction with prepare query, close, alter and savepoint stream with param cast succeeds", context do
+    query1 = prepare("select", "SELECT a FROM altering WHERE a=$1")
+    query2 = prepare("select", "SELECT a FROM altering")
+    assert :ok = close(query1)
+    assert :ok = close(query2)
+    assert :ok = query("ALTER TABLE altering ALTER a TYPE int4", [])
+
+    assert transaction(fn(conn) ->
+        stream = Postgrex.stream(conn, query1, [1], [mode: :savepoint])
+        assert [%Postgrex.Result{}] = Enum.to_list(stream)
+        :done
+    end) == {:ok, :done}
+
+    assert [[42]] = query("SELECT 42", [])
+
+    assert transaction(fn(conn) ->
+        stream = Postgrex.stream(conn, query2, [], [mode: :savepoint])
+        assert [%Postgrex.Result{}] = Enum.to_list(stream)
         :done
     end) == {:ok, :done}
 

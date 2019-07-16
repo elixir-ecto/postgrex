@@ -8,7 +8,7 @@ defmodule Postgrex.Messages do
   @protocol_vsn_minor 0
 
   @auth_types [ ok: 0, kerberos: 2, cleartext: 3, md5: 5, scm: 6, gss: 7,
-                sspi: 9, gss_cont: 8 ]
+                gss_cont: 8, sspi: 9, sasl: 10, sasl_cont: 11, sasl_fin: 12 ]
 
   @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
                   position: ?P, internal_position: ?p, internal_query: ?q,
@@ -71,6 +71,12 @@ defmodule Postgrex.Messages do
           rest_size = size - 2
           <<data :: size(rest_size)>> = rest
           data
+        :sasl ->
+          rest
+        :sasl_cont ->
+          rest
+        :sasl_fin ->
+          rest
         _ ->
           nil
       end
@@ -129,13 +135,13 @@ defmodule Postgrex.Messages do
   # error
   def parse(rest, ?E, _size) do
     fields = decode_fields(rest)
-    msg_error(fields: fields)
+    msg_error(fields: Map.new(fields))
   end
 
   # notice
   def parse(rest, ?N, _size) do
     fields = decode_fields(rest)
-    msg_notice(fields: fields)
+    msg_notice(fields: Map.new(fields))
   end
 
   # parameter
@@ -238,7 +244,7 @@ defmodule Postgrex.Messages do
 
   # password
   defp encode(msg_password(pass: pass)) do
-    {?p, [pass, 0]}
+    {?p, [pass]}
   end
 
   # query

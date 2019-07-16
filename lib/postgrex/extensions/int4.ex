@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.Int4 do
       int when is_integer(int) and int in unquote(range) ->
         <<4 :: int32, int :: int32>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, unquote(range))
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, unquote(range))
     end
   end
 

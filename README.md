@@ -22,7 +22,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
   * Automatic decoding and encoding of Elixir values to and from PostgreSQL's binary format
   * User defined extensions for encoding and decoding any PostgreSQL type
   * Supports transactions, prepared queries and multiple pools via [DBConnection](https://github.com/elixir-ecto/db_connection)
-  * Supports PostgreSQL 8.4, 9.0-9.6, and 10.0 (hstore is not supported on 8.4)
+  * Supports PostgreSQL 8.4, 9.0-9.6, and later (hstore is not supported on 8.4)
 
 ## Data representation
 
@@ -38,7 +38,8 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
     numeric         #Decimal<42.0> *
     date            %Date{year: 2013, month: 10, day: 12}
     time(tz)        %Time{hour: 0, minute: 37, second: 14} **
-    timestamp(tz)   %DateTime{year: 2013 month: 10, day: 12, hour: 0, minute: 37, second: 14} **
+    timestamp       %NaiveDateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14}
+    timestamptz     %DateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14, time_zone: "Etc/UTC"} **
     interval        %Postgrex.Interval{months: 14, days: 40, secs: 10920}
     array           [1, 2, 3]
     composite type  {42, "title", "content"}
@@ -61,10 +62,22 @@ Postgrex does not automatically cast between types. For example, you can't pass 
 
 ## JSON support
 
-Postgrex comes with JSON support out of the box via the [Poison](https://github.com/devinus/poison) library. You can customize it to use another library via the `:json_library` configuration:
+Postgrex comes with JSON support out of the box via the [Jason](https://github.com/michalmuskala/jason) library. To use it, add :jason to your dependencies:
+
+```elixir
+{:jason, "~> 1.0"}
+```
+
+You can customize it to use another library via the `:json_library` configuration:
 
 ```elixir
 config :postgrex, :json_library, SomeOtherLib
+```
+
+Once you change the value, you have to recompile Postgrex, which can be done by cleaning its current build:
+
+```sh
+mix deps.clean postgrex --build
 ```
 
 ## Extensions
@@ -137,6 +150,7 @@ The tests requires some modifications to your [hba file](http://www.postgresql.o
 local   all             all                     trust
 host    all             postgrex_md5_pw         127.0.0.1/32    md5
 host    all             postgrex_cleartext_pw   127.0.0.1/32    password
+host    all             postgrex_scram_pw       127.0.0.1/32    scram-sha-256
 ```
 
 The server needs to be restarted for the changes to take effect. Additionally you need to setup a Postgres user with the same username as the local user and give it trust or ident in your hba file. Or you can export $PGUSER and $PGPASSWORD before running tests.

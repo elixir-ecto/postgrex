@@ -13,7 +13,7 @@ defmodule Postgrex.Extensions.Raw do
       bin when is_binary(bin) ->
         [<<byte_size(bin) :: int32>> | bin]
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a binary")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a binary")
     end
   end
 

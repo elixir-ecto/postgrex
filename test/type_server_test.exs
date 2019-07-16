@@ -1,13 +1,13 @@
 defmodule TypeServerTest do
   use ExUnit.Case, async: true
-  alias Postgrex.TypeManager, as: TM
+  alias Postgrex.TypeSupervisor, as: TM
   alias Postgrex.TypeServer, as: TS
 
   @types Postgrex.DefaultTypes
 
   test "fetches and unlocks" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     assert {:lock, ref, {@types, table}} = TS.fetch(server)
     assert :ets.info(table, :name) == Postgrex.Types
     assert TS.update(server, ref, []) == :ok
@@ -15,16 +15,16 @@ defmodule TypeServerTest do
 
   test "fetches and exits" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     task = Task.async(fn() -> assert {:lock, _, _} = TS.fetch(server) end)
     {:lock, _, types} = Task.await(task)
-    assert ^server = TM.get(@types, key)
+    assert ^server = TM.locate(@types, key)
     assert {:lock, _, ^types} = TS.fetch(server)
   end
 
   test "blocks on initial fetch until update returns lock" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
 
     task = Task.async fn -> TS.fetch(server) end
@@ -35,7 +35,7 @@ defmodule TypeServerTest do
 
   test "blocks on later fetch until update returns lock" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
     TS.update(server, ref, [])
 
@@ -62,7 +62,7 @@ defmodule TypeServerTest do
 
   test "blocks on later fetch until done returns lock" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
     TS.update(server, ref, [])
 
@@ -77,7 +77,7 @@ defmodule TypeServerTest do
 
   test "fetches existing table even if parent crashes" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
 
     task = Task.async fn ->
       {:lock, ref, types} = TS.fetch(server)
@@ -93,7 +93,7 @@ defmodule TypeServerTest do
 
   test "the lock is granted to single process one by one" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
 
     {:lock, ref, types} = TS.fetch(server)
     TS.update(server, ref, [])
@@ -132,7 +132,7 @@ defmodule TypeServerTest do
     key = make_ref()
 
     task = Task.async fn ->
-      server = TM.get(@types, key)
+      server = TM.locate(@types, key)
       {:lock, ref, types} = TS.fetch(server)
       TS.update(server, ref, [])
       {server, types}
@@ -141,7 +141,7 @@ defmodule TypeServerTest do
     mref = Process.monitor(server1)
     assert_receive {:DOWN, ^mref, _, _, _}
 
-    server2 = TM.get(@types, key)
+    server2 = TM.locate(@types, key)
     refute server1 == server2
 
     task = Task.async(fn -> TS.fetch(server2) end)
@@ -156,7 +156,7 @@ defmodule TypeServerTest do
 
   test "gives lock to another process if original holder crashes before fetch" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
 
     task = Task.async(fn -> TS.fetch(server) end)
     assert {:lock, _ref, types} = Task.await(task)
@@ -168,7 +168,7 @@ defmodule TypeServerTest do
 
   test "error waiting process if original holder crashes after fetch" do
     key = make_ref()
-    server = TM.get(@types, key)
+    server = TM.locate(@types, key)
     top = self()
 
     {:ok, pid} = Task.start fn ->

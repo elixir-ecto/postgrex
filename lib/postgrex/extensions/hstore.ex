@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.HStore do
         data = unquote(__MODULE__).encode_hstore(map)
         [<<IO.iodata_length(data) :: int32>> | data]
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "a map")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a map")
     end
   end
 
@@ -28,7 +28,7 @@ defmodule Postgrex.Extensions.HStore do
     keys_and_values = Enum.reduce hstore_map, "", fn ({key, value}, acc) ->
         [acc, encode_hstore_key(key), encode_hstore_value(value)]
     end
-    [<<Map.size(hstore_map)::int32>> | keys_and_values]
+    [<<map_size(hstore_map)::int32>> | keys_and_values]
   end
 
   defp encode_hstore_key(key) when is_binary(key) do

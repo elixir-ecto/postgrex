@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.VoidBinary do
       :void ->
         <<0 :: int32>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, "the atom :void")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "the atom :void")
     end
   end
 

@@ -3,105 +3,93 @@ defmodule LoginTest do
   alias Postgrex, as: P
   import ExUnit.CaptureLog
 
-  test "login cleartext password" do
-    Process.flag(:trap_exit, true)
+  setup do
+    {:ok, [options: [database: "postgrex_test", backoff_type: :stop, max_restarts: 0]]}
+  end
 
-    opts = [ hostname: "localhost", username: "postgrex_cleartext_pw",
-             password: "postgrex_cleartext_pw", database: "postgres" ]
-    assert {:ok, pid} = P.start_link(opts)
+  test "login cleartext password", context do
+    Process.flag(:trap_exit, true)
+    opts = [username: "postgrex_cleartext_pw", password: "postgrex_cleartext_pw"]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
-  test "login cleartext password failure" do
-    Process.flag(:trap_exit, true)
-
-    opts = [ hostname: "localhost", username: "postgrex_cleartext_pw",
-             password: "wrong_password", database: "postgres",
-             backoff_type: :stop]
-
-    capture_log fn ->
-      assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}, [_|_]}}
-      assert code in [:invalid_authorization_specification, :invalid_password]
-    end
+  test "login cleartext password failure", context do
+    assert capture_log(fn ->
+      opts = [username: "postgrex_cleartext_pw", password: "wrong_password"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
   end
 
-  test "login md5 password" do
-    Process.flag(:trap_exit, true)
-
-    opts = [ hostname: "localhost", username: "postgrex_md5_pw",
-             password: "postgrex_md5_pw", database: "postgres" ]
-    assert {:ok, pid} = P.start_link(opts)
+  test "login md5 password", context do
+    opts = [username: "postgrex_md5_pw", password: "postgrex_md5_pw"]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
-  test "login md5 password failure" do
-    Process.flag(:trap_exit, true)
-
-    opts = [ hostname: "localhost", username: "postgrex_md5_pw",
-             password: "wrong_password", database: "postgres",
-             backoff_type: :stop]
-
-    capture_log fn ->
-      assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: code}}, [_|_]}}
-      assert code in [:invalid_authorization_specification, :invalid_password]
-    end
+  test "login md5 password failure", context do
+    assert capture_log(fn ->
+      opts = [username: "postgrex_md5_pw", password: "wrong_password"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
   end
 
-  test "parameters" do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test" ]
+  @tag min_pg_version: "10.0"
+  test "login scram password", context do
+    opts = [username: "postgrex_scram_pw", password: "postgrex_scram_pw"]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
 
-    assert {:ok, pid} = P.start_link(opts)
+  @tag min_pg_version: "10.0"
+  test "login scram password failure", context do
+    assert capture_log(fn ->
+      opts = [username: "postgrex_scram_pw", password: "wrong_password"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
+  end
+
+  test "parameters", context do
+    assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
 
     assert String.match? P.parameters(pid)["server_version"], ~R"^\d+\.\d+"
   end
 
   @tag min_pg_version: "9.0"
-  test "setting parameters" do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test" ]
-
-    assert {:ok, pid} = P.start_link(opts)
+  test "setting parameters", context do
+    assert {:ok, pid} = P.start_link(context[:options])
     assert "" == P.parameters(pid)["application_name"]
-
-    opts = opts ++ [parameters: [application_name: "postgrex"]]
-    assert {:ok, pid} = P.start_link(opts)
+    opts = [parameters: [application_name: "postgrex"]]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
     assert "postgrex" == P.parameters(pid)["application_name"]
   end
 
-  test "infinity timeout" do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test",
-             timeout: :infinity ]
-
-    assert {:ok, pid} = P.start_link(opts)
+  test "infinity timeout", context do
+    opts = [timeout: :infinity]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
   @tag :ssl
-  test "ssl" do
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test",
-             ssl: true ]
-    assert {:ok, pid} = P.start_link(opts)
+  test "ssl", context do
+    opts = [ssl: true]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
-  test "env var defaults" do
-    opts = [ database: "postgrex_test" ]
-    assert {:ok, pid} = P.start_link(opts)
+  test "env var defaults", context do
+    assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
-  test "env var default db name" do
+  test "env var default db name", context do
     previous_db_name = System.get_env("PGDATABASE")
+
     try do
       set_db_name("postgrex_test")
-      opts = []
+      opts = [] ++ Keyword.delete(context[:options], :database)
       assert {:ok, pid} = P.start_link(opts)
       assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
     after
@@ -109,93 +97,68 @@ defmodule LoginTest do
     end
   end
 
-  test "env var default db name (no such database)" do
+  test "env var default db name (no such database)", context do
     previous_db_name = System.get_env("PGDATABASE")
+
     try do
       set_db_name("doesntexist")
-      Process.flag(:trap_exit, true)
 
-      capture_log fn ->
-        opts = [ sync_connect: true, backoff_type: :stop ]
-        assert {:error, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}} =
-               P.start_link(opts)
-      end
+      assert capture_log(fn ->
+        opts = Keyword.delete(context[:options], :database)
+        assert_start_and_killed(opts)
+      end)
     after
       set_db_name(previous_db_name)
     end
   end
 
-  test "sync connect" do
-    opts = [ database: "postgres", sync_connect: true ]
-    assert {:ok, pid} = P.start_link(opts)
-    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  test "non-existent database", context do
+    assert capture_log(fn ->
+      opts = [database: "doesntexist"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ "** (Postgrex.Error) FATAL 3D000 (invalid_catalog_name)"
   end
 
-  test "non existent database" do
-    Process.flag(:trap_exit, true)
-
-    capture_log fn ->
-      opts = [ database: "doesntexist", sync_connect: true ,
-               backoff_type: :stop ]
-      assert {:error, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}} =
-             P.start_link(opts)
-
-      assert_receive {:EXIT, _, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
-    end
-
-    capture_log fn ->
-      opts = [ database: "doesntexist", backoff_type: :stop ]
-      {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}, [_|_]}}
-    end
+  test "non-existent domain", context do
+    assert capture_log(fn ->
+      opts = [hostname: "doesntexist", connect_timeout: 100]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"tcp connect \(doesntexist:\d+\): non-existing domain - :nxdomain"
   end
 
-  test "non-existent domain" do
-    Process.flag(:trap_exit, true)
-    opts = [ hostname: "doesntexist", port: 5432, username: "postgrex_cleartext_pw",
-             password: "password", database: "postgres", backoff_type: :stop ]
-
-    capture_log fn ->
-      assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{message: message}, [_|_]}}
-      assert message == "tcp connect (doesntexist:5432): non-existing domain - :nxdomain"
-    end
-  end
-
-  test "unix domain socket connection" do
-    Process.flag(:trap_exit, true)
+  @tag :unix
+  test "unix domain socket connection", context do
     socket = System.get_env("PG_SOCKET_DIR") || "/tmp"
 
-    opts = [ socket: socket, port: 5432, username: "postgres",
-             password: "postgres", database: "postgres", backoff_type: :stop ]
-
+    opts = [socket_dir: socket]
     capture_log fn ->
-      assert {:ok, pid} = P.start_link(opts)
+      assert {:ok, pid} = P.start_link(opts ++ context[:options])
       assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
     end
   end
 
-  test "non-existent unix domain socket" do
-    Process.flag(:trap_exit, true)
-    opts = [ socket: "/not_a_dir", port: 5432, username: "postgres",
-             password: "postgres", database: "postgres", backoff_type: :stop ]
-
-    capture_log fn ->
-      assert {:ok, pid} = P.start_link(opts)
-      assert_receive {:EXIT, ^pid, {%DBConnection.ConnectionError{message: message}, [_|_]}}
-      assert message == "tcp connect (/not_a_dir/.s.PGSQL.5432): no such file or directory - :enoent"
-    end
+  @tag :unix
+  test "non-existent unix domain socket", context do
+    assert capture_log(fn ->
+      opts = [socket_dir: "/doesntexist"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"tcp connect \(/doesntexist/.s.PGSQL.\d+\): no such file or directory - :enoent"
   end
 
-  test "after connect function run" do
+  @tag :unix
+  test "socket precedes socket_dir", context do
+    assert capture_log(fn ->
+      opts = [socket: "/socketfile", socket_dir: "/socketdir"]
+      assert_start_and_killed(opts ++ context[:options])
+    end) =~ ~r"tcp connect \(/socketfile\): no such file or directory - :enoent"
+  end
+
+  test "after connect function run", context do
     parent = self()
     after_connect = fn(conn) -> send(parent, P.query(conn, "SELECT 42", [])) end
-    opts = [ hostname: "localhost", username: "postgres",
-             password: "postgres", database: "postgrex_test",
-             after_connect: after_connect ]
+    opts = [after_connect: after_connect]
 
-    {:ok, _} = P.start_link(opts)
-
+    {:ok, _} = P.start_link(opts ++ context[:options])
     assert_receive {:ok, %Postgrex.Result{}}
   end
 
@@ -221,6 +184,15 @@ defmodule LoginTest do
       assert nil == P.Utils.default_opts(opts)[:port]
     after
       set_port_number(previous_port)
+    end
+  end
+
+  defp assert_start_and_killed(opts) do
+    Process.flag(:trap_exit, true)
+
+    case P.start_link(opts) do
+      {:ok, pid} -> assert_receive {:EXIT, ^pid, :killed}
+      {:error, :killed} -> :ok
     end
   end
 

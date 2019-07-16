@@ -1,43 +1,59 @@
-pg_version =
-  case System.get_env("PGVERSION") do
-    nil -> nil
-    version ->
-      destructure [major, minor], String.split(version, ".")
-      {String.to_integer(major), String.to_integer(minor || "0")}
+defmodule PSQL do
+  @pg_env %{"PGUSER" => System.get_env("PGUSER") || "postgres"}
+
+  def cmd(args) do
+    {output, status} = System.cmd("psql", args, stderr_to_stdout: true, env: @pg_env)
+
+    if status != 0 do
+      IO.puts """
+      Command:
+
+      psql #{Enum.join(args, " ")}
+
+      error'd with:
+
+      #{output}
+
+      Please verify the user "postgres" exists and it has permissions to
+      create databases and users. If not, you can create a new user with:
+
+      $ createuser postgres -s --no-password
+      """
+
+      System.halt(1)
+    end
+
+    output
   end
 
-exclude = if pg_version == {8, 4} do
-  [requires_notify_payload: true]
-else
-  []
-end
-
-version_exclusions =
-  if pg_version do
-    [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}]
-    |> Enum.filter(fn x -> x > pg_version end)
-    |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
-  else
-    []
+  def vsn do
+    vsn_select = cmd(["-c", "SELECT version();"])
+    [_, major, minor] = Regex.run(~r/PostgreSQL (\d+).(\d+)/, vsn_select)
+    {String.to_integer(major), String.to_integer(minor)}
   end
 
-ExUnit.start exclude: version_exclusions ++ exclude
-
-{:ok, _} = :application.ensure_all_started(:crypto)
-
-run_cmd = fn cmd ->
-  key = :ecto_setup_cmd_output
-  Process.put(key, "")
-  status = Mix.Shell.cmd(cmd, fn(data) ->
-    current = Process.get(key)
-    Process.put(key, current <> data)
-  end)
-  output = Process.get(key)
-  Process.put(key, "")
-  {status, output}
+  def supports_sockets? do
+    otp_release = :otp_release |> :erlang.system_info() |> List.to_integer()
+    unix_socket_dir = System.get_env("PG_SOCKET_DIR") || "/tmp"
+    port = System.get_env("PGPORT") || "5432"
+    unix_socket_path = Path.join(unix_socket_dir, ".s.PGSQL.#{port}")
+    otp_release >= 20 and File.exists?(unix_socket_path)
+  end
 end
 
-sql = """
+pg_version = PSQL.vsn()
+unix_exclude = if PSQL.supports_sockets?, do: [], else: [unix: true]
+notify_exclude = if pg_version == {8, 4}, do: [requires_notify_payload: true], else: []
+
+version_exclude =
+  [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}]
+  |> Enum.filter(fn x -> x > pg_version end)
+  |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
+
+ExUnit.start(exclude: version_exclude ++ notify_exclude ++ unix_exclude)
+{:ok, _} = Application.ensure_all_started(:crypto)
+
+sql_test = """
 DROP ROLE IF EXISTS postgrex_cleartext_pw;
 DROP ROLE IF EXISTS postgrex_md5_pw;
 
@@ -68,58 +84,43 @@ CREATE DOMAIN points_domain AS point[] CONSTRAINT is_populated CHECK (COALESCE(a
 
 DROP DOMAIN IF EXISTS floats_domain;
 CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
+
+#{
+  if pg_version >= {10, 0} do
+    "DROP ROLE IF EXISTS postgrex_scram_pw;" <>
+      "SET password_encryption = 'scram-sha-256';" <>
+      "CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';"
+  end
+}
 """
 
-sql_with_schemas = """
+sql_test_with_schemas = """
 DROP SCHEMA IF EXISTS test;
 CREATE SCHEMA test;
 """
 
-cmds = [
-  ["-U", "postgres", "-c", "DROP DATABASE IF EXISTS postgrex_test;"],
-  ["-U", "postgres", "-c", "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"],
-  ["-U", "postgres", "-c", "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
-  ["-U", "postgres", "-c", "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"],
-  ["-U", "postgres", "-d", "postgrex_test", "-c", sql],
-  ["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", sql_with_schemas]
-]
+PSQL.cmd(["-c", "DROP DATABASE IF EXISTS postgrex_test;"])
+PSQL.cmd(["-c", "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"])
+PSQL.cmd(["-c", "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"])
+PSQL.cmd(["-c", "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"])
+PSQL.cmd(["-d", "postgrex_test", "-c", sql_test])
+PSQL.cmd(["-d", "postgrex_test_with_schemas", "-c", sql_test_with_schemas])
 
-pg_path = System.get_env("PGPATH")
+cond do
+  pg_version >= {9, 1} ->
+    PSQL.cmd(["-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"])
+    PSQL.cmd(["-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"])
 
-cmds =
-  cond do
-    !pg_version || pg_version >= {9, 1} ->
-      cmds ++ [["-U", "postgres", "-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"],
-               ["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"]]
-    pg_version == {9, 0} ->
-      cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-f", "#{pg_path}/contrib/hstore.sql"]]
-    pg_version < {9, 0} ->
-      cmds ++ [["-U", "postgres", "-d", "postgrex_test", "-c", "CREATE LANGUAGE plpgsql;"]]
-    true ->
-      cmds
+  pg_version == {9, 0} ->
+    pg_path = System.get_env("PGPATH")
+    PSQL.cmd(["-d", "postgrex_test", "-f", "#{pg_path}/contrib/hstore.sql"])
+
+  pg_version < {9, 0} ->
+    PSQL.cmd(["-d", "postgrex_test", "-c", "CREATE LANGUAGE plpgsql;"])
+
+  true ->
+    :ok
 end
-
-Enum.each(cmds, fn args ->
-  {output, status} = System.cmd("psql", args, stderr_to_stdout: true)
-
-  if status != 0 do
-    IO.puts """
-    Command:
-
-    psql #{Enum.join(args, " ")}
-
-    error'd with:
-
-    #{output}
-
-    Please verify the user "postgres" exists and it has permissions to
-    create databases and users. If not, you can create a new user with:
-
-    $ createuser postgres -s --no-password
-    """
-    System.halt(1)
-  end
-end)
 
 defmodule Postgrex.TestHelper do
   defmacro query(stat, params, opts \\ []) do
@@ -128,7 +129,7 @@ defmodule Postgrex.TestHelper do
                                      unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
-        {:error, %Postgrex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
@@ -138,7 +139,17 @@ defmodule Postgrex.TestHelper do
       case Postgrex.prepare(var!(context)[:pid], unquote(name),
                                      unquote(stat), unquote(opts)) do
         {:ok, %Postgrex.Query{} = query} -> query
-        {:error, %Postgrex.Error{} = err} -> err
+        {:error, err} -> err
+      end
+    end
+  end
+
+  defmacro prepare_execute(name, stat, params, opts \\ []) do
+    quote do
+      case Postgrex.prepare_execute(var!(context)[:pid], unquote(name),
+                                     unquote(stat), unquote(params), unquote(opts)) do
+        {:ok, %Postgrex.Query{} = query, %Postgrex.Result{rows: rows}} -> {query, rows}
+        {:error, err} -> err
       end
     end
   end
@@ -147,9 +158,9 @@ defmodule Postgrex.TestHelper do
     quote do
       case Postgrex.execute(var!(context)[:pid], unquote(query),
                                        unquote(params), unquote(opts)) do
-        {:ok, %Postgrex.Result{rows: nil}} -> :ok
-        {:ok, %Postgrex.Result{rows: rows}} -> rows
-        {:error, %Postgrex.Error{} = err} -> err
+        {:ok, %Postgrex.Query{}, %Postgrex.Result{rows: nil}} -> :ok
+        {:ok, %Postgrex.Query{}, %Postgrex.Result{rows: rows}} -> rows
+        {:error, err} -> err
       end
     end
   end
@@ -162,18 +173,16 @@ defmodule Postgrex.TestHelper do
 
   defmacro close(query, opts \\ []) do
     quote do
-      case Postgrex.close(var!(context)[:pid], unquote(query),
-                                     unquote(opts)) do
+      case Postgrex.close(var!(context)[:pid], unquote(query), unquote(opts)) do
         :ok -> :ok
-        {:error, %Postgrex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
 
   defmacro transaction(fun, opts \\ []) do
     quote do
-      Postgrex.transaction(var!(context)[:pid], unquote(fun),
-                                      unquote(opts))
+      Postgrex.transaction(var!(context)[:pid], unquote(fun), unquote(opts))
     end
   end
 end

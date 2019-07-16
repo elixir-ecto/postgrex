@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.Point do
       %Postgrex.Point{x: x, y: y} ->
         <<16::int32, x::float64, y::float64>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Point)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Point)
     end
   end
 
@@ -23,6 +23,6 @@ defmodule Postgrex.Extensions.Point do
     <<x::float64, y::float64>>
   end
   def encode_point(other, wanted) do
-    raise ArgumentError, Postgrex.Utils.encode_msg(other, wanted)
+    raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, wanted)
   end
 end

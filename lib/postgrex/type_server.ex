@@ -1,7 +1,7 @@
 defmodule Postgrex.TypeServer do
   @moduledoc false
 
-  use GenServer
+  use GenServer, restart: :temporary
 
   defstruct [:types, :connections, :lock, :waiting]
 
@@ -10,9 +10,9 @@ defmodule Postgrex.TypeServer do
   @doc """
   Starts a type server.
   """
-  @spec start_link(module, pid) :: GenServer.on_start
-  def start_link(module, starter) do
-    GenServer.start_link(__MODULE__, {module, starter})
+  @spec start_link({module, pid, keyword}) :: GenServer.on_start
+  def start_link({module, starter, opts}) do
+    GenServer.start_link(__MODULE__, {module, starter}, opts)
   end
 
   @doc """

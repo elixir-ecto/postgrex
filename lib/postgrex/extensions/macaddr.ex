@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.MACADDR do
       %Postgrex.MACADDR{address: {a, b, c, d, e, f}} ->
         <<6::int32, a, b, c, d, e, f>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.MACADDR)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.MACADDR)
     end
   end
 

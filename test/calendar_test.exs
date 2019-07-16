@@ -157,6 +157,39 @@ defmodule CalendarTest do
     assert [["1999-12-31"]] = query("SELECT $1::date::text", [~D[1999-12-31]])
   end
 
+  test "encode non Calendar.ISO data types", context do
+    defmodule OtherCalendar do
+    end
+
+    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Date{} in the `Calendar.ISO` calendar/, fn ->
+      assert [["1999-12-31"]] = query("SELECT $1::date::text", [%{~D[1999-12-31] | calendar: OtherCalendar}])
+    end
+
+    # Timestamp
+    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/, fn ->
+      assert [["1999-12-31"]] = query("SELECT $1::timestamp::text",
+        [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}])
+    end
+
+    # Timestampz
+    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/, fn ->
+      assert [["1999-12-31"]] = query("SELECT $1::timestamp with time zone::text",
+        [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}])
+    end
+
+    # Time
+    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Time{} in the `Calendar.ISO` calendar/, fn ->
+      assert [["1999-12-31"]] = query("SELECT $1::time::text",
+      [%{~T[10:10:10] | calendar: OtherCalendar}])
+    end
+
+    # Time with zone
+    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Time{} in the `Calendar.ISO` calendar/, fn ->
+      assert [["1999-12-31"]] = query("SELECT $1::timetz::text",
+      [%{~T[10:10:10] | calendar: OtherCalendar}])
+    end
+  end
+
   test "encode timestamp", context do
     assert [["2001-01-01 00:00:00"]] =
       query("SELECT $1::timestamp::text", [~N[2001-01-01 00:00:00.000000]])
@@ -175,6 +208,9 @@ defmodule CalendarTest do
 
     assert [["1980-01-01 00:00:00.123456"]] =
       query("SELECT $1::timestamp::text", [~N[1980-01-01 00:00:00.123456]])
+
+    assert [["1980-01-01 00:00:00.123456"]] =
+      query("SELECT $1::timestamp::text", [DateTime.from_naive!(~N[1980-01-01 00:00:00.123456], "Etc/UTC")])
   end
 
   test "encode timestamptz", context do

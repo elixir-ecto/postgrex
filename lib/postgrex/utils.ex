@@ -60,12 +60,15 @@ defmodule Postgrex.Utils do
   Converts pg major.minor.patch (http://www.postgresql.org/support/versioning) version to an integer
   """
   def parse_version(version) do
-    list =
+    segments =
       version
-      |> String.split(".")
-      |> Enum.map(&elem(Integer.parse(&1), 0))
+      |> String.split(" ", parts: 2)
+      |> hd()
+      |> String.split(".", parts: 4)
+      |> Enum.map(&parse_version_bit/1)
 
-    case list do
+    case segments do
+      [major, minor, patch, _] -> {major, minor, patch}
       [major, minor, patch] -> {major, minor, patch}
       [major, minor] -> {major, minor, 0}
       [major] -> {major, 0, 0}
@@ -103,6 +106,26 @@ defmodule Postgrex.Utils do
   @doc """
   Return encode error message.
   """
+  def encode_msg(%Date{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %Date{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support dates in the `Calendar.ISO` calendar only."
+  end
+
+  def encode_msg(%NaiveDateTime{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support naive datetimes in the `Calendar.ISO` calendar only."
+  end
+
+  def encode_msg(%DateTime{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %DateTime{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support datetimes in the `Calendar.ISO` calendar only."
+  end
+
+  def encode_msg(%Time{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
+    "Postgrex expected a %Time{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
+    "Postgrex (and Postgres) support times in the `Calendar.ISO` calendar only."
+  end
+
   def encode_msg(observed, expected) do
     "Postgrex expected #{to_desc(expected)}, got #{inspect observed}. " <>
     "Please make sure the value you are passing matches the definition in " <>
@@ -122,6 +145,11 @@ defmodule Postgrex.Utils do
   end
 
   ## Helpers
+
+  defp parse_version_bit(bit) do
+    {int, _} = Integer.parse(bit)
+    int
+  end
 
   defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"
   defp to_desc(%Range{} = range), do: "an integer in #{inspect range}"

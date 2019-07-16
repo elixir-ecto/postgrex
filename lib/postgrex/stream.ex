@@ -4,6 +4,7 @@ defmodule Postgrex.Stream do
   @type t :: %Postgrex.Stream{}
 end
 defmodule Postgrex.Cursor do
+  @moduledoc false
   defstruct [:portal, :ref, :connection_id, :mode]
   @type t :: %Postgrex.Cursor{}
 end
@@ -12,31 +13,20 @@ defmodule Postgrex.Copy do
   defstruct [:portal, :ref, :connection_id, :query]
   @type t :: %Postgrex.Copy{}
 end
-defmodule Postgrex.CopyData do
-  @moduledoc false
-  defstruct [:data, :ref]
-  @type t :: %Postgrex.CopyData{}
-end
-defmodule Postgrex.CopyDone do
-  @moduledoc false
-  defstruct [:ref]
-  @type t :: %Postgrex.CopyDone{}
-end
 
 defimpl Enumerable, for: Postgrex.Stream do
   alias Postgrex.Query
   def reduce(%Postgrex.Stream{query: %Query{} = query} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
-    stream = %DBConnection.Stream{conn: conn, query: query, params: params,
-                                  opts: opts}
+    stream = %DBConnection.Stream{conn: conn, query: query, params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
   end
+
   def reduce(%Postgrex.Stream{query: statement} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
     query = %Query{name: "" , statement: statement}
     opts = Keyword.put(opts, :function, :prepare_open)
-    stream = %DBConnection.PrepareStream{conn: conn, query: query,
-                                         params: params, opts: opts}
+    stream = %DBConnection.PrepareStream{conn: conn, query: query, params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
   end
 
@@ -59,52 +49,33 @@ defimpl Collectable, for: Postgrex.Stream do
 
   def into(%Stream{conn: %DBConnection{}} = stream) do
     %Stream{conn: conn, query: query, params: params, options: opts} = stream
+    opts = Keyword.put(opts, :postgrex_copy, true)
+
     case query do
       %Query{} ->
-        copy = DBConnection.execute!(conn, stream, params, opts)
+        copy = DBConnection.execute!(conn, query, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
       query ->
-        internal = %Stream{stream | query: %Query{name: "", statement: query}}
-        opts = Keyword.put(opts, :function, :prepare_into)
-        {_, copy} = DBConnection.prepare_execute!(conn, internal, params, opts)
+        query = %Query{name: "", statement: query}
+        {_, copy} = DBConnection.prepare_execute!(conn, query, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
     end
   end
+
   def into(_) do
-    msg = "data can only be copied to database inside a transaction"
-    raise ArgumentError, msg
+    raise ArgumentError, "data can only be copied to database inside a transaction"
   end
 
   defp make_into(conn, stream, %Postgrex.Copy{ref: ref} = copy, opts) do
     fn
       :ok, {:cont, data} ->
-        copy_data = %Postgrex.CopyData{ref: ref, data: data}
-        _ = DBConnection.execute!(conn, copy, copy_data, opts)
+        _ = DBConnection.execute!(conn, copy, {:copy_data, ref, data}, opts)
         :ok
       :ok, close when close in [:done, :halt] ->
-        copy_done = %Postgrex.CopyDone{ref: ref}
-        _ = DBConnection.execute!(conn, copy, copy_done, opts)
+        _ = DBConnection.execute!(conn, copy, {:copy_done, ref}, opts)
         stream
     end
   end
-end
-
-defimpl DBConnection.Query, for: Postgrex.Stream do
-  alias Postgrex.Stream
-
-  def parse(%Stream{query: query} = stream, opts) do
-    %Stream{stream | query: DBConnection.Query.parse(query, opts)}
-  end
-
-  def describe(%Stream{query: query} = stream, opts) do
-    %Stream{stream | query: DBConnection.Query.describe(query, opts)}
-  end
-
-  def encode(%Stream{query: query}, params, opts) do
-    DBConnection.Query.encode(query, params, opts)
-  end
-
-  def decode(_, copy, _), do: copy
 end
 
 defimpl DBConnection.Query, for: Postgrex.Copy do
@@ -119,7 +90,7 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
     raise "can not describe #{inspect copy}"
   end
 
-  def encode(%Copy{ref: ref}, %Postgrex.CopyData{data: data, ref: ref}, _) do
+  def encode(%Copy{ref: ref}, {:copy_data, ref, data}, _) do
     try do
       encode_msg(msg_copy_data(data: data))
     rescue
@@ -132,25 +103,12 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
     end
   end
 
-  def encode(%Copy{ref: ref}, %Postgrex.CopyDone{ref: ref}, _) do
+  def encode(%Copy{ref: ref}, {:copy_done, ref}, _) do
     :copy_done
   end
 
-  def decode(%Copy{query: query}, result, opts) do
-    case result do
-      %Postgrex.Result{command: :copy_stream} ->
-        result
-      %Postgrex.Result{command: :close} ->
-        result
-      _ ->
-        DBConnection.Query.decode(query, result, opts)
-    end
-  end
-end
-
-defimpl String.Chars, for: Postgrex.Stream do
-  def to_string(%Postgrex.Stream{query: query}) do
-    String.Chars.to_string(query)
+  def decode(copy, _result, _opts) do
+    raise "can not describe #{inspect copy}"
   end
 end
 

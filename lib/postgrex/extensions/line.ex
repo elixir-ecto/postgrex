@@ -9,7 +9,7 @@ defmodule Postgrex.Extensions.Line do
         # a, b, c are 8 bytes each
         <<24::int32, a::float64, b::float64, c::float64>>
       other ->
-        raise ArgumentError, Postgrex.Utils.encode_msg(other, Postgrex.Line)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Line)
     end
   end
 
