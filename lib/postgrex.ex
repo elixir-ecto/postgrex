@@ -19,32 +19,32 @@ defmodule Postgrex do
   A connection reference is used when making multiple requests to the same
   connection, see `transaction/3`.
   """
-  @type conn :: DBConnection.conn
+  @type conn :: DBConnection.conn()
 
   @type start_option ::
-          {:hostname, String.t}
-          | {:socket_dir, Path.t}
-          | {:socket, Path.t}
-          | {:port, :inet.port_number}
-          | {:database, String.t}
-          | {:username, String.t}
-          | {:password, String.t}
+          {:hostname, String.t()}
+          | {:socket_dir, Path.t()}
+          | {:socket, Path.t()}
+          | {:port, :inet.port_number()}
+          | {:database, String.t()}
+          | {:username, String.t()}
+          | {:password, String.t()}
           | {:parameters, keyword}
           | {:timeout, timeout}
           | {:connect_timeout, timeout}
           | {:handshake_timeout, timeout}
           | {:ssl, boolean}
-          | {:ssl_opts, [:ssl.ssl_option]}
-          | {:socket_options, [:gen_tcp.connect_option]}
+          | {:ssl_opts, [:ssl.ssl_option()]}
+          | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
           | {:types, module}
           | {:disconnect_on_error_codes, [atom]}
-          | DBConnection.start_option
+          | DBConnection.start_option()
 
   @type option ::
           {:mode, :transaction | :savepoint}
-          | DBConnection.option
+          | DBConnection.option()
 
   @type execute_option ::
           {:decode_mapper, (list -> term)}
@@ -148,7 +148,7 @@ defmodule Postgrex do
   This cause the connection process to attempt to reconnect according
   to the backoff configuration.
   """
-  @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t | term}
+  @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
     ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
@@ -189,7 +189,8 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
   """
-  @spec query(conn, iodata, list, [execute_option]) :: {:ok, Postgrex.Result.t} | {:error, Exception.t}
+  @spec query(conn, iodata, list, [execute_option]) ::
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
     if name = Keyword.get(opts, :cache_statement) do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
@@ -198,7 +199,7 @@ defmodule Postgrex do
         {:ok, _, result} ->
           {:ok, result}
 
-        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} = error->
+        {:error, %Postgrex.Error{postgres: %{code: :feature_not_supported}}} = error ->
           with %DBConnection{} <- conn,
                :error <- DBConnection.status(conn) do
             error
@@ -225,7 +226,7 @@ defmodule Postgrex do
   Runs an (extended) query and returns the result or raises `Postgrex.Error` if
   there was an error. See `query/3`.
   """
-  @spec query!(conn, iodata, list, [execute_option]) :: Postgrex.Result.t
+  @spec query!(conn, iodata, list, [execute_option]) :: Postgrex.Result.t()
   def query!(conn, statement, params, opts \\ []) do
     case query(conn, statement, params, opts) do
       {:ok, result} -> result
@@ -255,7 +256,8 @@ defmodule Postgrex do
 
       Postgrex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
-  @spec prepare(conn, iodata, iodata, [option]) :: {:ok, Postgrex.Query.t} | {:error, Exception.t}
+  @spec prepare(conn, iodata, iodata, [option]) ::
+          {:ok, Postgrex.Query.t()} | {:error, Exception.t()}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
     opts = Keyword.put(opts, :postgrex_prepare, true)
@@ -266,7 +268,7 @@ defmodule Postgrex do
   Prepares an (extended) query and returns the prepared query or raises
   `Postgrex.Error` if there was an error. See `prepare/4`.
   """
-  @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t
+  @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t()
   def prepare!(conn, name, statement, opts \\ []) do
     opts = Keyword.put(opts, :postgrex_prepare, true)
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
@@ -298,7 +300,7 @@ defmodule Postgrex do
 
   """
   @spec prepare_execute(conn, iodata, iodata, list, [execute_option]) ::
-    {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+          {:ok, Postgrex.Query.t(), Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
   def prepare_execute(conn, name, statement, params, opts \\ []) do
     query = %Query{name: name, statement: statement}
     DBConnection.prepare_execute(conn, query, params, opts)
@@ -309,7 +311,7 @@ defmodule Postgrex do
   `Postgrex.Error` if there was an error. See `prepare_execute/5`.
   """
   @spec prepare_execute!(conn, iodata, iodata, list, [execute_option]) ::
-    {Postgrex.Query.t, Postgrex.Result.t}
+          {Postgrex.Query.t(), Postgrex.Result.t()}
   def prepare_execute!(conn, name, statement, params, opts \\ []) do
     query = %Query{name: name, statement: statement}
     DBConnection.prepare_execute!(conn, query, params, opts)
@@ -343,8 +345,8 @@ defmodule Postgrex do
       query = Postgrex.prepare!(conn, "", "SELECT id FROM posts WHERE title like $1")
       Postgrex.execute(conn, query, ["%my%"])
   """
-  @spec execute(conn, Postgrex.Query.t, list, [execute_option]) ::
-    {:ok, Postgrex.Query.t, Postgrex.Result.t} | {:error, Postgrex.Error.t}
+  @spec execute(conn, Postgrex.Query.t(), list, [execute_option]) ::
+          {:ok, Postgrex.Query.t(), Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
   def execute(conn, query, params, opts \\ []) do
     DBConnection.execute(conn, query, params, opts)
   end
@@ -353,8 +355,8 @@ defmodule Postgrex do
   Runs an (extended) prepared query and returns the result or raises
   `Postgrex.Error` if there was an error. See `execute/4`.
   """
-  @spec execute!(conn, Postgrex.Query.t, list, [execute_option]) ::
-    Postgrex.Result.t
+  @spec execute!(conn, Postgrex.Query.t(), list, [execute_option]) ::
+          Postgrex.Result.t()
   def execute!(conn, query, params, opts \\ []) do
     DBConnection.execute!(conn, query, params, opts)
   end
@@ -381,7 +383,7 @@ defmodule Postgrex do
       query = Postgrex.prepare!(conn, "", "CREATE TABLE posts (id serial, title text)")
       Postgrex.close(conn, query)
   """
-  @spec close(conn, Postgrex.Query.t, [option]) :: :ok | {:error, Exception.t}
+  @spec close(conn, Postgrex.Query.t(), [option]) :: :ok | {:error, Exception.t()}
   def close(conn, query, opts \\ []) do
     with {:ok, _} <- DBConnection.close(conn, query, opts) do
       :ok
@@ -392,7 +394,7 @@ defmodule Postgrex do
   Closes an (extended) prepared query and returns `:ok` or raises
   `Postgrex.Error` if there was an error. See `close/3`.
   """
-  @spec close!(conn, Postgrex.Query.t, [option]) :: :ok
+  @spec close!(conn, Postgrex.Query.t(), [option]) :: :ok
   def close!(conn, query, opts \\ []) do
     DBConnection.close!(conn, query, opts)
     :ok
@@ -433,8 +435,9 @@ defmodule Postgrex do
         Postgrex.query!(conn, "SELECT title FROM posts", [])
       end)
   """
-  @spec transaction(conn, ((DBConnection.t) -> result), [option]) ::
-    {:ok, result} | {:error, any} when result: var
+  @spec transaction(conn, (DBConnection.t() -> result), [option]) ::
+          {:ok, result} | {:error, any}
+        when result: var
   def transaction(conn, fun, opts \\ []) do
     DBConnection.transaction(conn, fun, opts)
   end
@@ -452,7 +455,7 @@ defmodule Postgrex do
         IO.puts "never reaches here!"
       end)
   """
-  @spec rollback(DBConnection.t, reason :: any) :: no_return()
+  @spec rollback(DBConnection.t(), reason :: any) :: no_return()
   defdelegate rollback(conn, reason), to: DBConnection
 
   @doc """
@@ -472,7 +475,7 @@ defmodule Postgrex do
   @doc """
   Returns a supervisor child specification for a DBConnection pool.
   """
-  @spec child_spec([start_option]) :: Supervisor.Spec.spec
+  @spec child_spec([start_option]) :: Supervisor.Spec.spec()
   def child_spec(opts) do
     ensure_deps_started!(opts)
     opts = Postgrex.Utils.default_opts(opts)
@@ -519,9 +522,10 @@ defmodule Postgrex do
         Enum.into(File.stream!("posts"), stream)
       end)
   """
-  @spec stream(DBConnection.t, iodata | Postgrex.Query.t, list, [option]) :: Postgrex.Stream.t
+  @spec stream(DBConnection.t(), iodata | Postgrex.Query.t(), list, [option]) ::
+          Postgrex.Stream.t()
         when option: execute_option | {:max_rows, pos_integer}
-  def stream(%DBConnection{} = conn, query, params, options \\ [])  do
+  def stream(%DBConnection{} = conn, query, params, options \\ []) do
     options = Keyword.put_new(options, :max_rows, @max_rows)
     %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
   end
@@ -529,7 +533,8 @@ defmodule Postgrex do
   ## Helpers
 
   defp ensure_deps_started!(opts) do
-    if Keyword.get(opts, :ssl, false) and not List.keymember?(:application.which_applications(), :ssl, 0) do
+    if Keyword.get(opts, :ssl, false) and
+         not List.keymember?(:application.which_applications(), :ssl, 0) do
       raise """
       SSL connection can not be established because `:ssl` application is not started,
       you can add it to `extra_application` in your `mix.exs`:

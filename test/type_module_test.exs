@@ -10,6 +10,7 @@ defmodule TypeModuleTest do
       :code.delete(@types)
       :code.purge(@types)
     end)
+
     opts = [decode_binary: :reference, null: :custom, json: :fake_json]
     Postgrex.TypeModule.define(@types, [], opts)
     :ok
@@ -43,9 +44,16 @@ defmodule TypeModuleTest do
 
   test "encode null with custom mapping", context do
     assert [[:custom, :custom]] = query("SELECT $1::text, $2::int", [:custom, :custom])
-    assert [[true, false, :custom]] = query("SELECT $1::bool, $2::bool, $3::bool", [true, false, :custom])
-    assert [[true, :custom, false]] = query("SELECT $1::bool, $2::bool, $3::bool", [true, :custom, false])
-    assert [[:custom, true, false]] = query("SELECT $1::bool, $2::bool, $3::bool", [:custom, true, false])
+
+    assert [[true, false, :custom]] =
+             query("SELECT $1::bool, $2::bool, $3::bool", [true, false, :custom])
+
+    assert [[true, :custom, false]] =
+             query("SELECT $1::bool, $2::bool, $3::bool", [true, :custom, false])
+
+    assert [[:custom, true, false]] =
+             query("SELECT $1::bool, $2::bool, $3::bool", [:custom, true, false])
+
     assert [["{NULL,t,f}"]] = query("SELECT ($1::bool[])::text", [[:custom, true, false]])
   end
 

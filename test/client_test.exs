@@ -14,34 +14,38 @@ defmodule ClientTest do
     %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(conn, "SELECT 42", [])
 
     Process.flag(:trap_exit, true)
+
     assert capture_log(fn ->
-      assert [[_]] = query("SELECT pg_stat_get_activity($1)", [connection_id])
+             assert [[_]] = query("SELECT pg_stat_get_activity($1)", [connection_id])
 
-      %DBConnection.ConnectionError{message: "tcp recv: closed" <> _} =
-        query("SELECT pg_sleep(10)", [], [timeout: 50])
+             %DBConnection.ConnectionError{message: "tcp recv: closed" <> _} =
+               query("SELECT pg_sleep(10)", [], timeout: 50)
 
-      assert_receive {:EXIT, ^conn, :killed}
-    end) =~ "disconnected: ** (DBConnection.ConnectionError)"
+             assert_receive {:EXIT, ^conn, :killed}
+           end) =~ "disconnected: ** (DBConnection.ConnectionError)"
 
     :timer.sleep(500)
     {:ok, pid} = Postgrex.start_link(context[:options])
+
     assert %Postgrex.Result{rows: []} =
-      Postgrex.query!(pid, "SELECT pg_stat_get_activity($1)", [connection_id])
+             Postgrex.query!(pid, "SELECT pg_stat_get_activity($1)", [connection_id])
   end
 
   test "active client DOWN", context do
     self_pid = self()
     conn = context[:pid]
 
-    pid = spawn fn ->
-      send self_pid, query("SELECT pg_sleep(0.2)", [])
-    end
+    pid =
+      spawn(fn ->
+        send(self_pid, query("SELECT pg_sleep(0.2)", []))
+      end)
 
     :timer.sleep(100)
     Process.flag(:trap_exit, true)
-    capture_log fn ->
+
+    capture_log(fn ->
       Process.exit(pid, :shutdown)
       assert_receive {:EXIT, ^conn, :killed}
-    end
+    end)
   end
 end

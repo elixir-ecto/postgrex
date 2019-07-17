@@ -11,13 +11,15 @@ defmodule Postgrex.Extensions.Date do
     quote location: :keep do
       %Date{calendar: Calendar.ISO} = date ->
         unquote(__MODULE__).encode_elixir(date)
+
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Date)
     end
   end
+
   def decode(_) do
     quote location: :keep do
-      <<4 :: int32, days :: int32>> ->
+      <<4::int32, days::int32>> ->
         unquote(__MODULE__).day_to_elixir(days)
     end
   end
@@ -26,20 +28,25 @@ defmodule Postgrex.Extensions.Date do
 
   def encode_elixir(%Date{year: year, month: month, day: day}) when year <= @max_year do
     date = {year, month, day}
-    <<4 :: int32, :calendar.date_to_gregorian_days(date) - @gd_epoch :: int32>>
+    <<4::int32, :calendar.date_to_gregorian_days(date) - @gd_epoch::int32>>
   end
+
   def encode_elixir(%Date{} = date) do
-    raise ArgumentError, "#{inspect date} is beyond the maximum year #{@max_year}"
+    raise ArgumentError, "#{inspect(date)} is beyond the maximum year #{@max_year}"
   end
 
   def day_to_elixir(days) do
     days = days + @gd_epoch
+
     if days in 0..@max_days do
       days
       |> :calendar.gregorian_days_to_date()
       |> Date.from_erl!()
     else
-      raise ArgumentError, "Postgrex can only decode dates with days between 0 and #{@max_days}, got: #{inspect days}"
+      raise ArgumentError,
+            "Postgrex can only decode dates with days between 0 and #{@max_days}, got: #{
+              inspect(days)
+            }"
     end
   end
 end

@@ -21,21 +21,34 @@ defmodule Postgrex.Query do
   """
 
   @type t :: %__MODULE__{
-    cache:          :reference | :statement,
-    ref:            reference | nil,
-    name:           iodata,
-    statement:      iodata,
-    param_oids:     [Postgrex.Types.oid] | nil,
-    param_formats:  [:binary | :text] | nil,
-    param_types:    [Postgrex.Types.type] | nil,
-    columns:        [String.t] | nil,
-    result_oids:    [Postgrex.Types.oid] | nil,
-    result_formats: [:binary | :text] | nil,
-    result_types:   [Postgrex.Types.type] | nil,
-    types:          Postgrex.Types.state | nil}
+          cache: :reference | :statement,
+          ref: reference | nil,
+          name: iodata,
+          statement: iodata,
+          param_oids: [Postgrex.Types.oid()] | nil,
+          param_formats: [:binary | :text] | nil,
+          param_types: [Postgrex.Types.type()] | nil,
+          columns: [String.t()] | nil,
+          result_oids: [Postgrex.Types.oid()] | nil,
+          result_formats: [:binary | :text] | nil,
+          result_types: [Postgrex.Types.type()] | nil,
+          types: Postgrex.Types.state() | nil
+        }
 
-  defstruct [:ref, :name, :statement, :param_oids, :param_formats, :param_types,
-    :columns, :result_oids, :result_formats, :result_types, :types, cache: :reference]
+  defstruct [
+    :ref,
+    :name,
+    :statement,
+    :param_oids,
+    :param_formats,
+    :param_types,
+    :columns,
+    :result_oids,
+    :result_formats,
+    :result_types,
+    :types,
+    cache: :reference
+  ]
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
@@ -47,13 +60,13 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   end
 
   def parse(query, _) do
-    raise ArgumentError, "query #{inspect query} has already been prepared"
+    raise ArgumentError, "query #{inspect(query)} has already been prepared"
   end
 
   def describe(query, _), do: query
 
   def encode(%{types: nil} = query, _params, _) do
-    raise ArgumentError, "query #{inspect query} has not been prepared"
+    raise ArgumentError, "query #{inspect(query)} has not been prepared"
   end
 
   def encode(query, params, _) do
@@ -62,18 +75,21 @@ defimpl DBConnection.Query, for: Postgrex.Query do
     case Postgrex.Types.encode_params(params, param_types, types) do
       encoded when is_list(encoded) ->
         encoded
+
       :error ->
         raise ArgumentError,
-          "parameters must be of length #{length param_types} for query #{inspect query}"
+              "parameters must be of length #{length(param_types)} for query #{inspect(query)}"
     end
   end
 
   def decode(_, %Postgrex.Result{rows: nil} = res, _opts) do
     res
   end
+
   def decode(_, %Postgrex.Result{rows: rows} = res, opts) do
     %Postgrex.Result{res | rows: decode_map(rows, opts)}
   end
+
   def decode(_, %Postgrex.Copy{} = copy, _opts) do
     copy
   end
@@ -82,7 +98,7 @@ defimpl DBConnection.Query, for: Postgrex.Query do
 
   defp decode_map(data, opts) do
     case opts[:decode_mapper] do
-      nil    -> Enum.reverse(data)
+      nil -> Enum.reverse(data)
       mapper -> decode_map(data, mapper, [])
     end
   end
@@ -90,6 +106,7 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   defp decode_map([row | data], mapper, decoded) do
     decode_map(data, mapper, [mapper.(row) | decoded])
   end
+
   defp decode_map([], _, decoded) do
     decoded
   end

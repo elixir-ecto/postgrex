@@ -15,7 +15,7 @@ defmodule Postgrex.Types do
   @typedoc """
   State used by the encoder/decoder functions
   """
-  @opaque state :: {module, :ets.tid}
+  @opaque state :: {module, :ets.tid()}
 
   @typedoc """
   Term used to describe type information
@@ -36,6 +36,7 @@ defmodule Postgrex.Types do
     case :ets.info(table, :owner) do
       owner when is_pid(owner) ->
         {:ok, owner}
+
       :undefined ->
         :error
     end
@@ -50,11 +51,11 @@ defmodule Postgrex.Types do
         # since there might be a lot them and most likely
         # they won't be used; subsequent bootstrap will
         # fetch them along with any other "new" types
-        filter_oids =
-          """
-          WHERE (t.typrelid = 0)
-          AND (t.typelem = 0 OR t.typelem NOT IN (SELECT oid FROM pg_catalog.pg_type WHERE typrelid!=0))
-          """
+        filter_oids = """
+        WHERE (t.typrelid = 0)
+        AND (t.typelem = 0 OR t.typelem NOT IN (SELECT oid FROM pg_catalog.pg_type WHERE typrelid!=0))
+        """
+
         build_bootstrap_query(version, filter_oids)
 
       _ ->
@@ -65,8 +66,7 @@ defmodule Postgrex.Types do
   defp build_bootstrap_query(version, filter_oids) do
     {typelem, join_domain} =
       if version >= {9, 0, 0} do
-        {"coalesce(d.typelem, t.typelem)",
-         "LEFT JOIN pg_type AS d ON t.typbasetype = d.oid"}
+        {"coalesce(d.typelem, t.typelem)", "LEFT JOIN pg_type AS d ON t.typbasetype = d.oid"}
       else
         {"t.typelem", ""}
       end
@@ -95,28 +95,22 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  @spec reload_query({pos_integer, non_neg_integer, non_neg_integer}, [oid, ...], state) :: binary | nil
+  @spec reload_query({pos_integer, non_neg_integer, non_neg_integer}, [oid, ...], state) ::
+          binary | nil
   def reload_query(version, oids, {_, table}) do
     case Enum.reject(oids, &:ets.member(table, &1)) do
       [] ->
         nil
+
       oids ->
         build_bootstrap_query(version, "WHERE t.oid IN (#{Enum.join(oids, ", ")})")
     end
   end
 
   @doc false
-  @spec build_type_info(binary) :: TypeInfo.t
+  @spec build_type_info(binary) :: TypeInfo.t()
   def build_type_info(row) do
-    [oid,
-      type,
-      send,
-      receive,
-      output,
-      input,
-      array_oid,
-      base_oid,
-      comp_oids] = row_decode(row)
+    [oid, type, send, receive, output, input, array_oid, base_oid, comp_oids] = row_decode(row)
     oid = String.to_integer(oid)
     array_oid = String.to_integer(array_oid)
     base_oid = String.to_integer(base_oid)
@@ -131,19 +125,24 @@ defmodule Postgrex.Types do
       input: :binary.copy(input),
       array_elem: array_oid,
       base_type: base_oid,
-      comp_elems: comp_oids}
+      comp_elems: comp_oids
+    }
   end
 
   @doc false
-  @spec associate_type_infos([TypeInfo.t], state) :: :ok
+  @spec associate_type_infos([TypeInfo.t()], state) :: :ok
   def associate_type_infos(type_infos, {module, table}) do
-    _ = for %TypeInfo{oid: oid} = type_info <- type_infos do
-      true = :ets.insert_new(table, {oid, type_info, nil})
-    end
-    _ = for %TypeInfo{oid: oid} = type_info <- type_infos do
-      info = find(type_info, :any, module, table)
-      true = :ets.update_element(table, oid, {3, info})
-    end
+    _ =
+      for %TypeInfo{oid: oid} = type_info <- type_infos do
+        true = :ets.insert_new(table, {oid, type_info, nil})
+      end
+
+    _ =
+      for %TypeInfo{oid: oid} = type_info <- type_infos do
+        info = find(type_info, :any, module, table)
+        true = :ets.update_element(table, oid, {3, info})
+      end
+
     :ok
   end
 
@@ -151,13 +150,17 @@ defmodule Postgrex.Types do
     case apply(module, :find, [type_info, formats]) do
       {:super_binary, extension, nil} ->
         {:binary, {extension, nil, {module, table}}}
+
       {:super_binary, extension, sub_oids} when formats == :any ->
         super_find(sub_oids, extension, module, table) ||
           find(type_info, :text, module, table)
+
       {:super_binary, extension, sub_oids} ->
         super_find(sub_oids, extension, module, table)
+
       nil ->
         nil
+
       info ->
         info
     end
@@ -167,6 +170,7 @@ defmodule Postgrex.Types do
     case sub_find(sub_oids, module, table, []) do
       {:ok, sub_types} ->
         {:binary, {extension, sub_oids, sub_types}}
+
       :error ->
         nil
     end
@@ -176,25 +180,31 @@ defmodule Postgrex.Types do
     case :ets.lookup(table, oid) do
       [{_, _, {:binary, types}}] ->
         sub_find(oids, module, table, [types | acc])
+
       [{_, type_info, _}] ->
         case find(type_info, :binary, module, table) do
           {:binary, types} ->
             sub_find(oids, module, table, [types | acc])
+
           nil ->
             :error
         end
+
       [] ->
         :error
     end
   end
+
   defp sub_find([], _, _, acc) do
     {:ok, Enum.reverse(acc)}
   end
 
   defp row_decode(<<>>), do: []
+
   defp row_decode(<<-1::int32, rest::binary>>) do
     [nil | row_decode(rest)]
   end
+
   defp row_decode(<<len::uint32, value::binary(len), rest::binary>>) do
     [value | row_decode(rest)]
   end
@@ -213,8 +223,8 @@ defmodule Postgrex.Types do
 
   defp parse_oids(bin, acc) do
     case Integer.parse(bin) do
-      {int, "," <> rest} -> parse_oids(rest, [int|acc])
-      {int, "}"}         -> Enum.reverse([int|acc])
+      {int, "," <> rest} -> parse_oids(rest, [int | acc])
+      {int, "}"} -> Enum.reverse([int | acc])
     end
   end
 
@@ -300,14 +310,15 @@ defmodule Postgrex.Types do
 
   @doc false
   @spec decode_rows(binary, [type], [row], state) ::
-    {:more, iodata, [row], non_neg_integer} | {:ok, [row], binary} when row: var
+          {:more, iodata, [row], non_neg_integer} | {:ok, [row], binary}
+        when row: var
   def decode_rows(binary, types, rows, {mod, _}) do
     apply(mod, :decode_rows, [binary, types, rows])
   end
 
   @doc false
   @spec fetch(oid, state) ::
-    {:ok, {:binary | :text, type}} | {:error, TypeInfo.t | nil, module}
+          {:ok, {:binary | :text, type}} | {:error, TypeInfo.t() | nil, module}
   def fetch(oid, {mod, table}) do
     try do
       :ets.lookup_element(table, oid, 3)
@@ -317,6 +328,7 @@ defmodule Postgrex.Types do
     else
       {_, _} = info ->
         {:ok, info}
+
       nil ->
         fetch_type_info(oid, mod, table)
     end

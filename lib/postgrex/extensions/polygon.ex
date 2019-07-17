@@ -9,13 +9,17 @@ defmodule Postgrex.Extensions.Polygon do
     quote location: :keep do
       %Postgrex.Polygon{vertices: vertices} when is_list(vertices) ->
         len = length(vertices)
-        vert = Enum.reduce(vertices, [],
-          fn(v, acc) -> [acc | Point.encode_point(v, Postgrex.Polygon)] end)
+
+        vert =
+          Enum.reduce(vertices, [], fn v, acc ->
+            [acc | Point.encode_point(v, Postgrex.Polygon)]
+          end)
 
         # 32 bits for len, 64 for each x and each y
         nbytes = 4 + 16 * len
 
         [<<nbytes::int32>>, <<len::int32>> | vert]
+
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Polygon)
     end
@@ -35,6 +39,7 @@ defmodule Postgrex.Extensions.Polygon do
   end
 
   defp decode_vertices(<<>>, v), do: Enum.reverse(v)
+
   defp decode_vertices(<<x::float64, y::float64, rest::bits>>, v) do
     decode_vertices(rest, [%Postgrex.Point{x: x, y: y} | v])
   end

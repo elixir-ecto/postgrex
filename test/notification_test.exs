@@ -29,7 +29,9 @@ defmodule NotificationTest do
   test "listening, notify, then receive (with payload)", context do
     assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
 
-    assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel, 'hello'", [])
+    assert {:ok, %Postgrex.Result{command: :notify}} =
+             P.query(context.pid, "NOTIFY channel, 'hello'", [])
+
     receiver_pid = context.pid_ps
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", "hello"}
   end
@@ -75,9 +77,9 @@ defmodule NotificationTest do
   end
 
   test "listen, go away", context do
-    spawn fn ->
+    spawn(fn ->
       assert {:ok, _} = PN.listen(context.pid_ps, "channel")
-    end
+    end)
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
     :timer.sleep(300)

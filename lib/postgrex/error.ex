@@ -47,7 +47,7 @@ defmodule Postgrex.Error do
 
     case metadata do
       [] -> []
-      _  -> ["\n" | metadata]
+      _ -> ["\n" | metadata]
     end
   end
 
