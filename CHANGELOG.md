@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.15.0-dev
+
+Postgrex v0.15+ requires Elixir v1.6+.
+
+* Enhancements
+  * Filter bootstrap more efficiently by avoiding loading tables information on startup
+  * Only bootstrap new oids during describe: this means reconnects don't run a bootstrap
+    query and describe runs minimal query
+  * Parse Postgrex 12beta new version format
+  * Raise error when :ssl is required and not started in child_spec/1
+
+* Bug fixes
+  * Don't encode DateTime, NaiveDateTime or Time unless Calendar.ISO
+
 ## v0.14.3 (2019-05-08)
 
 * Enhancements
