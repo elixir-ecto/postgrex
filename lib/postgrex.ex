@@ -2,11 +2,11 @@ defmodule Postgrex do
   @moduledoc """
   PostgreSQL driver for Elixir.
 
-  This module handles the connection to Postgres, providing support
+  This module handles the connection to PostgreSQL, providing support
   for queries, transactions, connection backoff, logging, pooling and
   more.
 
-  Note that the notifications API (pub/sub) supported by Postgres is
+  Note that the notifications API (pub/sub) supported by PostgreSQL is
   handled by `Postgrex.Notifications`. Hence, to use this feature,
   you need to start a separate (notifications) connection.
   """
@@ -61,11 +61,11 @@ defmodule Postgrex do
   ## Options
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
-    * `:socket_dir` - Connect to Postgres via UNIX sockets in the given directory;
+    * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
       for configuring sockets and it takes precedence over the hostname. If you are
-      connecting to a socket outside of the Postgres convention, use `:socket` instead;
-    * `:socket` - Connect to Postgres via UNIX sockets in the given path.
+      connecting to a socket outside of the PostgreSQL convention, use `:socket` instead;
+    * `:socket` - Connect to PostgreSQL via UNIX sockets in the given path.
       This option takes precedence over the `:hostname` and `:socket_dir`;
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);

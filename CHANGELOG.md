@@ -44,7 +44,7 @@ Postgrex v0.15+ requires Elixir v1.6+.
 
 * Backwards incompatible changes
   * Invoke `encode_to_iodata!` instead of `encode!` in JSON encoder
-  * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as Postgres may perform implicit/explicit casting at any time)
+  * Remove Postgrex.CIDR and use Postgrex.INET to encode both inet/cidr (as PostgreSQL may perform implicit/explicit casting at any time)
   * Postgrex.Time, Postgrex.Date and Postgrex.Timestamp were deprecated and now have been effectively removed
   * `Postgrex.execute/4` now always returns the prepared query
   * `:pool_timeout` is removed in favor of `:queue_target` and `:queue_interval`. See `DBConnection.start_link/2` for more information
@@ -240,7 +240,7 @@ Postgrex v0.15+ requires Elixir v1.6+.
   * Add extensions
   * Encode/decode ranges generically
   * Add bounds when encoding integer types to error instead of overflowing the integer
-  * Log unhandled Postgres errors (when it cant be replied to anyone)
+  * Log unhandled PostgreSQL errors (when it cant be replied to anyone)
   * Add support for enum types
   * Add support for citext type
   * Add microseconds to times and timestamps
@@ -251,7 +251,7 @@ Postgrex v0.15+ requires Elixir v1.6+.
   * Remove encoder, decoder and formatter functions, use extensions instead
   * Use structs for dates, times, timestamps, interval and ranges
   * Change the default timeout for all operations to 5000ms
-  * Show Postgres error codes as their names instead
+  * Show PostgreSQL error codes as their names instead
 
 ## v0.7.0 (2015-01-20)
 

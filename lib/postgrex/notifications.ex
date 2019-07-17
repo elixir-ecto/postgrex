@@ -1,6 +1,6 @@
 defmodule Postgrex.Notifications do
   @moduledoc ~S"""
-  API for notifications (pub/sub) in Postgres.
+  API for notifications (pub/sub) in PostgreSQL.
 
   In order to use it, first you need to start the notification process.
   In your supervision tree:
@@ -12,7 +12,7 @@ defmodule Postgrex.Notifications do
       {:ok, listen_ref} = Postgrex.Notifications.listen(MyApp.Notifications, "channel")
 
   Now every time a message is broadcast on said channel, for example via
-  Postgres command line:
+  PostgreSQL command line:
 
       NOTIFY "channel", "Oh hai!";
 

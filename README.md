@@ -84,7 +84,7 @@ mix deps.clean postgrex --build
 
 Extensions are used to extend Postgrex' built-in type encoding/decoding.
 
-Here is a [JSON extension](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the Postgres' JSON type.
+Here is a [JSON extension](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the PostgreSQL JSON type.
 
 Extensions can be specified and configured when building custom type modules:
 
@@ -153,11 +153,11 @@ host    all             postgrex_cleartext_pw   127.0.0.1/32    password
 host    all             postgrex_scram_pw       127.0.0.1/32    scram-sha-256
 ```
 
-The server needs to be restarted for the changes to take effect. Additionally you need to setup a Postgres user with the same username as the local user and give it trust or ident in your hba file. Or you can export $PGUSER and $PGPASSWORD before running tests.
+The server needs to be restarted for the changes to take effect. Additionally you need to setup a PostgreSQL user with the same username as the local user and give it trust or ident in your hba file. Or you can export $PGUSER and $PGPASSWORD before running tests.
 
 ### Testing hstore on 9.0
 
-Postgres versions 9.0 does not have the `CREATE EXTENSION` commands. This means we have to locate the postgres installation and run the `hstore.sql` in `contrib` to install `hstore`. Below is an example command to test 9.0 on OS X with homebrew installed postgres:
+PostgreSQL versions 9.0 does not have the `CREATE EXTENSION` commands. This means we have to locate the postgres installation and run the `hstore.sql` in `contrib` to install `hstore`. Below is an example command to test 9.0 on OS X with homebrew installed postgres:
 
 ```
 $ PGVERSION=9.0 PGPATH=/usr/local/share/postgresql9/ mix test

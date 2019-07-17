@@ -1,13 +1,13 @@
 defmodule Postgrex.Types do
   @moduledoc """
-  Encodes and decodes between Postgres' protocol and Elixir values.
+  Encodes and decodes between PostgreSQL protocol and Elixir values.
   """
 
   alias Postgrex.TypeInfo
   import Postgrex.BinaryUtils
 
   @typedoc """
-  Postgres internal identifier that maps to a type. See
+  PostgreSQL internal identifier that maps to a type. See
   http://www.postgresql.org/docs/9.4/static/datatype-oid.html.
   """
   @type oid :: pos_integer

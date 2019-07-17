@@ -2775,7 +2775,7 @@ defmodule Postgrex.Protocol do
   defp decode_tag(<<h, t::binary>>, acc) when h in ?A..?Z,
     do: decode_tag(t, <<acc::binary, h + 32>>)
 
-  # Valid SQL statements in Postgresql are only
+  # Valid SQL statements in PostgreSQL are only
   # uppercase A..Z and space. Therefore any other
   # character prompts a return of the accumulator
   # ignoring anything from the invalid character
