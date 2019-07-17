@@ -38,9 +38,11 @@ defmodule CalendarTest do
     assert [[~T[00:00:00.123456]]] = query("SELECT time with time zone '00:00:00.123456 UTC'", [])
     assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '01:02:03.123456'", [])
 
-    assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '16:01:03.123456+1459'", [])
+    assert [[~T[01:02:03.123456]]] =
+             query("SELECT time with time zone '16:01:03.123456+1459'", [])
 
-    assert [[~T[16:01:03.123456]]] = query("SELECT time with time zone '01:02:03.123456-1459'", [])
+    assert [[~T[16:01:03.123456]]] =
+             query("SELECT time with time zone '01:02:03.123456-1459'", [])
 
     assert :ok = query("SET SESSION TIME ZONE +1", [])
 
@@ -72,62 +74,144 @@ defmodule CalendarTest do
 
   test "decode timestamp", context do
     assert [[~N[2001-01-01 00:00:00.000000]]] =
-      query("SELECT timestamp '2001-01-01 00:00:00'", [])
+             query("SELECT timestamp '2001-01-01 00:00:00'", [])
 
     assert :ok = query("SET SESSION TIME ZONE UTC", [])
+
     assert [[~N[2013-09-23 14:04:37.123000]]] =
-      query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
+             query("SELECT timestamp '2013-09-23 14:04:37.123'", [])
 
     assert [[~N[2013-09-23 14:04:37.000000]]] =
-      query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
+             query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
 
     assert [[~N[2013-09-23 14:04:37.000000]]] =
-      query("SELECT timestamp '2013-09-23 14:04:37-8'", [])
+             query("SELECT timestamp '2013-09-23 14:04:37-8'", [])
 
     assert :ok = query("SET SESSION TIME ZONE +1", [])
+
     assert [[~N[2013-09-23 14:04:37.000000]]] =
-      query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
+             query("SELECT timestamp '2013-09-23 14:04:37 PST'", [])
 
     assert [[~N[1980-01-01 00:00:00.123456]]] =
-      query("SELECT timestamp '1980-01-01 00:00:00.123456'", [])
+             query("SELECT timestamp '1980-01-01 00:00:00.123456'", [])
   end
 
   test "decode timestamptz", context do
-    assert [[%DateTime{year: 2001, month: 1, day: 1, hour: 0, minute: 0,
-                       second: 0, microsecond: {0, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-     query("SELECT timestamp with time zone '2001-01-01 00:00:00 UTC'", [])
+    assert [
+             [
+               %DateTime{
+                 year: 2001,
+                 month: 1,
+                 day: 1,
+                 hour: 0,
+                 minute: 0,
+                 second: 0,
+                 microsecond: {0, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '2001-01-01 00:00:00 UTC'", [])
 
     assert :ok = query("SET SESSION TIME ZONE UTC", [])
-    assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 14, minute: 4,
-                       second: 37, microsecond: {123000, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-    query("SELECT timestamp with time zone '2013-09-23 14:04:37.123'", [])
 
-    assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 22, minute: 4,
-                       second: 37, microsecond: {0, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-    query("SELECT timestamp with time zone '2013-09-23 14:04:37 PST'", [])
-    assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 22, minute: 4,
-                       second: 37, microsecond: {0, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-    query("SELECT timestamp with time zone '2013-09-23 14:04:37-8'", [])
+    assert [
+             [
+               %DateTime{
+                 year: 2013,
+                 month: 9,
+                 day: 23,
+                 hour: 14,
+                 minute: 4,
+                 second: 37,
+                 microsecond: {123_000, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '2013-09-23 14:04:37.123'", [])
+
+    assert [
+             [
+               %DateTime{
+                 year: 2013,
+                 month: 9,
+                 day: 23,
+                 hour: 22,
+                 minute: 4,
+                 second: 37,
+                 microsecond: {0, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '2013-09-23 14:04:37 PST'", [])
+
+    assert [
+             [
+               %DateTime{
+                 year: 2013,
+                 month: 9,
+                 day: 23,
+                 hour: 22,
+                 minute: 4,
+                 second: 37,
+                 microsecond: {0, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '2013-09-23 14:04:37-8'", [])
 
     assert :ok = query("SET SESSION TIME ZONE +1", [])
 
-    assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 22, minute: 4,
-                       second: 37, microsecond: {0, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-      query("SELECT timestamp with time zone '2013-09-23 14:04:37 PST'", [])
-    assert [[%DateTime{year: 2013, month: 9, day: 23, hour: 22, minute: 4,
-                       second: 37, microsecond: {0, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-      query("SELECT timestamp with time zone '2013-09-23 14:04:37-8'", [])
+    assert [
+             [
+               %DateTime{
+                 year: 2013,
+                 month: 9,
+                 day: 23,
+                 hour: 22,
+                 minute: 4,
+                 second: 37,
+                 microsecond: {0, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '2013-09-23 14:04:37 PST'", [])
 
-    assert [[%DateTime{year: 1980, month: 1, day: 1, hour: 0, minute: 0,
-                       second: 0, microsecond: {123456, 6},
-                       time_zone: "Etc/UTC", utc_offset: 0}]] =
-      query("SELECT timestamp with time zone '1980-01-01 01:00:00.123456'", [])
+    assert [
+             [
+               %DateTime{
+                 year: 2013,
+                 month: 9,
+                 day: 23,
+                 hour: 22,
+                 minute: 4,
+                 second: 37,
+                 microsecond: {0, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '2013-09-23 14:04:37-8'", [])
+
+    assert [
+             [
+               %DateTime{
+                 year: 1980,
+                 month: 1,
+                 day: 1,
+                 hour: 0,
+                 minute: 0,
+                 second: 0,
+                 microsecond: {123_456, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '1980-01-01 01:00:00.123456'", [])
   end
 
   test "encode time", context do
@@ -161,114 +245,216 @@ defmodule CalendarTest do
     defmodule OtherCalendar do
     end
 
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Date{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::date::text", [%{~D[1999-12-31] | calendar: OtherCalendar}])
-    end
+    assert_raise DBConnection.EncodeError,
+                 ~r/Postgrex expected a %Date{} in the `Calendar.ISO` calendar/,
+                 fn ->
+                   assert [["1999-12-31"]] =
+                            query("SELECT $1::date::text", [
+                              %{~D[1999-12-31] | calendar: OtherCalendar}
+                            ])
+                 end
 
     # Timestamp
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::timestamp::text",
-        [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}])
-    end
+    assert_raise DBConnection.EncodeError,
+                 ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/,
+                 fn ->
+                   assert [["1999-12-31"]] =
+                            query(
+                              "SELECT $1::timestamp::text",
+                              [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}]
+                            )
+                 end
 
     # Timestampz
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::timestamp with time zone::text",
-        [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}])
-    end
+    assert_raise DBConnection.EncodeError,
+                 ~r/Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar/,
+                 fn ->
+                   assert [["1999-12-31"]] =
+                            query(
+                              "SELECT $1::timestamp with time zone::text",
+                              [%{~N[1999-12-31 11:00:00Z] | calendar: OtherCalendar}]
+                            )
+                 end
 
     # Time
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Time{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::time::text",
-      [%{~T[10:10:10] | calendar: OtherCalendar}])
-    end
+    assert_raise DBConnection.EncodeError,
+                 ~r/Postgrex expected a %Time{} in the `Calendar.ISO` calendar/,
+                 fn ->
+                   assert [["1999-12-31"]] =
+                            query(
+                              "SELECT $1::time::text",
+                              [%{~T[10:10:10] | calendar: OtherCalendar}]
+                            )
+                 end
 
     # Time with zone
-    assert_raise DBConnection.EncodeError, ~r/Postgrex expected a %Time{} in the `Calendar.ISO` calendar/, fn ->
-      assert [["1999-12-31"]] = query("SELECT $1::timetz::text",
-      [%{~T[10:10:10] | calendar: OtherCalendar}])
-    end
+    assert_raise DBConnection.EncodeError,
+                 ~r/Postgrex expected a %Time{} in the `Calendar.ISO` calendar/,
+                 fn ->
+                   assert [["1999-12-31"]] =
+                            query(
+                              "SELECT $1::timetz::text",
+                              [%{~T[10:10:10] | calendar: OtherCalendar}]
+                            )
+                 end
   end
 
   test "encode timestamp", context do
     assert [["2001-01-01 00:00:00"]] =
-      query("SELECT $1::timestamp::text", [~N[2001-01-01 00:00:00.000000]])
+             query("SELECT $1::timestamp::text", [~N[2001-01-01 00:00:00.000000]])
 
     assert :ok = query("SET SESSION TIME ZONE UTC", [])
+
     assert [["2013-09-23 14:04:37.123"]] =
-      query("SELECT $1::timestamp::text", [~N[2013-09-23 14:04:37.123000]])
+             query("SELECT $1::timestamp::text", [~N[2013-09-23 14:04:37.123000]])
 
     assert [["2013-09-23 14:04:37"]] =
-      query("SELECT $1::timestamp::text", [~N[2013-09-23 14:04:37.000000]])
+             query("SELECT $1::timestamp::text", [~N[2013-09-23 14:04:37.000000]])
 
     assert :ok = query("SET SESSION TIME ZONE +1", [])
 
     assert [["2013-09-23 14:04:37"]] =
-      query("SELECT $1::timestamp::text", [~N[2013-09-23 14:04:37.000000]])
+             query("SELECT $1::timestamp::text", [~N[2013-09-23 14:04:37.000000]])
 
     assert [["1980-01-01 00:00:00.123456"]] =
-      query("SELECT $1::timestamp::text", [~N[1980-01-01 00:00:00.123456]])
+             query("SELECT $1::timestamp::text", [~N[1980-01-01 00:00:00.123456]])
 
     assert [["1980-01-01 00:00:00.123456"]] =
-      query("SELECT $1::timestamp::text", [DateTime.from_naive!(~N[1980-01-01 00:00:00.123456], "Etc/UTC")])
+             query("SELECT $1::timestamp::text", [
+               DateTime.from_naive!(~N[1980-01-01 00:00:00.123456], "Etc/UTC")
+             ])
   end
 
   test "encode timestamptz", context do
     assert :ok = query("SET SESSION TIME ZONE UTC", [])
 
     assert [["2001-01-01 00:00:00+00"]] =
-      query("SELECT $1::timestamp with time zone::text",
-            [%DateTime{year: 2001, month: 1, day: 1, hour: 0, minute: 0,
-                second: 0, microsecond: {0, 6}, time_zone: "Etc/UTC",
-                zone_abbr: "UTC", utc_offset: 0, std_offset: 0}])
+             query(
+               "SELECT $1::timestamp with time zone::text",
+               [
+                 %DateTime{
+                   year: 2001,
+                   month: 1,
+                   day: 1,
+                   hour: 0,
+                   minute: 0,
+                   second: 0,
+                   microsecond: {0, 6},
+                   time_zone: "Etc/UTC",
+                   zone_abbr: "UTC",
+                   utc_offset: 0,
+                   std_offset: 0
+                 }
+               ]
+             )
 
     assert [["2013-09-23 14:04:37.123+00"]] =
-      query("SELECT $1::timestamp with time zone::text",
-            [%DateTime{year: 2013, month: 9, day: 23, hour: 14, minute: 4,
-                       second: 37, microsecond: {123000, 6},
-                       time_zone: "Etc/UTC", zone_abbr: "UTC", utc_offset: 0,
-                       std_offset: 0}])
+             query(
+               "SELECT $1::timestamp with time zone::text",
+               [
+                 %DateTime{
+                   year: 2013,
+                   month: 9,
+                   day: 23,
+                   hour: 14,
+                   minute: 4,
+                   second: 37,
+                   microsecond: {123_000, 6},
+                   time_zone: "Etc/UTC",
+                   zone_abbr: "UTC",
+                   utc_offset: 0,
+                   std_offset: 0
+                 }
+               ]
+             )
 
-    assert_raise ArgumentError, ~r"is not in UTC",
-      fn() ->
-        query("SELECT $1::timestamp with time zone::text",
-            [%DateTime{year: 2013, month: 9, day: 23, hour: 14, minute: 4,
-                       second: 37, microsecond: {123000, 6},
-                       time_zone: "PST", zone_abbr: "PST", utc_offset: -8,
-                       std_offset: 0}])
-      end
+    assert_raise ArgumentError, ~r"is not in UTC", fn ->
+      query(
+        "SELECT $1::timestamp with time zone::text",
+        [
+          %DateTime{
+            year: 2013,
+            month: 9,
+            day: 23,
+            hour: 14,
+            minute: 4,
+            second: 37,
+            microsecond: {123_000, 6},
+            time_zone: "PST",
+            zone_abbr: "PST",
+            utc_offset: -8,
+            std_offset: 0
+          }
+        ]
+      )
+    end
 
     assert :ok = query("SET SESSION TIME ZONE +1", [])
 
     assert [["2013-09-23 15:04:37.123+01"]] =
-      query("SELECT $1::timestamp with time zone::text",
-            [%DateTime{year: 2013, month: 9, day: 23, hour: 14, minute: 4,
-                       second: 37, microsecond: {123000, 6},
-                       time_zone: "Etc/UTC", zone_abbr: "UTC", utc_offset: 0,
-                       std_offset: 0}])
+             query(
+               "SELECT $1::timestamp with time zone::text",
+               [
+                 %DateTime{
+                   year: 2013,
+                   month: 9,
+                   day: 23,
+                   hour: 14,
+                   minute: 4,
+                   second: 37,
+                   microsecond: {123_000, 6},
+                   time_zone: "Etc/UTC",
+                   zone_abbr: "UTC",
+                   utc_offset: 0,
+                   std_offset: 0
+                 }
+               ]
+             )
 
     assert [["1980-01-01 01:00:00.123456+01"]] =
-      query("SELECT $1::timestamp with time zone::text",
-            [%DateTime{year: 1980, month: 1, day: 1, hour: 0, minute: 0,
-                       second: 0, microsecond: {123456, 6},
-                       time_zone: "Etc/UTC", zone_abbr: "UTC", utc_offset: 0,
-                       std_offset: 0}])
+             query(
+               "SELECT $1::timestamp with time zone::text",
+               [
+                 %DateTime{
+                   year: 1980,
+                   month: 1,
+                   day: 1,
+                   hour: 0,
+                   minute: 0,
+                   second: 0,
+                   microsecond: {123_456, 6},
+                   time_zone: "Etc/UTC",
+                   zone_abbr: "UTC",
+                   utc_offset: 0,
+                   std_offset: 0
+                 }
+               ]
+             )
   end
 
-  test "persist timestamp and timestamptz", context  do
+  test "persist timestamp and timestamptz", context do
     assert :ok = query("SET SESSION TIME ZONE +1", [])
-    assert :ok = query("INSERT INTO calendar VALUES (timestamp without time zone '2001-01-01 00:00:00', timestamp with time zone '2001-01-01 00:00:00 UTC')", [])
 
-    assert [[~N[2001-01-01 00:00:00.000000],
-             %DateTime{year: 2001,  month: 1, day: 1, hour: 0, minute: 0,
-                       second: 0}]] =
-      query("SELECT a, b FROM calendar", [])
+    assert :ok =
+             query(
+               "INSERT INTO calendar VALUES (timestamp without time zone '2001-01-01 00:00:00', timestamp with time zone '2001-01-01 00:00:00 UTC')",
+               []
+             )
+
+    assert [
+             [
+               ~N[2001-01-01 00:00:00.000000],
+               %DateTime{year: 2001, month: 1, day: 1, hour: 0, minute: 0, second: 0}
+             ]
+           ] = query("SELECT a, b FROM calendar", [])
 
     assert :ok = query("SET SESSION TIME ZONE +2", [])
 
-    assert [[~N[2001-01-01 00:00:00.000000],
-             %DateTime{year: 2001,  month: 1, day: 1, hour: 0, minute: 0,
-                       second: 0}]] =
-      query("SELECT a, b FROM calendar", [])
+    assert [
+             [
+               ~N[2001-01-01 00:00:00.000000],
+               %DateTime{year: 2001, month: 1, day: 1, hour: 0, minute: 0, second: 0}
+             ]
+           ] = query("SELECT a, b FROM calendar", [])
   end
 end

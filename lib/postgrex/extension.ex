@@ -73,17 +73,19 @@ defmodule Postgrex.Extension do
   user options. The state returned from this function will be passed to other
   callbacks.
   """
-  @callback init(Keyword.t) :: state
+  @callback init(Keyword.t()) :: state
 
   @doc """
   Specifies the types the extension matches, see `Postgrex.TypeInfo` for
   specification of the fields.
   """
-  @callback matching(state) :: [type: String.t,
-                                 send: String.t,
-                                 receive: String.t,
-                                 input: String.t,
-                                 output: String.t]
+  @callback matching(state) :: [
+              type: String.t(),
+              send: String.t(),
+              receive: String.t(),
+              input: String.t(),
+              output: String.t()
+            ]
 
   @doc """
   Returns the format the type should be encoded as. See
@@ -104,7 +106,7 @@ defmodule Postgrex.Extension do
       end
 
   """
-  @callback encode(state) :: Macro.t
+  @callback encode(state) :: Macro.t()
 
   @doc """
   Returns a quoted list of clauses that decode a binary to an Elixir value.
@@ -120,5 +122,5 @@ defmodule Postgrex.Extension do
         end
       end
   """
-  @callback decode(state) :: Macro.t
+  @callback decode(state) :: Macro.t()
 end

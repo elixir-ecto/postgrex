@@ -38,7 +38,8 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.TSVector,
     Postgrex.Extensions.UUID,
     Postgrex.Extensions.VoidBinary,
-    Postgrex.Extensions.VoidText]
+    Postgrex.Extensions.VoidText
+  ]
 
   @doc """
   Checks if a given extension is a default extension.
@@ -46,12 +47,13 @@ defmodule Postgrex.Utils do
   for ext <- @extensions do
     def default_extension?(unquote(ext)), do: true
   end
+
   def default_extension?(_), do: false
 
   @doc """
   List all default extensions.
   """
-  @spec default_extensions(Keyword.t) :: [{module(), Keyword.t}]
+  @spec default_extensions(Keyword.t()) :: [{module(), Keyword.t()}]
   def default_extensions(opts \\ []) do
     Enum.map(@extensions, &{&1, opts})
   end
@@ -78,7 +80,7 @@ defmodule Postgrex.Utils do
   @doc """
   Fills in the given `opts` with default options.
   """
-  @spec default_opts(Keyword.t) :: Keyword.t
+  @spec default_opts(Keyword.t()) :: Keyword.t()
   def default_opts(opts) do
     opts
     |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
@@ -98,38 +100,40 @@ defmodule Postgrex.Utils do
   """
   def encode_msg(%Postgrex.TypeInfo{type: type}, observed, expected) do
     "Postgrex expected #{to_desc(expected)} that can be encoded/cast to " <>
-    "type #{inspect type}, got #{inspect observed}. Please make sure the " <>
-    "value you are passing matches the definition in your table or in your " <>
-    "query or convert the value accordingly."
+      "type #{inspect(type)}, got #{inspect(observed)}. Please make sure the " <>
+      "value you are passing matches the definition in your table or in your " <>
+      "query or convert the value accordingly."
   end
 
   @doc """
   Return encode error message.
   """
   def encode_msg(%Date{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
-    "Postgrex expected a %Date{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
-    "Postgrex (and Postgres) support dates in the `Calendar.ISO` calendar only."
+    "Postgrex expected a %Date{} in the `Calendar.ISO` calendar, got #{inspect(observed)}. " <>
+      "Postgrex (and Postgres) support dates in the `Calendar.ISO` calendar only."
   end
 
-  def encode_msg(%NaiveDateTime{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
-    "Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
-    "Postgrex (and Postgres) support naive datetimes in the `Calendar.ISO` calendar only."
+  def encode_msg(%NaiveDateTime{calendar: calendar} = observed, _expected)
+      when calendar != Calendar.ISO do
+    "Postgrex expected a %NaiveDateTime{} in the `Calendar.ISO` calendar, got #{inspect(observed)}. " <>
+      "Postgrex (and Postgres) support naive datetimes in the `Calendar.ISO` calendar only."
   end
 
-  def encode_msg(%DateTime{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
-    "Postgrex expected a %DateTime{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
-    "Postgrex (and Postgres) support datetimes in the `Calendar.ISO` calendar only."
+  def encode_msg(%DateTime{calendar: calendar} = observed, _expected)
+      when calendar != Calendar.ISO do
+    "Postgrex expected a %DateTime{} in the `Calendar.ISO` calendar, got #{inspect(observed)}. " <>
+      "Postgrex (and Postgres) support datetimes in the `Calendar.ISO` calendar only."
   end
 
   def encode_msg(%Time{calendar: calendar} = observed, _expected) when calendar != Calendar.ISO do
-    "Postgrex expected a %Time{} in the `Calendar.ISO` calendar, got #{inspect observed}. " <>
-    "Postgrex (and Postgres) support times in the `Calendar.ISO` calendar only."
+    "Postgrex expected a %Time{} in the `Calendar.ISO` calendar, got #{inspect(observed)}. " <>
+      "Postgrex (and Postgres) support times in the `Calendar.ISO` calendar only."
   end
 
   def encode_msg(observed, expected) do
-    "Postgrex expected #{to_desc(expected)}, got #{inspect observed}. " <>
-    "Please make sure the value you are passing matches the definition in " <>
-    "your table or in your query or convert the value accordingly."
+    "Postgrex expected #{to_desc(expected)}, got #{inspect(observed)}. " <>
+      "Please make sure the value you are passing matches the definition in " <>
+      "your table or in your query or convert the value accordingly."
   end
 
   @doc """
@@ -137,11 +141,12 @@ defmodule Postgrex.Utils do
   """
   def type_msg(%Postgrex.TypeInfo{type: json}, module)
       when json in ["json", "jsonb"] do
-    "type `#{json}` can not be handled by the types module #{inspect module}, " <>
-    "it must define a `:json` library in its options to support JSON types"
+    "type `#{json}` can not be handled by the types module #{inspect(module)}, " <>
+      "it must define a `:json` library in its options to support JSON types"
   end
+
   def type_msg(%Postgrex.TypeInfo{type: type}, module) do
-    "type `#{type}` can not be handled by the types module #{inspect module}"
+    "type `#{type}` can not be handled by the types module #{inspect(module)}"
   end
 
   ## Helpers
@@ -151,8 +156,8 @@ defmodule Postgrex.Utils do
     int
   end
 
-  defp to_desc(struct) when is_atom(struct), do: "%#{inspect struct}{}"
-  defp to_desc(%Range{} = range), do: "an integer in #{inspect range}"
+  defp to_desc(struct) when is_atom(struct), do: "%#{inspect(struct)}{}"
+  defp to_desc(%Range{} = range), do: "an integer in #{inspect(range)}"
   defp to_desc({a, b}), do: to_desc(a) <> " or " <> to_desc(b)
   defp to_desc(desc) when is_binary(desc), do: desc
 end

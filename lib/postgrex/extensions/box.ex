@@ -11,6 +11,7 @@ defmodule Postgrex.Extensions.Box do
         encoded_p2 = Point.encode_point(p2, Postgrex.Box)
         # 2 points -> 16 bytes each
         [<<32::int32>>, encoded_p1 | encoded_p2]
+
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Line)
     end

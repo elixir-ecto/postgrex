@@ -5,7 +5,7 @@ defmodule PSQL do
     {output, status} = System.cmd("psql", args, stderr_to_stdout: true, env: @pg_env)
 
     if status != 0 do
-      IO.puts """
+      IO.puts("""
       Command:
 
       psql #{Enum.join(args, " ")}
@@ -18,7 +18,7 @@ defmodule PSQL do
       create databases and users. If not, you can create a new user with:
 
       $ createuser postgres -s --no-password
-      """
+      """)
 
       System.halt(1)
     end
@@ -42,7 +42,7 @@ defmodule PSQL do
 end
 
 pg_version = PSQL.vsn()
-unix_exclude = if PSQL.supports_sockets?, do: [], else: [unix: true]
+unix_exclude = if PSQL.supports_sockets?(), do: [], else: [unix: true]
 notify_exclude = if pg_version == {8, 4}, do: [requires_notify_payload: true], else: []
 
 version_exclude =
@@ -102,14 +102,29 @@ CREATE SCHEMA test;
 
 PSQL.cmd(["-c", "DROP DATABASE IF EXISTS postgrex_test;"])
 PSQL.cmd(["-c", "DROP DATABASE IF EXISTS postgrex_test_with_schemas;"])
-PSQL.cmd(["-c", "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"])
-PSQL.cmd(["-c", "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"])
+
+PSQL.cmd([
+  "-c",
+  "CREATE DATABASE postgrex_test TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"
+])
+
+PSQL.cmd([
+  "-c",
+  "CREATE DATABASE postgrex_test_with_schemas TEMPLATE=template0 ENCODING='UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"
+])
+
 PSQL.cmd(["-d", "postgrex_test", "-c", sql_test])
 PSQL.cmd(["-d", "postgrex_test_with_schemas", "-c", sql_test_with_schemas])
 
 cond do
   pg_version >= {9, 1} ->
-    PSQL.cmd(["-d", "postgrex_test_with_schemas", "-c", "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"])
+    PSQL.cmd([
+      "-d",
+      "postgrex_test_with_schemas",
+      "-c",
+      "CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA test;"
+    ])
+
     PSQL.cmd(["-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS hstore;"])
 
   pg_version == {9, 0} ->
@@ -126,8 +141,7 @@ end
 defmodule Postgrex.TestHelper do
   defmacro query(stat, params, opts \\ []) do
     quote do
-      case Postgrex.query(var!(context)[:pid], unquote(stat),
-                                     unquote(params), unquote(opts)) do
+      case Postgrex.query(var!(context)[:pid], unquote(stat), unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Result{rows: rows}} -> rows
         {:error, err} -> err
@@ -137,8 +151,7 @@ defmodule Postgrex.TestHelper do
 
   defmacro prepare(name, stat, opts \\ []) do
     quote do
-      case Postgrex.prepare(var!(context)[:pid], unquote(name),
-                                     unquote(stat), unquote(opts)) do
+      case Postgrex.prepare(var!(context)[:pid], unquote(name), unquote(stat), unquote(opts)) do
         {:ok, %Postgrex.Query{} = query} -> query
         {:error, err} -> err
       end
@@ -147,8 +160,13 @@ defmodule Postgrex.TestHelper do
 
   defmacro prepare_execute(name, stat, params, opts \\ []) do
     quote do
-      case Postgrex.prepare_execute(var!(context)[:pid], unquote(name),
-                                     unquote(stat), unquote(params), unquote(opts)) do
+      case Postgrex.prepare_execute(
+             var!(context)[:pid],
+             unquote(name),
+             unquote(stat),
+             unquote(params),
+             unquote(opts)
+           ) do
         {:ok, %Postgrex.Query{} = query, %Postgrex.Result{rows: rows}} -> {query, rows}
         {:error, err} -> err
       end
@@ -157,8 +175,7 @@ defmodule Postgrex.TestHelper do
 
   defmacro execute(query, params, opts \\ []) do
     quote do
-      case Postgrex.execute(var!(context)[:pid], unquote(query),
-                                       unquote(params), unquote(opts)) do
+      case Postgrex.execute(var!(context)[:pid], unquote(query), unquote(params), unquote(opts)) do
         {:ok, %Postgrex.Query{}, %Postgrex.Result{rows: nil}} -> :ok
         {:ok, %Postgrex.Query{}, %Postgrex.Result{rows: rows}} -> rows
         {:error, err} -> err

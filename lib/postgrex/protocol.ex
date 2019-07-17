@@ -46,12 +46,14 @@ defmodule Postgrex.Protocol do
 
   defmacrop new_status(opts, fields \\ []) do
     defaults =
-      quote(do: [
-        notify: notify(unquote(opts)),
-        mode: mode(unquote(opts)),
-        messages: [],
-        prepare: false
-      ])
+      quote(
+        do: [
+          notify: notify(unquote(opts)),
+          mode: mode(unquote(opts)),
+          messages: [],
+          prepare: false
+        ]
+      )
 
     {:%{}, [], Keyword.merge(defaults, fields)}
   end
@@ -788,6 +790,7 @@ defmodule Postgrex.Protocol do
     %{parameters: parameters} = s
     version = Postgrex.Utils.parse_version(parameters["server_version"])
     statement = Types.bootstrap_query(version, types)
+
     if statement do
       bootstrap_send(s, status, statement, buffer)
     else
@@ -1132,8 +1135,7 @@ defmodule Postgrex.Protocol do
     %Query{name: name} = query
     %{buffer: buffer} = s
 
-    msgs =
-      [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query, [msg_flush()])
+    msgs = [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
@@ -1323,12 +1325,15 @@ defmodule Postgrex.Protocol do
   defp reload_describe_result(s, param_oids, nil, buffer) do
     {:reload, param_oids, s, buffer}
   end
+
   defp reload_describe_result(%{types: types} = s, param_oids, result_oids, buffer) do
     case fetch_type_info(result_oids, types) do
       {:ok, _} ->
         {:reload, param_oids, s, buffer}
+
       {:reload, reload_oids} ->
         {:reload, MapSet.union(param_oids, reload_oids), s, buffer}
+
       {:error, err} ->
         {:disconnect, err, %{s | buffer: buffer}}
     end
@@ -1420,8 +1425,8 @@ defmodule Postgrex.Protocol do
 
     with :ok <- msg_send(s, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         {:ok, _, %{buffer: buffer} = s}
-          <- recv_transaction(s, status, buffer) do
+         {:ok, _, %{buffer: buffer} = s} <-
+           recv_transaction(s, status, buffer) do
       reload_spawn(%{s | buffer: nil}, status, query, oids, buffer)
     else
       {:disconnect, _err, _s} = disconnect ->
@@ -1453,14 +1458,17 @@ defmodule Postgrex.Protocol do
   end
 
   defp fetch_type_info(oids, types, infos \\ [], reloads \\ MapSet.new())
+
   defp fetch_type_info([], _, infos, reloads) do
     case MapSet.size(reloads) do
       0 ->
         {:ok, Enum.reverse(infos)}
+
       _ ->
         {:reload, reloads}
     end
   end
+
   defp fetch_type_info([oid | oids], types, infos, reloads) do
     case Postgrex.Types.fetch(oid, types) do
       {:ok, info} ->
@@ -1476,13 +1484,15 @@ defmodule Postgrex.Protocol do
   end
 
   defp reload_spawn(s, status, query, oids, buffer) do
-    Logger.warn(fn() ->
-      [inspect(query) |
-       " uses unknown oid(s) #{Enum.join(oids, ", ")} causing bootstrap"]
+    Logger.warn(fn ->
+      [
+        inspect(query)
+        | " uses unknown oid(s) #{Enum.join(oids, ", ")} causing bootstrap"
+      ]
     end)
 
     ref = make_ref()
-    {_, mon} = spawn_monitor(fn() -> reload_init(s, status, oids, ref, buffer) end)
+    {_, mon} = spawn_monitor(fn -> reload_init(s, status, oids, ref, buffer) end)
 
     receive do
       {:DOWN, ^mon, _, _, {^ref, s, buffer}} ->
@@ -1525,7 +1535,7 @@ defmodule Postgrex.Protocol do
       else
         %{types_lock: {server, ref}} = status
         {type_infos, _, _, _} = acc
-        sorted_infos = Enum.sort_by(type_infos, &(&1.oid))
+        sorted_infos = Enum.sort_by(type_infos, & &1.oid)
         TypeServer.update(server, ref, sorted_infos)
         {:ok, %{s | buffer: buffer}}
       end
@@ -1538,9 +1548,11 @@ defmodule Postgrex.Protocol do
 
   defp reload_send(s, status, statement, acc, buffer) do
     msg = msg_query(statement: statement)
+
     case msg_send(s, msg, buffer) do
       :ok ->
         reload_recv(s, status, acc, buffer)
+
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
@@ -1550,16 +1562,21 @@ defmodule Postgrex.Protocol do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(), buffer} ->
         reload_recv(s, status, acc, buffer)
+
       {:ok, msg_data_row(values: values), buffer} ->
         reload_recv(s, status, reload_row(acc, values, types), buffer)
+
       {:ok, msg_command_complete(), buffer} ->
         reload_complete(s, status, acc, buffer)
+
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         bootstrap_fail(s, err, status, buffer)
+
       {:ok, msg, buffer} ->
         s = handle_msg(s, status, msg)
         reload_recv(s, status, acc, buffer)
+
       {:disconnect, err, s} ->
         bootstrap_fail(s, err, status)
     end
@@ -1567,22 +1584,25 @@ defmodule Postgrex.Protocol do
 
   defp reload_row({type_infos, oids, missing, current}, values, types) do
     %Postgrex.TypeInfo{oid: oid} = type_info = Types.build_type_info(values)
+
     missing =
       missing
       |> put_missing_oids(type_info, oids, types)
       |> MapSet.delete(oid)
+
     {[type_info | type_infos], MapSet.put(oids, oid), missing, current}
   end
 
   defp put_missing_oids(missing, type_info, new, types) do
-    %Postgrex.TypeInfo{array_elem: array_elem, base_type: base_type,
-                       comp_elems: comp_elems} = type_info
+    %Postgrex.TypeInfo{array_elem: array_elem, base_type: base_type, comp_elems: comp_elems} =
+      type_info
+
     for oid <- [array_elem, base_type | comp_elems],
         oid !== 0,
         not MapSet.member?(new, oid),
         not bootstrapped?(types, oid),
-      do: oid,
-      into: missing
+        do: oid,
+        into: missing
   end
 
   defp bootstrapped?(types, oid) do
@@ -1605,6 +1625,7 @@ defmodule Postgrex.Protocol do
         next = MapSet.delete(missing, prev)
         current = MapSet.union(next, prev)
         reload(s, status, Enum.to_list(next), {type_infos, new, MapSet.new(), current}, buffer)
+
       {:disconnect, _, _} = error ->
         error
     end
@@ -1614,8 +1635,10 @@ defmodule Postgrex.Protocol do
     case oids |> Enum.to_list() |> fetch_type_info(types) do
       {:ok, _} ->
         reload_prepare(%{s | buffer: buffer}, status, query)
+
       {:error, err} ->
         disconnect(s, err, buffer)
+
       {:reload, oids} ->
         msg = "oid(s) #{Enum.join(oids, ", ")} lack type information after bootstrap"
         disconnect(s, RuntimeError.exception(message: msg), buffer)
@@ -1647,8 +1670,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp lock_error(s, fun) do
-    msg =
-      "connection is locked copying to or from the database and can not #{fun} transaction"
+    msg = "connection is locked copying to or from the database and can not #{fun} transaction"
 
     {:disconnect, RuntimeError.exception(msg), s}
   end
@@ -1750,6 +1772,7 @@ defmodule Postgrex.Protocol do
     else
       {:error, %Postgrex.Error{} = err, s, buffer} ->
         query_delete(s, err, query)
+
         error_ready(s, status, err, buffer)
         |> maybe_disconnect()
 
@@ -1791,10 +1814,10 @@ defmodule Postgrex.Protocol do
 
   defp maybe_disconnect({:error, _, %{disconnect_on_error_codes: []}} = result), do: result
 
-  defp maybe_disconnect({:error,
-         %Postgrex.Error{postgres: %{code: code}} = error,
-         %{disconnect_on_error_codes: codes} = state
-       } = result) do
+  defp maybe_disconnect(
+         {:error, %Postgrex.Error{postgres: %{code: code}} = error,
+          %{disconnect_on_error_codes: codes} = state} = result
+       ) do
     if code in codes do
       {:disconnect, error, state}
     else
@@ -2761,7 +2784,7 @@ defmodule Postgrex.Protocol do
     tag =
       acc
       |> String.trim_trailing("_")
-      |> String.to_atom
+      |> String.to_atom()
 
     {tag, nil}
   end
@@ -2954,6 +2977,7 @@ defmodule Postgrex.Protocol do
   defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
   end
+
   defp disconnect(s, %RuntimeError{} = err, buffer) do
     {:disconnect, err, %{s | buffer: buffer}}
   end

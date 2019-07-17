@@ -5,7 +5,7 @@ defmodule Postgrex.SCRAM do
   @nonce_length 24
   @nonce_rand_bytes div(@nonce_length * 6, 8)
   @nonce_prefix "n,,n=,r="
-  @nonce_encoded_size <<byte_size(@nonce_prefix) + @nonce_length :: signed-size(32)>>
+  @nonce_encoded_size <<byte_size(@nonce_prefix) + @nonce_length::signed-size(32)>>
 
   def challenge do
     nonce = @nonce_rand_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()

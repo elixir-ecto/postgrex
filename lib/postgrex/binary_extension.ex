@@ -3,7 +3,6 @@ defmodule Postgrex.BinaryExtension do
 
   defmacro __using__(matching) do
     quote location: :keep do
-
       @behaviour Postgrex.Extension
 
       def init(_), do: nil
@@ -12,7 +11,7 @@ defmodule Postgrex.BinaryExtension do
 
       def format(_), do: :binary
 
-      defoverridable [init: 1]
+      defoverridable init: 1
     end
   end
 end

@@ -23,16 +23,16 @@ defmodule Postgrex.TypeInfo do
   alias Postgrex.Types
 
   @type t :: %__MODULE__{
-    oid:        Types.oid,
-    type:       String.t,
-    send:       String.t,
-    receive:    String.t,
-    output:     String.t,
-    input:      String.t,
-    array_elem: Types.oid,
-    base_type:  Types.oid,
-    comp_elems: [Types.oid]}
+          oid: Types.oid(),
+          type: String.t(),
+          send: String.t(),
+          receive: String.t(),
+          output: String.t(),
+          input: String.t(),
+          array_elem: Types.oid(),
+          base_type: Types.oid(),
+          comp_elems: [Types.oid()]
+        }
 
-  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem,
-             :base_type, :comp_elems]
+  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem, :base_type, :comp_elems]
 end

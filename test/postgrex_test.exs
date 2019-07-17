@@ -7,6 +7,7 @@ defmodule PostgrexTest do
     end)
 
     Application.stop(:ssl)
+
     assert_raise RuntimeError, ~r"SSL connection can not be established", fn ->
       Postgrex.start_link(ssl: true, database: "postgrex_test")
     end

@@ -215,7 +215,7 @@ defmodule Postgrex.Notifications do
       {:ok, protocol} ->
         {:noreply, %{state | protocol: protocol}, state.idle_timeout}
 
-      {error, reason, protocol} when error in[:error, :disconnect] ->
+      {error, reason, protocol} when error in [:error, :disconnect] ->
         {:stop, reason, %{state | protocol: protocol}}
     end
   end

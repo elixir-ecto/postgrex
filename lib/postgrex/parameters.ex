@@ -48,8 +48,7 @@ defmodule Postgrex.Parameters do
   end
 
   def init(nil) do
-    opts = [:public, :named_table, {:read_concurrency, true},
-            {:write_concurrency, true}]
+    opts = [:public, :named_table, {:read_concurrency, true}, {:write_concurrency, true}]
     state = :ets.new(__MODULE__, opts)
     {:ok, state}
   end

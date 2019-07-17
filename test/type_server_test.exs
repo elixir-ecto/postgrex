@@ -16,7 +16,7 @@ defmodule TypeServerTest do
   test "fetches and exits" do
     key = make_ref()
     server = TM.locate(@types, key)
-    task = Task.async(fn() -> assert {:lock, _, _} = TS.fetch(server) end)
+    task = Task.async(fn -> assert {:lock, _, _} = TS.fetch(server) end)
     {:lock, _, types} = Task.await(task)
     assert ^server = TM.locate(@types, key)
     assert {:lock, _, ^types} = TS.fetch(server)
@@ -27,7 +27,7 @@ defmodule TypeServerTest do
     server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
 
-    task = Task.async fn -> TS.fetch(server) end
+    task = Task.async(fn -> TS.fetch(server) end)
     :timer.sleep(100)
     TS.update(server, ref, [])
     assert {:lock, _, ^types} = Task.await(task)
@@ -41,7 +41,7 @@ defmodule TypeServerTest do
 
     assert {:lock, ref, ^types} = TS.fetch(server)
 
-    task = Task.async fn -> TS.fetch(server) end
+    task = Task.async(fn -> TS.fetch(server) end)
     :timer.sleep(100)
     assert Task.yield(task, 0) == nil
     TS.update(server, ref, [])
@@ -53,7 +53,7 @@ defmodule TypeServerTest do
     server = TM.locate(@types, key)
     {:lock, ref, types} = TS.fetch(server)
 
-    task = Task.async fn -> TS.fetch(server) end
+    task = Task.async(fn -> TS.fetch(server) end)
     :timer.sleep(100)
     assert Task.yield(task, 0) == nil
     TS.done(server, ref)
@@ -68,7 +68,7 @@ defmodule TypeServerTest do
 
     {:lock, ref, ^types} = TS.fetch(server)
 
-    task = Task.async fn -> TS.fetch(server) end
+    task = Task.async(fn -> TS.fetch(server) end)
     :timer.sleep(100)
     assert Task.yield(task, 0) == nil
     TS.done(server, ref)
@@ -79,11 +79,13 @@ defmodule TypeServerTest do
     key = make_ref()
     server = TM.locate(@types, key)
 
-    task = Task.async fn ->
-      {:lock, ref, types} = TS.fetch(server)
-      TS.update(server, ref, [])
-      types
-    end
+    task =
+      Task.async(fn ->
+        {:lock, ref, types} = TS.fetch(server)
+        TS.update(server, ref, [])
+        types
+      end)
+
     types = Task.await(task)
     wait_until_dead(task.pid)
 
@@ -99,18 +101,20 @@ defmodule TypeServerTest do
     TS.update(server, ref, [])
 
     parent = self()
-    task =
-      fn() ->
-        result = TS.fetch(server)
-        send(parent, {self(), result})
-        case result do
-          {:lock, ref2, _}  ->
-            assert_receive {^parent, :go}
-            TS.update(server, ref2, [])
-          _ ->
-            :ok
-        end
+
+    task = fn ->
+      result = TS.fetch(server)
+      send(parent, {self(), result})
+
+      case result do
+        {:lock, ref2, _} ->
+          assert_receive {^parent, :go}
+          TS.update(server, ref2, [])
+
+        _ ->
+          :ok
       end
+    end
 
     {:ok, _} = Task.start_link(task)
     {:ok, _} = Task.start_link(task)
@@ -131,12 +135,14 @@ defmodule TypeServerTest do
     Application.put_env(:postgrex, :type_server_reap_after, 0)
     key = make_ref()
 
-    task = Task.async fn ->
-      server = TM.locate(@types, key)
-      {:lock, ref, types} = TS.fetch(server)
-      TS.update(server, ref, [])
-      {server, types}
-    end
+    task =
+      Task.async(fn ->
+        server = TM.locate(@types, key)
+        {:lock, ref, types} = TS.fetch(server)
+        TS.update(server, ref, [])
+        {server, types}
+      end)
+
     {server1, types1} = Task.await(task)
     mref = Process.monitor(server1)
     assert_receive {:DOWN, ^mref, _, _, _}
@@ -162,8 +168,7 @@ defmodule TypeServerTest do
     assert {:lock, _ref, types} = Task.await(task)
     wait_until_dead(task.pid)
 
-    assert {:lock, _ref, ^types} =
-           Task.async(fn -> TS.fetch(server) end) |> Task.await
+    assert {:lock, _ref, ^types} = Task.async(fn -> TS.fetch(server) end) |> Task.await()
   end
 
   test "error waiting process if original holder crashes after fetch" do
@@ -171,10 +176,11 @@ defmodule TypeServerTest do
     server = TM.locate(@types, key)
     top = self()
 
-    {:ok, pid} = Task.start fn ->
-      send(top, TS.fetch(server))
-      :timer.sleep(:infinity)
-    end
+    {:ok, pid} =
+      Task.start(fn ->
+        send(top, TS.fetch(server))
+        :timer.sleep(:infinity)
+      end)
 
     assert_receive {:lock, _, types}
     task = Task.async(fn -> TS.fetch(server) end)

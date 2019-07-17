@@ -3,11 +3,13 @@ defmodule Postgrex.Stream do
   defstruct [:conn, :query, :params, :options]
   @type t :: %Postgrex.Stream{}
 end
+
 defmodule Postgrex.Cursor do
   @moduledoc false
   defstruct [:portal, :ref, :connection_id, :mode]
   @type t :: %Postgrex.Cursor{}
 end
+
 defmodule Postgrex.Copy do
   @moduledoc false
   defstruct [:portal, :ref, :connection_id, :query]
@@ -16,6 +18,7 @@ end
 
 defimpl Enumerable, for: Postgrex.Stream do
   alias Postgrex.Query
+
   def reduce(%Postgrex.Stream{query: %Query{} = query} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
     stream = %DBConnection.Stream{conn: conn, query: query, params: params, opts: opts}
@@ -24,7 +27,7 @@ defimpl Enumerable, for: Postgrex.Stream do
 
   def reduce(%Postgrex.Stream{query: statement} = stream, acc, fun) do
     %Postgrex.Stream{conn: conn, params: params, options: opts} = stream
-    query = %Query{name: "" , statement: statement}
+    query = %Query{name: "", statement: statement}
     opts = Keyword.put(opts, :function, :prepare_open)
     stream = %DBConnection.PrepareStream{conn: conn, query: query, params: params, opts: opts}
     DBConnection.reduce(stream, acc, fun)
@@ -55,6 +58,7 @@ defimpl Collectable, for: Postgrex.Stream do
       %Query{} ->
         copy = DBConnection.execute!(conn, query, params, opts)
         {:ok, make_into(conn, stream, copy, opts)}
+
       query ->
         query = %Query{name: "", statement: query}
         {_, copy} = DBConnection.prepare_execute!(conn, query, params, opts)
@@ -71,6 +75,7 @@ defimpl Collectable, for: Postgrex.Stream do
       :ok, {:cont, data} ->
         _ = DBConnection.execute!(conn, copy, {:copy_data, ref, data}, opts)
         :ok
+
       :ok, close when close in [:done, :halt] ->
         _ = DBConnection.execute!(conn, copy, {:copy_done, ref}, opts)
         stream
@@ -83,11 +88,11 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
   import Postgrex.Messages
 
   def parse(copy, _) do
-    raise "can not prepare #{inspect copy}"
+    raise "can not prepare #{inspect(copy)}"
   end
 
   def describe(copy, _) do
-    raise "can not describe #{inspect copy}"
+    raise "can not describe #{inspect(copy)}"
   end
 
   def encode(%Copy{ref: ref}, {:copy_data, ref, data}, _) do
@@ -96,7 +101,7 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
     rescue
       ArgumentError ->
         reraise ArgumentError,
-          "expected iodata to copy to database, got: " <> inspect(data)
+                "expected iodata to copy to database, got: " <> inspect(data)
     else
       iodata ->
         {:copy_data, iodata}
@@ -108,7 +113,7 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
   end
 
   def decode(copy, _result, _opts) do
-    raise "can not describe #{inspect copy}"
+    raise "can not describe #{inspect(copy)}"
   end
 end
 
