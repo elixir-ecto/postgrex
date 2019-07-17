@@ -22,7 +22,7 @@ defmodule Postgrex.Notifications do
 
   ## A note on casing
 
-  While PostgreSQL seems to behave as case insensittive, it actually has a very
+  While PostgreSQL seems to behave as case-insensitive, it actually has a very
   perculiar behaviour on casing. When you write:
 
       SELECT * FROM POSTS
