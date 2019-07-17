@@ -1,6 +1,55 @@
 defmodule Postgrex.Notifications do
-  @moduledoc """
+  @moduledoc ~S"""
   API for notifications (pub/sub) in Postgres.
+
+  In order to use it, first you need to start the notification process.
+  In your supervision tree:
+
+      {Postgrex.Notifications, name: MyApp.Notifications}
+
+  Then you can listen to certain channels:
+
+      {:ok, listen_ref} = Postgrex.Notifications.listen(MyApp.Notifications, "channel")
+
+  Now every time a message is broadcast on said channel, for example via
+  Postgres command line:
+
+      NOTIFY "channel", "Oh hai!";
+
+  You will receive a message in the formmat:
+
+      {:notification, notification_pid, listen_ref, channel, message}
+
+  ## A note on casing
+
+  While PostgreSQL seems to behave as case insensittive, it actually has a very
+  perculiar behaviour on casing. When you write:
+
+      SELECT * FROM POSTS
+
+  PostgreSQL actually converts `POSTS` into the lowercase `posts`. That's why
+  both `SELECT * FROM POSTS` and `SELECT * FROM posts` feel equivalent.
+  However, if you wrap the table name in quotes, then the casing in quotes
+  will be preserved.
+
+  These same rules apply to PostgreSQL notification channels. More importantly,
+  whenever `Postgrex.Notifications` listens to a channel, it wraps the channel
+  name in quotes. Therefore, if you listen to a channel named "fooBar" and
+  you send a notification without quotes in the channel name, such as:
+
+      NOTIFY fooBar, "Oh hai!";
+
+  The notification will not be received by Postgrex.Notifications because the
+  notification will be effectively sent to `"foobar"` and not `"fooBar"`. Therefore,
+  you must guarantee one of the two following properties:
+
+    1. If you can wrap the channel name in quotes when sending a notification,
+       then make sure the channel name has the exact same casing when listening
+       and sennding notifications
+
+    2. If you cannot wrap the channel name in quotes when sending a notification,
+       then make sure to give the lowercased channel name when listening
+
   """
 
   use Connection
