@@ -50,7 +50,8 @@ version_exclude =
   |> Enum.filter(fn x -> x > pg_version end)
   |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
 
-ExUnit.start(exclude: version_exclude ++ notify_exclude ++ unix_exclude)
+excludes = version_exclude ++ notify_exclude ++ unix_exclude
+ExUnit.start(exclude: excludes, assert_receive_timeout: 1000)
 {:ok, _} = Application.ensure_all_started(:crypto)
 
 sql_test = """
