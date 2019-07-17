@@ -1,6 +1,6 @@
 defmodule Postgrex.Interval do
   @moduledoc """
-  Struct for PostgreSQL interval.
+  Struct for PostgreSQL `interval`.
 
   ## Fields
 
@@ -17,7 +17,7 @@ end
 
 defmodule Postgrex.Range do
   @moduledoc """
-  Struct for PostgreSQL range.
+  Struct for PostgreSQL `range`.
 
   ## Fields
 
@@ -40,7 +40,7 @@ end
 
 defmodule Postgrex.INET do
   @moduledoc """
-  Struct for PostgreSQL inet/cidr.
+  Struct for PostgreSQL `inet` / `cidr`.
 
   ## Fields
 
@@ -56,7 +56,7 @@ end
 
 defmodule Postgrex.MACADDR do
   @moduledoc """
-  Struct for PostgreSQL macaddr.
+  Struct for PostgreSQL `macaddr`.
 
   ## Fields
 
@@ -73,7 +73,7 @@ end
 
 defmodule Postgrex.Point do
   @moduledoc """
-  Struct for PostgreSQL point.
+  Struct for PostgreSQL `point`.
 
   ## Fields
 
@@ -89,7 +89,7 @@ end
 
 defmodule Postgrex.Polygon do
   @moduledoc """
-  Struct for PostgreSQL polygon.
+  Struct for PostgreSQL `polygon`.
 
   ## Fields
 
@@ -104,7 +104,7 @@ end
 
 defmodule Postgrex.Line do
   @moduledoc """
-  Struct for PostgreSQL line.
+  Struct for PostgreSQL `line`.
 
   Note, lines are stored in PostgreSQL in the form `{a, b, c}`, which
   parameterizes a line as `a*x + b*y + c = 0`.
@@ -124,7 +124,7 @@ end
 
 defmodule Postgrex.LineSegment do
   @moduledoc """
-  Struct for PostgreSQL line segment.
+  Struct for PostgreSQL `lseg`.
 
   ## Fields
 
@@ -140,7 +140,7 @@ end
 
 defmodule Postgrex.Box do
   @moduledoc """
-  Struct for PostgreSQL rectangular box.
+  Struct for PostgreSQL `box`.
 
   ## Fields
 
@@ -159,7 +159,7 @@ end
 
 defmodule Postgrex.Path do
   @moduledoc """
-  Struct for PostgreSQL path.
+  Struct for PostgreSQL `path`.
 
   ## Fields
 
@@ -175,7 +175,7 @@ end
 
 defmodule Postgrex.Circle do
   @moduledoc """
-  Struct for PostgreSQL circle.
+  Struct for PostgreSQL `circle`.
 
   ## Fields
 
@@ -190,7 +190,7 @@ end
 
 defmodule Postgrex.Lexeme do
   @moduledoc """
-  Struct for PostgreSQL lexeme (A tsvector type is composed of multiple lexemes)
+  Struct for PostgreSQL `lexeme`.
 
   ## Fields
 
