@@ -18,7 +18,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
 
       other ->
         raise DBConnection.EncodeError,
-              Postgrex.Utils.encode_msg(other, {DateTime, NaiveDateTime})
+              Postgrex.Utils.encode_msg(other, DateTime)
     end
   end
 
