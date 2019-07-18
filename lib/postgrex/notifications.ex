@@ -1,6 +1,6 @@
 defmodule Postgrex.Notifications do
   @moduledoc ~S"""
-  API for notifications (pub/sub) in Postgres.
+  API for notifications (pub/sub) in PostgreSQL.
 
   In order to use it, first you need to start the notification process.
   In your supervision tree:
@@ -12,7 +12,7 @@ defmodule Postgrex.Notifications do
       {:ok, listen_ref} = Postgrex.Notifications.listen(MyApp.Notifications, "channel")
 
   Now every time a message is broadcast on said channel, for example via
-  Postgres command line:
+  PostgreSQL command line:
 
       NOTIFY "channel", "Oh hai!";
 
@@ -22,7 +22,7 @@ defmodule Postgrex.Notifications do
 
   ## A note on casing
 
-  While PostgreSQL seems to behave as case insensittive, it actually has a very
+  While PostgreSQL seems to behave as case-insensitive, it actually has a very
   perculiar behaviour on casing. When you write:
 
       SELECT * FROM POSTS

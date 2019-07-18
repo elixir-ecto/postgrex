@@ -1,6 +1,6 @@
 defmodule Postgrex.Extension do
   @moduledoc """
-  An extension knows how to encode and decode Postgres types to and
+  An extension knows how to encode and decode PostgreSQL types to and
   from Elixir values.
 
   Custom extensions can be enabled via `Postgrex.Types.define/3`.

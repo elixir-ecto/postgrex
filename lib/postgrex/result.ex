@@ -7,7 +7,7 @@ defmodule Postgrex.Result do
     * `rows` - The result set. A list of lists, each inner list corresponding to a
       row, each element in the inner list corresponds to a column;
     * `num_rows` - The number of fetched or affected rows;
-    * `connection_id` - The OS pid of the Postgres backend that executed the query;
+    * `connection_id` - The OS pid of the PostgreSQL backend that executed the query;
     * `messages` - A list of maps of messages, such as hints and notices, sent by the
       the driver during the execution of the query
   """

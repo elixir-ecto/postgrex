@@ -1,6 +1,6 @@
 defmodule Postgrex.Interval do
   @moduledoc """
-  Struct for Postgres interval.
+  Struct for PostgreSQL `interval`.
 
   ## Fields
 
@@ -17,7 +17,7 @@ end
 
 defmodule Postgrex.Range do
   @moduledoc """
-  Struct for Postgres range.
+  Struct for PostgreSQL `range`.
 
   ## Fields
 
@@ -40,7 +40,7 @@ end
 
 defmodule Postgrex.INET do
   @moduledoc """
-  Struct for Postgres inet/cidr.
+  Struct for PostgreSQL `inet` / `cidr`.
 
   ## Fields
 
@@ -56,7 +56,7 @@ end
 
 defmodule Postgrex.MACADDR do
   @moduledoc """
-  Struct for Postgres macaddr.
+  Struct for PostgreSQL `macaddr`.
 
   ## Fields
 
@@ -73,7 +73,7 @@ end
 
 defmodule Postgrex.Point do
   @moduledoc """
-  Struct for Postgres point.
+  Struct for PostgreSQL `point`.
 
   ## Fields
 
@@ -89,7 +89,7 @@ end
 
 defmodule Postgrex.Polygon do
   @moduledoc """
-  Struct for Postgres polygon.
+  Struct for PostgreSQL `polygon`.
 
   ## Fields
 
@@ -104,9 +104,9 @@ end
 
 defmodule Postgrex.Line do
   @moduledoc """
-  Struct for Postgres line.
+  Struct for PostgreSQL `line`.
 
-  Note, lines are stored in Postgres in the form `{a, b, c}`, which
+  Note, lines are stored in PostgreSQL in the form `{a, b, c}`, which
   parameterizes a line as `a*x + b*y + c = 0`.
 
   ## Fields
@@ -124,7 +124,7 @@ end
 
 defmodule Postgrex.LineSegment do
   @moduledoc """
-  Struct for Postgres line segment.
+  Struct for PostgreSQL `lseg`.
 
   ## Fields
 
@@ -140,7 +140,7 @@ end
 
 defmodule Postgrex.Box do
   @moduledoc """
-  Struct for Postgres rectangular box.
+  Struct for PostgreSQL `box`.
 
   ## Fields
 
@@ -159,7 +159,7 @@ end
 
 defmodule Postgrex.Path do
   @moduledoc """
-  Struct for Postgres path.
+  Struct for PostgreSQL `path`.
 
   ## Fields
 
@@ -175,7 +175,7 @@ end
 
 defmodule Postgrex.Circle do
   @moduledoc """
-  Struct for Postgres circle.
+  Struct for PostgreSQL `circle`.
 
   ## Fields
 
@@ -190,7 +190,7 @@ end
 
 defmodule Postgrex.Lexeme do
   @moduledoc """
-  Struct for Postgres Lexeme (A Tsvector type is composed of multiple lexemes)
+  Struct for PostgreSQL `lexeme`.
 
   ## Fields
 

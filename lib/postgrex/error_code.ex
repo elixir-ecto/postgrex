@@ -26,7 +26,7 @@ defmodule Postgrex.ErrorCode do
   end
 
   @doc ~S"""
-  Translates a Postgres error code into a name
+  Translates a PostgreSQL error code into a name
 
   Examples:
       iex> code_to_name("23505")
@@ -43,7 +43,7 @@ defmodule Postgrex.ErrorCode do
   def code_to_name(_), do: nil
 
   @doc ~S"""
-  Translates a Postgres error name into a list of possible codes.
+  Translates a PostgreSQL error name into a list of possible codes.
   Most error names have only a single code, but there are exceptions.
 
   Examples:
