@@ -7,12 +7,13 @@ defmodule Postgrex.Interval do
     * `months`
     * `days`
     * `secs`
+    * `microsecs`
 
   """
 
-  @type t :: %__MODULE__{months: integer, days: integer, secs: integer}
+  @type t :: %__MODULE__{months: integer, days: integer, secs: integer, microsecs: integer}
 
-  defstruct months: 0, days: 0, secs: 0
+  defstruct months: 0, days: 0, secs: 0, microsecs: 0
 end
 
 defmodule Postgrex.Range do

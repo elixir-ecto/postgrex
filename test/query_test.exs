@@ -105,19 +105,26 @@ defmodule QueryTest do
   end
 
   test "decode interval", context do
-    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0}]] = query("SELECT interval '0'", [])
+    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0, microsecs: 0}]] =
+             query("SELECT interval '0'", [])
 
-    assert [[%Postgrex.Interval{months: 100, days: 0, secs: 0}]] =
+    assert [[%Postgrex.Interval{months: 100, days: 0, secs: 0, microsecs: 0}]] =
              query("SELECT interval '100 months'", [])
 
-    assert [[%Postgrex.Interval{months: 0, days: 100, secs: 0}]] =
+    assert [[%Postgrex.Interval{months: 0, days: 100, secs: 0, microsecs: 0}]] =
              query("SELECT interval '100 days'", [])
 
-    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 100}]] =
+    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 100, microsecs: 0}]] =
              query("SELECT interval '100 secs'", [])
 
-    assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10920}]] =
+    assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 0}]] =
              query("SELECT interval '1 year 2 months 40 days 3 hours 2 minutes'", [])
+
+    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 53, microsecs: 204_800}]] =
+             query("SELECT interval '53 secs 204800 microseconds'", [])
+
+    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 10, microsecs: 240_000}]] =
+             query("SELECT interval '10240000 microseconds'", [])
   end
 
   test "decode point", context do
@@ -733,20 +740,35 @@ defmodule QueryTest do
   end
 
   test "encode interval", context do
-    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0}]] =
-             query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 0, secs: 0}])
+    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0, microsecs: 0}]] =
+             query("SELECT $1::interval", [
+               %Postgrex.Interval{months: 0, days: 0, secs: 0, microsecs: 0}
+             ])
 
-    assert [[%Postgrex.Interval{months: 100, days: 0, secs: 0}]] =
-             query("SELECT $1::interval", [%Postgrex.Interval{months: 100, days: 0, secs: 0}])
+    assert [[%Postgrex.Interval{months: 100, days: 0, secs: 0, microsecs: 0}]] =
+             query("SELECT $1::interval", [
+               %Postgrex.Interval{months: 100, days: 0, secs: 0, microsecs: 0}
+             ])
 
-    assert [[%Postgrex.Interval{months: 0, days: 100, secs: 0}]] =
-             query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 100, secs: 0}])
+    assert [[%Postgrex.Interval{months: 0, days: 100, secs: 0, microsecs: 0}]] =
+             query("SELECT $1::interval", [
+               %Postgrex.Interval{months: 0, days: 100, secs: 0, microsecs: 0}
+             ])
 
-    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 100}]] =
-             query("SELECT $1::interval", [%Postgrex.Interval{months: 0, days: 0, secs: 100}])
+    assert [[%Postgrex.Interval{months: 0, days: 0, secs: 100, microsecs: 0}]] =
+             query("SELECT $1::interval", [
+               %Postgrex.Interval{months: 0, days: 0, secs: 100, microsecs: 0}
+             ])
 
-    assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10920}]] =
-             query("SELECT $1::interval", [%Postgrex.Interval{months: 14, days: 40, secs: 10920}])
+    assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 0}]] =
+             query("SELECT $1::interval", [
+               %Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 0}
+             ])
+
+    assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10921, microsecs: 24000}]] =
+             query("SELECT $1::interval", [
+               %Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 1_024_000}
+             ])
   end
 
   test "encode arrays", context do
