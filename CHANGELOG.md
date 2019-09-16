@@ -1,6 +1,12 @@
 # Changelog
 
-## v0.15.0-dev
+## v0.15.1 (2019-09-16)
+
+* Enhancements
+  * Add support for microseconds in Postgrex.Interval
+  * Reduce bootstrap log message to debug and clarify error message
+
+## v0.15.0 (2019-07-18)
 
 Postgrex v0.15+ requires Elixir v1.6+.
 
