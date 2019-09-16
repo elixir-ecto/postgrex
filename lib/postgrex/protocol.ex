@@ -1484,10 +1484,13 @@ defmodule Postgrex.Protocol do
   end
 
   defp reload_spawn(s, status, query, oids, buffer) do
-    Logger.warn(fn ->
+    Logger.debug(fn ->
       [
-        inspect(query)
-        | " uses unknown oid(s) #{Enum.join(oids, ", ")} causing bootstrap"
+        inspect(query),
+        " uses unknown oid(s) ",
+        Enum.join(oids, ", ")
+        | "forcing us to reload type information from the database. " <>
+            "This is expected behaviour whenever you migrate your database."
       ]
     end)
 
