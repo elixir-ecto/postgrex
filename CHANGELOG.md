@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.2 (2019-10-08)
+
+* Enhancements
+  * Improve performance of the bootstrap query
+
 ## v0.15.1 (2019-09-16)
 
 * Enhancements
