@@ -53,7 +53,7 @@ defmodule Postgrex.Types do
         # fetch them along with any other "new" types
         filter_oids = """
         WHERE (t.typrelid = 0)
-        AND (t.typelem = 0 OR t.typelem NOT IN (SELECT oid FROM pg_catalog.pg_type WHERE typrelid!=0))
+        AND (t.typelem = 0 OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type s WHERE s.typrelid != 0 AND s.oid = t.typelem))
         """
 
         build_bootstrap_query(version, filter_oids)
