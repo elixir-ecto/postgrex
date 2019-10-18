@@ -32,12 +32,16 @@ env:
     - PGVERSION=9.6
     - PGVERSION=10
     - PGVERSION=11
+    - PGVERSION=12
 matrix:
   include:
     - elixir: 1.7
       otp_release: 20.3
       env: PGVERSION=9.6
     - elixir: 1.8
+      otp_release: 21.3
+      env: PGVERSION=9.6
+    - elixir: 1.9
       otp_release: 21.3
       env: PGVERSION=9.6
 notifications:
