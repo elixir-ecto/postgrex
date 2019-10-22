@@ -34,7 +34,7 @@ defmodule Postgrex do
           | {:connect_timeout, timeout}
           | {:handshake_timeout, timeout}
           | {:ssl, boolean}
-          | {:ssl_opts, [:ssl.ssl_option()]}
+          | {:ssl_opts, [:ssl.tls_option()]}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
