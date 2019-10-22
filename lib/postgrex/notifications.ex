@@ -59,11 +59,14 @@ defmodule Postgrex.Notifications do
 
   @timeout 5000
 
-  defstruct idle_interval: 5000,
+  defstruct opts: [],
+            idle_interval: 5000,
             protocol: nil,
             parameters: nil,
             listeners: Map.new(),
-            listener_channels: Map.new()
+            listener_channels: Map.new(),
+            auto_reconnect: false,
+            reconnect_backoff: 500
 
   ## PUBLIC API ##
 
@@ -141,8 +144,31 @@ defmodule Postgrex.Notifications do
   ## CALLBACKS ##
 
   def init(opts) do
+    auto_reconnect = Keyword.get(opts, :auto_reconnect, false)
+    reconnect_backoff = Keyword.get(opts, :reconnect_backoff, 500)
+
+    idle_timeout = opts[:idle_timeout]
+
+    if idle_timeout do
+      require Logger
+
+      Logger.warn(
+        ":idle_timeout in Postgrex.Notifications is deprecated, " <>
+          "please use :idle_interval instead"
+      )
+    end
+
+    idle_interval = Keyword.get(opts, :idle_interval, idle_timeout || 5000)
+
+    state = %__MODULE__{
+      opts: opts,
+      idle_interval: idle_interval,
+      auto_reconnect: auto_reconnect,
+      reconnect_backoff: reconnect_backoff
+    }
+
     if opts[:sync_connect] do
-      case connect(:init, opts) do
+      case connect(:init, state) do
         {:ok, _, _} = ok -> ok
         {:stop, reason, _} -> {:stop, reason}
       end
@@ -151,38 +177,24 @@ defmodule Postgrex.Notifications do
     end
   end
 
-  def connect(_, opts) do
-    case Protocol.connect([types: nil] ++ opts) do
+  def connect(_, s) do
+    case Protocol.connect([types: nil] ++ s.opts) do
       {:ok, protocol} ->
-        idle_timeout = opts[:idle_timeout]
-
-        if idle_timeout do
-          require Logger
-          Logger.warn ":idle_timeout in Postgrex.Notifications is deprecated, " <>
-                        "please use :idle_interval instead"
-        end
-
-        idle_interval = Keyword.get(opts, :idle_interval, idle_timeout || 5000)
-        {:ok, %__MODULE__{idle_interval: idle_interval, protocol: protocol}, idle_interval}
+        reestablish_listeners(%{s | protocol: protocol})
 
       {:error, reason} ->
-        {:stop, reason, opts}
+        if s.auto_reconnect do
+          {:backoff, s.reconnect_backoff, s}
+        else
+          {:stop, reason, s}
+        end
     end
   end
 
   def handle_call({:listen, channel}, {pid, _} = from, s) do
     ref = Process.monitor(pid)
-
     s = put_in(s.listeners[ref], {channel, pid})
-    s = update_in(s.listener_channels[channel], &((&1 || Map.new()) |> Map.put(ref, pid)))
-
-    # If this is the first listener for the given channel,
-    # we need to actually issue the LISTEN query.
-    if map_size(s.listener_channels[channel]) == 1 do
-      listener_query("LISTEN \"#{channel}\"", {:ok, ref}, from, s)
-    else
-      {:reply, {:ok, ref}, s, s.idle_interval}
-    end
+    do_listen(channel, pid, ref, from, s)
   end
 
   def handle_call({:unlisten, ref}, from, s) do
@@ -225,8 +237,8 @@ defmodule Postgrex.Notifications do
       {:ok, protocol} ->
         {:noreply, %{state | protocol: protocol}, state.idle_interval}
 
-      {error, reason, protocol} when error in [:error, :disconnect] ->
-        {:stop, reason, %{state | protocol: protocol}}
+      {error, reason, protocol} ->
+        reconnect_or_stop(error, reason, protocol, state)
     end
   end
 
@@ -238,8 +250,35 @@ defmodule Postgrex.Notifications do
       {:ok, protocol} ->
         {:noreply, %{s | protocol: protocol}, s.idle_interval}
 
-      {error, reason, protocol} when error in [:error, :disconnect] ->
-        {:stop, reason, %{s | protocol: protocol}}
+      {error, reason, protocol} ->
+        reconnect_or_stop(error, reason, protocol, s)
+    end
+  end
+
+  defp reestablish_listeners(s) do
+    Enum.reduce_while(s.listeners, {:ok, s, s.idle_interval}, &reestablish_listener/2)
+  end
+
+  defp reestablish_listener({ref, {channel, pid}}, {:ok, s, timeout}) do
+    case do_listen(channel, pid, ref, nil, s) do
+      {:noreply, s, _} -> {:cont, {:ok, s, timeout}}
+      error -> {:halt, error}
+    end
+  end
+
+  defp do_listen(channel, pid, ref, from, s) do
+    s = update_in(s.listener_channels[channel], &((&1 || Map.new()) |> Map.put(ref, pid)))
+
+    # If this is the first listener for the given channel,
+    # we need to actually issue the LISTEN query.
+    if map_size(s.listener_channels[channel]) == 1 do
+      listener_query("LISTEN \"#{channel}\"", {:ok, ref}, from, s)
+    else
+      if from do
+        {:reply, {:ok, ref}, s, s.idle_interval}
+      else
+        {:noreply, s, s.idle_interval}
+      end
     end
   end
 
@@ -252,8 +291,8 @@ defmodule Postgrex.Notifications do
         if from, do: Connection.reply(from, result)
         checkin(protocol, s)
 
-      {error, reason, protocol} when error in [:error, :disconnect] ->
-        {:stop, reason, %{s | protocol: protocol}}
+      {error, reason, protocol} ->
+        reconnect_or_stop(error, reason, protocol, s)
     end
   end
 
@@ -269,13 +308,23 @@ defmodule Postgrex.Notifications do
       {:ok, protocol} ->
         {:noreply, %{s | protocol: protocol}, s.idle_interval}
 
-      {error, reason, protocol} when error in [:error, :disconnect] ->
-        {:stop, reason, %{s | protocol: protocol}}
+      {error, reason, protocol} ->
+        reconnect_or_stop(error, reason, protocol, s)
     end
   end
 
   defp remove_monitored_listener(s, ref, channel) do
     s = update_in(s.listeners, &Map.delete(&1, ref))
     update_in(s.listener_channels[channel], &Map.delete(&1, ref))
+  end
+
+  defp reconnect_or_stop(error, reason, protocol, %{auto_reconnect: false} = s)
+       when error in [:error, :disconnect] do
+    {:stop, reason, %{s | protocol: protocol}}
+  end
+
+  defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = s)
+       when error in [:error, :disconnect] do
+    {:connect, :reconnect, %{s | listener_channels: Map.new()}}
   end
 end
