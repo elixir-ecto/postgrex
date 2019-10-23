@@ -79,7 +79,8 @@ defmodule Postgrex do
     * `:handshake_timeout` - Connection handshake timeout in milliseconds
       (defaults to `:timeout` value);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
-    * `:ssl_opts` - A list of ssl options, see ssl docs;
+    * `:ssl_opts` - A list of ssl options, see the
+    [ssl docs](http://erlang.org/doc/man/ssl.html);
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
