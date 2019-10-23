@@ -34,7 +34,7 @@ defmodule Postgrex do
           | {:connect_timeout, timeout}
           | {:handshake_timeout, timeout}
           | {:ssl, boolean}
-          | {:ssl_opts, [:ssl.tls_option()]}
+          | {:ssl_opts, [:ssl.tls_client_option()]}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
@@ -79,7 +79,9 @@ defmodule Postgrex do
     * `:handshake_timeout` - Connection handshake timeout in milliseconds
       (defaults to `:timeout` value);
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
-    * `:ssl_opts` - A list of ssl options, see ssl docs;
+    * `:ssl_opts` - A list of ssl options, see the
+      [`tls_client_option`](http://erlang.org/doc/man/ssl.html#type-tls_client_option)
+      from the ssl docs;
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
     * `:prepare` - How to prepare queries, either `:named` to use named queries
