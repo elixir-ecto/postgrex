@@ -103,6 +103,8 @@ defmodule Postgrex do
       hides all information during connection errors to avoid leaking credentials
       or other sensitive information. You can set this option if you wish to
       see complete errors and stacktraces during connection errors
+    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
+      Defaults to 1000ms.
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`

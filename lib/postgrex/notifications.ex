@@ -59,7 +59,7 @@ defmodule Postgrex.Notifications do
 
   @timeout 5000
 
-  defstruct idle_timeout: 5000,
+  defstruct idle_interval: 5000,
             protocol: nil,
             parameters: nil,
             listeners: Map.new(),
@@ -73,7 +73,9 @@ defmodule Postgrex.Notifications do
   Start the notification connection process and connect to postgres.
 
   The option that this function accepts are exactly the same accepted by
-  `Postgrex.start_link/1`. Note `:sync_connect` defaults to `true`.
+  `Postgrex.start_link/1`. The only added option is `:sync_connect`, which
+  controls if the connection should be established on boot or asynchronously
+  right after boot. `:sync_connect` defaults to true.
   """
   @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
@@ -152,8 +154,16 @@ defmodule Postgrex.Notifications do
   def connect(_, opts) do
     case Protocol.connect([types: nil] ++ opts) do
       {:ok, protocol} ->
-        idle_timeout = Keyword.get(opts, :idle_timeout, 5000)
-        {:ok, %__MODULE__{idle_timeout: idle_timeout, protocol: protocol}, idle_timeout}
+        idle_timeout = opts[:idle_timeout]
+
+        if idle_timeout do
+          require Logger
+          Logger.warn ":idle_timeout in Postgrex.Notifications is deprecated, " <>
+                        "please use :idle_interval instead"
+        end
+
+        idle_interval = Keyword.get(opts, :idle_interval, idle_timeout || 5000)
+        {:ok, %__MODULE__{idle_interval: idle_interval, protocol: protocol}, idle_interval}
 
       {:error, reason} ->
         {:stop, reason, opts}
@@ -171,14 +181,14 @@ defmodule Postgrex.Notifications do
     if map_size(s.listener_channels[channel]) == 1 do
       listener_query("LISTEN \"#{channel}\"", {:ok, ref}, from, s)
     else
-      {:reply, {:ok, ref}, s, s.idle_timeout}
+      {:reply, {:ok, ref}, s, s.idle_interval}
     end
   end
 
   def handle_call({:unlisten, ref}, from, s) do
     case Map.fetch(s.listeners, ref) do
       :error ->
-        {:reply, {:error, %ArgumentError{}}, s, s.idle_timeout}
+        {:reply, {:error, %ArgumentError{}}, s, s.idle_interval}
 
       {:ok, {channel, _pid}} ->
         Process.demonitor(ref, [:flush])
@@ -188,7 +198,7 @@ defmodule Postgrex.Notifications do
           s = update_in(s.listener_channels, &Map.delete(&1, channel))
           listener_query("UNLISTEN \"#{channel}\"", :ok, from, s)
         else
-          {:reply, :ok, s, s.idle_timeout}
+          {:reply, :ok, s, s.idle_interval}
         end
     end
   end
@@ -196,7 +206,7 @@ defmodule Postgrex.Notifications do
   def handle_info({:DOWN, ref, :process, _, _}, s) do
     case Map.fetch(s.listeners, ref) do
       :error ->
-        {:noreply, s, s.idle_timeout}
+        {:noreply, s, s.idle_interval}
 
       {:ok, {channel, _pid}} ->
         s = remove_monitored_listener(s, ref, channel)
@@ -205,7 +215,7 @@ defmodule Postgrex.Notifications do
           s = update_in(s.listener_channels, &Map.delete(&1, channel))
           listener_query("UNLISTEN \"#{channel}\"", :ok, nil, s)
         else
-          {:noreply, s, s.idle_timeout}
+          {:noreply, s, s.idle_interval}
         end
     end
   end
@@ -213,7 +223,7 @@ defmodule Postgrex.Notifications do
   def handle_info(:timeout, %{protocol: protocol} = state) do
     case Protocol.ping(protocol) do
       {:ok, protocol} ->
-        {:noreply, %{state | protocol: protocol}, state.idle_timeout}
+        {:noreply, %{state | protocol: protocol}, state.idle_interval}
 
       {error, reason, protocol} when error in [:error, :disconnect] ->
         {:stop, reason, %{state | protocol: protocol}}
@@ -226,7 +236,7 @@ defmodule Postgrex.Notifications do
 
     case Protocol.handle_info(msg, opts, protocol) do
       {:ok, protocol} ->
-        {:noreply, %{s | protocol: protocol}, s.idle_timeout}
+        {:noreply, %{s | protocol: protocol}, s.idle_interval}
 
       {error, reason, protocol} when error in [:error, :disconnect] ->
         {:stop, reason, %{s | protocol: protocol}}
@@ -257,7 +267,7 @@ defmodule Postgrex.Notifications do
   defp checkin(protocol, s) do
     case Protocol.checkin(protocol) do
       {:ok, protocol} ->
-        {:noreply, %{s | protocol: protocol}, s.idle_timeout}
+        {:noreply, %{s | protocol: protocol}, s.idle_interval}
 
       {error, reason, protocol} when error in [:error, :disconnect] ->
         {:stop, reason, %{s | protocol: protocol}}
