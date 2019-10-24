@@ -96,6 +96,7 @@ defmodule Postgrex.Notifications do
       in event of a disconnection. See the
       [note about consistency](#module-important-note-about-consistency)
       above. Defaults to `false`.
+
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
       `auto_reconnect` is enabled. Defaults to `500`.
   """
@@ -163,9 +164,8 @@ defmodule Postgrex.Notifications do
   ## CALLBACKS ##
 
   def init(opts) do
-    auto_reconnect = Keyword.get(opts, :auto_reconnect, false)
-    reconnect_backoff = Keyword.get(opts, :reconnect_backoff, 500)
-
+    auto_reconnect = opts[:auto_reconnect] || false
+    reconnect_backoff = opts[:reconnect_backoff] || 500
     idle_timeout = opts[:idle_timeout]
 
     if idle_timeout do
