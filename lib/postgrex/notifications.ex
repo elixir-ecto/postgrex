@@ -99,6 +99,9 @@ defmodule Postgrex.Notifications do
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
       `auto_reconnect` is enabled. Defaults to `500`.
+
+    * `:idle_interval` - while also accepted on `Postgrex.start_link/1`, it has
+      a default of `5000ms` in `Postgrex.Notifications` (instead of 1000ms).
   """
   @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
