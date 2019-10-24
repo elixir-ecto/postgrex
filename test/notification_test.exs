@@ -84,4 +84,56 @@ defmodule NotificationTest do
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
     :timer.sleep(300)
   end
+
+  describe "reconnection" do
+    setup do
+      {:ok, pid_ps} = PN.start_link(Keyword.put(@opts, :auto_reconnect, true))
+      {:ok, pid_ps: pid_ps}
+    end
+
+    test "basic reconnection", context do
+      assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
+
+      {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
+      :gen_tcp.shutdown(sock, :read_write)
+      # Give the notifier a chance to re-establish the connection and listeners
+      :timer.sleep(500)
+
+      assert {:ok, %Postgrex.Result{command: :notify}} =
+               P.query(context.pid, "NOTIFY channel", [])
+
+      receiver_pid = context.pid_ps
+      assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
+    end
+
+    test "reestablish multiple listeners and channels", context do
+      receiver_pid = context.pid_ps
+
+      assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
+      assert {:ok, ref2} = PN.listen(context.pid_ps, "channel2")
+
+      async =
+        Task.async(fn ->
+          assert {:ok, ref3} = PN.listen(context.pid_ps, "channel")
+          assert_receive {:notification, ^receiver_pid, ^ref3, "channel", ""}
+        end)
+
+      {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
+      :gen_tcp.shutdown(sock, :read_write)
+      # Give the notifier a chance to re-establish the connection and listeners
+      :timer.sleep(500)
+
+      assert {:ok, %Postgrex.Result{command: :notify}} =
+               P.query(context.pid, "NOTIFY channel", [])
+
+      assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
+
+      assert {:ok, %Postgrex.Result{command: :notify}} =
+               P.query(context.pid, "NOTIFY channel2", [])
+
+      assert_receive {:notification, ^receiver_pid, ^ref2, "channel2", ""}
+
+      assert Task.await(async)
+    end
+  end
 end
