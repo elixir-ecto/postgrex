@@ -20,6 +20,14 @@ defmodule Postgrex.Notifications do
 
       {:notification, notification_pid, listen_ref, channel, message}
 
+  ## Important note about consistency
+
+  While the notification system can automatically reconnect following a
+  disconnection, notifications that occur during the disconnection period
+  are not queued and cannot be recovered. Using the `:auto_reconnect` option
+  (see `start_link/1`) carries the risk of siliently missing notifications
+  fired during the disconnected period.
+
   ## A note on casing
 
   While PostgreSQL seems to behave as case-insensitive, it actually has a very
@@ -75,10 +83,21 @@ defmodule Postgrex.Notifications do
   @doc """
   Start the notification connection process and connect to postgres.
 
-  The option that this function accepts are exactly the same accepted by
-  `Postgrex.start_link/1`. The only added option is `:sync_connect`, which
-  controls if the connection should be established on boot or asynchronously
-  right after boot. `:sync_connect` defaults to true.
+  The options that this function accepts are the same as those accepted by
+  `Postgrex.start_link/1`, as well as the extra options `:sync_connect`,
+  `:auto_reconnect`, and `:reconnect_backoff`.
+
+  ## Options
+
+    * `:sync_connect` - controls if the connection should be established on boot
+      or asynchronously right after boot. Defaults to `true`.
+
+    * `:auto_reconnect` - automatically attempt to reconnect to the database
+      in event of a disconnection. See the
+      [note about consistency](#module-important-note-about-consistency)
+      above. Defaults to `false`.
+    * `:reconnect_backoff` - time (in ms) between reconnection attempts when
+      `auto_reconnect` is enabled. Defaults to `500`.
   """
   @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
