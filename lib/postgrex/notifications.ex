@@ -167,8 +167,6 @@ defmodule Postgrex.Notifications do
   ## CALLBACKS ##
 
   def init(opts) do
-    auto_reconnect = opts[:auto_reconnect] || false
-    reconnect_backoff = opts[:reconnect_backoff] || 500
     idle_timeout = opts[:idle_timeout]
 
     if idle_timeout do
@@ -180,7 +178,9 @@ defmodule Postgrex.Notifications do
       )
     end
 
-    idle_interval = Keyword.get(opts, :idle_interval, idle_timeout || 5000)
+    {idle_interval, opts} = Keyword.pop(opts, :idle_interval, idle_timeout || 5000)
+    {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
+    {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
 
     state = %__MODULE__{
       opts: opts,
@@ -192,10 +192,11 @@ defmodule Postgrex.Notifications do
     if opts[:sync_connect] do
       case connect(:init, state) do
         {:ok, _, _} = ok -> ok
+        {:backoff, _, _} = backoff -> backoff
         {:stop, reason, _} -> {:stop, reason}
       end
     else
-      {:connect, :init, opts}
+      {:connect, :init, state}
     end
   end
 

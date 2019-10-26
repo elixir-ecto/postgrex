@@ -17,6 +17,20 @@ defmodule NotificationTest do
     assert {:error, _} = PN.start_link(database: "nobody_knows_it")
   end
 
+  test "does not fail on sync connection with auto reconnect" do
+    Process.flag(:trap_exit, true)
+    assert {:ok, _} = PN.start_link(database: "nobody_knows_it", auto_reconnect: true)
+  end
+
+  test "does not fail on async connection with auto reconnect" do
+    Process.flag(:trap_exit, true)
+
+    assert {:ok, pid} =
+             PN.start_link(database: "nobody_knows_it", auto_reconnect: true, sync_connect: false)
+
+    refute_receive {:EXIT, _, ^pid}, 100
+  end
+
   test "listening", context do
     assert {:ok, _} = PN.listen(context.pid_ps, "channel")
   end
