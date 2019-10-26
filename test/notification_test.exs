@@ -19,7 +19,8 @@ defmodule NotificationTest do
 
   test "does not fail on sync connection with auto reconnect" do
     Process.flag(:trap_exit, true)
-    assert {:ok, _} = PN.start_link(database: "nobody_knows_it", auto_reconnect: true)
+    assert {:ok, pid} = PN.start_link(database: "nobody_knows_it", auto_reconnect: true)
+    assert {:eventually, _} = PN.listen(pid, "channel")
   end
 
   test "does not fail on async connection with auto reconnect" do
@@ -28,6 +29,7 @@ defmodule NotificationTest do
     assert {:ok, pid} =
              PN.start_link(database: "nobody_knows_it", auto_reconnect: true, sync_connect: false)
 
+    assert {:eventually, _} = PN.listen(pid, "channel")
     refute_receive {:EXIT, _, ^pid}, 100
   end
 
@@ -124,7 +126,6 @@ defmodule NotificationTest do
       receiver_pid = context.pid_ps
 
       assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
-      assert {:ok, ref2} = PN.listen(context.pid_ps, "channel2")
 
       async =
         Task.async(fn ->
@@ -134,8 +135,13 @@ defmodule NotificationTest do
 
       {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
       :gen_tcp.shutdown(sock, :read_write)
+
+      # Also attempt to subscribe while it is down
+      assert {ok_or_eventually, ref2} = PN.listen(context.pid_ps, "channel2")
+      assert ok_or_eventually in [:ok, :eventually]
+
       # Give the notifier a chance to re-establish the connection and listeners
-      :timer.sleep(500)
+      Process.sleep(500)
 
       assert {:ok, %Postgrex.Result{command: :notify}} =
                P.query(context.pid, "NOTIFY channel", [])
