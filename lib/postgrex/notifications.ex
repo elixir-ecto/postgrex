@@ -16,7 +16,7 @@ defmodule Postgrex.Notifications do
 
       NOTIFY "channel", "Oh hai!";
 
-  You will receive a message in the formmat:
+  You will receive a message in the format:
 
       {:notification, notification_pid, listen_ref, channel, message}
 
