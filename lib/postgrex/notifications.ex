@@ -211,7 +211,13 @@ defmodule Postgrex.Notifications do
   end
 
   def connect(_, s) do
-    case Protocol.connect([types: nil] ++ s.opts) do
+    opts =
+      case s.opts[:configure] do
+        nil -> s.opts
+        {module, fun, args} -> apply(module, fun, [s.opts | args])
+      end
+
+    case Protocol.connect([types: nil] ++ opts) do
       {:ok, protocol} ->
         s = %{s | listener_channels: %{}, connected: true, protocol: protocol}
         Enum.reduce_while(s.listeners, {:ok, s, s.idle_interval}, &reestablish_listener/2)
