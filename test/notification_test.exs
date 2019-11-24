@@ -156,4 +156,29 @@ defmodule NotificationTest do
       assert Task.await(async)
     end
   end
+
+  test "dynamic configuration with named function" do
+    {:ok, _} =
+      PN.start_link(
+        configure: {NotificationTest, :configure, baz: :frobnicate},
+        foo: :bar
+      )
+  end
+
+  test "dynamic configuration with anonymous function" do
+    {:ok, _} =
+      PN.start_link(
+        configure: fn opts ->
+          assert :bar = Keyword.get(opts, :foo)
+          Keyword.merge(opts, @opts)
+        end,
+        foo: :bar
+      )
+  end
+
+  def configure(opts) do
+    assert :bar = Keyword.get(opts, :foo)
+    assert :frobnicate = Keyword.get(opts, :baz)
+    Keyword.merge(opts, @opts)
+  end
 end
