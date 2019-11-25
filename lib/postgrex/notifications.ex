@@ -108,11 +108,9 @@ defmodule Postgrex.Notifications do
     * `:idle_interval` - while also accepted on `Postgrex.start_link/1`, it has
       a default of `5000ms` in `Postgrex.Notifications` (instead of 1000ms).
 
-    * `:configure` - A function to run before every connect attempt to
-      dynamically configure the options, either a 1-arity fun,
-      `{module, function, args}` with options prepended to `args` or
-      `nil` where only returned options are passed to connect callback
-      (default: `nil`)
+    * `:configure` - A function to run before every connect attempt to dynamically
+      configure the options as a `{module, function, args}`, where the current
+      options will prepended to `args`. Defaults to `nil`.
   """
   @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
