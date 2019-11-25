@@ -160,7 +160,7 @@ defmodule NotificationTest do
   test "dynamic configuration with named function" do
     {:ok, _} =
       PN.start_link(
-        configure: {NotificationTest, :configure, baz: :frobnicate},
+        configure: {NotificationTest, :configure, [:bar, :baz]},
         foo: :bar
       )
   end
@@ -176,9 +176,8 @@ defmodule NotificationTest do
       )
   end
 
-  def configure(opts) do
+  def configure(opts, :bar, :baz) do
     assert :bar = Keyword.get(opts, :foo)
-    assert :frobnicate = Keyword.get(opts, :baz)
     Keyword.merge(opts, @opts)
   end
 end

@@ -90,7 +90,7 @@ defmodule Postgrex.Notifications do
 
   The options that this function accepts are the same as those accepted by
   `Postgrex.start_link/1`, as well as the extra options `:sync_connect`,
-  `:auto_reconnect`, `:reconnect_backoff` and `:configure`.
+  `:auto_reconnect`, `:reconnect_backoff`, and `:configure`.
 
   ## Options
 
@@ -219,7 +219,7 @@ defmodule Postgrex.Notifications do
   def connect(_, s) do
     opts =
       case Keyword.get(s.opts, :configure) do
-        {module, fun, args} -> apply(module, fun, [Keyword.merge(s.opts, args)])
+        {module, fun, args} -> apply(module, fun, [s.opts | args])
         fun when is_function(fun, 1) -> fun.(s.opts)
         nil -> s.opts
       end
