@@ -156,4 +156,37 @@ defmodule NotificationTest do
       assert Task.await(async)
     end
   end
+
+  test "dynamic configuration with named function" do
+    {:ok, _} =
+      PN.start_link(
+        database: "nobody_knows_it",
+        configure: {NotificationTest, :configure, [self(), :bar, :baz]},
+        foo: :bar
+      )
+
+    assert_received :configured
+  end
+
+  test "dynamic configuration with anonymous function" do
+    {:ok, _} =
+      PN.start_link(
+        database: "nobody_knows_it",
+        configure: fn opts ->
+          assert :bar = Keyword.get(opts, :foo)
+          send(opts[:parent], :configured)
+          Keyword.merge(opts, @opts)
+        end,
+        foo: :bar,
+        parent: self()
+      )
+
+    assert_received :configured
+  end
+
+  def configure(opts, parent, :bar, :baz) do
+    assert :bar = Keyword.get(opts, :foo)
+    send(parent, :configured)
+    Keyword.merge(opts, @opts)
+  end
 end

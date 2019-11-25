@@ -90,7 +90,7 @@ defmodule Postgrex.Notifications do
 
   The options that this function accepts are the same as those accepted by
   `Postgrex.start_link/1`, as well as the extra options `:sync_connect`,
-  `:auto_reconnect`, and `:reconnect_backoff`.
+  `:auto_reconnect`, `:reconnect_backoff`, and `:configure`.
 
   ## Options
 
@@ -107,6 +107,10 @@ defmodule Postgrex.Notifications do
 
     * `:idle_interval` - while also accepted on `Postgrex.start_link/1`, it has
       a default of `5000ms` in `Postgrex.Notifications` (instead of 1000ms).
+
+    * `:configure` - A function to run before every connect attempt to dynamically
+      configure the options as a `{module, function, args}`, where the current
+      options will prepended to `args`. Defaults to `nil`.
   """
   @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
@@ -211,7 +215,14 @@ defmodule Postgrex.Notifications do
   end
 
   def connect(_, s) do
-    case Protocol.connect([types: nil] ++ s.opts) do
+    opts =
+      case Keyword.get(s.opts, :configure) do
+        {module, fun, args} -> apply(module, fun, [s.opts | args])
+        fun when is_function(fun, 1) -> fun.(s.opts)
+        nil -> s.opts
+      end
+
+    case Protocol.connect([types: nil] ++ opts) do
       {:ok, protocol} ->
         s = %{s | listener_channels: %{}, connected: true, protocol: protocol}
         Enum.reduce_while(s.listeners, {:ok, s, s.idle_interval}, &reestablish_listener/2)
