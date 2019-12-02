@@ -3102,7 +3102,10 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp do_cancel_request(%{peer: {ip, port}, timeout: timeout} = s) do
+  defp do_cancel_request(%{peer: {:local, _} = peer} = s), do: do_cancel_request(peer, 0, s)
+  defp do_cancel_request(%{peer: {ip, port}} = s), do: do_cancel_request(ip, port, s)
+
+  defp do_cancel_request(ip, port, %{timeout: timeout} = s) do
     case :gen_tcp.connect(ip, port, [mode: :binary, active: false], timeout) do
       {:ok, sock} -> cancel_send_recv(s, sock)
       {:error, reason} -> {:error, :connect, reason}

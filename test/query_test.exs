@@ -1494,4 +1494,17 @@ defmodule QueryTest do
              assert_receive {:EXIT, ^pid, :killed}, 5000
            end) =~ "** (Postgrex.Error) FATAL 57P01 (admin_shutdown)"
   end
+
+  test "terminate backend with socket", context do
+    Process.flag(:trap_exit, true)
+    socket = System.get_env("PG_SOCKET_DIR") || "/tmp"
+    assert {:ok, pid} = P.start_link([idle_interval: 10, socket_dir: socket] ++ context[:options])
+
+    %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(pid, "SELECT 42", [])
+
+    capture_log(fn ->
+      assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
+      assert_receive {:EXIT, ^pid, :killed}, 5000
+    end)
+  end
 end
