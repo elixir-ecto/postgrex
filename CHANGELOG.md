@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.15.3-dev
+
+* Enhancements
+  * Allow dynamic connection configuration with the `:configure` for notifications
+  * Add `:auto_reconnect` option for notifications
+  * Accept `listen` commands even if the notifications connection is down or yet to first connect
+
+* Bug fixes
+  * Encode empty arrays in a mechanism compatible with CockroachDB
+  * Cleanly terminate connection started with a socket
+
 ## v0.15.2 (2019-10-08)
 
 * Enhancements
