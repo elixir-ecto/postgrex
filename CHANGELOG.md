@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.15.3-dev
+## v0.15.3 (2019-12-11)
 
 * Enhancements
   * Allow dynamic connection configuration with the `:configure` for notifications
