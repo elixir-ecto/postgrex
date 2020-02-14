@@ -999,7 +999,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, query, s, buffer} <- recv_parse_describe(s, status, query, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         query_delete(s, query),
+         _ = query_delete(s, query),
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, query, s}
     else
@@ -1080,7 +1080,7 @@ defmodule Postgrex.Protocol do
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         query_delete(s, query),
+         _ = query_delete(s, query),
          {:ok, query, s, buffer} <- recv_parse_describe(s, status, query, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, query, s}
@@ -1110,7 +1110,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         query_delete(s, query),
+         _ = query_delete(s, query),
          {:ok, query, s, buffer} <- recv_parse_describe(s, status, query, buffer),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
       {:ok, query, s}
@@ -1139,7 +1139,7 @@ defmodule Postgrex.Protocol do
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         query_delete(s, query),
+         _ = query_delete(s, query),
          {:ok, %Query{ref: ref} = query, %{postgres: postgres} = s, buffer} <-
            recv_parse_describe(s, status, query, buffer) do
       # lock state with unique query reference as not synced
@@ -2454,7 +2454,7 @@ defmodule Postgrex.Protocol do
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         query_delete(s, query),
+         _ = query_delete(s, query),
          {:ok, _, s} <- recv_transaction(s, status, buffer) do
       %{connection_id: connection_id} = s
       {:ok, %Postgrex.Result{command: :close, connection_id: connection_id}, s}
@@ -2470,7 +2470,7 @@ defmodule Postgrex.Protocol do
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
-         query_delete(s, query),
+         _ = query_delete(s, query),
          {:ok, s} <- recv_ready(s, status, buffer) do
       %{connection_id: connection_id} = s
       {:ok, %Postgrex.Result{command: :close, connection_id: connection_id}, s}
