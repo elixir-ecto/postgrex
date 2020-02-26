@@ -300,7 +300,7 @@ defmodule Postgrex do
 
   ## Examples
 
-      Postgrex.prepare_and_execute(conn, "", "SELECT id FROM posts WHERE title like $1", ["%my%"])
+      Postgrex.prepare_execute(conn, "", "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
   """
   @spec prepare_execute(conn, iodata, iodata, list, [execute_option]) ::
