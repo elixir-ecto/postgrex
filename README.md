@@ -6,17 +6,6 @@ PostgreSQL driver for Elixir.
 
 Documentation: http://hexdocs.pm/postgrex/
 
-Postgrex is a partial implementation of the Postgres [frontend/backend message
-protocol](https://www.postgresql.org/docs/current/protocol.html). It performs wire messaging
-natively, as opposed to binding to a library such as `libpq` in C.
-
-A Postgrex query is performed as "[extended
-query](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY)".  A
-postgres "extended query"  involves separate server-side parse, bind, and execute stages each of
-which may be re-used for efficiency.  This is very similar to a prepared statement, but without
-explicit `PREPARE q AS (...)` and `EXECUTE q()` SQL statements.
-
-
 ## Example
 
 ```iex
