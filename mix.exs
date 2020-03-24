@@ -14,7 +14,7 @@ defmodule Postgrex.Mixfile do
       source_url: "https://github.com/elixir-ecto/postgrex",
       docs: docs(),
       package: package(),
-      xref: [exclude: [Jason]]
+      xref: [exclude: [Jason, :ssl]]
     ]
   end
 
