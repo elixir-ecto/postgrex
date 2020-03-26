@@ -57,7 +57,7 @@ defmodule Postgrex.Notifications do
 
     1. If you can wrap the channel name in quotes when sending a notification,
        then make sure the channel name has the exact same casing when listening
-       and sennding notifications
+       and sending notifications
 
     2. If you cannot wrap the channel name in quotes when sending a notification,
        then make sure to give the lowercased channel name when listening
