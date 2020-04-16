@@ -58,6 +58,8 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 
 \*\*\* Enumerated types (enum) are custom named database types with strings as values.
 
+\*\*\*\* Anonymous composite types are decoded (read) as tuples but they cannot be encoded (written) to the database
+
 Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, support new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
 ## JSON support
@@ -84,9 +86,9 @@ mix deps.clean postgrex --build
 
 Extensions are used to extend Postgrex' built-in type encoding/decoding.
 
-Here is a [JSON extension](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/json.ex) that supports encoding/decoding Elixir maps to the PostgreSQL JSON type.
+The [extensions](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/) directory in this project provides implementation for many Postgres' built-in data types. It is also a great example of how to implement your own extensions. For example, you can look at the [`Date`](https://github.com/elixir-ecto/postgrex/blob/master/lib/postgrex/extensions/date.ex) extension as a starting point.
 
-Extensions can be specified and configured when building custom type modules:
+Once you defined your extensions, you should build custom type modules, passing all of your extensions as arguments:
 
 ```elixir
 Postgrex.Types.define(MyApp.PostgrexTypes, [MyApp.Postgis.Extensions], [])
