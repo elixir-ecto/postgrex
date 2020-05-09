@@ -9,9 +9,10 @@ defmodule Postgrex do
 
   A Postgrex query is performed as "[extended query](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY)".
   An "extended query"  involves separate server-side parse, bind, and execute
-  stages each of which may be re-used for efficiency. It uses wire messaging
-  for preparing and executing, without relying on `PREPARE q AS (...)` and
-  `EXECUTE q()` SQL statements directly.
+  stages, each of which may be re-used for efficiency. For example, libraries
+  like Ecto caches queries, so a query only has to be parsed and planned once.
+  This is all done via wire messaging, without relying on `PREPARE q AS (...)`
+  and `EXECUTE q()` SQL statements directly.
 
   This module handles the connection to PostgreSQL, providing support
   for queries, transactions, connection backoff, logging, pooling and
