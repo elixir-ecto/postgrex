@@ -3,6 +3,8 @@ defmodule CalendarTest do
   import Postgrex.TestHelper
   alias Postgrex, as: P
 
+  Postgrex.Types.define(Postgrex.InfiniteCalendarTypes, [], [allow_infinite_timestamps: true])
+
   setup do
     opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = P.start_link(opts)
@@ -212,6 +214,20 @@ defmodule CalendarTest do
                }
              ]
            ] = query("SELECT timestamp with time zone '1980-01-01 01:00:00.123456'", [])
+  end
+
+  @tag :capture_log
+  test "decode infinity", context do
+    assert_raise ArgumentError, fn -> query("SELECT 'infinity'::timestamp", []) end
+    assert_raise ArgumentError, fn -> query("SELECT '-infinity'::timestamptz", []) end
+
+    opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.InfiniteCalendarTypes]
+    {:ok, pid} = P.start_link(opts)
+
+    assert {:ok, %{rows: [[:inf]]}} = P.query(pid, "SELECT 'infinity'::timestamp", [])
+    assert {:ok, %{rows: [[:"-inf"]]}} = P.query(pid, "SELECT '-infinity'::timestamp", [])
+    assert {:ok, %{rows: [[:inf]]}} = P.query(pid, "SELECT 'infinity'::timestamptz", [])
+    assert {:ok, %{rows: [[:"-inf"]]}} = P.query(pid, "SELECT '-infinity'::timestamptz", [])
   end
 
   test "encode time", context do

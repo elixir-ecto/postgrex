@@ -12,6 +12,11 @@ defmodule Postgrex.Extensions.TimestampTZ do
             @gs_unix_epoch
   @us_max @gs_max * 1_000_000
 
+  @plus_infinity 9_223_372_036_854_775_807
+  @minus_infinity -9_223_372_036_854_775_808
+
+  def init(opts), do: Keyword.get(opts, :allow_infinite_timestamps, false)
+
   def encode(_) do
     quote location: :keep do
       %DateTime{calendar: Calendar.ISO} = dt ->
@@ -23,10 +28,10 @@ defmodule Postgrex.Extensions.TimestampTZ do
     end
   end
 
-  def decode(_) do
+  def decode(infinity?) do
     quote location: :keep do
       <<8::int32, microsecs::int64>> ->
-        unquote(__MODULE__).microsecond_to_elixir(microsecs)
+        unquote(__MODULE__).microsecond_to_elixir(microsecs, unquote(infinity?))
     end
   end
 
@@ -46,7 +51,28 @@ defmodule Postgrex.Extensions.TimestampTZ do
     raise ArgumentError, "#{inspect(datetime)} is not in UTC"
   end
 
-  def microsecond_to_elixir(microsecs) do
+  def microsecond_to_elixir(@plus_infinity, infinity?) do
+    if infinity?, do: :inf, else: raise_infinity("infinity")
+  end
+
+  def microsecond_to_elixir(@minus_infinity, infinity?) do
+    if infinity?, do: :"-inf", else: raise_infinity("-infinity")
+  end
+
+  def microsecond_to_elixir(microsecs, _infinity) do
     DateTime.from_unix!(microsecs + @us_epoch, :microsecond)
+  end
+
+  defp raise_infinity(type) do
+    raise ArgumentError, """
+    got \"#{type}\" from PostgreSQL. If you want to support infinity timestamps \
+    in your application, you can enable them by defining your own types:
+
+        Postgrex.Types.define(MyApp.PostgrexTypes, [], allow_infinite_timestamps: true)
+
+    And then configuring your database to use it:
+
+        types: MyApp.PostgrexTypes
+    """
   end
 end
