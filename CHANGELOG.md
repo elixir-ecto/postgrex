@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.4 (2020-05-09)
+
+* Enhancements
+  * Fix warnings on Elixir v1.11.0-dev
+
 ## v0.15.3 (2019-12-11)
 
 * Enhancements
