@@ -1172,6 +1172,7 @@ defmodule Postgrex.Protocol do
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
+         _ = query_delete(s, query),
          {:ok, %Query{ref: ref} = query, %{postgres: postgres} = s, buffer} <-
            recv_parse_describe(s, status, query, buffer) do
       # lock state with unique query reference as not synced
@@ -3171,6 +3172,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp query_delete(%{queries: nil}, _), do: :ok
+  defp query_delete(_, %Query{name: ""}), do: :ok
 
   defp query_delete(%{queries: queries}, %Query{name: name}) do
     try do
@@ -3200,6 +3202,7 @@ defmodule Postgrex.Protocol do
   defp query_delete(_, _, _), do: :ok
 
   defp query_member?(%{queries: nil}, _), do: false
+  defp query_member?(_, %{name: ""}), do: false
 
   defp query_member?(%{queries: queries}, %Query{name: name, ref: ref}) do
     try do

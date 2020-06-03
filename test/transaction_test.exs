@@ -308,6 +308,16 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  test "transaction works after describe failure in savepoint query with cache_statement", context do
+    transaction(fn conn ->
+      opts = [mode: :savepoint, cache_statement: "select"]
+      assert {:ok, _} = Postgrex.query(conn, "SELECT 1", [], opts)
+      assert {:error, _} = Postgrex.query(conn, "SELECT 1 FROM unknown", [], opts)
+      assert {:ok, _} = Postgrex.query(conn, "SELECT 1", [], opts)
+    end)
+  end
+
+  @tag mode: :transaction
   test "transaction works after execute failure in savepoint query", context do
     assert transaction(fn conn ->
              assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
