@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.5 (2020-06-03)
+
+* Enhancements
+  * Support optional decoding of infinite timestamps
+* Bug fixes
+  * Remove cache statements that cannot be described from cache when on a savepoint transaction (such as when inside the SQL sandbox)
+
 ## v0.15.4 (2020-05-09)
 
 * Enhancements
