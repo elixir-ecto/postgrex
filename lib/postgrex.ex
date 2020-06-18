@@ -553,7 +553,7 @@ defmodule Postgrex do
          not List.keymember?(:application.which_applications(), :ssl, 0) do
       raise """
       SSL connection can not be established because `:ssl` application is not started,
-      you can add it to `extra_application` in your `mix.exs`:
+      you can add it to `extra_applications` in your `mix.exs`:
 
         def application do
           [extra_applications: [:ssl]]
