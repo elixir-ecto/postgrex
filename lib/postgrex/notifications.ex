@@ -99,7 +99,7 @@ defmodule Postgrex.Notifications do
 
     * `:auto_reconnect` - automatically attempt to reconnect to the database
       in event of a disconnection. See the
-      [note about consistency](#module-important-note-about-consistency)
+      [note about async connect and auto-reconnects](#module-async-connect-and-auto-reconnects)
       above. Defaults to `false`.
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
