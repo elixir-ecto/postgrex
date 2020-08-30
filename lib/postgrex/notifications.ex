@@ -71,8 +71,7 @@ defmodule Postgrex.Notifications do
 
   @timeout 5000
 
-  defstruct opts: [],
-            idle_interval: 5000,
+  defstruct idle_interval: 5000,
             protocol: nil,
             parameters: nil,
             listeners: %{},
@@ -197,11 +196,12 @@ defmodule Postgrex.Notifications do
     {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
 
     state = %__MODULE__{
-      opts: opts,
       idle_interval: idle_interval,
       auto_reconnect: auto_reconnect,
       reconnect_backoff: reconnect_backoff
     }
+
+    put_opts(opts)
 
     if opts[:sync_connect] do
       case connect(:init, state) do
@@ -216,10 +216,10 @@ defmodule Postgrex.Notifications do
 
   def connect(_, s) do
     opts =
-      case Keyword.get(s.opts, :configure) do
-        {module, fun, args} -> apply(module, fun, [s.opts | args])
-        fun when is_function(fun, 1) -> fun.(s.opts)
-        nil -> s.opts
+      case Keyword.get(opts(), :configure) do
+        {module, fun, args} -> apply(module, fun, [opts() | args])
+        fun when is_function(fun, 1) -> fun.(opts())
+        nil -> opts()
       end
 
     case Protocol.connect([types: nil] ++ opts) do
@@ -373,4 +373,8 @@ defmodule Postgrex.Notifications do
        when error in [:error, :disconnect] do
     {:connect, :reconnect, %{s | connected: false}}
   end
+
+  defp opts(), do: Process.get(__MODULE__)
+  defp put_opts(opts), do: Process.put(__MODULE__, opts)
+
 end
