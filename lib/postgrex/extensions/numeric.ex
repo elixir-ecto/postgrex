@@ -28,7 +28,8 @@ defmodule Postgrex.Extensions.Numeric do
 
   ## Helpers
 
-  def encode_numeric(%Decimal{coef: coef}) when coef in [:qNaN, :sNaN] do
+  # TODO: remove qNaN and sNaN when we depend on Decimal 2.0
+  def encode_numeric(%Decimal{coef: coef}) when coef in [:NaN, :qNaN, :sNaN] do
     <<0::int16, 0::int16, 0xC000::uint16, 0::int16>>
   end
 
@@ -90,8 +91,10 @@ defmodule Postgrex.Extensions.Numeric do
     decode_numeric(ndigits, weight, sign, scale, tail)
   end
 
+  @nan Decimal.new("NaN")
+
   defp decode_numeric(0, _weight, 0xC000, _scale, "") do
-    Decimal.new(1, :qNaN, 0)
+    @nan
   end
 
   defp decode_numeric(_num_digits, weight, sign, scale, bin) do
