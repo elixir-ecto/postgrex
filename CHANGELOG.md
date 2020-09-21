@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.6 (2020-09-21)
+
+* Enhancements
+  * Support Decimal 2.0
+* Bug fixes
+  ( Do not keep credentials in state in `Postgrex.Notifications`
+
 ## v0.15.5 (2020-06-03)
 
 * Enhancements
