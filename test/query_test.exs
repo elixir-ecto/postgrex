@@ -1278,6 +1278,13 @@ defmodule QueryTest do
     assert {:ok, %Postgrex.Result{rows: [[41]]}} = Postgrex.query(pid2, "SELECT 41", [])
   end
 
+  test "execute prepared query when deallocated", context do
+    query = prepare("S42", "SELECT 42")
+    assert query("DEALLOCATE ALL", []) == :ok
+    assert %Postgrex.Error{} = execute(query, [])
+    assert execute(query, []) == [[42]]
+  end
+
   test "error codes are translated", context do
     assert %Postgrex.Error{postgres: %{code: :syntax_error}} = query("wat", [])
   end
