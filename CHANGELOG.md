@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.7 (2020-10-17)
+
+* Enhancements
+  * Add `compare` and `to_string` to `Postgrex.Interval`
+* Bug fixes
+  * Allow deallocated queries to be reprepared
+
 ## v0.15.6 (2020-09-21)
 
 * Enhancements
