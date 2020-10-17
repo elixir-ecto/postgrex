@@ -14,6 +14,38 @@ defmodule Postgrex.Interval do
   @type t :: %__MODULE__{months: integer, days: integer, secs: integer, microsecs: integer}
 
   defstruct months: 0, days: 0, secs: 0, microsecs: 0
+
+  def compare(
+        %__MODULE__{months: m1, days: d1, secs: s1, microsecs: ms1},
+        %__MODULE__{months: m2, days: d2, secs: s2, microsecs: ms2}
+      ) do
+    t1 = {m1, d1, s1, ms1}
+    t2 = {m2, d2, s2, ms2}
+
+    cond do
+      t1 > t2 -> :gt
+      t1 < t2 -> :lt
+      true -> :eq
+    end
+  end
+
+  def to_string(%__MODULE__{months: months, days: days, secs: secs, microsecs: microsecs}) do
+    optional_interval(months, :month) <>
+      optional_interval(days, :day) <>
+      Integer.to_string(secs) <>
+      optional_microsecs(microsecs) <>
+      " seconds"
+  end
+
+  defp optional_interval(0, _), do: ""
+  defp optional_interval(1, key), do: "1 #{key}, "
+  defp optional_interval(n, key), do: "#{n} #{key}s, "
+
+  defp optional_microsecs(0),
+    do: ""
+
+  defp optional_microsecs(ms),
+    do: "." <> (ms |> Integer.to_string() |> String.pad_leading(6, "0"))
 end
 
 defmodule Postgrex.Range do
