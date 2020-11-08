@@ -376,5 +376,4 @@ defmodule Postgrex.Notifications do
 
   defp opts(), do: Process.get(__MODULE__)
   defp put_opts(opts), do: Process.put(__MODULE__, opts)
-
 end

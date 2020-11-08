@@ -3,7 +3,7 @@ defmodule CalendarTest do
   import Postgrex.TestHelper
   alias Postgrex, as: P
 
-  Postgrex.Types.define(Postgrex.InfiniteCalendarTypes, [], [allow_infinite_timestamps: true])
+  Postgrex.Types.define(Postgrex.InfiniteCalendarTypes, [], allow_infinite_timestamps: true)
 
   setup do
     opts = [database: "postgrex_test", backoff_type: :stop]
