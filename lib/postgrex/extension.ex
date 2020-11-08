@@ -62,9 +62,9 @@ defmodule Postgrex.Extension do
   This example could be used in a custom types module:
 
       Postgrex.Types.define(MyApp.Types, [MyApp.LTree])
-      
+
   Or pass in opts for the extension that will be passed to the `init/1` callback:
-  
+
       Postgrex.Types.define(MyApp.Types, [{MyApp.LTree, [decode_copy: :copy]}])
 
   """

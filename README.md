@@ -6,13 +6,15 @@ PostgreSQL driver for Elixir.
 
 Documentation: http://hexdocs.pm/postgrex/
 
-## Example
+## Examples
 
 ```iex
 iex> {:ok, pid} = Postgrex.start_link(hostname: "localhost", username: "postgres", password: "postgres", database: "postgres")
 {:ok, #PID<0.69.0>}
+
 iex> Postgrex.query!(pid, "SELECT user_id, text FROM comments", [])
 %Postgrex.Result{command: :select, empty?: false, columns: ["user_id", "text"], rows: [[3,"hey"],[4,"there"]], size: 2}}
+
 iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'heya')", [])
 %Postgrex.Result{command: :insert, columns: nil, rows: nil, num_rows: 1}}
 ```

@@ -308,7 +308,8 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
-  test "transaction works after describe failure in savepoint query with cache_statement", context do
+  test "transaction works after describe failure in savepoint query with cache_statement",
+       context do
     transaction(fn conn ->
       opts = [mode: :savepoint, cache_statement: "select"]
       assert {:ok, _} = Postgrex.query(conn, "SELECT 1", [], opts)
