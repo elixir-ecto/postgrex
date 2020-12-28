@@ -5,7 +5,7 @@
 * Enhancements
   * Add `compare` and `to_string` to `Postgrex.Interval`
 * Bug fixes
-  * Allow deallocated queries to be reprepared
+  * Allow deallocated queries to be re-prepared
 
 ## v0.15.6 (2020-09-21)
 
@@ -88,7 +88,7 @@ Postgrex v0.15+ requires Elixir v1.6+.
   * Add `:cache_statement` to `Postgrex.query/4` as a built-in statement cache
   * Support scram-sha-256 authentication from PostgreSQL 10
   * Add `Postgrex.prepare_execute/4`
-  * Automatically reprepare queries that faild to encode due to a database type change
+  * Automatically re-prepare queries that failed to encode due to a database type change
 
 * Backwards incompatible changes
   * Invoke `encode_to_iodata!` instead of `encode!` in JSON encoder
@@ -136,13 +136,13 @@ Postgrex v0.15+ requires Elixir v1.6+.
 
 ## v0.13.0 (2016-12-17)
 
-* Enchancements
+* Enhancements
   * Support built-in geometry types
   * Fallback to `PGDATABASE` system env for the database
   * Support `bit` and `varbit` types
   * Add postgres error code to error messages
   * Support unprepared when using a stream
-  * `:connect_timeout` and `:handshake_timeout` to configure tcp connect and handshake timeouts
+  * `:connect_timeout` and `:handshake_timeout` to configure TCP connect and handshake timeouts
   * Improve numeric encode/decode
 
 * Bug fixes
@@ -161,7 +161,7 @@ Postgrex v0.15+ requires Elixir v1.6+.
 
 ## v0.12.1 (2016-09-29)
 
-* Enchancements
+* Enhancements
   * Support special "char" type
 
 * Bug fixes
