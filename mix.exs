@@ -1,6 +1,7 @@
 defmodule Postgrex.Mixfile do
   use Mix.Project
 
+  @source_url "https://github.com/elixir-ecto/postgrex"
   @version "0.15.7"
 
   def project do
@@ -11,7 +12,6 @@ defmodule Postgrex.Mixfile do
       deps: deps(),
       name: "Postgrex",
       description: "PostgreSQL driver for Elixir",
-      source_url: "https://github.com/elixir-ecto/postgrex",
       docs: docs(),
       package: package(),
       xref: [exclude: [Jason, :ssl]]
@@ -29,7 +29,7 @@ defmodule Postgrex.Mixfile do
 
   defp deps do
     [
-      {:ex_doc, "~> 0.20", only: :docs},
+      {:ex_doc, ">= 0.0.0", only: :docs},
       {:jason, "~> 1.0", optional: true},
       {:decimal, "~> 1.5 or ~> 2.0"},
       {:db_connection, "~> 2.1"},
@@ -39,9 +39,11 @@ defmodule Postgrex.Mixfile do
 
   defp docs do
     [
+      source_url: @source_url,
       source_ref: "v#{@version}",
       main: "readme",
-      extras: ["README.md"],
+      extras: ["README.md", "CHANGELOG.md"],
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       groups_for_modules: [
         # Postgrex
         # Postgrex.Notifications
@@ -74,7 +76,7 @@ defmodule Postgrex.Mixfile do
     [
       maintainers: ["Eric Meadows-Jönsson", "James Fish"],
       licenses: ["Apache-2.0"],
-      links: %{"Github" => "https://github.com/elixir-ecto/postgrex"}
+      links: %{"GitHub" => @source_url}
     ]
   end
 end
