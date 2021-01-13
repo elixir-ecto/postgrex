@@ -25,14 +25,14 @@ defmodule Postgrex.SCRAM do
     pass = Keyword.fetch!(opts, :password)
     salted_pass = hash_password(pass, server_s, server_i)
 
-    client_key = :crypto.hmac(:sha256, salted_pass, "Client Key")
+    client_key = hmac(:sha256, salted_pass, "Client Key")
     client_nonce = binary_part(server[?r], 0, @nonce_length)
 
     message = ["n=,r=", client_nonce, ",r=", server[?r], ",s=", server[?s], ",i=", server[?i], ?,]
     message_without_proof = ["c=biws,r=", server[?r]]
 
     auth_message = IO.iodata_to_binary([message | message_without_proof])
-    client_sig = :crypto.hmac(:sha256, :crypto.hash(:sha256, client_key), auth_message)
+    client_sig = hmac(:sha256, :crypto.hash(:sha256, client_key), auth_message)
     proof = Base.encode64(:crypto.exor(client_key, client_sig))
     [message_without_proof, ",p=", proof]
   end
@@ -49,7 +49,7 @@ defmodule Postgrex.SCRAM do
   end
 
   defp hash_password(secret, salt, iterations, block_index, acc, length) do
-    initial = :crypto.hmac(:sha256, secret, <<salt::binary, block_index::integer-size(32)>>)
+    initial = hmac(:sha256, secret, <<salt::binary, block_index::integer-size(32)>>)
     block = iterate(secret, iterations - 1, initial, initial)
     length = byte_size(block) + length
     hash_password(secret, salt, iterations, block_index + 1, [acc | block], length)
@@ -58,7 +58,17 @@ defmodule Postgrex.SCRAM do
   defp iterate(_secret, 0, _prev, acc), do: acc
 
   defp iterate(secret, iteration, prev, acc) do
-    next = :crypto.hmac(:sha256, secret, prev)
+    next = hmac(:sha256, secret, prev)
     iterate(secret, iteration - 1, next, :crypto.exor(next, acc))
+  end
+
+  # :crypto.mac/4 was added in OTP-22.1, and :crypto.hmac/3 removed in OTP-24.
+  # Check which function to use at compile time to avoid doing a round-trip
+  # to the code server on every call. The downside is this module won't work
+  # if it's compiled on OTP-22.0 or older then executed on OTP-24 or newer.
+  if Code.ensure_loaded?(:crypto) and function_exported?(:crypto, :mac, 4) do
+    defp hmac(type, key, data), do: :crypto.mac(:hmac, type, key, data)
+  else
+    defp hmac(type, key, data), do: :crypto.hmac(type, key, data)
   end
 end
