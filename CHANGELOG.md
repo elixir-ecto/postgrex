@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.8 (2021-01-19)
+
+* Bug fixes
+  * Make sure scram authentication method works on Erlang/OTP 24
+
 ## v0.15.7 (2020-10-17)
 
 * Enhancements
