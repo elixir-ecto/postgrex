@@ -829,7 +829,7 @@ defmodule Postgrex.Protocol do
         bootstrap_fail(s, err, status, buffer)
 
       {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
+        {s, status} = handle_msg(s, status, msg)
         bootstrap_recv(s, status, type_infos, buffer)
 
       {:disconnect, err, s} ->
@@ -1578,7 +1578,7 @@ defmodule Postgrex.Protocol do
         bootstrap_fail(s, err, status, buffer)
 
       {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
+        {s, status} = handle_msg(s, status, msg)
         reload_recv(s, status, acc, buffer)
 
       {:disconnect, err, s} ->
