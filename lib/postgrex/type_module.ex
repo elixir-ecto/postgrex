@@ -14,7 +14,7 @@ defmodule Postgrex.TypeModule do
 
   ## Helpers
 
-  defp directives(config) do
+  defp directives(config, opts) do
     requires =
       for {extension, _} <- config do
         quote do: require(unquote(extension))
@@ -25,19 +25,14 @@ defmodule Postgrex.TypeModule do
           function_exported?(extension, :prelude, 1),
           do: extension.prelude(state)
 
-    quote do
-      import Postgrex.BinaryUtils
-      require unquote(__MODULE__)
-      unquote(requires)
-      unquote(preludes)
-    end
-  end
-
-  defp attributes(opts) do
     null = Keyword.get(opts, :null)
 
     quote do
       @moduledoc false
+      import Postgrex.BinaryUtils
+      require unquote(__MODULE__)
+      unquote(requires)
+      unquote(preludes)
       unquote(bin_opt_info(opts))
       @compile {:inline, [encode_value: 2]}
       @dialyzer {:no_opaque, [decode_tuple: 5]}
@@ -893,8 +888,7 @@ defmodule Postgrex.TypeModule do
 
   defp define_inline(module, config, opts) do
     quoted = [
-      directives(config),
-      attributes(opts),
+      directives(config, opts),
       find(config),
       encode(config, opts),
       decode(config, opts)
