@@ -21,6 +21,14 @@ defmodule Postgrex.Extensions.JSON do
   def format(_),
     do: :binary
 
+  def prelude({library, _}) do
+    if library do
+      quote do
+        @compile {:no_warn_undefined, unquote(library)}
+      end
+    end
+  end
+
   def encode({library, _}) do
     quote location: :keep do
       map ->

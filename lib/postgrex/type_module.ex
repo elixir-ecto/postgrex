@@ -20,10 +20,16 @@ defmodule Postgrex.TypeModule do
         quote do: require(unquote(extension))
       end
 
+    preludes =
+      for {extension, {state, _, _}} <- config,
+          function_exported?(extension, :prelude, 1),
+          do: extension.prelude(state)
+
     quote do
       import Postgrex.BinaryUtils
       require unquote(__MODULE__)
       unquote(requires)
+      unquote(preludes)
     end
   end
 

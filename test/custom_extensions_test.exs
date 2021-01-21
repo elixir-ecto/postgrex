@@ -71,17 +71,24 @@ defmodule CustomExtensionsTest do
     def format([]),
       do: :binary
 
+    def prelude([]) do
+      quote do
+        @encode_msg "encode"
+        @decode_msg "decode"
+      end
+    end
+
     def encode([]) do
       quote do
         _ ->
-          raise "encode"
+          raise @encode_msg
       end
     end
 
     def decode([]) do
       quote do
         <<1::int32, _>> ->
-          raise "decode"
+          raise @decode_msg
       end
     end
   end

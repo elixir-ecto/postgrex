@@ -80,6 +80,12 @@ defmodule Postgrex.Extension do
   @callback init(Keyword.t()) :: state
 
   @doc """
+  Prelude defines properties and values that are attached to the body of
+  the types module.
+  """
+  @callback prelude(state) :: Macro.t
+
+  @doc """
   Specifies the types the extension matches, see `Postgrex.TypeInfo` for
   specification of the fields.
   """
@@ -127,4 +133,6 @@ defmodule Postgrex.Extension do
       end
   """
   @callback decode(state) :: Macro.t()
+
+  @optional_callbacks [prelude: 1]
 end
