@@ -24,8 +24,7 @@ defmodule Postgrex.Protocol do
             postgres: :idle,
             transactions: :strict,
             buffer: nil,
-            disconnect_on_error_codes: [],
-            target_server_type: :any
+            disconnect_on_error_codes: []
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -40,8 +39,7 @@ defmodule Postgrex.Protocol do
           postgres: DBConnection.status() | {DBConnection.status(), reference},
           transactions: :strict | :naive,
           buffer: nil | binary | :active_once,
-          disconnect_on_error_codes: [atom()],
-          target_server_type: :any | :primary | :secondary,
+          disconnect_on_error_codes: [atom()]
         }
 
   @type notify :: (binary, binary -> any)
@@ -102,7 +100,8 @@ defmodule Postgrex.Protocol do
       types_lock: nil,
       prepare: prepare,
       messages: [],
-      ssl: ssl?
+      ssl: ssl?,
+      target_server_type: target_server_type
     }
 
     case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
@@ -768,8 +767,76 @@ defmodule Postgrex.Protocol do
 
   ## check_target_server_type
 
-  defp check_target_server_type(s, status, buffer) do
+  defp check_target_server_type(s, %{target_server_type: :any} = status, buffer),
+       do: check_target_server_type_done(s, status, buffer)
 
+  defp check_target_server_type(s, status, buffer),
+       do: check_target_server_type_send(s, status, buffer)
+
+  defp check_target_server_type_send(s, status, buffer) do
+    msg = msg_query(statement: "show transaction_read_only")
+
+    case msg_send(s, msg, buffer) do
+      :ok ->
+        check_target_server_type_recv(s, status, buffer)
+
+      {:disconnect, err, s} ->
+        check_target_server_type_fail(s, err, status)
+    end
+  end
+
+  defp check_target_server_type_recv(s, %{target_server_type: expected_server_type} = status, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_row_desc(fields: fields), buffer} ->
+        {[_text_type_oid = 25], ["transaction_read_only"]} = columns(fields)
+        check_target_server_type_recv(s, status, buffer)
+
+      {:ok, msg_data_row(values: values), buffer} ->
+        <<len::uint32, string_value::binary(len)>> = values
+        actual_server_type = case string_value do
+          "off" -> :primary
+          "on" -> :secondary
+        end
+
+        case {expected_server_type, actual_server_type} do
+          {:any, _} -> check_target_server_type_recv(s, status, buffer)
+          {type, type} -> check_target_server_type_recv(s, status, buffer)
+          _ -> check_target_server_type_fail(s, expected_server_type, actual_server_type)
+        end
+
+      {:ok, msg_command_complete(), buffer} ->
+        check_target_server_type_recv(s, status, buffer)
+
+      {:ok, msg_ready(status: :idle), buffer} ->
+        check_target_server_type_done(s, status, buffer)
+
+      {:ok, msg_ready(status: postgres), _buffer} ->
+        err = %Postgrex.Error{message: "unexpected postgres status: #{postgres}"}
+        check_target_server_type_error(s, err, status)
+
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        check_target_server_type_error(s, err, status, buffer)
+
+      {:disconnect, err, s} ->
+        check_target_server_type_error(s, err, status)
+    end
+  end
+
+  defp check_target_server_type_done(s, status, buffer), do: bootstrap(s, status, buffer)
+
+  defp check_target_server_type_fail(s, expected_server_type, actual_server_type) do
+    msg = "the server type is not as expected: expected: #{expected_server_type}. actual: #{actual_server_type}"
+    err = %Postgrex.Error{message: msg}
+    {:disconnect, err, s}
+  end
+
+  defp check_target_server_type_error(s, err, _status) do
+    {:disconnect, err, s}
+  end
+
+  defp check_target_server_type_error(s, err, status, buffer) do
+    check_target_server_type_error(%{s | buffer: buffer}, err, status)
   end
 
   ## bootstrap
