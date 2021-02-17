@@ -167,6 +167,26 @@ defmodule LoginTest do
     assert_receive {:ok, %Postgrex.Result{}}
   end
 
+  test "server type 'any' against a primary instance", context do
+    opts = [target_server_type: :any]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "server type 'primary against a primary instance", context do
+    opts = [target_server_type: :primary]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "server type 'secondary' against a primary instance", context do
+    assert capture_log(fn ->
+             opts = [target_server_type: :secondary]
+             assert_start_and_killed(opts ++ context[:options])
+           end) =~
+             ~r"\*\* \(Postgrex.Error\) the server type is not as expected. expected: secondary. actual: primary"
+  end
+
   test "translates provided port number to integer" do
     assert 123 == P.Utils.default_opts(port: "123")[:port]
   end
