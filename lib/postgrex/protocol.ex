@@ -768,10 +768,10 @@ defmodule Postgrex.Protocol do
   ## check_target_server_type
 
   defp check_target_server_type(s, %{target_server_type: :any} = status, buffer),
-       do: check_target_server_type_done(s, status, buffer)
+    do: check_target_server_type_done(s, status, buffer)
 
   defp check_target_server_type(s, status, buffer),
-       do: check_target_server_type_send(s, status, buffer)
+    do: check_target_server_type_send(s, status, buffer)
 
   defp check_target_server_type_send(s, status, buffer) do
     msg = msg_query(statement: "show transaction_read_only")
@@ -792,11 +792,13 @@ defmodule Postgrex.Protocol do
         check_target_server_type_recv(s, status, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
-        <<len::uint32, string_value::binary(len)>> = values
-        actual_server_type = case string_value do
-          "off" -> :primary
-          "on" -> :secondary
-        end
+        <<len::uint32, read_only_value::binary(len)>> = values
+
+        actual_server_type =
+          case read_only_value do
+            "off" -> :primary
+            "on" -> :secondary
+          end
 
         case {expected_server_type, actual_server_type} do
           {:any, _} -> check_target_server_type_recv(s, status, buffer)
