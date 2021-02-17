@@ -24,7 +24,8 @@ defmodule Postgrex.Protocol do
             postgres: :idle,
             transactions: :strict,
             buffer: nil,
-            disconnect_on_error_codes: []
+            disconnect_on_error_codes: [],
+            target_server_type: :any
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -39,7 +40,8 @@ defmodule Postgrex.Protocol do
           postgres: DBConnection.status() | {DBConnection.status(), reference},
           transactions: :strict | :naive,
           buffer: nil | binary | :active_once,
-          disconnect_on_error_codes: [atom()]
+          disconnect_on_error_codes: [atom()],
+          target_server_type: :any | :primary | :secondary,
         }
 
   @type notify :: (binary, binary -> any)
@@ -69,6 +71,7 @@ defmodule Postgrex.Protocol do
     ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
+    target_server_type = opts[:target_server_type] || :any
 
     transactions =
       case opts[:transactions] || :naive do
@@ -749,7 +752,7 @@ defmodule Postgrex.Protocol do
         init_recv(%{s | connection_id: pid, connection_key: key}, status, buffer)
 
       {:ok, msg_ready(), buffer} ->
-        bootstrap(s, status, buffer)
+        check_target_server_type(s, status, buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
@@ -761,6 +764,12 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = dis ->
         dis
     end
+  end
+
+  ## check_target_server_type
+
+  defp check_target_server_type(s, status, buffer) do
+
   end
 
   ## bootstrap
