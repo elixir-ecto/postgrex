@@ -820,6 +820,10 @@ defmodule Postgrex.Protocol do
         err = Postgrex.Error.exception(postgres: fields)
         check_target_server_type_error(s, err, status, buffer)
 
+      {:ok, msg, buffer} ->
+        {s, status} = handle_msg(s, status, msg)
+        check_target_server_type_recv(s, status, buffer)
+
       {:disconnect, err, s} ->
         check_target_server_type_error(s, err, status)
     end
