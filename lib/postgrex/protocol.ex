@@ -149,9 +149,8 @@ defmodule Postgrex.Protocol do
   end
 
   defp try_connect(host, port, sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status) do
-    case connect(host, port, sock_opts, timeout, s) do
-      {:ok, s} ->
-        handshake(s, status)
+    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+      {:ok, _} = ret -> ret
 
       {:error, _} when not is_nil(remaining_endpoints) and length(remaining_endpoints) > 0 ->
         {{host, port}, remaining_endpoints} = List.pop_at(remaining_endpoints, 0)
@@ -159,6 +158,16 @@ defmodule Postgrex.Protocol do
 
       {:error, _} = error ->
           error
+    end
+  end
+
+  defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+    case connect(host, port, sock_opts, timeout, s) do
+      {:ok, s} ->
+        handshake(s, status)
+
+      {:error, _} = error ->
+        error
     end
   end
 
