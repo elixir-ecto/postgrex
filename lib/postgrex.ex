@@ -35,6 +35,7 @@ defmodule Postgrex do
 
   @type start_option ::
           {:hostname, String.t()}
+          | {:endpoints, [tuple()]}
           | {:socket_dir, Path.t()}
           | {:socket, Path.t()}
           | {:port, :inet.port_number()}
@@ -73,12 +74,16 @@ defmodule Postgrex do
   ## Options
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
+    * `:endpoints` - A list of endpoints (host and port pairs); Postgrex will try
+      each endpoint in order, one by one, until the connection succeeds; The syntax
+      is `[{host1,port1},{host2,port2},{host3,port3}]`; This option takes precedence
+      over `:hostname`;
     * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
       for configuring sockets and it takes precedence over the hostname. If you are
       connecting to a socket outside of the PostgreSQL convention, use `:socket` instead;
     * `:socket` - Connect to PostgreSQL via UNIX sockets in the given path.
-      This option takes precedence over the `:hostname` and `:socket_dir`;
+      This option takes precedence over the `:hostname`, `:endpoints` and `:socket_dir`;
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
