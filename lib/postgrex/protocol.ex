@@ -106,7 +106,7 @@ defmodule Postgrex.Protocol do
       remaining_endpoints: remaining_endpoints_to_attempt
     }
 
-    try_connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s, status)
+    connect_endpoints(host, port, sock_opts ++ @sock_opts, connect_timeout, s, status)
   end
 
   defp host_and_port_params(opts) do
@@ -147,14 +147,14 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp try_connect(host, port, sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status) do
+  defp connect_endpoints(host, port, sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status) do
     case connect_and_proceed(host, port, sock_opts, timeout, s, status) do
       {:ok, _} = ret ->
         ret
 
       {:error, _} when not is_nil(remaining_endpoints) and length(remaining_endpoints) > 0 ->
         {{host, port}, remaining_endpoints} = List.pop_at(remaining_endpoints, 0)
-        try_connect(host, port, sock_opts, timeout, s, %{status | remaining_endpoints: remaining_endpoints})
+        connect_endpoints(host, port, sock_opts, timeout, s, %{status | remaining_endpoints: remaining_endpoints})
 
       {:error, _} = error ->
         error
