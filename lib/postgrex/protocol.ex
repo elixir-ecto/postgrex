@@ -11,6 +11,7 @@ defmodule Postgrex.Protocol do
   @max_packet 64 * 1024 * 1024
   @nonposix_errors [:closed, :timeout]
   @max_rows 500
+  @text_type_oid 25
 
   defstruct sock: nil,
             connection_id: nil,
@@ -62,7 +63,7 @@ defmodule Postgrex.Protocol do
           {:ok, state}
           | {:error, Postgrex.Error.t() | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    {host, port, endpoints} = host_and_port_params(opts)
+    {host, port, remaining_endpoints_to_attempt} = host_and_port_params(opts)
 
     timeout = opts[:timeout] || @timeout
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
@@ -90,13 +91,6 @@ defmodule Postgrex.Protocol do
       disconnect_on_error_codes: disconnect_on_error_codes
     }
 
-    {{host, port}, remaining_endpoints} =
-      if not is_nil(endpoints) do
-        List.pop_at(endpoints, 0)
-      else
-        {{host, port}, nil}
-      end
-
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
@@ -109,7 +103,7 @@ defmodule Postgrex.Protocol do
       messages: [],
       ssl: ssl?,
       target_server_type: target_server_type,
-      remaining_endpoints: remaining_endpoints
+      remaining_endpoints: remaining_endpoints_to_attempt
     }
 
     try_connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s, status)
@@ -130,7 +124,12 @@ defmodule Postgrex.Protocol do
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
-                {nil, nil, endpoints |> Enum.map(fn {hostname, port} -> {to_charlist(hostname), port} end)}
+                {{host, port}, remaining_endpoints_to_attempt} =
+                  endpoints
+                  |> Enum.map(fn {hostname, port} -> {to_charlist(hostname), port} end)
+                  |> List.pop_at(0)
+
+                {host, port, remaining_endpoints_to_attempt}
 
               {:ok, _} ->
                 raise ArgumentError, "expected :endpoints to be a list of tuples"
@@ -149,7 +148,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp try_connect(host, port, sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status) do
-    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+    case connect_and_proceed(host, port, sock_opts, timeout, s, status) do
       {:ok, _} = ret -> ret
 
       {:error, _} when not is_nil(remaining_endpoints) and length(remaining_endpoints) > 0 ->
@@ -161,7 +160,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+  defp connect_and_proceed(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do
       {:ok, s} ->
         handshake(s, status)
@@ -825,7 +824,7 @@ defmodule Postgrex.Protocol do
   defp check_target_server_type_recv(s, %{target_server_type: expected_server_type} = status, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {[_text_type_oid = 25], ["transaction_read_only"]} = columns(fields)
+        {[@text_type_oid], ["transaction_read_only"]} = columns(fields)
         check_target_server_type_recv(s, status, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
