@@ -114,20 +114,18 @@ defmodule Postgrex.Protocol do
 
     case Keyword.fetch(opts, :socket) do
       {:ok, file} ->
-        {{:local, file}, 0, nil}
+        {{:local, file}, 0, []}
 
       :error ->
         case Keyword.fetch(opts, :socket_dir) do
           {:ok, dir} ->
-            {{:local, "#{dir}/.s.PGSQL.#{port}"}, 0, nil}
+            {{:local, "#{dir}/.s.PGSQL.#{port}"}, 0, []}
 
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
-                {{host, port}, remaining_endpoints_to_attempt} =
-                  endpoints
-                  |> Enum.map(fn {hostname, port} -> {to_charlist(hostname), port} end)
-                  |> List.pop_at(0)
+                [{host, port} | remaining_endpoints_to_attempt] =
+                  Enum.map(endpoints, fn {hostname, port} -> {to_charlist(hostname), port} end)
 
                 {host, port, remaining_endpoints_to_attempt}
 
@@ -137,7 +135,7 @@ defmodule Postgrex.Protocol do
               :error ->
                 case Keyword.fetch(opts, :hostname) do
                   {:ok, hostname} ->
-                    {to_charlist(hostname), port, nil}
+                    {to_charlist(hostname), port, []}
 
                   :error ->
                     raise ArgumentError, "expected :hostname, endpoints, :socket_dir, or :socket to be given"
@@ -152,8 +150,8 @@ defmodule Postgrex.Protocol do
       {:ok, _} = ret ->
         ret
 
-      {:error, _} when not is_nil(remaining_endpoints) and length(remaining_endpoints) > 0 ->
-        {{host, port}, remaining_endpoints} = List.pop_at(remaining_endpoints, 0)
+      {:error, _} when remaining_endpoints != [] ->
+        [{host, port} | remaining_endpoints] = remaining_endpoints
         connect_endpoints(host, port, sock_opts, timeout, s, %{status | remaining_endpoints: remaining_endpoints})
 
       {:error, _} = error ->
