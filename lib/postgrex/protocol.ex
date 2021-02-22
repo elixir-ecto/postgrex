@@ -146,7 +146,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp connect_endpoints(host, port, sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status) do
-    case connect_and_proceed(host, port, sock_opts, timeout, s, status) do
+    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
       {:ok, _} = ret ->
         ret
 
@@ -159,7 +159,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connect_and_proceed(host, port, sock_opts, timeout, s, status) do
+  defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do
       {:ok, s} ->
         handshake(s, status)
