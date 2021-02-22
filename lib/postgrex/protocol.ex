@@ -63,7 +63,7 @@ defmodule Postgrex.Protocol do
           {:ok, state}
           | {:error, Postgrex.Error.t() | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    {host, port, remaining_endpoints_to_attempt} = host_and_port_params(opts)
+    endpoints = endpoints(opts)
 
     timeout = opts[:timeout] || @timeout
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
@@ -91,7 +91,8 @@ defmodule Postgrex.Protocol do
       disconnect_on_error_codes: disconnect_on_error_codes
     }
 
-    types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
+    [{first_host, first_port} | _] = endpoints
+    types_key = if types_mod, do: {first_host, first_port, Keyword.fetch!(opts, :database)}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
     status = %{
@@ -103,31 +104,28 @@ defmodule Postgrex.Protocol do
       messages: [],
       ssl: ssl?,
       target_server_type: target_server_type,
-      remaining_endpoints: remaining_endpoints_to_attempt
+      remaining_endpoints: endpoints
     }
 
-    connect_endpoints(host, port, sock_opts ++ @sock_opts, connect_timeout, s, status)
+    connect_endpoints(sock_opts ++ @sock_opts, connect_timeout, s, status, nil)
   end
 
-  defp host_and_port_params(opts) do
+  defp endpoints(opts) do
     port = opts[:port] || 5432
 
     case Keyword.fetch(opts, :socket) do
       {:ok, file} ->
-        {{:local, file}, 0, []}
+        [{{:local, file}, 0}]
 
       :error ->
         case Keyword.fetch(opts, :socket_dir) do
           {:ok, dir} ->
-            {{:local, "#{dir}/.s.PGSQL.#{port}"}, 0, []}
+            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}]
 
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
-                [{host, port} | remaining_endpoints_to_attempt] =
-                  Enum.map(endpoints, fn {hostname, port} -> {to_charlist(hostname), port} end)
-
-                {host, port, remaining_endpoints_to_attempt}
+                Enum.map(endpoints, fn {hostname, port} -> {to_charlist(hostname), port} end)
 
               {:ok, _} ->
                 raise ArgumentError, "expected :endpoints to be a list of tuples"
@@ -135,7 +133,7 @@ defmodule Postgrex.Protocol do
               :error ->
                 case Keyword.fetch(opts, :hostname) do
                   {:ok, hostname} ->
-                    {to_charlist(hostname), port, []}
+                    [{to_charlist(hostname), port}]
 
                   :error ->
                     raise ArgumentError, "expected :hostname, endpoints, :socket_dir, or :socket to be given"
@@ -145,19 +143,21 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connect_endpoints(host, port, sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status) do
+  defp connect_endpoints(sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status, _err)
+       when remaining_endpoints != [] do
+    [{host, port} | remaining_endpoints] = remaining_endpoints
     case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
       {:ok, _} = ret ->
         ret
 
-      {:error, _} when remaining_endpoints != [] ->
-        [{host, port} | remaining_endpoints] = remaining_endpoints
-        connect_endpoints(host, port, sock_opts, timeout, s, %{status | remaining_endpoints: remaining_endpoints})
-
-      {:error, _} = error ->
-        error
+      {:error, _} = err ->
+        connect_endpoints(sock_opts, timeout, s, %{status | remaining_endpoints: remaining_endpoints}, err)
     end
   end
+
+  defp connect_endpoints(_, _, _, %{remaining_endpoints: remaining_endpoints}, err)
+       when remaining_endpoints == [],
+       do: err
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do
