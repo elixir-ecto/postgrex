@@ -91,14 +91,12 @@ defmodule Postgrex.Protocol do
       disconnect_on_error_codes: disconnect_on_error_codes
     }
 
-    [{first_host, first_port} | _] = endpoints
-    types_key = if types_mod, do: {first_host, first_port, Keyword.fetch!(opts, :database)}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
     status = %{
       opts: opts,
       types_mod: types_mod,
-      types_key: types_key,
+      types_key: nil,
       types_lock: nil,
       prepare: prepare,
       messages: [],
@@ -107,7 +105,7 @@ defmodule Postgrex.Protocol do
       remaining_endpoints: endpoints
     }
 
-    connect_endpoints(sock_opts ++ @sock_opts, connect_timeout, s, status, nil)
+    connect_endpoints(sock_opts ++ @sock_opts, connect_timeout, s, status)
   end
 
   defp endpoints(opts) do
@@ -143,21 +141,21 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connect_endpoints(sock_opts, timeout, s, %{remaining_endpoints: remaining_endpoints} = status, _err)
+  defp connect_endpoints(sock_opts, timeout, s, status, err \\ {:error, %Postgrex.Error{message: "endpoints shouldn't be an empty list"}})
+
+  defp connect_endpoints(sock_opts, timeout, s, %{opts: opts, remaining_endpoints: remaining_endpoints, types_mod: types_mod} = status, _err)
        when remaining_endpoints != [] do
     [{host, port} | remaining_endpoints] = remaining_endpoints
-    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
-      {:ok, _} = ret ->
-        ret
+    types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
+    status = %{status | types_key: types_key, remaining_endpoints: remaining_endpoints}
 
-      {:error, _} = err ->
-        connect_endpoints(sock_opts, timeout, s, %{status | remaining_endpoints: remaining_endpoints}, err)
+    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+      {:ok, _} = ret -> ret
+      {:error, _} = err -> connect_endpoints(sock_opts, timeout, s, status, err)
     end
   end
 
-  defp connect_endpoints(_, _, _, %{remaining_endpoints: remaining_endpoints}, err)
-       when remaining_endpoints == [],
-       do: err
+  defp connect_endpoints(_, _, _, %{remaining_endpoints: []}, err), do: err
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do
