@@ -83,7 +83,7 @@ defmodule Postgrex.Extension do
   Prelude defines properties and values that are attached to the body of
   the types module.
   """
-  @callback prelude(state) :: Macro.t
+  @callback prelude(state) :: Macro.t()
 
   @doc """
   Specifies the types the extension matches, see `Postgrex.TypeInfo` for

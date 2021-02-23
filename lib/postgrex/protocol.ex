@@ -141,9 +141,21 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp connect_endpoints(sock_opts, timeout, s, status, err \\ {:error, %Postgrex.Error{message: "endpoints shouldn't be an empty list"}})
+  defp connect_endpoints(
+         sock_opts,
+         timeout,
+         s,
+         status,
+         err \\ {:error, %Postgrex.Error{message: "endpoints shouldn't be an empty list"}}
+       )
 
-  defp connect_endpoints(sock_opts, timeout, s, %{opts: opts, remaining_endpoints: remaining_endpoints, types_mod: types_mod} = status, _err)
+  defp connect_endpoints(
+         sock_opts,
+         timeout,
+         s,
+         %{opts: opts, remaining_endpoints: remaining_endpoints, types_mod: types_mod} = status,
+         _err
+       )
        when remaining_endpoints != [] do
     [{host, port} | remaining_endpoints] = remaining_endpoints
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
@@ -818,7 +830,11 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp check_target_server_type_recv(s, %{target_server_type: expected_server_type} = status, buffer) do
+  defp check_target_server_type_recv(
+         s,
+         %{target_server_type: expected_server_type} = status,
+         buffer
+       ) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
         {[@text_type_oid], ["transaction_read_only"]} = columns(fields)
