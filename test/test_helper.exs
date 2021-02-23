@@ -39,10 +39,15 @@ defmodule PSQL do
     unix_socket_path = Path.join(unix_socket_dir, ".s.PGSQL.#{port}")
     otp_release >= 20 and File.exists?(unix_socket_path)
   end
+
+  def supports_ssl? do
+    cmd(["-c", "SHOW ssl"]) =~ "on"
+  end
 end
 
 pg_version = PSQL.vsn()
 unix_exclude = if PSQL.supports_sockets?(), do: [], else: [unix: true]
+ssl_exclude = if PSQL.supports_ssl?(), do: [], else: [ssl: true]
 notify_exclude = if pg_version == {8, 4}, do: [requires_notify_payload: true], else: []
 
 version_exclude =
@@ -50,7 +55,7 @@ version_exclude =
   |> Enum.filter(fn x -> x > pg_version end)
   |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
 
-excludes = version_exclude ++ notify_exclude ++ unix_exclude
+excludes = version_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
 ExUnit.start(exclude: excludes, assert_receive_timeout: 1000)
 {:ok, _} = Application.ensure_all_started(:crypto)
 
@@ -86,13 +91,9 @@ CREATE DOMAIN points_domain AS point[] CONSTRAINT is_populated CHECK (COALESCE(a
 DROP DOMAIN IF EXISTS floats_domain;
 CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
 
-#{
-  if pg_version >= {10, 0} do
-    "DROP ROLE IF EXISTS postgrex_scram_pw;" <>
-      "SET password_encryption = 'scram-sha-256';" <>
-      "CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';"
-  end
-}
+#{if pg_version >= {10, 0} do
+  "DROP ROLE IF EXISTS postgrex_scram_pw;" <> "SET password_encryption = 'scram-sha-256';" <> "CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';"
+end}
 """
 
 sql_test_with_schemas = """
