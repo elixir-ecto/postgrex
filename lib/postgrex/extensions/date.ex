@@ -44,9 +44,8 @@ defmodule Postgrex.Extensions.Date do
       |> Date.from_erl!()
     else
       raise ArgumentError,
-            "Postgrex can only decode dates with days between 0 and #{@max_days}, got: #{
-              inspect(days)
-            }"
+            "Postgrex can only decode dates with days between 0 and #{@max_days}, " <>
+              "got: #{inspect(days)}"
     end
   end
 end

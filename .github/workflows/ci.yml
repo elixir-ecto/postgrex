@@ -2,10 +2,82 @@ name: CI
 
 on:
   push:
+    branches:
+      - master
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-16.04
+
+    services:
+      pg:
+        image: postgres:${{ matrix.pg }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+        volumes:
+          - /var/run/postgresql:/var/run/postgresql
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pg:
+          - 9.4
+          - 9.5
+          - 9.6
+          - 10
+          - 11
+          - 12
+          - 13
+
+        pair:
+          - elixir: 1.11.3
+            otp: 23.2.5
+        include:
+          - pg: 13
+            pair:
+              elixir: 1.11.3
+              otp: 23.2.5
+            lint: lint
+          - pg: 13
+            pair:
+              elixir: 1.6.6
+              otp: 19.3.6.13
+    env:
+      MIX_ENV: test
     steps:
-      - run: uname -a
+      - uses: actions/checkout@v2
+
+      - uses: erlef/setup-elixir@v1
+        with:
+          otp-version: ${{matrix.pair.otp}}
+          elixir-version: ${{matrix.pair.elixir}}
+
+      - name: Install Dependencies
+        run: mix deps.get --only test
+
+      - run: mix format --check-formatted
+        if: ${{ matrix.lint }}
+
+      - run: mix deps.get && mix deps.unlock --check-unused
+        if: ${{ matrix.lint }}
+
+      - run: mix deps.compile
+
+      - run: mix compile --warnings-as-errors
+        if: ${{ matrix.lint }}
+
+      - run: mix test
+        env:
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PG_SOCKET_DIR: /var/run/postgresql
