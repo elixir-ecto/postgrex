@@ -101,11 +101,10 @@ defmodule Postgrex.Protocol do
       prepare: prepare,
       messages: [],
       ssl: ssl?,
-      target_server_type: target_server_type,
-      remaining_endpoints: endpoints
+      target_server_type: target_server_type
     }
 
-    connect_endpoints(sock_opts ++ @sock_opts, connect_timeout, s, status)
+    connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status)
   end
 
   defp endpoints(opts) do
@@ -142,6 +141,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp connect_endpoints(
+         remaining_endpoints,
          sock_opts,
          timeout,
          s,
@@ -150,24 +150,26 @@ defmodule Postgrex.Protocol do
        )
 
   defp connect_endpoints(
+         [{host, port} | remaining_endpoints],
          sock_opts,
          timeout,
          s,
-         %{opts: opts, remaining_endpoints: remaining_endpoints, types_mod: types_mod} = status,
+         %{opts: opts, types_mod: types_mod} = status,
          _err
-       )
-       when remaining_endpoints != [] do
-    [{host, port} | remaining_endpoints] = remaining_endpoints
+       ) do
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
-    status = %{status | types_key: types_key, remaining_endpoints: remaining_endpoints}
+    status = %{status | types_key: types_key}
 
     case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
-      {:ok, _} = ret -> ret
-      {:error, _} = err -> connect_endpoints(sock_opts, timeout, s, status, err)
+      {:ok, _} = ret ->
+        ret
+
+      {:error, _} = err ->
+        connect_endpoints(remaining_endpoints, sock_opts, timeout, s, status, err)
     end
   end
 
-  defp connect_endpoints(_, _, _, %{remaining_endpoints: []}, err), do: err
+  defp connect_endpoints([], _, _, _, _, err), do: err
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do
