@@ -72,19 +72,25 @@ defmodule Postgrex do
   Start the connection process and connect to postgres.
 
   ## Options
+  
+  Postgrex provides multiple ways to connect to the server, listed in order of
+  precedence below:
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
+    * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:endpoints` - A list of endpoints (host and port pairs); Postgrex will try
       each endpoint in order, one by one, until the connection succeeds; The syntax
       is `[{host1,port1},{host2,port2},{host3,port3}]`; This option takes precedence
-      over `:hostname`;
+      over `:hostname+:port`;
     * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
       for configuring sockets and it takes precedence over the hostname. If you are
       connecting to a socket outside of the PostgreSQL convention, use `:socket` instead;
     * `:socket` - Connect to PostgreSQL via UNIX sockets in the given path.
       This option takes precedence over the `:hostname`, `:endpoints` and `:socket_dir`;
-    * `:port` - Server port (default: PGPORT env variable, then 5432);
+
+  Once a server is specified, you can configure the connection with the following:
+
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password (default: PGPASSWORD env variable);
@@ -101,6 +107,21 @@ defmodule Postgrex do
       from the ssl docs;
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
+    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
+      Defaults to 1000ms;
+    * `:target_server_type` - Allows opening connections to only a server with the required state.
+      The allowed values are `:any`, `:primary` and `:secondary` (default: `:any`);
+    * `:disconnect_on_error_codes` - List of error code atoms that when encountered
+      will disconnect the connection. This is useful when using Postgrex against systems that
+      support failover, which when it occurs will emit certain error codes
+      e.g. `:read_only_sql_transaction` (default: `[]`);
+    * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
+      hides all information during connection errors to avoid leaking credentials
+      or other sensitive information. You can set this option if you wish to
+      see complete errors and stacktraces during connection errors;
+
+  The following options controls the pool and other Postgrex features:
+  
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
@@ -112,18 +133,6 @@ defmodule Postgrex do
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
-    * `:disconnect_on_error_codes` - List of error code atoms that when encountered
-      will disconnect the connection. This is useful when using Postgrex against systems that
-      support failover, which when it occurs will emit certain error codes
-      e.g. `:read_only_sql_transaction` (default: `[]`);
-    * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
-      hides all information during connection errors to avoid leaking credentials
-      or other sensitive information. You can set this option if you wish to
-      see complete errors and stacktraces during connection errors;
-    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
-      Defaults to 1000ms;
-    * `:target_server_type` - Allows opening connections to only a server with the required state.
-      The allowed values are `:any`, `:primary` and `:secondary` (default: `:any`);
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
