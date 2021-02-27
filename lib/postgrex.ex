@@ -35,6 +35,7 @@ defmodule Postgrex do
 
   @type start_option ::
           {:hostname, String.t()}
+          | {:endpoints, [tuple()]}
           | {:socket_dir, Path.t()}
           | {:socket, Path.t()}
           | {:port, :inet.port_number()}
@@ -71,15 +72,25 @@ defmodule Postgrex do
   Start the connection process and connect to postgres.
 
   ## Options
+  
+  Postgrex provides multiple ways to connect to the server, listed in order of
+  precedence below:
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
+    * `:port` - Server port (default: PGPORT env variable, then 5432);
+    * `:endpoints` - A list of endpoints (host and port pairs); Postgrex will try
+      each endpoint in order, one by one, until the connection succeeds; The syntax
+      is `[{host1,port1},{host2,port2},{host3,port3}]`; This option takes precedence
+      over `:hostname+:port`;
     * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
       for configuring sockets and it takes precedence over the hostname. If you are
       connecting to a socket outside of the PostgreSQL convention, use `:socket` instead;
     * `:socket` - Connect to PostgreSQL via UNIX sockets in the given path.
-      This option takes precedence over the `:hostname` and `:socket_dir`;
-    * `:port` - Server port (default: PGPORT env variable, then 5432);
+      This option takes precedence over the `:hostname`, `:endpoints` and `:socket_dir`;
+
+  Once a server is specified, you can configure the connection with the following:
+
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
     * `:username` - Username (default: PGUSER env variable, then USER env var);
     * `:password` - User password (default: PGPASSWORD env variable);
@@ -96,6 +107,23 @@ defmodule Postgrex do
       from the ssl docs;
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
+    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
+      Defaults to 1000ms;
+    * `:target_server_type` - Allows opening connections to a server in the given
+      replica mode. The allowed values are `:any`, `:primary` and `:secondary`
+      (default: `:any`). If this option is used together with `endpoints`, we will
+      traverse all endpoints until we find an endpoint matching the server type;
+    * `:disconnect_on_error_codes` - List of error code atoms that when encountered
+      will disconnect the connection. This is useful when using Postgrex against systems that
+      support failover, which when it occurs will emit certain error codes
+      e.g. `:read_only_sql_transaction` (default: `[]`);
+    * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
+      hides all information during connection errors to avoid leaking credentials
+      or other sensitive information. You can set this option if you wish to
+      see complete errors and stacktraces during connection errors;
+
+  The following options controls the pool and other Postgrex features:
+  
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction
@@ -107,16 +135,6 @@ defmodule Postgrex do
     * `:types` - The types module to use, see `Postgrex.TypeModule`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
-    * `:disconnect_on_error_codes` - List of error code atoms that when encountered
-      will disconnect the connection. This is useful when using Postgrex against systems that
-      support failover, which when it occurs will emit certain error codes
-      e.g. `:read_only_sql_transaction` (default: `[]`);
-    * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
-      hides all information during connection errors to avoid leaking credentials
-      or other sensitive information. You can set this option if you wish to
-      see complete errors and stacktraces during connection errors
-    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
-      Defaults to 1000ms.
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
@@ -147,22 +165,41 @@ defmodule Postgrex do
 
   ## Handling failover
 
-  Some services, such as AWS Aurora, support failovers. This means the
-  database you are currently connected to may suddenly become read-only,
-  and an attempt to do any write operation, such as INSERT/UPDATE/DELETE
-  will lead to errors such as:
+  Some services, such as AWS Aurora, support failovers. The 2 options
+  `endpoints` and `target_server_type` can be used together to achieve a faster fail-over.
 
-      11:11:03.089 [error] Postgrex.Protocol (#PID<0.189.0>) disconnected:
-      ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)
-      cannot execute INSERT in a read-only transaction
+  Imagine an AWS Aurora cluster named "test" with 2 instances. Use the
+  following options minimize downtime by ensuring that Postgrex connects to
+  the new primary instance as soon as possible.
 
-  Luckily, you can instruct `Postgrex` to disconnect in such cases by
-  using the following configuration:
+      {:ok, pid} = Postgrex.start_link(
+        endpoints: [
+          {"test.cluster-xyz.eu-west-1.rds.amazonaws.com", 5432},
+          {"test.cluster-ro-xyz.eu-west-1.rds.amazonaws.com", 5432}
+        ],
+        target_server_type: :primary,
+        (...)
+      )
 
-      disconnect_on_error_codes: [:read_only_sql_transaction]
+  In the event of a fail-over, Postgrex gets first disconnected from what used
+  to be the primary instance. The primary instance will then reboot and turn into
+  a secondary instance. Meanwhile, one of the secondary instances will have turned
+  into the new primary instance. However, the DNS entry of the primary endpoint
+  provided by AWS can take some time to get updated. That is why it can be faster to
+  let Postgrex iterate over all the instances of the cluster to find the new
+  primary instance instead of waiting for the DNS update.
 
-  This cause the connection process to attempt to reconnect according
-  to the backoff configuration.
+  If the cluster does not have DNS-backed primary and secondary endpoints (like the
+  ones provided by AWS Aurora) or if the cluster is made of more than 2 instances,
+  the hostname (and port) of all of the individual instances can be specified
+  in the `endpoints` list:
+
+      endpoints: [
+        {"test-instance-1.xyz.eu-west-1.rds.amazonaws.com", 5432},
+        {"test-instance-2.xyz.eu-west-1.rds.amazonaws.com", 5432},
+        (...),
+        {"test-instance-N.xyz.eu-west-1.rds.amazonaws.com", 5432}
+      ]
   """
   @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do

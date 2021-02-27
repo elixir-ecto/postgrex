@@ -11,6 +11,7 @@ defmodule Postgrex.Protocol do
   @max_packet 64 * 1024 * 1024
   @nonposix_errors [:closed, :timeout]
   @max_rows 500
+  @text_type_oid 25
 
   defstruct sock: nil,
             connection_id: nil,
@@ -62,13 +63,14 @@ defmodule Postgrex.Protocol do
           {:ok, state}
           | {:error, Postgrex.Error.t() | %DBConnection.ConnectionError{}}
   def connect(opts) do
-    {host, port} = host_and_port(opts)
+    endpoints = endpoints(opts)
 
     timeout = opts[:timeout] || @timeout
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
+    target_server_type = opts[:target_server_type] || :any
 
     transactions =
       case opts[:transactions] || :naive do
@@ -89,46 +91,93 @@ defmodule Postgrex.Protocol do
       disconnect_on_error_codes: disconnect_on_error_codes
     }
 
-    types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
     status = %{
       opts: opts,
       types_mod: types_mod,
-      types_key: types_key,
+      types_key: nil,
       types_lock: nil,
       prepare: prepare,
       messages: [],
-      ssl: ssl?
+      ssl: ssl?,
+      target_server_type: target_server_type
     }
 
-    case connect(host, port, sock_opts ++ @sock_opts, connect_timeout, s) do
-      {:ok, s} -> handshake(s, status)
-      {:error, _} = error -> error
-    end
+    connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status)
   end
 
-  defp host_and_port(opts) do
+  defp endpoints(opts) do
     port = opts[:port] || 5432
 
     case Keyword.fetch(opts, :socket) do
       {:ok, file} ->
-        {{:local, file}, 0}
+        [{{:local, file}, 0}]
 
       :error ->
         case Keyword.fetch(opts, :socket_dir) do
           {:ok, dir} ->
-            {{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}
+            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}]
 
           :error ->
-            case Keyword.fetch(opts, :hostname) do
-              {:ok, hostname} ->
-                {to_charlist(hostname), port}
+            case Keyword.fetch(opts, :endpoints) do
+              {:ok, endpoints} when is_list(endpoints) ->
+                Enum.map(endpoints, fn {hostname, port} -> {to_charlist(hostname), port} end)
+
+              {:ok, _} ->
+                raise ArgumentError, "expected :endpoints to be a list of tuples"
 
               :error ->
-                raise ArgumentError, "expected :hostname, :socket_dir, or :socket to be given"
+                case Keyword.fetch(opts, :hostname) do
+                  {:ok, hostname} ->
+                    [{to_charlist(hostname), port}]
+
+                  :error ->
+                    raise ArgumentError, "expected :hostname, endpoints, :socket_dir, or :socket to be given"
+                end
             end
         end
+    end
+  end
+
+  defp connect_endpoints(
+         remaining_endpoints,
+         sock_opts,
+         timeout,
+         s,
+         status,
+         err \\ {:error, %Postgrex.Error{message: "endpoints shouldn't be an empty list"}}
+       )
+
+  defp connect_endpoints(
+         [{host, port} | remaining_endpoints],
+         sock_opts,
+         timeout,
+         s,
+         %{opts: opts, types_mod: types_mod} = status,
+         _err
+       ) do
+    types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
+    status = %{status | types_key: types_key}
+
+    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+      {:ok, _} = ret ->
+        ret
+
+      {:error, _} = err ->
+        connect_endpoints(remaining_endpoints, sock_opts, timeout, s, status, err)
+    end
+  end
+
+  defp connect_endpoints([], _, _, _, _, err), do: err
+
+  defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+    case connect(host, port, sock_opts, timeout, s) do
+      {:ok, s} ->
+        handshake(s, status)
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -749,7 +798,7 @@ defmodule Postgrex.Protocol do
         init_recv(%{s | connection_id: pid, connection_key: key}, status, buffer)
 
       {:ok, msg_ready(), buffer} ->
-        bootstrap(s, status, buffer)
+        check_target_server_type(s, status, buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
@@ -761,6 +810,90 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = dis ->
         dis
     end
+  end
+
+  ## check_target_server_type
+
+  defp check_target_server_type(s, %{target_server_type: :any} = status, buffer),
+    do: check_target_server_type_done(s, status, buffer)
+
+  defp check_target_server_type(s, status, buffer),
+    do: check_target_server_type_send(s, status, buffer)
+
+  defp check_target_server_type_send(s, status, buffer) do
+    msg = msg_query(statement: "show transaction_read_only")
+
+    case msg_send(s, msg, buffer) do
+      :ok ->
+        check_target_server_type_recv(s, status, buffer)
+
+      {:disconnect, err, s} ->
+        check_target_server_type_fail(s, err, status)
+    end
+  end
+
+  defp check_target_server_type_recv(
+         s,
+         %{target_server_type: expected_server_type} = status,
+         buffer
+       ) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_row_desc(fields: fields), buffer} ->
+        {[@text_type_oid], ["transaction_read_only"]} = columns(fields)
+        check_target_server_type_recv(s, status, buffer)
+
+      {:ok, msg_data_row(values: values), buffer} ->
+        <<len::uint32, read_only_value::binary(len)>> = values
+
+        actual_server_type =
+          case read_only_value do
+            "off" -> :primary
+            "on" -> :secondary
+          end
+
+        case {expected_server_type, actual_server_type} do
+          {:any, _} -> check_target_server_type_recv(s, status, buffer)
+          {type, type} -> check_target_server_type_recv(s, status, buffer)
+          _ -> check_target_server_type_fail(s, expected_server_type, actual_server_type)
+        end
+
+      {:ok, msg_command_complete(), buffer} ->
+        check_target_server_type_recv(s, status, buffer)
+
+      {:ok, msg_ready(status: :idle), buffer} ->
+        check_target_server_type_done(s, status, buffer)
+
+      {:ok, msg_ready(status: postgres), _buffer} ->
+        err = %Postgrex.Error{message: "unexpected postgres status: #{postgres}"}
+        check_target_server_type_error(s, err, status)
+
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        check_target_server_type_error(s, err, status, buffer)
+
+      {:ok, msg, buffer} ->
+        {s, status} = handle_msg(s, status, msg)
+        check_target_server_type_recv(s, status, buffer)
+
+      {:disconnect, err, s} ->
+        check_target_server_type_error(s, err, status)
+    end
+  end
+
+  defp check_target_server_type_done(s, status, buffer), do: bootstrap(s, status, buffer)
+
+  defp check_target_server_type_fail(s, expected_server_type, actual_server_type) do
+    msg = "the server type is not as expected. expected: #{expected_server_type}. actual: #{actual_server_type}"
+    err = %Postgrex.Error{message: msg}
+    {:disconnect, err, s}
+  end
+
+  defp check_target_server_type_error(s, err, _status) do
+    {:disconnect, err, s}
+  end
+
+  defp check_target_server_type_error(s, err, status, buffer) do
+    check_target_server_type_error(%{s | buffer: buffer}, err, status)
   end
 
   ## bootstrap
