@@ -72,7 +72,7 @@ defmodule Postgrex do
   Start the connection process and connect to postgres.
 
   ## Options
-  
+
   Postgrex provides multiple ways to connect to the server, listed in order of
   precedence below:
 
@@ -123,7 +123,7 @@ defmodule Postgrex do
       see complete errors and stacktraces during connection errors;
 
   The following options controls the pool and other Postgrex features:
-  
+
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
     * `:transactions` - Set to `:strict` to error on unexpected transaction

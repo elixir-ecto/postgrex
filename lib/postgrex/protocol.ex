@@ -133,7 +133,8 @@ defmodule Postgrex.Protocol do
                     [{to_charlist(hostname), port}]
 
                   :error ->
-                    raise ArgumentError, "expected :hostname, endpoints, :socket_dir, or :socket to be given"
+                    raise ArgumentError,
+                          "expected :hostname, endpoints, :socket_dir, or :socket to be given"
                 end
             end
         end
@@ -883,7 +884,9 @@ defmodule Postgrex.Protocol do
   defp check_target_server_type_done(s, status, buffer), do: bootstrap(s, status, buffer)
 
   defp check_target_server_type_fail(s, expected_server_type, actual_server_type) do
-    msg = "the server type is not as expected. expected: #{expected_server_type}. actual: #{actual_server_type}"
+    msg =
+      "the server type is not as expected. expected: #{expected_server_type}. actual: #{actual_server_type}"
+
     err = %Postgrex.Error{message: msg}
     {:disconnect, err, s}
   end

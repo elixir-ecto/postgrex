@@ -90,15 +90,19 @@ CREATE DOMAIN points_domain AS point[] CONSTRAINT is_populated CHECK (COALESCE(a
 
 DROP DOMAIN IF EXISTS floats_domain;
 CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(array_length(VALUE, 1), 0) >= 1);
-
-#{
-  if pg_version >= {10, 0} do
-    "DROP ROLE IF EXISTS postgrex_scram_pw;" <>
-      "SET password_encryption = 'scram-sha-256';" <>
-      "CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';"
-  end
-}
 """
+
+sql_test =
+  if pg_version >= {10, 0} do
+    sql_test <>
+      """
+      DROP ROLE IF EXISTS postgrex_scram_pw;
+      SET password_encryption = 'scram-sha-256';
+      CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';
+      """
+  else
+    sql_test
+  end
 
 sql_test_with_schemas = """
 DROP SCHEMA IF EXISTS test;
