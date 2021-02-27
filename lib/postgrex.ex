@@ -165,22 +165,41 @@ defmodule Postgrex do
 
   ## Handling failover
 
-  Some services, such as AWS Aurora, support failovers. This means the
-  database you are currently connected to may suddenly become read-only,
-  and an attempt to do any write operation, such as INSERT/UPDATE/DELETE
-  will lead to errors such as:
+  Some services, such as AWS Aurora, support failovers. The 2 options
+  `endpoints` and `target_server_type` can be used together to achieve a faster fail-over.
 
-      11:11:03.089 [error] Postgrex.Protocol (#PID<0.189.0>) disconnected:
-      ** (Postgrex.Error) ERROR 25006 (read_only_sql_transaction)
-      cannot execute INSERT in a read-only transaction
+  Example with an AWS Aurora cluster named test with 2 instances. Using the
+  following options minimize downtime by ensuring that Postgrex connects to
+  the new primary instance as soon as possible.
 
-  Luckily, you can instruct `Postgrex` to disconnect in such cases by
-  using the following configuration:
+      {:ok, pid} = Postgrex.start_link(
+        endpoints: [
+          {"test.cluster-xyz.eu-west-1.rds.amazonaws.com", 5432},
+          {"test.cluster-ro-xyz.eu-west-1.rds.amazonaws.com", 5432}
+        ],
+        target_server_type: :primary,
+        (...)
+      )
 
-      disconnect_on_error_codes: [:read_only_sql_transaction]
+  In the event of a fail-over, Postgrex gets first disconnected from what used
+  to be the primary instance. The primary instance will then reboot and turn into
+  a secondary instance. Meanwhile, one of the secondary instances will have turned
+  into the new primary instance. However, the DNS entry of the primary endpoint
+  provided by AWS can take some time to get updated. That is why it can be faster to
+  let Postgrex iterate over all the instances of the cluster to find the new
+  primary instance instead of waiting for the DNS update.
 
-  This cause the connection process to attempt to reconnect according
-  to the backoff configuration.
+  If the cluster does not have DNS-backed primary and secondary endpoints (like the
+  ones provided by AWS Aurora) or if the cluster is made of more than 2 instances,
+  the hostname (and port) of all of the individual instances can be specified
+  in the `endpoints` list:
+
+      endpoints: [
+          {"test-instance-1.xyz.eu-west-1.rds.amazonaws.com", 5432},
+          {"test-instance-2.xyz.eu-west-1.rds.amazonaws.com", 5432},
+          (...),
+          {"test-instance-N.xyz.eu-west-1.rds.amazonaws.com", 5432},
+      ]
   """
   @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
