@@ -195,10 +195,10 @@ defmodule Postgrex do
   in the `endpoints` list:
 
       endpoints: [
-          {"test-instance-1.xyz.eu-west-1.rds.amazonaws.com", 5432},
-          {"test-instance-2.xyz.eu-west-1.rds.amazonaws.com", 5432},
-          (...),
-          {"test-instance-N.xyz.eu-west-1.rds.amazonaws.com", 5432},
+        {"test-instance-1.xyz.eu-west-1.rds.amazonaws.com", 5432},
+        {"test-instance-2.xyz.eu-west-1.rds.amazonaws.com", 5432},
+        (...),
+        {"test-instance-N.xyz.eu-west-1.rds.amazonaws.com", 5432}
       ]
   """
   @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
