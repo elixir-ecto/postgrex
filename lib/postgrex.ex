@@ -109,8 +109,10 @@ defmodule Postgrex do
       (applies to both TCP and UNIX sockets);
     * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
       Defaults to 1000ms;
-    * `:target_server_type` - Allows opening connections to only a server with the required state.
-      The allowed values are `:any`, `:primary` and `:secondary` (default: `:any`);
+    * `:target_server_type` - Allows opening connections to a server in the given
+      replica mode. The allowed values are `:any`, `:primary` and `:secondary`
+      (default: `:any`). If this option is used together with `endpoints`, we will
+      traverse all endpoints until we find an endpoint matching the server type;
     * `:disconnect_on_error_codes` - List of error code atoms that when encountered
       will disconnect the connection. This is useful when using Postgrex against systems that
       support failover, which when it occurs will emit certain error codes
