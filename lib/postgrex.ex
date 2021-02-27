@@ -168,7 +168,7 @@ defmodule Postgrex do
   Some services, such as AWS Aurora, support failovers. The 2 options
   `endpoints` and `target_server_type` can be used together to achieve a faster fail-over.
 
-  Example with an AWS Aurora cluster named test with 2 instances. Using the
+  Imagine an AWS Aurora cluster named "test" with 2 instances. Use the
   following options minimize downtime by ensuring that Postgrex connects to
   the new primary instance as soon as possible.
 
