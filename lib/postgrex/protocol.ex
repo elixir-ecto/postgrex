@@ -883,10 +883,8 @@ defmodule Postgrex.Protocol do
 
   defp check_target_server_type_done(s, status, buffer), do: bootstrap(s, status, buffer)
 
-  defp check_target_server_type_fail(s, expected_server_type, actual_server_type) do
-    msg =
-      "the server type is not as expected. expected: #{expected_server_type}. actual: #{actual_server_type}"
-
+  defp check_target_server_type_fail(s, expected, actual) do
+    msg = "the server type is not as expected. expected: #{expected}. actual: #{actual}"
     err = %Postgrex.Error{message: msg}
     {:disconnect, err, s}
   end
