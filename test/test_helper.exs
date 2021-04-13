@@ -57,7 +57,6 @@ version_exclude =
 
 excludes = version_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
 ExUnit.start(exclude: excludes, assert_receive_timeout: 1000)
-{:ok, _} = Application.ensure_all_started(:crypto)
 
 sql_test = """
 DROP ROLE IF EXISTS postgrex_cleartext_pw;
