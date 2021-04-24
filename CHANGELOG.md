@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.9 (2021-04-24)
+
+* Enhancements
+  * Support the new `:endpoints` and `:target_server_type` to make it faster to rotate across multiple instances in cases of failovers
+* Bug fixes
+  * Do not warn on undefined JSON library
+  * Fix bug when a message which is not a row description, data row, command completion or error message occurs and there is buffer remaining to be processed
+
 ## v0.15.8 (2021-01-19)
 
 * Bug fixes
