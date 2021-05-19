@@ -104,7 +104,7 @@ defmodule Postgrex.Protocol do
       target_server_type: target_server_type
     }
 
-    connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status)
+    connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status, [])
   end
 
   defp endpoints(opts) do
@@ -142,21 +142,12 @@ defmodule Postgrex.Protocol do
   end
 
   defp connect_endpoints(
-         remaining_endpoints,
-         sock_opts,
-         timeout,
-         s,
-         status,
-         err \\ {:error, %Postgrex.Error{message: "endpoints shouldn't be an empty list"}}
-       )
-
-  defp connect_endpoints(
          [{host, port} | remaining_endpoints],
          sock_opts,
          timeout,
          s,
          %{opts: opts, types_mod: types_mod} = status,
-         _err
+         previous_errors
        ) do
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
     status = %{status | types_key: types_key}
@@ -165,12 +156,21 @@ defmodule Postgrex.Protocol do
       {:ok, _} = ret ->
         ret
 
-      {:error, _} = err ->
-        connect_endpoints(remaining_endpoints, sock_opts, timeout, s, status, err)
+      {:error, err} ->
+        connect_endpoints(remaining_endpoints, sock_opts, timeout, s, status, previous_errors ++ [err])
     end
   end
 
-  defp connect_endpoints([], _, _, _, _, err), do: err
+  defp connect_endpoints([], _, _, _, _, [error]), do: {:error, error}
+
+  defp connect_endpoints([], _, _, _, _, errors) when is_list(errors) do
+    concat_messages =
+      errors
+      |> Enum.map(fn %error_module{} = error -> "#{error_module}: \"#{Exception.message(error)}\"" end)
+      |> Enum.join(", ")
+
+    {:error, %Postgrex.Error{message: "[#{concat_messages}]"}}
+  end
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do

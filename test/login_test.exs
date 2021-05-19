@@ -214,7 +214,7 @@ defmodule LoginTest do
 
              assert_start_and_killed(opts ++ context[:options])
            end) =~
-             ~r"\*\* \(Postgrex.Error\) the server type is not as expected. expected: secondary. actual: primary"
+             ~r'\*\* \(Postgrex\.Error\) \[Elixir\.Postgrex\.Error\: "the server type is not as expected\. expected\: secondary\. actual\: primary", Elixir\.Postgrex\.Error\: "the server type is not as expected\. expected\: secondary\. actual\: primary"\]'
   end
 
   test "translates provided port number to integer" do
