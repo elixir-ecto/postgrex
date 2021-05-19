@@ -157,7 +157,14 @@ defmodule Postgrex.Protocol do
         ret
 
       {:error, err} ->
-        connect_endpoints(remaining_endpoints, sock_opts, timeout, s, status, previous_errors ++ [err])
+        connect_endpoints(
+          remaining_endpoints,
+          sock_opts,
+          timeout,
+          s,
+          status,
+          previous_errors ++ [err]
+        )
     end
   end
 
@@ -166,7 +173,9 @@ defmodule Postgrex.Protocol do
   defp connect_endpoints([], _, _, _, _, errors) when is_list(errors) do
     concat_messages =
       errors
-      |> Enum.map(fn %error_module{} = error -> "#{error_module}: \"#{Exception.message(error)}\"" end)
+      |> Enum.map(fn %error_module{} = error ->
+        "#{error_module}: \"#{Exception.message(error)}\""
+      end)
       |> Enum.join(", ")
 
     {:error, %Postgrex.Error{message: "[#{concat_messages}]"}}
