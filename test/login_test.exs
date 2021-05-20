@@ -230,7 +230,7 @@ defmodule LoginTest do
 
              assert_start_and_killed(opts ++ context[:options])
            end) =~
-             ~r'\*\* \(Postgrex\.Error\) failed to establish connection to multiple endpoints\: DBConnection\.ConnectionError\: "tcp connect \(doesntexist\:5432\)\: non\-existing domain \- \:nxdomain", DBConnection\.ConnectionError\: "tcp connect \(localhost\:5555\)\: connection refused \- \:econnrefused"'
+             ~r'\*\* \(Postgrex\.Error\) failed to establish connection to multiple endpoints\:\n\n  \* doesntexist\:5432\: \(DBConnection\.ConnectionError\) tcp connect \(doesntexist\:5432\)\: non\-existing domain \- \:nxdomain\n  \* localhost\:5555\: \(DBConnection\.ConnectionError\) tcp connect \(localhost\:5555\)\: connection refused \- \:econnrefused'
   end
 
   test "outputs a single error message when only one endpoint is used", context do
