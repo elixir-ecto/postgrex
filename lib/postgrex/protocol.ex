@@ -178,7 +178,7 @@ defmodule Postgrex.Protocol do
       end)
       |> Enum.join(", ")
 
-    {:error, %Postgrex.Error{message: "[#{concat_messages}]"}}
+    {:error, %Postgrex.Error{message: "failed to establish connection to multiple endpoints: #{concat_messages}"}}
   end
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
