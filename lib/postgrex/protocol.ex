@@ -175,7 +175,7 @@ defmodule Postgrex.Protocol do
       errors
       |> Enum.reverse()
       |> Enum.map(fn %error_module{} = error ->
-        "#{error_module}: \"#{Exception.message(error)}\""
+        "#{inspect(error_module)}: \"#{Exception.message(error)}\""
       end)
       |> Enum.join(", ")
 
