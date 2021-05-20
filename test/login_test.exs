@@ -208,7 +208,7 @@ defmodule LoginTest do
   test "server type 'secondary' against two primary instances", context do
     message =
       capture_log(fn ->
-       opts = [
+        opts = [
           endpoints: [{"localhost", 5432}, {"localhost", 5432}],
           target_server_type: :secondary
         ]
@@ -216,8 +216,47 @@ defmodule LoginTest do
         assert_start_and_killed(opts ++ context[:options])
       end)
 
-    assert message =~ "** (Postgrex.Error) failed to establish connection to multiple endpoints:\n\n"
-    assert message =~ "  * localhost:5432: (Postgrex.Error) the server type is not as expected. expected: secondary. actual: primary"
+    assert message =~
+             "** (Postgrex.Error) failed to establish connection to multiple endpoints:\n\n"
+
+    assert message =~
+             "  * localhost:5432: (Postgrex.Error) the server type is not as expected. expected: secondary. actual: primary\n"
+  end
+
+  test "outputs an error message per attempted endpoint when more than one endpoint is used",
+       context do
+    message =
+      capture_log(fn ->
+        opts = [
+          endpoints: [{"doesntexist", 5432}, {"localhost", 5555}],
+          connect_timeout: 100
+        ]
+
+        assert_start_and_killed(opts ++ context[:options])
+      end)
+
+    assert message =~
+             "** (Postgrex.Error) failed to establish connection to multiple endpoints:\n\n"
+
+    assert message =~
+             "  * doesntexist:5432: (DBConnection.ConnectionError) tcp connect (doesntexist:5432): non-existing domain - :nxdomain\n"
+
+    assert message =~
+             "  * localhost:5555: (DBConnection.ConnectionError) tcp connect (localhost:5555): connection refused - :econnrefused\n"
+  end
+
+  test "outputs a single error message when only one endpoint is used", context do
+    message =
+      capture_log(fn ->
+        opts = [endpoints: [{"doesntexist", 5432}], connect_timeout: 100]
+        assert_start_and_killed(opts ++ context[:options])
+      end)
+
+    refute message =~
+             "** (Postgrex.Error) failed to establish connection to multiple endpoints:\n\n"
+
+    assert message =~
+             "** (DBConnection.ConnectionError) tcp connect (doesntexist:5432): non-existing domain - :nxdomain\n"
   end
 
   test "translates provided port number to integer" do
@@ -251,7 +290,7 @@ defmodule LoginTest do
     Process.flag(:trap_exit, true)
 
     case P.start_link(opts) do
-      {:ok, pid} -> assert_receive {:EXIT, ^pid, :killed}
+      {:ok, pid} -> assert_receive {:EXIT, ^pid, :killed}, 5_000
       {:error, :killed} -> :ok
     end
   end
