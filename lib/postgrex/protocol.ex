@@ -163,26 +163,23 @@ defmodule Postgrex.Protocol do
           timeout,
           s,
           status,
-          [err | previous_errors]
+          [{host, port, err} | previous_errors]
         )
     end
   end
 
-  defp connect_endpoints([], _, _, _, _, [error]), do: {:error, error}
+  defp connect_endpoints([], _, _, _, _, [{_, _, error}]), do: {:error, error}
 
   defp connect_endpoints([], _, _, _, _, errors) when is_list(errors) do
     concat_messages =
       errors
       |> Enum.reverse()
-      |> Enum.map(fn %error_module{} = error ->
-        "#{inspect(error_module)}: \"#{Exception.message(error)}\""
+      |> Enum.map_join("\n", fn {host, port, %error_module{} = error} ->
+        "  * #{host}:#{port}: (#{inspect(error_module)}) #{Exception.message(error)}"
       end)
-      |> Enum.join(", ")
 
-    {:error,
-     %Postgrex.Error{
-       message: "failed to establish connection to multiple endpoints: #{concat_messages}"
-     }}
+    message = "failed to establish connection to multiple endpoints:\n\n#{concat_messages}"
+    {:error, %Postgrex.Error{message: message}}
   end
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do

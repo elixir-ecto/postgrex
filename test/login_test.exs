@@ -206,15 +206,18 @@ defmodule LoginTest do
   end
 
   test "server type 'secondary' against two primary instances", context do
-    assert capture_log(fn ->
-             opts = [
-               endpoints: [{"localhost", 5432}, {"localhost", 5432}],
-               target_server_type: :secondary
-             ]
+    message =
+      capture_log(fn ->
+       opts = [
+          endpoints: [{"localhost", 5432}, {"localhost", 5432}],
+          target_server_type: :secondary
+        ]
 
-             assert_start_and_killed(opts ++ context[:options])
-           end) =~
-             ~r'\*\* \(Postgrex\.Error\) failed to establish connection to multiple endpoints: Postgrex\.Error\: "the server type is not as expected\. expected\: secondary\. actual\: primary", Postgrex\.Error\: "the server type is not as expected\. expected\: secondary\. actual\: primary"'
+        assert_start_and_killed(opts ++ context[:options])
+      end)
+
+    assert message =~ "** (Postgrex.Error) failed to establish connection to multiple endpoints:\n\n"
+    assert message =~ "  * localhost:5432: (Postgrex.Error) the server type is not as expected. expected: secondary. actual: primary"
   end
 
   test "translates provided port number to integer" do
