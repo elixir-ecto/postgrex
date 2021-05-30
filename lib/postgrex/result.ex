@@ -2,7 +2,8 @@ defmodule Postgrex.Result do
   @moduledoc """
   Result struct returned from any successful query. Its fields are:
 
-    * `command` - An atom of the query command, for example: `:select` or `:insert`;
+    * `command` - An atom or a list of atoms of the query command, for example:
+      `:select`, `:insert`, or `[:rollback, :release]`;
     * `columns` - The column names;
     * `rows` - The result set. A list of lists, each inner list corresponding to a
       row, each element in the inner list corresponds to a column;
@@ -13,7 +14,7 @@ defmodule Postgrex.Result do
   """
 
   @type t :: %__MODULE__{
-          command: atom,
+          command: atom | [atom],
           columns: [String.t()] | nil,
           rows: [[term] | binary] | nil,
           num_rows: integer,
