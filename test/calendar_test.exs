@@ -60,12 +60,8 @@ defmodule CalendarTest do
 
     assert [[~D[0000-01-01]]] = query("SELECT date 'January 1, 1 BC'", [])
     assert [[~D[9999-12-31]]] = query("SELECT date '9999-12-31'", [])
-  end
 
-  test "decode date lower bound error", context do
-    assert_raise ArgumentError, fn ->
-      query("SELECT date 'December 31, 2 BC'", [])
-    end
+    assert [[~D[-0001-01-01]]] = query("SELECT date 'January 1, 2 BC'", [])
   end
 
   test "decode date upper bound error", context do
@@ -96,6 +92,12 @@ defmodule CalendarTest do
 
     assert [[~N[1980-01-01 00:00:00.123456]]] =
              query("SELECT timestamp '1980-01-01 00:00:00.123456'", [])
+
+    assert [[~N[-1980-01-01 00:00:00.123456]]] =
+             query("SELECT timestamp '1981-01-01BC 00:00:00.123456'", [])
+
+    assert [[~N[-4712-01-01 00:00:00.123456]]] =
+             query("SELECT timestamp '4713-01-01BC 00:00:00.123456'", [])
   end
 
   test "decode timestamptz", context do
@@ -214,6 +216,26 @@ defmodule CalendarTest do
                }
              ]
            ] = query("SELECT timestamp with time zone '1980-01-01 01:00:00.123456'", [])
+  end
+
+  test "decode negative timestampz", context do
+    assert :ok = query("SET SESSION TIME ZONE UTC", [])
+
+    assert [
+             [
+               %DateTime{
+                 year: -1980,
+                 month: 1,
+                 day: 1,
+                 hour: 0,
+                 minute: 0,
+                 second: 0,
+                 microsecond: {123_456, 6},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp with time zone '1981-01-01BC 00:00:00.123456'", [])
   end
 
   @tag :capture_log

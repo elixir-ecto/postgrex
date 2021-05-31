@@ -3,14 +3,16 @@ defmodule Postgrex.Extensions.TimestampTZ do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "timestamptz_send"
 
-  @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
-  @max_year 294_276
+  @gs_epoch NaiveDateTime.to_gregorian_seconds(~N[2000-01-01 00:00:00.0]) |> elem(0)
 
-  @gs_unix_epoch :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
+  @gs_unix_epoch NaiveDateTime.to_gregorian_seconds(~N[1970-01-01 00:00:00.0]) |> elem(0)
   @us_epoch (@gs_epoch - @gs_unix_epoch) * 1_000_000
-  @gs_max :calendar.datetime_to_gregorian_seconds({{@max_year + 1, 1, 1}, {0, 0, 0}}) -
-            @gs_unix_epoch
+
+  @gs_max elem(NaiveDateTime.to_gregorian_seconds(~N[9999-01-01 00:00:00.0]), 0) - @gs_unix_epoch
   @us_max @gs_max * 1_000_000
+
+  @gs_min elem(NaiveDateTime.to_gregorian_seconds(~N[-4713-01-01 00:00:00.0]), 0) - @gs_unix_epoch
+  @us_min @gs_min * 1_000_000
 
   @plus_infinity 9_223_372_036_854_775_807
   @minus_infinity -9_223_372_036_854_775_808
@@ -39,11 +41,11 @@ defmodule Postgrex.Extensions.TimestampTZ do
 
   def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
     case DateTime.to_unix(datetime, :microsecond) do
-      microsecs when microsecs < @us_max ->
+      microsecs when microsecs in @us_min..@us_max ->
         <<8::int32, microsecs - @us_epoch::int64>>
 
       _ ->
-        raise ArgumentError, "#{inspect(datetime)} is beyond the maximum year 294276"
+        raise ArgumentError, "#{inspect(datetime)} is not in the year range -4713..9999"
     end
   end
 
