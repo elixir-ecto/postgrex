@@ -50,8 +50,8 @@ jobs:
             lint: lint
           - pg: 13
             pair:
-              elixir: 1.6.6
-              otp: 19.3.6.13
+              elixir: 1.11.4
+              otp: 21.3
     env:
       MIX_ENV: test
     steps:
