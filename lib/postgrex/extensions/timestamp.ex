@@ -3,8 +3,9 @@ defmodule Postgrex.Extensions.Timestamp do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "timestamp_send"
 
-  @gs_epoch :calendar.datetime_to_gregorian_seconds({{2000, 1, 1}, {0, 0, 0}})
+  @gs_epoch NaiveDateTime.to_gregorian_seconds(~N[2000-01-01 00:00:00]) |> elem(0)
   @max_year 294_276
+  @min_year -4_713
   @plus_infinity 9_223_372_036_854_775_807
   @minus_infinity -9_223_372_036_854_775_808
 
@@ -35,17 +36,15 @@ defmodule Postgrex.Extensions.Timestamp do
 
   def encode_elixir(%_{
         year: year,
-        month: month,
-        day: day,
         hour: hour,
         minute: min,
         second: sec,
         microsecond: {usec, _}
-      })
-      when year <= @max_year and hour in 0..23 and min in 0..59 and sec in 0..59 and
+      } = date_time)
+      when year <= @max_year and year >= @min_year and hour in 0..23 and min in 0..59 and sec in 0..59 and
              usec in 0..999_999 do
-    datetime = {{year, month, day}, {hour, min, sec}}
-    secs = :calendar.datetime_to_gregorian_seconds(datetime) - @gs_epoch
+    {gregorian_seconds, usec} =  NaiveDateTime.to_gregorian_seconds(date_time)
+    secs = gregorian_seconds - @gs_epoch
     <<8::int32, secs * 1_000_000 + usec::int64>>
   end
 
@@ -58,8 +57,7 @@ defmodule Postgrex.Extensions.Timestamp do
   end
 
   def microsecond_to_elixir(microsecs, _infinity) do
-    {erl_datetime, microsecs} = split(microsecs)
-    NaiveDateTime.from_erl!(erl_datetime, {microsecs, 6})
+    split(microsecs)
   end
 
   defp split(microsecs) when microsecs < 0 and rem(microsecs, 1_000_000) != 0 do
@@ -75,7 +73,7 @@ defmodule Postgrex.Extensions.Timestamp do
   end
 
   defp split(secs, microsecs) do
-    {:calendar.gregorian_seconds_to_datetime(secs + @gs_epoch), microsecs}
+    NaiveDateTime.from_gregorian_seconds(secs + @gs_epoch, {microsecs, 6})
   end
 
   defp raise_infinity(type) do
