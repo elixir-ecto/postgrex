@@ -34,16 +34,19 @@ defmodule Postgrex.Extensions.Timestamp do
 
   ## Helpers
 
-  def encode_elixir(%_{
-        year: year,
-        hour: hour,
-        minute: min,
-        second: sec,
-        microsecond: {usec, _}
-      } = date_time)
-      when year <= @max_year and year >= @min_year and hour in 0..23 and min in 0..59 and sec in 0..59 and
+  def encode_elixir(
+        %_{
+          year: year,
+          hour: hour,
+          minute: min,
+          second: sec,
+          microsecond: {usec, _}
+        } = date_time
+      )
+      when year <= @max_year and year >= @min_year and hour in 0..23 and min in 0..59 and
+             sec in 0..59 and
              usec in 0..999_999 do
-    {gregorian_seconds, usec} =  NaiveDateTime.to_gregorian_seconds(date_time)
+    {gregorian_seconds, usec} = NaiveDateTime.to_gregorian_seconds(date_time)
     secs = gregorian_seconds - @gs_epoch
     <<8::int32, secs * 1_000_000 + usec::int64>>
   end
