@@ -11,7 +11,7 @@ defmodule Postgrex.Extensions.Date do
   @max_days Date.to_gregorian_days(~D[9999-12-31])
 
   # Elixir supports earlier dates but this is the
-  # earliest supported in Postfresql
+  # earliest supported in Postgresql.
   @min_days Date.to_gregorian_days(~D[-4713-01-01])
 
   def encode(_) do
