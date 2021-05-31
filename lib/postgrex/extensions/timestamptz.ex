@@ -69,8 +69,11 @@ defmodule Postgrex.Extensions.TimestampTZ do
     raise ArgumentError, """
     got \"#{type}\" from PostgreSQL. If you want to support infinity timestamps \
     in your application, you can enable them by defining your own types:
+
         Postgrex.Types.define(MyApp.PostgrexTypes, [], allow_infinite_timestamps: true)
+
     And then configuring your database to use it:
+
         types: MyApp.PostgrexTypes
     """
   end

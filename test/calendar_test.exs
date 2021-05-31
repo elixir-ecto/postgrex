@@ -64,15 +64,6 @@ defmodule CalendarTest do
     assert [[~D[-0001-01-01]]] = query("SELECT date 'January 1, 2 BC'", [])
   end
 
-  # All Postgres BC dates are decodable to Elixir
-  # Dates
-
-  # test "decode date lower bound error", context do
-  #   assert_raise ArgumentError, fn ->
-  #     query("SELECT date 'January 1, 4713 BC'", [])
-  #   end
-  # end
-
   test "decode date upper bound error", context do
     assert_raise ArgumentError, fn ->
       query("SELECT date '10000-01-01'", [])
