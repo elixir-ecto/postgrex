@@ -12,6 +12,10 @@ defmodule NotificationTest do
     {:ok, [pid: pid, pid_ps: pid_ps]}
   end
 
+  test "defines child spec" do
+    start_supervised!({PN, @opts})
+  end
+
   test "fails on sync connection by default" do
     Process.flag(:trap_exit, true)
     assert {:error, _} = PN.start_link(database: "nobody_knows_it")

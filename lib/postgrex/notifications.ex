@@ -84,6 +84,14 @@ defmodule Postgrex.Notifications do
 
   @type server :: GenServer.server()
 
+  @doc false
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]}
+    }
+  end
+
   @doc """
   Start the notification connection process and connect to postgres.
 
