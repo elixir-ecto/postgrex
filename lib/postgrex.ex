@@ -154,6 +154,21 @@ defmodule Postgrex do
 
       iex> {:ok, pid} = Postgrex.start_link(socket_dir: "/tmp", database: "postgres")
       {:ok, #PID<0.69.0>}
+      
+  ## SSL client authentication 
+  
+  When connecting to CockroachDB instances running in secure mode it is idiomatic to use 
+  client SSL certificate authentication. 
+  
+  An example of Repository configuration:
+  
+      config :app, App.Repo,
+        ssl: String.to_existing_atom(System.get_env("DB_SSL_ENABLED", "true")),
+        ssl_opts: [
+          verify: :verify_peer,
+          cacertfile: System.get_env("DB_CA_CERT_FILE"),
+          verify_fun: &:ssl_verify_hostname.verify_fun/3
+        ]  
 
   ## PgBouncer
 
