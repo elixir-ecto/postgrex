@@ -1345,12 +1345,12 @@ defmodule Postgrex.Protocol do
   end
 
   defp recv_parse_describe(
-         %{types: proto_types} = s,
+         %{types: protocol_types} = s,
          status,
          %Query{ref: ref, types: query_types} = query,
          buffer
        )
-       when ref == nil or proto_types != query_types do
+       when ref == nil or protocol_types != query_types do
     with {:ok, s, buffer} <- recv_parse(s, status, buffer),
          {:ok, param_oids, result_oids, columns, s, buffer} <- recv_describe(s, status, buffer) do
       describe(s, query, param_oids, result_oids, columns, buffer)
