@@ -137,16 +137,6 @@ defmodule CustomExtensionsTest do
            end) =~ "(RuntimeError) decode"
   end
 
-  test "raise when executing prepared query on connection with different types", context do
-    query = prepare("S42", "SELECT 42")
-
-    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
-    {:ok, pid2} = Postgrex.start_link(opts)
-
-    {:error, %Postgrex.QueryError{message: message}} = Postgrex.execute(pid2, query, [])
-    assert message =~ ~r"invalid types for the connection"
-  end
-
   test "raise when streaming prepared query on connection with different types", context do
     query = prepare("S42", "SELECT 42")
 
