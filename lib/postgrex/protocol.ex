@@ -1344,7 +1344,13 @@ defmodule Postgrex.Protocol do
     ]
   end
 
-  defp recv_parse_describe(s, status, %Query{ref: nil} = query, buffer) do
+  defp recv_parse_describe(
+         %{types: proto_types} = s,
+         status,
+         %Query{ref: ref, types: query_types} = query,
+         buffer
+       )
+       when ref == nil or proto_types != query_types do
     with {:ok, s, buffer} <- recv_parse(s, status, buffer),
          {:ok, param_oids, result_oids, columns, s, buffer} <- recv_describe(s, status, buffer) do
       describe(s, query, param_oids, result_oids, columns, buffer)
@@ -1355,10 +1361,6 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = disconnect ->
         disconnect
     end
-  end
-
-  defp recv_parse_describe(%{types: proto_types} = s, status, %Query{types: query_types} = query, buffer) when proto_types != query_types do
-    recv_parse_describe(s, status, %{query | ref: nil}, buffer)
   end
 
   defp recv_parse_describe(s, status, query, buffer) do
@@ -3347,7 +3349,10 @@ defmodule Postgrex.Protocol do
 
   defp query_member?(%{queries: nil}, _), do: false
   defp query_member?(_, %{name: ""}), do: false
-  defp query_member?(%{types: protocol_types}, %Query{types: query_types}) when protocol_types != query_types, do: false
+
+  defp query_member?(%{types: protocol_types}, %Query{types: query_types})
+       when protocol_types != query_types,
+       do: false
 
   defp query_member?(%{queries: queries}, %Query{name: name, ref: ref}) do
     try do
