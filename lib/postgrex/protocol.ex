@@ -371,16 +371,12 @@ defmodule Postgrex.Protocol do
     lock_error(s, :execute, query)
   end
 
-  defp handle_execute_result(%{types: types} = query, params, opts, %{types: types} = s) do
+  defp handle_execute_result(query, params, opts, s) do
     if query_member?(s, query) do
       rebind_execute(s, new_status(opts), query, params)
     else
       handle_prepare_execute(query, params, opts, s)
     end
-  end
-
-  defp handle_execute_result(query, _, _, s) do
-    query_error(s, "query #{inspect(query)} has invalid types for the connection")
   end
 
   defp handle_execute_copy(query, params, opts, s) do
@@ -1359,6 +1355,10 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = disconnect ->
         disconnect
     end
+  end
+
+  defp recv_parse_describe(%{types: proto_types} = s, status, %Query{types: query_types} = query, buffer) when proto_types != query_types do
+    recv_parse_describe(s, status, %{query | ref: nil}, buffer)
   end
 
   defp recv_parse_describe(s, status, query, buffer) do
@@ -3347,6 +3347,7 @@ defmodule Postgrex.Protocol do
 
   defp query_member?(%{queries: nil}, _), do: false
   defp query_member?(_, %{name: ""}), do: false
+  defp query_member?(%{types: protocol_types}, %Query{types: query_types}) when protocol_types != query_types, do: false
 
   defp query_member?(%{queries: queries}, %Query{name: name, ref: ref}) do
     try do
