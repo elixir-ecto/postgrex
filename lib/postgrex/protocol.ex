@@ -2116,16 +2116,12 @@ defmodule Postgrex.Protocol do
     lock_error(s, :bind, query)
   end
 
-  defp handle_bind(%Query{types: types} = query, params, res, opts, %{types: types} = s) do
+  defp handle_bind(query, params, res, opts, s) do
     if query_member?(s, query) do
       rebind(s, new_status(opts), query, params, res)
     else
       handle_prepare_bind(query, params, res, opts, s)
     end
-  end
-
-  defp handle_bind(%Query{} = query, _, _, _, s) do
-    query_error(s, "query #{inspect(query)} has invalid types for the connection")
   end
 
   defp handle_prepare_bind(%Query{name: ""} = query, params, res, opts, s) do

@@ -3,6 +3,7 @@ defmodule CustomExtensionsTest do
   import Postgrex.TestHelper
   import ExUnit.CaptureLog
   alias Postgrex, as: P
+  alias Postgrex.Result
 
   @types CustomExtensionsTypes
 
@@ -137,29 +138,36 @@ defmodule CustomExtensionsTest do
            end) =~ "(RuntimeError) decode"
   end
 
-  test "raise when streaming prepared query on connection with different types", context do
+  test "execute prepared query on connection with different types", context do
+    query = prepare("S42", "SELECT 42")
+
+    opts = [types: Postgrex.DefaultTypes] ++ context[:options]
+    {:ok, pid2} = Postgrex.start_link(opts)
+
+    {:ok, %Postgrex.Query{}, %Result{rows: [[42]]}} = Postgrex.execute(pid2, query, [])
+  end
+
+  test "stream prepared query on connection with different types", context do
     query = prepare("S42", "SELECT 42")
 
     opts = [types: Postgrex.DefaultTypes] ++ context[:options]
     {:ok, pid2} = Postgrex.start_link(opts)
 
     Postgrex.transaction(pid2, fn conn ->
-      assert_raise Postgrex.QueryError, ~r"invalid types for the connection", fn ->
-        stream(query, []) |> Enum.take(1)
-      end
+      assert [%Result{rows: [[42]]}] = stream(query, []) |> Enum.take(1)
     end)
   end
 
-  test "raise when streaming prepared COPY FROM on connection with different types", context do
+  test "stream prepared COPY FROM on connection with different types", context do
     query = prepare("copy", "COPY uniques FROM STDIN")
 
     opts = [types: Postgrex.DefaultTypes] ++ context[:options]
     {:ok, pid2} = Postgrex.start_link(opts)
 
     Postgrex.transaction(pid2, fn conn ->
-      assert_raise Postgrex.QueryError, ~r"invalid types for the connection", fn ->
-        Enum.into(["1\n"], stream(query, []))
-      end
+      stream = stream(query, [])
+      assert Enum.into(["1\n"], stream) == stream
+      Postgrex.rollback(conn, :done)
     end)
   end
 
