@@ -371,16 +371,12 @@ defmodule Postgrex.Protocol do
     lock_error(s, :execute, query)
   end
 
-  defp handle_execute_result(%{types: types} = query, params, opts, %{types: types} = s) do
+  defp handle_execute_result(query, params, opts, s) do
     if query_member?(s, query) do
       rebind_execute(s, new_status(opts), query, params)
     else
       handle_prepare_execute(query, params, opts, s)
     end
-  end
-
-  defp handle_execute_result(query, _, _, s) do
-    query_error(s, "query #{inspect(query)} has invalid types for the connection")
   end
 
   defp handle_execute_copy(query, params, opts, s) do
@@ -1348,7 +1344,13 @@ defmodule Postgrex.Protocol do
     ]
   end
 
-  defp recv_parse_describe(s, status, %Query{ref: nil} = query, buffer) do
+  defp recv_parse_describe(
+         %{types: protocol_types} = s,
+         status,
+         %Query{ref: ref, types: query_types} = query,
+         buffer
+       )
+       when ref == nil or protocol_types != query_types do
     with {:ok, s, buffer} <- recv_parse(s, status, buffer),
          {:ok, param_oids, result_oids, columns, s, buffer} <- recv_describe(s, status, buffer) do
       describe(s, query, param_oids, result_oids, columns, buffer)
@@ -1813,10 +1815,6 @@ defmodule Postgrex.Protocol do
 
   ## execute
 
-  defp query_error(s, msg) do
-    {:error, Postgrex.QueryError.exception(msg), s}
-  end
-
   defp lock_error(s, fun) do
     msg = "connection is locked copying to or from the database and can not #{fun} transaction"
 
@@ -2114,16 +2112,12 @@ defmodule Postgrex.Protocol do
     lock_error(s, :bind, query)
   end
 
-  defp handle_bind(%Query{types: types} = query, params, res, opts, %{types: types} = s) do
+  defp handle_bind(query, params, res, opts, s) do
     if query_member?(s, query) do
       rebind(s, new_status(opts), query, params, res)
     else
       handle_prepare_bind(query, params, res, opts, s)
     end
-  end
-
-  defp handle_bind(%Query{} = query, _, _, _, s) do
-    query_error(s, "query #{inspect(query)} has invalid types for the connection")
   end
 
   defp handle_prepare_bind(%Query{name: ""} = query, params, res, opts, s) do
@@ -3347,6 +3341,10 @@ defmodule Postgrex.Protocol do
 
   defp query_member?(%{queries: nil}, _), do: false
   defp query_member?(_, %{name: ""}), do: false
+
+  defp query_member?(%{types: protocol_types}, %Query{types: query_types})
+       when protocol_types != query_types,
+       do: false
 
   defp query_member?(%{queries: queries}, %Query{name: name, ref: ref}) do
     try do
