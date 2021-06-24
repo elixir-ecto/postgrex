@@ -1815,10 +1815,6 @@ defmodule Postgrex.Protocol do
 
   ## execute
 
-  defp query_error(s, msg) do
-    {:error, Postgrex.QueryError.exception(msg), s}
-  end
-
   defp lock_error(s, fun) do
     msg = "connection is locked copying to or from the database and can not #{fun} transaction"
 
