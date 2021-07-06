@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.Path do
   alias Postgrex.Extensions.Point
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       %Postgrex.Path{open: o, points: ps} when is_list(ps) and is_boolean(o) ->
         open_byte = Path.open_to_byte(o)
         len = length(ps)

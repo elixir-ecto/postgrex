@@ -4,7 +4,7 @@ defmodule Postgrex.Extensions.Numeric do
   use Postgrex.BinaryExtension, send: "numeric_send"
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       %Decimal{} = decimal ->
         data = unquote(__MODULE__).encode_numeric(decimal)
         [<<IO.iodata_length(data)::int32>> | data]

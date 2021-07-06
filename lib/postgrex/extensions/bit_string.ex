@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.BitString do
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       val when is_binary(val) ->
         [<<byte_size(val) + 4::int32, bit_size(val)::uint32>> | val]
 
