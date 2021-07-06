@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.Name do
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       name when is_binary(name) and byte_size(name) < 64 ->
         [<<byte_size(name)::int32>> | name]
 

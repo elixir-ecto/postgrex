@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.Polygon do
   alias Postgrex.Extensions.Point
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       %Postgrex.Polygon{vertices: vertices} when is_list(vertices) ->
         len = length(vertices)
 

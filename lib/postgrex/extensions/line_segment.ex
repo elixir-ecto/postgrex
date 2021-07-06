@@ -5,7 +5,7 @@ defmodule Postgrex.Extensions.LineSegment do
   alias Postgrex.Extensions.Point
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       %Postgrex.LineSegment{point1: p1, point2: p2} ->
         encoded_p1 = Point.encode_point(p1, Postgrex.LineSegment)
         encoded_p2 = Point.encode_point(p2, Postgrex.LineSegment)

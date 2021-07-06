@@ -15,7 +15,7 @@ defmodule Postgrex.Extensions.Raw do
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       bin when is_binary(bin) ->
         [<<byte_size(bin)::int32>> | bin]
 
