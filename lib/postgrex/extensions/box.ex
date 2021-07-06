@@ -5,7 +5,7 @@ defmodule Postgrex.Extensions.Box do
   alias Postgrex.Extensions.Point
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       %Postgrex.Box{upper_right: p1, bottom_left: p2} ->
         encoded_p1 = Point.encode_point(p1, Postgrex.Box)
         encoded_p2 = Point.encode_point(p2, Postgrex.Box)

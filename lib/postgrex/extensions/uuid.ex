@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.UUID do
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       uuid when is_binary(uuid) and byte_size(uuid) == 16 ->
         [<<16::int32>> | uuid]
 

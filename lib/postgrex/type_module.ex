@@ -333,7 +333,7 @@ defmodule Postgrex.TypeModule do
   end
 
   defp decode_rows(dispatch, rest, acc, rem, full, rows) do
-    quote location: :keep do
+    quote location: :keep, generated: true do
       def decode_rows(binary, types, rows) do
         decode_rows(binary, byte_size(binary), types, rows)
       end
@@ -464,7 +464,7 @@ defmodule Postgrex.TypeModule do
         decode_tuple_dispatch(extension, format, rest, oids, n, acc)
       end
 
-    quote do
+    quote generated: true do
       def decode_tuple(<<rest::binary>>, count, types) when is_integer(count) do
         decode_tuple(rest, count, types, 0, [])
       end
