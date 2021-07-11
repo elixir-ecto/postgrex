@@ -13,12 +13,16 @@ defmodule Postgrex.BinaryUtils do
     quote do: signed - 16
   end
 
-  defmacro uint16 do
-    quote do: unsigned - 16
+  defmacro uint64 do
+    quote do: unsigned - 64
   end
 
   defmacro uint32 do
     quote do: unsigned - 32
+  end
+
+  defmacro uint16 do
+    quote do: unsigned - 16
   end
 
   defmacro int8 do

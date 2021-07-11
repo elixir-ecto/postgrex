@@ -38,7 +38,8 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.TSVector,
     Postgrex.Extensions.UUID,
     Postgrex.Extensions.VoidBinary,
-    Postgrex.Extensions.VoidText
+    Postgrex.Extensions.VoidText,
+    Postgrex.Extensions.Xid8
   ]
 
   @doc """

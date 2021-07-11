@@ -734,6 +734,25 @@ defmodule QueryTest do
              catch_error(query("SELECT $1::int8", [-9_223_372_036_854_775_808 - 1]))
   end
 
+  @tag min_pg_version: "13.0"
+  test "decode xid8 from pg_current_xact_id", context do
+    assert [[int]] = query("SELECT pg_current_xact_id()", [])
+    assert is_integer(int)
+  end
+
+  @tag min_pg_version: "13.0"
+  test "encode enforces bounds on xid8", context do
+    # xid8's range is 0 to +18_446_744_073_709_551_615
+    assert [[0]] = query("SELECT $1::xid", [0])
+    assert [[18_446_744_073_709_551_615]] = query("SELECT $1::xid8", [18_446_744_073_709_551_615])
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("SELECT $1::xid8", [18_446_744_073_709_551_615 + 1]))
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("SELECT $1::xid", [0 - 1]))
+  end
+
   test "encode uuid", context do
     uuid = <<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>>
     assert [[^uuid]] = query("SELECT $1::uuid", [uuid])
