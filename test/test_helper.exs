@@ -51,7 +51,7 @@ ssl_exclude = if PSQL.supports_ssl?(), do: [], else: [ssl: true]
 notify_exclude = if pg_version == {8, 4}, do: [requires_notify_payload: true], else: []
 
 version_exclude =
-  [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}]
+  [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}, {13, 0}]
   |> Enum.filter(fn x -> x > pg_version end)
   |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
 
