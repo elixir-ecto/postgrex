@@ -749,8 +749,7 @@ defmodule QueryTest do
     assert %DBConnection.EncodeError{} =
              catch_error(query("SELECT $1::xid8", [18_446_744_073_709_551_615 + 1]))
 
-    assert %DBConnection.EncodeError{} =
-             catch_error(query("SELECT $1::xid", [0 - 1]))
+    assert %DBConnection.EncodeError{} = catch_error(query("SELECT $1::xid", [0 - 1]))
   end
 
   test "encode uuid", context do
