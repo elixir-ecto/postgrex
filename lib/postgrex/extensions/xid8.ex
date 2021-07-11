@@ -9,7 +9,7 @@ defmodule Postgrex.Extensions.Xid8 do
     range = Macro.escape(@xid8_range)
 
     quote location: :keep do
-      int when is_integer(int) and int in unquote(range) ->
+      int when int in unquote(range) ->
         <<8::int32, int::uint64>>
 
       other ->
