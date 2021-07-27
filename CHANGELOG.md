@@ -1,9 +1,21 @@
 # Changelog
 
-## Unreleased
+## v0.16.x
+
+Require Elixir v1.11+.
 
 * Enhancements
   * Support `xid8` type introduced in PostgreSQL 13
+  * Support negative years for date, timestamp and timestampz types (#547)
+
+## v0.15.10 (2021-07-27)
+
+* Enhancements
+  * Define child_spec for Postgrex.Notifications
+  * Improve error handling when using multiple endpoints
+* Bug fixes
+  * Fix dialyzer warnings
+  * Fix invalid type error after failover
 
 ## v0.15.9 (2021-04-24)
 
