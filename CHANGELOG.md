@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15.10 (2021-07-27)
+
+* Enhancements
+  * Define child_spec for Postgrex.Notifications
+  * Improve error handling when using multiple endpoints
+* Bug fixes
+  * Fix dialyzer warnings
+  * Fix invalid type error after failover
+
 ## v0.15.9 (2021-04-24)
 
 * Enhancements
