@@ -18,8 +18,16 @@ defmodule ClientTest do
     assert capture_log(fn ->
              assert [[_]] = query("SELECT pg_stat_get_activity($1)", [connection_id])
 
-             %DBConnection.ConnectionError{message: "tcp recv: closed" <> _} =
-               query("SELECT pg_sleep(10)", [], timeout: 50)
+             case query("SELECT pg_sleep(10)", [], timeout: 50) do
+               %Postgrex.Error{postgres: %{message: "canceling statement due to user request"}} ->
+                 :ok
+
+               %DBConnection.ConnectionError{message: "tcp recv: closed" <> _} ->
+                 :ok
+
+               other ->
+                 flunk("unexpected result: #{inspect(other)}")
+             end
 
              assert_receive {:EXIT, ^conn, :killed}
            end) =~ "disconnected: ** (DBConnection.ConnectionError)"

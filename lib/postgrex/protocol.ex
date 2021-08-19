@@ -194,11 +194,14 @@ defmodule Postgrex.Protocol do
 
   @spec disconnect(Exception.t(), state) :: :ok
   def disconnect(_, s) do
+    # cancel the request first otherwise PostgreSQL will log
+    # every time the connection is explicitly disconnected
+    # because the associated PID will no longer exist.
+    cancel_request(s)
     sock_close(s)
     _ = recv_buffer(s)
     delete_parameters(s)
     queries_delete(s)
-    cancel_request(s)
     :ok
   end
 
