@@ -101,7 +101,8 @@ defimpl DBConnection.Query, for: Postgrex.Copy do
     rescue
       ArgumentError ->
         reraise ArgumentError,
-                "expected iodata to copy to database, got: " <> inspect(data)
+                [message: "expected iodata to copy to database, got: " <> inspect(data)],
+                __STACKTRACE__
     else
       iodata ->
         {:copy_data, iodata}
