@@ -31,12 +31,4 @@ defmodule UtilsTest do
                Postgrex.Utils.parse_version("12beta1 (Debian 10.2-1.pgdg90+1)")
     end
   end
-
-  describe "default_opts/1" do
-    test "ignores garbage in PGPORT when port already present" do
-      System.put_env("PGPORT", "")
-      opts = Postgrex.Utils.default_opts(port: "6432")
-      assert Keyword.get(opts, :port) == 6432
-    end
-  end
 end

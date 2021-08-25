@@ -286,6 +286,18 @@ defmodule LoginTest do
     end
   end
 
+  test "ignores PGPORT if port is given" do
+    previous_port = System.get_env("PGPORT")
+
+    try do
+      set_port_number("12345")
+      opts = Postgrex.Utils.default_opts(port: "6432")
+      assert Keyword.get(opts, :port) == 6432
+    after
+      set_port_number(previous_port)
+    end
+  end
+
   defp assert_start_and_killed(opts) do
     Process.flag(:trap_exit, true)
 
