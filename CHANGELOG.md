@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.15.11-dev
+## v0.15.11 (2021-09-26)
 
 * Enhancements
   * Support `xid8` type introduced in PostgreSQL 13
