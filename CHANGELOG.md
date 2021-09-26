@@ -1,12 +1,18 @@
 # Changelog
 
-## v0.16.x
+## v0.16.0-dev
 
 Require Elixir v1.11+.
 
 * Enhancements
+  * Support negative years for date, timestamp and timestampz types
+* Bug fixes
+  * Cancel any pending requests before closing the socket
+
+## v0.15.11 (2021-09-26)
+
+* Enhancements
   * Support `xid8` type introduced in PostgreSQL 13
-  * Support negative years for date, timestamp and timestampz types (#547)
 
 ## v0.15.10 (2021-07-27)
 
