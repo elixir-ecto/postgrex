@@ -112,12 +112,12 @@ defmodule Postgrex.Protocol do
 
     case Keyword.fetch(opts, :socket) do
       {:ok, file} ->
-        [{{:local, file}, 0}]
+        [{{:local, file}, 0, []}]
 
       :error ->
         case Keyword.fetch(opts, :socket_dir) do
           {:ok, dir} ->
-            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}]
+            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0, []}]
 
           :error ->
             case Keyword.fetch(opts, :endpoints) do
@@ -133,7 +133,7 @@ defmodule Postgrex.Protocol do
               :error ->
                 case Keyword.fetch(opts, :hostname) do
                   {:ok, hostname} ->
-                    [{to_charlist(hostname), port}]
+                    [{to_charlist(hostname), port, []}]
 
                   :error ->
                     raise ArgumentError,
