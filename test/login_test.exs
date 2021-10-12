@@ -82,6 +82,21 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
+  @tag :ssl
+  test "ssl with extra_ssl_opts in endpoints succeeds", context do
+    opts = [ssl: true, endpoints: [{"localhost", 5555, [ssl: [verify_peer: :none]]}]]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  @tag :ssl
+  test "ssl with extra_ssl_opts in endpoints fails due to bad ssl_opt", context do
+    assert capture_log(fn ->
+             opts = [ssl: true, endpoints: [{"localhost", 5555, [ssl: [verify_peer: :foobar]]}]]
+             assert_start_and_killed(opts ++ context[:options])
+           end)
+  end
+
   test "env var defaults", context do
     assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
@@ -195,6 +210,12 @@ defmodule LoginTest do
 
   test "endpoints with two choices, the first will not accept a connection", context do
     opts = [endpoints: [{"localhost", 5555}, {"localhost", 5432}]]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "endpoints with extra_opts", context do
+    opts = [endpoints: [{"localhost", 5555, [ssl: [depth: 3]]}, {"localhost", 5432, [depth: 3]}]]
     assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end

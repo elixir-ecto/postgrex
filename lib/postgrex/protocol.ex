@@ -112,17 +112,20 @@ defmodule Postgrex.Protocol do
 
     case Keyword.fetch(opts, :socket) do
       {:ok, file} ->
-        [{{:local, file}, 0}]
+        [{{:local, file}, 0, []}]
 
       :error ->
         case Keyword.fetch(opts, :socket_dir) do
           {:ok, dir} ->
-            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}]
+            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0, []}]
 
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
-                Enum.map(endpoints, fn {hostname, port} -> {to_charlist(hostname), port} end)
+                Enum.map(endpoints, fn
+                  {hostname, port} -> {to_charlist(hostname), port, []}
+                  {hostname, port, extra_opts} -> {to_charlist(hostname), port, extra_opts}
+                end)
 
               {:ok, _} ->
                 raise ArgumentError, "expected :endpoints to be a list of tuples"
@@ -130,7 +133,7 @@ defmodule Postgrex.Protocol do
               :error ->
                 case Keyword.fetch(opts, :hostname) do
                   {:ok, hostname} ->
-                    [{to_charlist(hostname), port}]
+                    [{to_charlist(hostname), port, []}]
 
                   :error ->
                     raise ArgumentError,
@@ -142,7 +145,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp connect_endpoints(
-         [{host, port} | remaining_endpoints],
+         [{host, port, extra_opts} | remaining_endpoints],
          sock_opts,
          timeout,
          s,
@@ -150,7 +153,9 @@ defmodule Postgrex.Protocol do
          previous_errors
        ) do
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
-    status = %{status | types_key: types_key}
+    opts = Config.Reader.merge(opts, extra_opts)
+
+    status = %{status | types_key: types_key, opts: opts}
 
     case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
       {:ok, _} = ret ->
