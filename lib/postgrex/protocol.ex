@@ -122,11 +122,9 @@ defmodule Postgrex.Protocol do
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
-                Enum.map(endpoints, fn endpoint ->
-                  case endpoint do
-                    {hostname, port} -> {to_charlist(hostname), port, []}
-                    {hostname, port, extra_opts} -> {to_charlist(hostname), port, extra_opts}
-                  end
+                Enum.map(endpoints, fn
+                  {hostname, port} -> {to_charlist(hostname), port, []}
+                  {hostname, port, extra_opts} -> {to_charlist(hostname), port, extra_opts}
                 end)
 
               {:ok, _} ->

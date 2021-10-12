@@ -92,8 +92,8 @@ defmodule LoginTest do
   @tag :ssl
   test "ssl with extra_ssl_opts in endpoints fails due to bad ssl_opt", context do
     assert capture_log(fn ->
-            opts = [ssl: true, endpoints: [{"localhost", 5555, [ssl: [verify_peer: :foobar]]}]]
-            assert_start_and_killed(opts ++ context[:options])
+             opts = [ssl: true, endpoints: [{"localhost", 5555, [ssl: [verify_peer: :foobar]]}]]
+             assert_start_and_killed(opts ++ context[:options])
            end)
   end
 
