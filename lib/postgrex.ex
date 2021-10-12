@@ -79,7 +79,7 @@ defmodule Postgrex do
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
     * `:endpoints` - A list of endpoints (host and port pairs, with an optional
-      extra_ssl_opts keyword list);
+      extra_opts keyword list);
       Postgrex will try each endpoint in order, one by one, until the connection succeeds;
       The syntax is `[{host1,port1},{host2,port2},{host3,port3}]` or
       [{host1,port1, [extra_opt1: value]},{host2,port2, [extra_opt2: value]}}];
@@ -230,13 +230,13 @@ defmodule Postgrex do
         {
           "test-instance-1.xyz.eu-west-1.rds.amazonaws.com",
           5432,
-          [server_name_indication: String.to_charlist("test-instance-1.xyz.eu-west-1.rds.amazonaws.com")]
+          [ssl: [server_name_indication: String.to_charlist("test-instance-1.xyz.eu-west-1.rds.amazonaws.com")]]
         },
         (...),
         {
           "test-instance-2.xyz.eu-west-1.rds.amazonaws.com",
           5432,
-          [server_name_indication: String.to_charlist("test-instance-2.xyz.eu-west-1.rds.amazonaws.com")]
+          [ssl: [server_name_indication: String.to_charlist("test-instance-2.xyz.eu-west-1.rds.amazonaws.com")]]
         }
       ]
 
