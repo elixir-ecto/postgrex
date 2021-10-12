@@ -78,10 +78,12 @@ defmodule Postgrex do
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
-    * `:endpoints` - A list of endpoints (host and port pairs); Postgrex will try
-      each endpoint in order, one by one, until the connection succeeds; The syntax
-      is `[{host1,port1},{host2,port2},{host3,port3}]`; This option takes precedence
-      over `:hostname+:port`;
+    * `:endpoints` - A list of endpoints (host and port pairs, with an optional
+      extra_ssl_opts keyword list);
+      Postgrex will try each endpoint in order, one by one, until the connection succeeds;
+      The syntax is `[{host1,port1},{host2,port2},{host3,port3}]` or
+      [{host1,port1, [extra_opt1: value]},{host2,port2, [extra_opt2: value]}}];
+      This option takes precedence over `:hostname+:port`;
     * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
       for configuring sockets and it takes precedence over the hostname. If you are
@@ -154,11 +156,11 @@ defmodule Postgrex do
 
       iex> {:ok, pid} = Postgrex.start_link(socket_dir: "/tmp", database: "postgres")
       {:ok, #PID<0.69.0>}
-      
-  ## SSL client authentication 
 
-  When connecting to CockroachDB instances running in secure mode it is idiomatic to use 
-  client SSL certificate authentication. 
+  ## SSL client authentication
+
+  When connecting to CockroachDB instances running in secure mode it is idiomatic to use
+  client SSL certificate authentication.
 
   An example of Repository configuration:
 
@@ -166,9 +168,11 @@ defmodule Postgrex do
         ssl: String.to_existing_atom(System.get_env("DB_SSL_ENABLED", "true")),
         ssl_opts: [
           verify: :verify_peer,
+          server_name_indication: System.get_env("DB_HOSTNAME")
           cacertfile: System.get_env("DB_CA_CERT_FILE"),
-          verify_fun: &:ssl_verify_hostname.verify_fun/3
-        ]  
+          customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)],
+          depth: 3
+        ]
 
   ## PgBouncer
 
@@ -215,6 +219,27 @@ defmodule Postgrex do
         (...),
         {"test-instance-N.xyz.eu-west-1.rds.amazonaws.com", 5432}
       ]
+
+  ### Failover with SSL support
+  As specified in Erlang [:ssl.connect](https://erlang.org/doc/man/ssl.html#connect-3),
+  host verification using `:public_key.pkix_verify_hostname_match_fun(:https)`
+  requires that the ssl_opt `server_name_indication` is set, and for this reason,
+  the aforementioned `endpoints` list can become a three element tuple as:
+
+      endpoints: [
+        {
+          "test-instance-1.xyz.eu-west-1.rds.amazonaws.com",
+          5432,
+          [server_name_indication: String.to_charlist("test-instance-1.xyz.eu-west-1.rds.amazonaws.com")]
+        },
+        (...),
+        {
+          "test-instance-2.xyz.eu-west-1.rds.amazonaws.com",
+          5432,
+          [server_name_indication: String.to_charlist("test-instance-2.xyz.eu-west-1.rds.amazonaws.com")]
+        }
+      ]
+
   """
   @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
