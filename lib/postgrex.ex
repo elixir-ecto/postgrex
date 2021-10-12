@@ -81,8 +81,8 @@ defmodule Postgrex do
     * `:endpoints` - A list of endpoints (host and port pairs, with an optional
       extra_opts keyword list);
       Postgrex will try each endpoint in order, one by one, until the connection succeeds;
-      The syntax is `[{host1,port1},{host2,port2},{host3,port3}]` or
-      [{host1,port1, [extra_opt1: value]},{host2,port2, [extra_opt2: value]}}];
+      The syntax is `[{host1, port1},{host2, port2},{host3, port3}]` or
+      `[{host1, port1, extra_opt1: value},{host2, port2, extra_opt2: value}}]`;
       This option takes precedence over `:hostname+:port`;
     * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
@@ -221,6 +221,7 @@ defmodule Postgrex do
       ]
 
   ### Failover with SSL support
+
   As specified in Erlang [:ssl.connect](https://erlang.org/doc/man/ssl.html#connect-3),
   host verification using `:public_key.pkix_verify_hostname_match_fun(:https)`
   requires that the ssl_opt `server_name_indication` is set, and for this reason,
