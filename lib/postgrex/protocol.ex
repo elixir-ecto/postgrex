@@ -122,7 +122,12 @@ defmodule Postgrex.Protocol do
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
-                Enum.map(endpoints, fn {hostname, port} -> {to_charlist(hostname), port} end)
+                Enum.map(endpoints, fn endpoint ->
+                  case endpoint do
+                    {hostname, port} -> {to_charlist(hostname), port}
+                    {hostname, port, extra_ssl_opts} -> {to_charlist(hostname), port, extra_ssl_opts}
+                  end
+                end)
 
               {:ok, _} ->
                 raise ArgumentError, "expected :endpoints to be a list of tuples"
@@ -141,8 +146,13 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp connect_endpoints([{_host, _port} | _] = endpoints, sock_opts, timeout, s, status, previous_errors) do
+    endpoints = Enum.map(endpoints, fn {host, port} -> {host, port, []} end)
+    connect_endpoints(endpoints, sock_opts, timeout, s, status, previous_errors)
+  end
+
   defp connect_endpoints(
-         [{host, port} | remaining_endpoints],
+         [{host, port, extra_ssl_opts} | remaining_endpoints],
          sock_opts,
          timeout,
          s,
@@ -150,7 +160,16 @@ defmodule Postgrex.Protocol do
          previous_errors
        ) do
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
-    status = %{status | types_key: types_key}
+
+    opts = if Keyword.has_key?(opts, :ssl_opts) && Keyword.get(opts, :ssl) do
+      ssl_opts = Keyword.get(opts, :ssl_opts)
+      ssl_opts = Enum.reduce(extra_ssl_opts, ssl_opts, fn {k, v}, acc -> Keyword.put(acc, k, v) end)
+      Keyword.put(opts, :ssl_opts, ssl_opts)
+    else
+      opts
+    end
+
+    status = %{status | types_key: types_key, opts: opts}
 
     case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
       {:ok, _} = ret ->
