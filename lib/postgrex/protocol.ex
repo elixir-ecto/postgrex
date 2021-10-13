@@ -476,7 +476,7 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
@@ -500,7 +500,7 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
@@ -524,7 +524,7 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{} | Postgex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
   def handle_rollback(_, %{postgres: {_, _}} = s) do
     lock_error(s, :rollback)
   end
