@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.12 (2021-10-17)
+
+* Enhancements
+  * Support extra configuration when passing endpoints
+
 ## v0.15.11 (2021-09-26)
 
 * Enhancements
