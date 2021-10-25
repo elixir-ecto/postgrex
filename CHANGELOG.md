@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.13 (2021-10-25)
+
+* Bug fix
+  * Fix regression on Elixir earlier than v1.9
+
 ## v0.15.12 (2021-10-17)
 
 * Enhancements

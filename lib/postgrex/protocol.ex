@@ -153,7 +153,7 @@ defmodule Postgrex.Protocol do
          previous_errors
        ) do
     types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
-    opts = Config.Reader.merge(opts, extra_opts)
+    opts = __merge__(opts, extra_opts)
 
     status = %{status | types_key: types_key, opts: opts}
 
@@ -194,6 +194,21 @@ defmodule Postgrex.Protocol do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  # Ported from Config.Reader.merge/2
+  defp __merge__(config1, config2) when is_list(config1) and is_list(config2) do
+    Keyword.merge(config1, config2, fn _, app1, app2 ->
+      Keyword.merge(app1, app2, &deep_merge/3)
+    end)
+  end
+
+  defp deep_merge(_key, value1, value2) do
+    if Keyword.keyword?(value1) and Keyword.keyword?(value2) do
+      Keyword.merge(value1, value2, &deep_merge/3)
+    else
+      value2
     end
   end
 
