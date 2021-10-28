@@ -42,15 +42,23 @@ defmodule Postgrex.Replication do
 
       CREATE PUBLICATION example FOR ALL TABLES;
 
-  Now we are ready to create module
+  You can also filter if you want to publish insert, update,
+  delete or a subset of them:
 
-  Here is a simple example that listens to replication messages
-  and prints them to the terminal. The message is written in the
-  exact format given by the `pgoutput` streaming replication plugin.
+      # Skips updates (keeps inserts, deletes, begins, commits, etc)
+      create PUBLICATION example FOR ALL TABLES WITH (publish = 'insert,delete');
+
+      # Skips inserts, updates, and deletes (keeps begins, commits, etc)
+      create PUBLICATION example FOR ALL TABLES WITH (publish = '');
+
+  Now we are ready to create module that starts a replication slot
+  and listens to our publication. Our example will use the pgoutput
+  for logical replication and print all incoming messages to the
+  terminal:
 
       Mix.install([:postgrex])
 
-      defmodule Example do
+      defmodule Repl do
         use Postgrex.Replication
 
         def start_link(opts) do
@@ -97,7 +105,7 @@ defmodule Postgrex.Replication do
       end
 
       {:ok, _pid} =
-        Example.start_link(
+        Repl.start_link(
           host: "localhost",
           database: "demo_dev",
           username: "postgres",
