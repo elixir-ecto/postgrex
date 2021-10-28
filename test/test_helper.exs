@@ -55,7 +55,7 @@ ssl_exclude = if PSQL.supports_ssl?(), do: [], else: [ssl: true]
 notify_exclude = if pg_version == {8, 4}, do: [requires_notify_payload: true], else: []
 
 replication_exclude =
-  if PSQL.supports_logical_replication?() do
+  if pg_version < {10, 0} or PSQL.supports_logical_replication?() do
     []
   else
     IO.puts(:stderr, """

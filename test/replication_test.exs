@@ -6,6 +6,7 @@ defmodule ReplicationTest do
 
   @timeout 2000
   @moduletag :logical_replication
+  @moduletag {:min_pg_version, "10.0"}
 
   defmodule Repl do
     use Postgrex.Replication
