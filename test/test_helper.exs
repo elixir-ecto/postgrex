@@ -59,7 +59,7 @@ replication_exclude =
     []
   else
     IO.puts(:stderr, """
-    Skipping replication tests because wal_level is not set to logical.
+    !!! Skipping replication tests because wal_level is not set to logical.
 
     To run them, you must run the following commands and restart your database:
 
