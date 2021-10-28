@@ -19,7 +19,16 @@ defmodule Postgrex.Replication do
       ALTER SYSTEM SET max_wal_senders='10';
       ALTER SYSTEM SET max_replication_slots='10';
 
-  Then **you must restart your server**.
+  Then **you must restart your server**. Alternatively, you can set
+  those values when starting "postgres". This is useful, for example,
+  when running it from Docker:
+
+      services:
+        pg:
+          image: postgres:14
+          env:
+            ...
+          command: ["postgres", "-c", "wal_level=logical"]
 
   Then you must create a publication that we will replicate.
   This can be done in any session:
