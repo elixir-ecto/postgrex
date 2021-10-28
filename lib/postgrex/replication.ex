@@ -30,6 +30,16 @@ defmodule Postgrex.Replication do
             ...
           command: ["postgres", "-c", "wal_level=logical"]
 
+  If you cannot specify a command, such as in GitHub Actions,
+  you can specify an entrypoint:
+
+      services:
+        pg:
+          image: postgres:14
+          options: >-
+            ...
+            --entrypoint 'sh -c "exec docker-entrypoint.sh postgres -c wal-level=logical"'
+
   Then you must create a publication that we will replicate.
   This can be done in any session:
 
