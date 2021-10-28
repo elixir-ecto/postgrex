@@ -32,11 +32,11 @@ jobs:
       matrix:
         pg:
           - version: 9.4
-            skip_wal: true
+            skip_wal: skip_wal
           - version: 9.5
-            skip_wal: true
+            skip_wal: skip_wal
           - version: 9.6
-            skip_wal: true
+            skip_wal: skip_wal
           - version: 10
           - version: 11
           - version: 12
@@ -60,12 +60,11 @@ jobs:
     env:
       MIX_ENV: test
     steps:
-      - name: "Set some postgres settings"
+      - name: "Set PG settings"
         run: |
-          docker exec ${{ job.services.pg.id }} sh -c 'cat /var/lib/postgresql/data/postgresql.conf'
           docker exec ${{ job.services.pg.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
           docker kill --signal=SIGHUP ${{ job.services.pg.id }}
-        if: ${{ !matrix.pg.skip_wal }}
+        if: ${{ matrix.pg.skip_wal }} != 'skip_wal'
 
       - uses: actions/checkout@v2
 

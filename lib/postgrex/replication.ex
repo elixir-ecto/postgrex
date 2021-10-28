@@ -24,21 +24,19 @@ defmodule Postgrex.Replication do
   when running it from Docker:
 
       services:
-        pg:
+        postgres:
           image: postgres:14
           env:
             ...
           command: ["postgres", "-c", "wal_level=logical"]
 
-  If you cannot specify a command, such as in GitHub Actions,
-  you can specify an entrypoint:
+  For CI, GitHub Actions do not support setting comand, so you can
+  update and restart Postgres instead in a step:
 
-      services:
-        pg:
-          image: postgres:14
-          options: >-
-            ...
-            --entrypoint 'sh -c "exec docker-entrypoint.sh postgres -c wal-level=logical"'
+      - name: "Set PG settings"
+        run: |
+          docker exec ${{ job.services.postgres.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker kill --signal=SIGHUP ${{ job.services.postgres.id }}
 
   Then you must create a publication that we will replicate.
   This can be done in any session:
