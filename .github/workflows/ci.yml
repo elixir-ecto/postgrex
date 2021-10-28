@@ -63,7 +63,7 @@ jobs:
       - name: "Set PG settings"
         run: |
           docker exec ${{ job.services.pg.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
-          docker kill --signal=SIGHUP ${{ job.services.pg.id }}
+          docker restart ${{ job.services.pg.id }}
         if: ${{ matrix.pg.skip_wal }} != 'skip_wal'
 
       - uses: actions/checkout@v2
