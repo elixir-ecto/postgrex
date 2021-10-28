@@ -2,11 +2,10 @@ defmodule Postgrex.Replication do
   @moduledoc ~S"""
   A process that receives and sends PostgreSQL replication messages.
 
-  > Note: this module is still experimental and provides limited
-  > functionality. In particular, it only currently handles temporary
-  > logical replication with a WAL starting point specified by the
-  > server. We are glad to discuss and receive pull requests that
-  > extends the scope of the module.
+  > Note: this module is experimental and provides limited functionality.
+  > In particular, it only currently handles temporary logical replication
+  > with a WAL starting point specified by the server. We are glad to
+  > discuss and receive pull requests that extends the scope of the module.
 
   ## Logical replication
 
@@ -30,7 +29,7 @@ defmodule Postgrex.Replication do
             ...
           command: ["postgres", "-c", "wal_level=logical"]
 
-  For CI, GitHub Actions do not support setting comand, so you can
+  For CI, GitHub Actions do not support setting command, so you can
   update and restart Postgres instead in a step:
 
       - name: "Set PG settings"
@@ -38,7 +37,7 @@ defmodule Postgrex.Replication do
           docker exec ${{ job.services.postgres.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
           docker restart ${{ job.services.pg.id }}
 
-  Then you must create a publication that we will replicate.
+  Then you must create a publication to be replicated.
   This can be done in any session:
 
       CREATE PUBLICATION example FOR ALL TABLES;
@@ -248,7 +247,7 @@ defmodule Postgrex.Replication do
       slot. Must be one of `:export`, `:noexport`, or `:use`.
       Defaults to `:export`.
 
-  To understanding the meaning of those options, [see PostgreSQL
+  To better understand the meaning of those options, [see PostgreSQL
   replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
 
   ### Connection options

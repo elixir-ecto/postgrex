@@ -5,6 +5,7 @@ defmodule ReplicationTest do
   alias Postgrex.Replication, as: PR
 
   @timeout 2000
+  @moduletag :logical_replication
 
   defmodule Repl do
     use Postgrex.Replication
@@ -79,8 +80,8 @@ defmodule ReplicationTest do
 
   test "receives pgoutput" do
     pid = start_supervised!({P, @opts})
-    P.query!(pid, "CREATE TABLE test (id int, text text)", [])
-    P.query!(pid, "INSERT INTO test VALUES ($1, $2)", [42, "fortytwo"])
+    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
+    P.query!(pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
 
     assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
                    @timeout
