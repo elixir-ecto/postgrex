@@ -22,7 +22,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
-          --entrypoint './docker-entrypoint.sh postgres -c wal-level=logical'
+          --entrypoint '/docker-entrypoint.sh postgres -c wal-level=logical'
         ports:
           - 5432:5432
         volumes:
