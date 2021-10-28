@@ -568,38 +568,50 @@ defmodule Postgrex.Protocol do
           {:ok, state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_info(msg, opts \\ [], s)
+  def handle_info(msg, opts \\ [], s) do
+    case handle_socket(msg, s) do
+      {:data, data} ->
+        handle_data(s, opts, data)
 
-  def handle_info({:tcp, sock, data}, opts, %{sock: {:gen_tcp, sock}} = s) do
-    handle_data(s, opts, data)
+      :unknown ->
+        Logger.info(fn ->
+          context = " received unexpected message: "
+          [inspect(__MODULE__), ?\s, inspect(self()), context | inspect(msg)]
+        end)
+
+        {:ok, s}
+
+      disconnect ->
+        disconnect
+    end
   end
 
-  def handle_info({:tcp_closed, sock}, _, %{sock: {:gen_tcp, sock}} = s) do
+  defp handle_socket({:tcp, sock, data}, %{sock: {:gen_tcp, sock}}) do
+    {:data, data}
+  end
+
+  defp handle_socket({:tcp_closed, sock}, %{sock: {:gen_tcp, sock}} = s) do
     disconnect(s, :tcp, "async recv", :closed)
   end
 
-  def handle_info({:tcp_error, sock, reason}, _, %{sock: {:gen_tcp, sock}} = s) do
+  defp handle_socket({:tcp_error, sock, reason}, %{sock: {:gen_tcp, sock}} = s) do
     disconnect(s, :tcp, "async recv", reason)
   end
 
-  def handle_info({:ssl, sock, data}, opts, %{sock: {:ssl, sock}} = s) do
-    handle_data(s, opts, data)
+  defp handle_socket({:ssl, sock, data}, %{sock: {:ssl, sock}}) do
+    {:data, data}
   end
 
-  def handle_info({:ssl_closed, sock}, _, %{sock: {:ssl, sock}} = s) do
+  defp handle_socket({:ssl_closed, sock}, %{sock: {:ssl, sock}} = s) do
     disconnect(s, :ssl, "async recv", :closed)
   end
 
-  def handle_info({:ssl_error, sock, reason}, _, %{sock: {:ssl, sock}} = s) do
+  defp handle_socket({:ssl_error, sock, reason}, %{sock: {:ssl, sock}} = s) do
     disconnect(s, :ssl, "async recv", reason)
   end
 
-  def handle_info(msg, _, s) do
-    Logger.info(fn ->
-      [inspect(__MODULE__), ?\s, inspect(self()), " received unexpected message: " | inspect(msg)]
-    end)
-
-    {:ok, s}
+  defp handle_socket(_, _) do
+    :unknown
   end
 
   ## connect
@@ -1028,11 +1040,128 @@ defmodule Postgrex.Protocol do
     DBConnection.ConnectionError.exception(msg)
   end
 
+  ## replication
+
+  @spec handle_simple(String.t(), state) ::
+          {:ok, Postgrex.Result.t(), state}
+          | {:error, Postgrex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_simple(statement, %{buffer: buffer} = s) do
+    status = new_status([], mode: :transaction)
+    msgs = [msg_query(statement: statement)]
+
+    case msg_send(%{s | buffer: nil}, msgs, buffer) do
+      :ok ->
+        recv_simple(s, status, buffer)
+
+      {:disconnect, err, s} ->
+        {:disconnect, err, s}
+
+      {:error, %Postgrex.Error{} = err, s, buffer} ->
+        error_ready(s, status, err, buffer)
+    end
+  end
+
+  defp recv_simple(s, status, tags \\ [], buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_row_desc(), buffer} ->
+        recv_simple(s, status, tags, buffer)
+
+      {:ok, msg_data_row(), buffer} ->
+        recv_simple(s, status, tags, buffer)
+
+      {:ok, msg_command_complete(tag: tag), buffer} ->
+        recv_simple(s, status, [tag | tags], buffer)
+
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        {:disconnect, err, %{s | buffer: buffer}}
+
+      {:ok, msg_ready(status: postgres), buffer} ->
+        s = %{s | postgres: postgres, buffer: buffer}
+        {:ok, done(s, status, Enum.reverse(tags)), s}
+
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  @spec handle_replication(String.t(), state) ::
+          {:ok, Postgrex.Result.t(), state}
+          | {:error, Postgrex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_replication(statement, %{buffer: buffer} = s) do
+    msgs = [msg_query(statement: statement)]
+
+    case msg_send(%{s | buffer: nil}, msgs, buffer) do
+      :ok ->
+        recv_replication(s, buffer)
+
+      {:disconnect, err, s} ->
+        {:disconnect, err, s}
+
+      {:error, %Postgrex.Error{} = err, s, buffer} ->
+        status = new_status([], mode: :transaction)
+        error_ready(s, status, err, buffer)
+    end
+  end
+
+  defp recv_replication(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_copy_both_response(), buffer} ->
+        {:ok, %{s | buffer: buffer}}
+
+      {:ok, msg_error(fields: fields), buffer} ->
+        err = Postgrex.Error.exception(postgres: fields)
+        {:disconnect, err, %{s | buffer: buffer}}
+
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  @spec handle_copy_send([binary], state) ::
+    :ok
+    | {:error, Postgrex.Error.t(), state}
+    | {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_copy_send(binaries, %{buffer: buffer} = s) do
+    msgs = Enum.map(binaries, &msg_copy_data(data: &1))
+    msg_send(s, msgs, buffer)
+  end
+
+  @spec handle_copy_recv(any, Keyword.t(), state) ::
+          {:ok, [binary], state}
+          | {:error, Postgrex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_copy_recv(msg, s) do
+    case handle_socket(msg, s) do
+      {:data, data} -> handle_copy_recv(s, [], data)
+      :unknown -> :unknown
+      disconnect -> disconnect
+    end
+  end
+
+  defp handle_copy_recv(%{timeout: timeout} = s, copies, buffer) do
+    case msg_recv(s, timeout, buffer) do
+      {:ok, msg_error(fields: fields), buffer} ->
+        disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
+
+      {:ok, msg_copy_data(data: data), <<>>} ->
+        with {:ok, s} <- activate(s, <<>>) do
+          {:ok, Enum.reverse([data | copies]), s}
+        end
+
+      {:ok, msg_copy_data(data: data), buffer} ->
+        handle_copy_recv(s, [data | copies], buffer)
+
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
   ## listener
 
   defp listener(s, status, statement, buffer) do
-    s = %{s | buffer: nil}
-
     msgs = [
       msg_parse(name: "", statement: statement, type_oids: []),
       msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
