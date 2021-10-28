@@ -22,7 +22,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
-          --entrypoint sh postgres -c 'exec docker-entrypoint.sh postgres -c wal-level=logical'
         ports:
           - 5432:5432
         volumes:
@@ -57,6 +56,12 @@ jobs:
     env:
       MIX_ENV: test
     steps:
+      - name: "Set some postgres settings"
+        run: |
+          docker exec ${{ job.services.postgres.id }} sh -c 'cat /var/lib/postgresql/data/postgresql.conf'
+          docker exec ${{ job.services.postgres.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker kill --signal=SIGHUP ${{ job.services.postgres.id }}
+
       - uses: actions/checkout@v2
 
       - uses: erlef/setup-beam@v1
