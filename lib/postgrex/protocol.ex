@@ -1121,9 +1121,9 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_copy_send([binary], state) ::
-    :ok
-    | {:error, Postgrex.Error.t(), state}
-    | {:disconnect, %DBConnection.ConnectionError{}, state}
+          :ok
+          | {:error, Postgrex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_copy_send(binaries, %{buffer: buffer} = s) do
     msgs = Enum.map(binaries, &msg_copy_data(data: &1))
     msg_send(s, msgs, buffer)
