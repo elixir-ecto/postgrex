@@ -43,6 +43,10 @@ defmodule PSQL do
   def supports_ssl? do
     cmd(["-c", "SHOW ssl"]) =~ "on"
   end
+
+  def supports_logical_replication? do
+    cmd(["-c", "SHOW wal_level"]) =~ "logical"
+  end
 end
 
 pg_version = PSQL.vsn()
@@ -50,12 +54,29 @@ unix_exclude = if PSQL.supports_sockets?(), do: [], else: [unix: true]
 ssl_exclude = if PSQL.supports_ssl?(), do: [], else: [ssl: true]
 notify_exclude = if pg_version == {8, 4}, do: [requires_notify_payload: true], else: []
 
+replication_exclude =
+  if pg_version < {10, 0} or PSQL.supports_logical_replication?() do
+    []
+  else
+    IO.puts(:stderr, """
+    !!! Skipping replication tests because wal_level is not set to logical.
+
+    To run them, you must run the following commands and restart your database:
+
+        ALTER SYSTEM SET wal_level='logical';
+        ALTER SYSTEM SET max_wal_senders='10';
+        ALTER SYSTEM SET max_replication_slots='10';
+    """)
+
+    [logical_replication: true]
+  end
+
 version_exclude =
   [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}, {13, 0}]
   |> Enum.filter(fn x -> x > pg_version end)
   |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
 
-excludes = version_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
+excludes = version_exclude ++ replication_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
 ExUnit.start(exclude: excludes, assert_receive_timeout: 1000)
 
 sql_test = """
@@ -98,6 +119,7 @@ sql_test =
       DROP ROLE IF EXISTS postgrex_scram_pw;
       SET password_encryption = 'scram-sha-256';
       CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';
+      CREATE PUBLICATION postgrex_example FOR ALL TABLES;
       """
   else
     sql_test

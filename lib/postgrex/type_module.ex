@@ -48,11 +48,7 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  @anno (if :erlang.system_info(:otp_release) >= '19' do
-           [generated: true]
-         else
-           [line: -1]
-         end)
+  @anno [generated: true]
 
   defp find(config) do
     clauses = Enum.flat_map(config, &find_clauses/1)

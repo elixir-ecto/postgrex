@@ -71,9 +71,9 @@ defmodule Postgrex.Notifications do
 
   @timeout 5000
 
+  @doc false
   defstruct idle_interval: 5000,
             protocol: nil,
-            parameters: nil,
             listeners: %{},
             listener_channels: %{},
             auto_reconnect: false,
@@ -107,7 +107,7 @@ defmodule Postgrex.Notifications do
     * `:auto_reconnect` - automatically attempt to reconnect to the database
       in event of a disconnection. See the
       [note about async connect and auto-reconnects](#module-async-connect-and-auto-reconnects)
-      above. Defaults to `false`.
+      above. Defaults to `false`, which means the process terminates.
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
       `auto_reconnect` is enabled. Defaults to `500`.
@@ -187,6 +187,7 @@ defmodule Postgrex.Notifications do
 
   ## CALLBACKS ##
 
+  @doc false
   def init(opts) do
     idle_timeout = opts[:idle_timeout]
 
@@ -222,6 +223,7 @@ defmodule Postgrex.Notifications do
     end
   end
 
+  @doc false
   def connect(_, s) do
     opts =
       case Keyword.get(opts(), :configure) do
@@ -244,6 +246,7 @@ defmodule Postgrex.Notifications do
     end
   end
 
+  @doc false
   def handle_call({:listen, channel}, {pid, _} = from, s) do
     ref = Process.monitor(pid)
     s = put_in(s.listeners[ref], {channel, pid})
@@ -261,6 +264,7 @@ defmodule Postgrex.Notifications do
     end
   end
 
+  @doc false
   def handle_info({:DOWN, ref, :process, _, _}, s) do
     case s.listeners do
       %{^ref => {channel, _pid}} ->

@@ -12,7 +12,7 @@ jobs:
 
     services:
       pg:
-        image: postgres:${{ matrix.pg }}
+        image: postgres:${{ matrix.pg.version }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -31,31 +31,41 @@ jobs:
       fail-fast: false
       matrix:
         pg:
-          - 9.4
-          - 9.5
-          - 9.6
-          - 10
-          - 11
-          - 12
-          - 13
-          - 14
+          - version: 9.4
+            skip_wal: skip_wal
+          - version: 9.5
+            skip_wal: skip_wal
+          - version: 9.6
+            skip_wal: skip_wal
+          - version: 10
+          - version: 11
+          - version: 12
+          - version: 13
 
         pair:
           - elixir: 1.11.4
             otp: 23.3.3
         include:
-          - pg: 13
+          - pg:
+              version: 14
+            pair:
+              elixir: 1.11.4
+              otp: 21.3
+          - pg:
+              version: 14
             pair:
               elixir: 1.11.4
               otp: 23.3.3
             lint: lint
-          - pg: 13
-            pair:
-              elixir: 1.11.4
-              otp: 21.3
     env:
       MIX_ENV: test
     steps:
+      - name: "Set PG settings"
+        run: |
+          docker exec ${{ job.services.pg.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker restart ${{ job.services.pg.id }}
+        if: ${{ matrix.pg.skip_wal }} != 'skip_wal'
+
       - uses: actions/checkout@v2
 
       - uses: erlef/setup-beam@v1
