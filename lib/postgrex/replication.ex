@@ -36,7 +36,7 @@ defmodule Postgrex.Replication do
       - name: "Set PG settings"
         run: |
           docker exec ${{ job.services.postgres.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
-          docker kill --signal=SIGHUP ${{ job.services.postgres.id }}
+          docker restart ${{ job.services.pg.id }}
 
   Then you must create a publication that we will replicate.
   This can be done in any session:
