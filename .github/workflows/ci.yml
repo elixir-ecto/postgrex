@@ -22,14 +22,11 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+          --wal-level logical
         ports:
           - 5432:5432
         volumes:
           - /var/run/postgresql:/var/run/postgresql
-        command:
-          - "postgres"
-          - "-c"
-          - "wal_level=logical"
 
     strategy:
       fail-fast: false
