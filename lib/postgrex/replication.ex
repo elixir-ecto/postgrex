@@ -251,6 +251,11 @@ defmodule Postgrex.Replication do
 
     * `:temporary` - required and must be set to `true`.
 
+    * `:start_pos` - optional. The LSN value to start replication from.
+      Must be formatted as a string of two hexadecimal numbers of up to
+      8 digits each, separated by a slash. e.g. `1/F73E0220`.
+      Defaults to `0/0`.
+
     * `:snapshot` - optional. The type of logical snapshot for the
       slot. Must be one of `:export`, `:noexport`, or `:use`.
       Defaults to `:export`.
@@ -412,6 +417,7 @@ defmodule Postgrex.Replication do
     slot = Keyword.fetch!(opts, :slot)
     true = Keyword.fetch!(opts, :temporary)
     {plugin, options} = Keyword.fetch!(opts, :logical)
+    start_pos = Keyword.get(opts, :start_pos, "0/0")
     snapshot = Keyword.get(opts, :snapshot, :export)
 
     create = [
@@ -425,7 +431,8 @@ defmodule Postgrex.Replication do
     start = [
       "START_REPLICATION SLOT ",
       slot,
-      " LOGICAL 0/0",
+      " LOGICAL ",
+      start_pos,
       escape_options(options)
     ]
 
