@@ -249,7 +249,6 @@ defmodule Postgrex.Replication do
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
       `auto_reconnect` is enabled. Defaults to `500`.
-
   """
   @spec start_link(module(), term(), Keyword.t()) ::
           {:ok, pid} | {:error, Postgrex.Error.t() | term}
@@ -261,33 +260,31 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-    Creates a logical replication slot with the given name and output plugin.
-    By default, PostgreSQL includes the `pgoutput` plugin.
+  Creates a logical replication slot with the given name and output plugin.
+  By default, PostgreSQL includes the `pgoutput` plugin.
 
-    Once replication has begun, no other commands can be given and this
-    function will return `{:error, :replication_started}`.
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
 
-    ## Options
+  ## Options
 
-  * `:temporary` - When `true`, the slot will automatically drop when a session
-    finishes. When `false`, the slot will persist outside of the session.
-    Note that `false`  can lead to an unwanted build-up of WAL segments
-    that eventually kill your primary instance. Prior to PostgreSQL 13, replication
-    slots stop WAL segments from being removed until they are read by a consumer.
-    Since PostgreSQL 13, the system parameter `max_slot_wal_keep_size` can be used
-    to prevent this. [See PostgreSQL docs](https://www.postgresql.org/docs/current/runtime-config-replication.html)
-    Defaults to `true`.
+    * `:temporary` - When `true`, the slot will automatically drop when a session
+      finishes. When `false`, the slot will persist outside of the session.
+      Note that `false`  can lead to an unwanted build-up of WAL segments
+      that eventually kill your primary instance. Prior to PostgreSQL 13, replication
+      slots stop WAL segments from being removed until they are read by a consumer.
+      Since PostgreSQL 13, the system parameter `max_slot_wal_keep_size` can be used
+      to prevent this. [See PostgreSQL docs](https://www.postgresql.org/docs/current/runtime-config-replication.html)
+      Defaults to `true`.
 
-  * `:snapshot` - The type of logical snapshot for the slot. Must be one of
-    `:export`, `:noexport`, or `:use`.
-    Defaults to `:export`.
+    * `:snapshot` - The type of logical snapshot for the slot. Must be one of
+      `:export`, `:noexport`, or `:use`.
+      Defaults to `:export`.
 
-  * `:timeout` - Call timeout
-    Defaults to `5000`.
+    * `:timeout` - Call timeout
+      Defaults to `5000`.
 
-  To better understand the meaning of those options, [see PostgreSQL
-  replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-
+  To better understand the meaning of those options, [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec create_slot(server, String.t(), atom(), Keyword.t()) ::
           :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
@@ -298,23 +295,21 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-    Drops logical replication slot with the given name.
+  Drops logical replication slot with the given name.
 
-    Once replication has begun, no other commands can be given and this
-    function will return `{:error, :replication_started}`.
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
 
-    ## Options
+  ## Options
 
-  * `:wait` - If true, waits for an active slot to become inactive before
-    dropping it. If false, raises an error when an attemping to drop an active slot.
-    Defaults to `true`.
+    * `:wait` - If true, waits for an active slot to become inactive before
+      dropping it. If false, raises an error when an attemping to drop an active slot.
+      Defaults to `true`.
 
-  * `:timeout` - Call timeout
-    Defaults to `5000`.
+    * `:timeout` - Call timeout
+      Defaults to `5000`.
 
-  To better understand the meaning of those options, [see PostgreSQL
-  replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-
+  To better understand the meaning of those options, [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec drop_slot(server, String.t(), Keyword.t()) ::
           :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
@@ -325,28 +320,26 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-    Starts logical replication on the given slot. If the slot's plugin requires
-    additional options, make sure to specify them using the `plugin_opts` option.
+  Starts logical replication on the given slot. If the slot's plugin requires
+  additional options, make sure to specify them using the `plugin_opts` option.
 
-    Once replication has begun, no other commands can be given and this
-    function will return `{:error, :replication_started}`.
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
 
-    ## Options
+  ## Options
 
-  * `:plugin_opts` - It must be a keyword list and is used to configure
-    the output plugin assigned to the given slot.
+    * `:plugin_opts` - It must be a keyword list and is used to configure
+      the output plugin assigned to the given slot.
 
-  * `:start_pos` - The LSN value to start replication from. Must be
-    formatted as a string of two hexadecimal numbers of up to 8 digits
-    each, separated by a slash. e.g. `1/F73E0220`.
-    Defaults to `0/0`.
+    * `:start_pos` - The LSN value to start replication from. Must be
+      formatted as a string of two hexadecimal numbers of up to 8 digits
+      each, separated by a slash. e.g. `1/F73E0220`.
+      Defaults to `0/0`.
 
-  * `:timeout` - Call timeout
-    Defaults to `5000`.
+    * `:timeout` - Call timeout
+      Defaults to `5000`.
 
-  To better understand the meaning of those options, [see PostgreSQL
-  replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-
+  To better understand the meaning of those options, [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec start_replication(server, String.t(), Keyword.t()) ::
           :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
