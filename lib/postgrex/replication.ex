@@ -281,7 +281,7 @@ defmodule Postgrex.Replication do
       `:export`, `:noexport`, or `:use`.
       Defaults to `:export`.
 
-    * `:timeout` - Call timeout
+    * `:timeout` - Call timeout.
       Defaults to `5000`.
 
   To better understand the meaning of those options, [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
@@ -306,7 +306,7 @@ defmodule Postgrex.Replication do
       dropping it. If false, raises an error when an attemping to drop an active slot.
       Defaults to `true`.
 
-    * `:timeout` - Call timeout
+    * `:timeout` - Call timeout.
       Defaults to `5000`.
 
   To better understand the meaning of those options, [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
@@ -336,7 +336,7 @@ defmodule Postgrex.Replication do
       each, separated by a slash. e.g. `1/F73E0220`.
       Defaults to `0/0`.
 
-    * `:timeout` - Call timeout
+    * `:timeout` - Call timeout.
       Defaults to `5000`.
 
   To better understand the meaning of those options, [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
