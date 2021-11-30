@@ -302,8 +302,8 @@ defmodule Postgrex.Replication do
 
   ## Options
 
-    * `:wait` - If true, waits for an active slot to become inactive before
-      dropping it. If false, raises an error when an attemping to drop an active slot.
+    * `:wait` - When `true`, waits for an active slot to become inactive before
+      dropping it. When `false`, raises an error when an attemping to drop an active slot.
       Defaults to `true`.
 
     * `:timeout` - Call timeout.
