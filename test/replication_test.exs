@@ -114,6 +114,14 @@ defmodule ReplicationTest do
     assert {:error, :replication_started} == PR.start_replication(context.repl, "slot")
   end
 
+  test "drop_slot with wait = false returns an error when being used by a connection", context do
+    %{slot: slot} = @repl_opts
+    start_replication(context.repl)
+    repl1 = start_supervised!({Repl, {self(), @opts}}, id: :repl1)
+    {:error, %Postgrex.Error{} = error} = PR.drop_slot(repl1, slot, wait: false)
+    assert Exception.message(error) =~ "replication slot \"postgrex_example\" is active for PID"
+  end
+
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
     :ok = PR.create_slot(repl, slot, plugin)
