@@ -142,8 +142,7 @@ defmodule Postgrex.Replication do
   defstruct protocol: nil,
             state: nil,
             auto_reconnect: false,
-            reconnect_backoff: 500,
-            slot_opts: nil,
+            reconnect_backoff: 500
             replication_started: false,
             replication_opts: nil
 
