@@ -330,8 +330,8 @@ defmodule Postgrex.Replication do
   additional options, make sure to specify them using the `plugin_opts` option.
 
   If the connection was started with `auto_reconnect` set to `true`, then
-  replication will automatically be restarted with the replication options passed
-  into this function. You must ensure your system will not be affected by receiving
+  replication will automatically restart with the options passed into this
+  function. You must ensure your system will not be affected by receiving
   duplicate WAL updates. Note that temporary slots cannot be restarted due to the
   fact that they automatically drop upon disconnect.
 
