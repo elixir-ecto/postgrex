@@ -1,6 +1,5 @@
 defmodule ReplicationTest do
   use ExUnit.Case, async: true
-  import ExUnit.CaptureLog
   alias Postgrex, as: P
   alias Postgrex.Replication, as: PR
 
@@ -54,15 +53,14 @@ defmodule ReplicationTest do
     max_restarts: 0
   ]
 
-  @repl_opts [
+  @repl_opts %{
     slot: "postgrex_example",
-    logical: {:pgoutput, proto_version: 1, publication_names: "postgrex_example"},
-    temporary: true,
-    snapshot: :noexport
-  ]
+    plugin: :pgoutput,
+    plugin_opts: [proto_version: 1, publication_names: "postgrex_example"]
+  }
 
   setup do
-    repl = start_supervised!({Repl, {self(), @repl_opts ++ @opts}})
+    repl = start_supervised!({Repl, {self(), @opts}})
     {:ok, repl: repl}
   end
 
@@ -75,11 +73,13 @@ defmodule ReplicationTest do
     assert_receive :pong
   end
 
-  test "handle_data" do
+  test "handle_data", context do
+    start_replication(context.repl)
     assert_receive <<?k, _::64, _::64, _>>, @timeout
   end
 
-  test "receives pgoutput" do
+  test "receives pgoutput", context do
+    start_replication(context.repl)
     pid = start_supervised!({P, @opts})
     P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
     P.query!(pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
@@ -94,22 +94,37 @@ defmodule ReplicationTest do
                    @timeout
   end
 
-  test "raises on bad config with sync_connect: true" do
-    Process.flag(:trap_exit, true)
-    {:error, {%Postgrex.Error{} = error, _}} = Repl.start_link({self(), @repl_opts ++ @opts})
+  test "can't create same slot twice", context do
+    %{slot: slot, plugin: plugin} = @repl_opts
+    :ok = PR.create_slot(context.repl, slot, plugin)
+    {:error, %Postgrex.Error{} = error} = PR.create_slot(context.repl, slot, plugin)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" already exists"
   end
 
-  test "raises on bad config with sync_connect: false" do
-    Process.flag(:trap_exit, true)
-    opts = [sync_connect: false] ++ @repl_opts ++ @opts
-    msg = "replication slot \"postgrex_example\" already exists"
+  test "can't drop a lot that doesn't exist", context do
+    %{slot: slot} = @repl_opts
+    {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot)
+    assert Exception.message(error) =~ "replication slot \"postgrex_example\" does not exist"
+  end
 
-    assert capture_log(fn ->
-             {:ok, pid} = Repl.start_link({self(), opts})
-             ref = Process.monitor(pid)
-             assert_receive {:DOWN, ^ref, _, _, {%Postgrex.Error{} = error, _}}
-             assert Exception.message(error) =~ msg
-           end) =~ msg
+  test "can't run other commands after replication has started", context do
+    start_replication(context.repl)
+    assert {:error, :replication_started} == PR.create_slot(context.repl, "slot", :plugin)
+    assert {:error, :replication_started} == PR.drop_slot(context.repl, "slot")
+    assert {:error, :replication_started} == PR.start_replication(context.repl, "slot")
+  end
+
+  test "drop_slot with wait = false returns an error when being used by a connection", context do
+    %{slot: slot} = @repl_opts
+    start_replication(context.repl)
+    repl1 = start_supervised!({Repl, {self(), @opts}}, id: :repl1)
+    {:error, %Postgrex.Error{} = error} = PR.drop_slot(repl1, slot, wait: false)
+    assert Exception.message(error) =~ "replication slot \"postgrex_example\" is active for PID"
+  end
+
+  defp start_replication(repl) do
+    %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
+    :ok = PR.create_slot(repl, slot, plugin)
+    :ok = PR.start_replication(repl, slot, plugin_opts: plugin_opts)
   end
 end

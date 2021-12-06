@@ -1042,7 +1042,7 @@ defmodule Postgrex.Protocol do
 
   ## replication
 
-  @spec handle_simple(String.t(), state) ::
+  @spec handle_simple(String.t() | iolist(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
@@ -1075,7 +1075,7 @@ defmodule Postgrex.Protocol do
 
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
-        {:disconnect, err, %{s | buffer: buffer}}
+        error_ready(s, status, err, buffer)
 
       {:ok, msg_ready(status: postgres), buffer} ->
         s = %{s | postgres: postgres, buffer: buffer}
@@ -1086,7 +1086,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_replication(String.t(), state) ::
+  @spec handle_replication(String.t() | iolist(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
@@ -1112,8 +1112,9 @@ defmodule Postgrex.Protocol do
         {:ok, %{s | buffer: buffer}}
 
       {:ok, msg_error(fields: fields), buffer} ->
+        status = new_status([], mode: :transaction)
         err = Postgrex.Error.exception(postgres: fields)
-        {:disconnect, err, %{s | buffer: buffer}}
+        error_ready(s, status, err, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -3002,7 +3003,6 @@ defmodule Postgrex.Protocol do
   end
 
   ## helpers
-
   defp notify(opts) do
     opts[:notify] || fn _, _ -> :ok end
   end
