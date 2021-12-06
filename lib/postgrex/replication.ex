@@ -332,7 +332,8 @@ defmodule Postgrex.Replication do
   If the connection was started with `auto_reconnect` set to `true`, then
   replication will automatically be restarted with the replication options passed
   into this function. You must ensure your system will not be affected by receiving
-  duplicate WAL updates.
+  duplicate WAL updates. Note that temporary slots cannot be restarted due to the
+  fact that they automatically drop upon disconnect.
 
   Once replication has begun, no other commands can be given and this
   function will return `{:error, :replication_started}`.
@@ -419,13 +420,14 @@ defmodule Postgrex.Replication do
       do: {:reply, {:error, :replication_started}, s}
 
   @doc false
-  def handle_call({:start_replication = name, opts}, _from, s) do
+  def handle_call({:start_replication, opts}, _from, s) do
     %{protocol: protocol} = s
     statement = command(:start_replication, opts)
 
     with {:ok, protocol} <- Protocol.handle_replication(statement, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
-      {:reply, :ok, update_success_state(s, name, protocol, opts)}
+      s = %{s | protocol: protocol, replication_started: true, replication_opts: opts}
+      {:reply, :ok, s}
     else
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
@@ -442,7 +444,7 @@ defmodule Postgrex.Replication do
 
     case Protocol.handle_simple(statement, protocol) do
       {:ok, %Postgrex.Result{}, protocol} ->
-        {:reply, :ok, update_success_state(s, name, protocol, opts)}
+        {:reply, :ok, %{s | protocol: protocol}}
 
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
@@ -512,29 +514,6 @@ defmodule Postgrex.Replication do
   end
 
   defp maybe_restart_replication(%{replication_started: true} = s) do
-    temporary? = Keyword.get(s.slot_opts, :temporary, @temporary)
-    restart_replication(s, temporary?)
-  end
-
-  defp maybe_restart_replication(s), do: {:ok, s}
-
-  defp restart_replication(s, true = _temporary?) do
-    create = command(:create_slot, s.slot_opts)
-    start = command(:start_replication, s.replication_opts)
-
-    with {:ok, %Postgrex.Result{}, protocol} <- Protocol.handle_simple(create, s.protocol),
-         {:ok, protocol} <- Protocol.handle_replication(start, protocol),
-         {:ok, protocol} <- Protocol.checkin(protocol) do
-      {:ok, %{s | protocol: protocol}}
-    else
-      # If we can't restart replication, we assume that auto_reconnect can't
-      # solve it either, so we just raise the error as a readable message.
-      {_error, reason, _protocol} ->
-        raise reason
-    end
-  end
-
-  defp restart_replication(s, false = _temporary?) do
     start = command(:start_replication, s.replication_opts)
 
     with {:ok, protocol} <- Protocol.handle_replication(start, s.protocol),
@@ -548,14 +527,7 @@ defmodule Postgrex.Replication do
     end
   end
 
-  defp update_success_state(s, :create_slot, protocol, opts),
-    do: %{s | protocol: protocol, slot_opts: opts}
-
-  defp update_success_state(s, :start_replication, protocol, opts),
-    do: %{s | protocol: protocol, replication_started: true, replication_opts: opts}
-
-  defp update_success_state(s, _command, protocol, _opts),
-    do: %{s | protocol: protocol}
+  defp maybe_restart_replication(s), do: {:ok, s}
 
   ## Queries
   defp(command(:create_slot, opts)) do
