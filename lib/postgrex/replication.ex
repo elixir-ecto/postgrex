@@ -412,18 +412,13 @@ defmodule Postgrex.Replication do
   end
 
   @doc false
-  def handle_call({name, _opts}, _from, %{replication_started: true} = s)
-      when name in @commands,
-      do: {:reply, {:error, :replication_started}, s}
-
-  @doc false
-  def handle_call({:start_replication, opts}, _from, s) do
+  def handle_call({:start_replication, opts}, _from, %{replication_opts: nil} = s) do
     %{protocol: protocol} = s
     statement = command(:start_replication, opts)
 
     with {:ok, protocol} <- Protocol.handle_replication(statement, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
-      s = %{s | protocol: protocol, replication_started: true, replication_opts: opts}
+      s = %{s | protocol: protocol, replication_opts: opts}
       {:reply, :ok, s}
     else
       {:error, reason, protocol} ->
@@ -435,7 +430,7 @@ defmodule Postgrex.Replication do
   end
 
   @doc false
-  def handle_call({name, opts}, _from, s) when name in @commands do
+  def handle_call({name, opts}, _from, %{replication_opts: nil} = s) when name in @commands do
     %{protocol: protocol} = s
     statement = command(name, opts)
 
@@ -450,6 +445,10 @@ defmodule Postgrex.Replication do
         reconnect_or_stop(:disconnect, reason, protocol, s)
     end
   end
+
+  @doc false
+  def handle_call({name, _opts}, _from, s) when name in @commands,
+    do: {:reply, {:error, :replication_started}, s}
 
   @doc false
   def handle_call(msg, from, %{state: {mod, mod_state}} = s) do
@@ -509,7 +508,7 @@ defmodule Postgrex.Replication do
        when error in [:error, :disconnect] do
     {:connect, :reconnect, s}
   end
-  
+
   defp maybe_restart_replication(%{replication_opts: nil} = s), do: {:ok, s}
 
   defp maybe_restart_replication(s) do
@@ -525,8 +524,6 @@ defmodule Postgrex.Replication do
         raise reason
     end
   end
-
-  
 
   ## Queries
   defp command(:create_slot, opts) do
