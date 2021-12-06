@@ -152,7 +152,6 @@ defmodule Postgrex.Replication do
   @type state :: term
   @type copy :: binary
   @timeout 5000
-  @temporary true
   @commands [:create_slot, :drop_slot, :start_replication]
 
   @doc """
@@ -531,7 +530,7 @@ defmodule Postgrex.Replication do
   ## Queries
   defp(command(:create_slot, opts)) do
     slot = Keyword.fetch!(opts, :slot)
-    temporary? = Keyword.get(opts, :temporary, @temporary)
+    temporary? = Keyword.get(opts, :temporary, true)
     plugin = Keyword.fetch!(opts, :plugin)
     snapshot = Keyword.get(opts, :snapshot, :export)
 
@@ -546,7 +545,7 @@ defmodule Postgrex.Replication do
 
   defp command(:drop_slot, opts) do
     slot = Keyword.fetch!(opts, :slot)
-    wait? = Keyword.get(opts, :wait, true)
+    wait? = Keyword.get(opts, :wait, false)
 
     [
       "DROP_REPLICATION_SLOT ",
