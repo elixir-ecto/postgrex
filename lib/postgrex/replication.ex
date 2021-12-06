@@ -143,7 +143,6 @@ defmodule Postgrex.Replication do
             state: nil,
             auto_reconnect: false,
             reconnect_backoff: 500,
-            replication_started: false,
             replication_opts: nil
 
   ## PUBLIC API ##
@@ -510,8 +509,10 @@ defmodule Postgrex.Replication do
        when error in [:error, :disconnect] do
     {:connect, :reconnect, s}
   end
+  
+  defp maybe_restart_replication(%{replication_opts: nil} = s), do: {:ok, s}
 
-  defp maybe_restart_replication(%{replication_started: true} = s) do
+  defp maybe_restart_replication(s) do
     start = command(:start_replication, s.replication_opts)
 
     with {:ok, protocol} <- Protocol.handle_replication(start, s.protocol),
@@ -525,10 +526,10 @@ defmodule Postgrex.Replication do
     end
   end
 
-  defp maybe_restart_replication(s), do: {:ok, s}
+  
 
   ## Queries
-  defp(command(:create_slot, opts)) do
+  defp command(:create_slot, opts) do
     slot = Keyword.fetch!(opts, :slot)
     temporary? = Keyword.get(opts, :temporary, true)
     plugin = Keyword.fetch!(opts, :plugin)
