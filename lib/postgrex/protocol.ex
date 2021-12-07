@@ -1062,16 +1062,18 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp recv_simple(s, status, tags \\ [], buffer) do
+  defp recv_simple(s, status, columns \\ [], result_oids \\ [], rows \\ [], tags \\ [], buffer) do
     case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_row_desc(), buffer} ->
-        recv_simple(s, status, tags, buffer)
+      {:ok, msg_row_desc(fields: fields), buffer} ->
+        {result_oids, columns} = columns(fields)
+        recv_simple(s, status, columns, result_oids, rows, tags, buffer)
 
-      {:ok, msg_data_row(), buffer} ->
-        recv_simple(s, status, tags, buffer)
+      {:ok, msg_data_row(values: values), buffer} ->
+        {:ok, row} = Types.decode_simple_row(values, result_oids, s.types)
+        recv_simple(s, status, columns, result_oids, [row | rows], tags, buffer)
 
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        recv_simple(s, status, [tag | tags], buffer)
+        recv_simple(s, status, columns, result_oids, rows, [tag | tags], buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
@@ -1079,7 +1081,7 @@ defmodule Postgrex.Protocol do
 
       {:ok, msg_ready(status: postgres), buffer} ->
         s = %{s | postgres: postgres, buffer: buffer}
-        {:ok, done(s, status, Enum.reverse(tags)), s}
+        {:ok, done(s, status, columns, Enum.reverse(rows), Enum.reverse(tags)), s}
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2946,6 +2948,19 @@ defmodule Postgrex.Protocol do
   defp done(s, status, %Query{} = query, rows, tag) do
     {command, nrows} = if tag, do: decode_tag(tag), else: {nil, nil}
     done(s, status, query, rows, command, nrows)
+  end
+
+  defp done(%{connection_id: connection_id}, %{messages: messages}, columns, rows, tags) do
+    {command, nil} = decode_tags(tags)
+
+    %Postgrex.Result{
+      command: command,
+      num_rows: length(rows),
+      rows: rows,
+      columns: columns,
+      connection_id: connection_id,
+      messages: messages
+    }
   end
 
   defp done(s, status, query, rows, command, nrows) do

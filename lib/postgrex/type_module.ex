@@ -320,6 +320,8 @@ defmodule Postgrex.TypeModule do
     quote location: :keep do
       unquote(decode_rows(row_dispatch, rest, acc, rem, full, rows))
 
+      unquote(decode_simple_row(config))
+
       unquote(decode_list(config))
 
       unquote(decode_tuple(config))
@@ -410,6 +412,62 @@ defmodule Postgrex.TypeModule do
         rows = [Enum.reverse(unquote(acc)) | unquote(rows)]
         decode_rows(unquote(rest), unquote(rem), unquote(full), rows)
     end
+  end
+
+  defp decode_simple_row(config) do
+    rest = quote do: rest
+    acc = quote do: acc
+
+    dispatch =
+      for {extension, {_, [_ | _], format}} <- config do
+        decode_simple_row_dispatch(extension, format, rest, acc)
+      end
+
+    quote do
+      def decode_simple_row(binary, oids, types) do
+        decode_simple_row(binary, oids, types, [])
+      end
+
+      defp decode_simple_row(<<unquote(rest)::binary>>, [oid | oids], types, unquote(acc)) do
+        case Postgrex.Types.fetch(oid, types) do
+          {:ok, {_format, type}} ->
+            case [type | types] do
+              unquote(dispatch)
+            end
+
+          {:error, %TypeInfo{type: pg_type}, _mod} ->
+            msg = "type `#{pg_type}` can not be handled by the configured extensions"
+            raise RuntimeError, msg
+
+          {:error, nil, _mod} ->
+            msg = "oid `#{oid}` was not bootstrapped and lacks type information"
+            raise RuntimeError, msg
+        end
+      end
+
+      defp decode_simple_row(<<unquote(rest)::binary>>, [], _types, unquote(acc)),
+        do: {:ok, Enum.reverse(unquote(acc))}
+    end
+  end
+
+  defp decode_simple_row_dispatch(extension, :super_binary, rest, acc) do
+    [clause] =
+      quote do
+        [{unquote(extension), sub_oids, sub_types} | types] ->
+          unquote(extension)(unquote(rest), sub_oids, sub_types, oids, types, unquote(acc))
+      end
+
+    clause
+  end
+
+  defp decode_simple_row_dispatch(extension, _, rest, acc) do
+    [clause] =
+      quote do
+        [unquote(extension) | types] ->
+          unquote(extension)(unquote(rest), oids, types, unquote(acc))
+      end
+
+    clause
   end
 
   defp decode_list(config) do
@@ -605,6 +663,15 @@ defmodule Postgrex.TypeModule do
            when unquote(guard) do
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
       end
+
+      ## replication
+
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, oids, types, acc)
+           when unquote(guard) do
+        unquote(acc) = [unquote(body) | acc]
+
+        decode_simple_row(rest, oids, types, acc)
+      end
     end
   end
 
@@ -632,6 +699,14 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<unquote(pattern), rest::binary>>, oids, types, n, acc) do
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
+      end
+
+      ## replication
+
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, oids, types, acc) do
+        unquote(acc) = [unquote(body) | acc]
+
+        decode_simple_row(rest, oids, types, acc)
       end
     end
   end
@@ -663,6 +738,14 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<-1::int32, rest::binary>>, oids, types, n, acc) do
         decode_tuple(rest, oids, types, n, acc)
+      end
+
+      ##  replication
+
+      defp unquote(extension)(<<-1::int32, rest::binary>>, types, acc) do
+        unquote(acc) = [@null | acc]
+
+        decode_simple_row(rest, types, acc)
       end
     end
   end
@@ -756,6 +839,20 @@ defmodule Postgrex.TypeModule do
            when unquote(guard) do
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
       end
+
+      ## replication
+
+      defp unquote(extension)(
+             <<unquote(pattern), rest::binary>>,
+             unquote(sub_oids),
+             unquote(sub_types),
+             oids,
+             types,
+             acc
+           )
+           when unquote(guard) do
+        decode_simple_row(rest, oids, types, [unquote(body) | acc])
+      end
     end
   end
 
@@ -812,6 +909,19 @@ defmodule Postgrex.TypeModule do
         acc = [{n, unquote(body)} | acc]
         decode_tuple(rest, oids, types, n, acc)
       end
+
+      ## replication
+
+      defp unquote(extension)(
+             <<unquote(pattern), rest::binary>>,
+             unquote(sub_oids),
+             unquote(sub_types),
+             oids,
+             types,
+             acc
+           ) do
+        decode_simple_row(rest, oids, types, [unquote(body) | acc])
+      end
     end
   end
 
@@ -852,6 +962,19 @@ defmodule Postgrex.TypeModule do
              acc
            ) do
         decode_tuple(rest, oids, types, n, acc)
+      end
+
+      ## replication
+
+      defp unquote(extension)(
+             <<-1::int32, rest::binary>>,
+             _sub_oids,
+             _sub_types,
+             oids,
+             types,
+             acc
+           ) do
+        decode_simple_row(rest, oids, types, [@null | acc])
       end
     end
   end

@@ -151,7 +151,7 @@ defmodule Postgrex.Replication do
   @type state :: term
   @type copy :: binary
   @timeout 5000
-  @commands [:create_slot, :drop_slot, :start_replication]
+  @commands [:create_slot, :drop_slot, :start_replication, :show]
 
   @doc """
   Callback for process initialization.
@@ -289,7 +289,9 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec create_slot(server, String.t(), atom(), Keyword.t()) ::
-          :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
   def create_slot(pid, slot_name, plugin, opts \\ []) do
     opts = [slot: slot_name, plugin: plugin] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -315,7 +317,9 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec drop_slot(server, String.t(), Keyword.t()) ::
-          :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
   def drop_slot(pid, slot_name, opts \\ []) do
     opts = [slot: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -357,6 +361,30 @@ defmodule Postgrex.Replication do
     opts = [slot: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:start_replication, opts}, timeout)
+  end
+
+  @doc """
+  Requests the server to send the current setting of a run-time parameter.
+
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
+
+  ## Options
+
+    * `:timeout` - Call timeout.
+      Defaults to `5000`.
+
+  To better understand the meaning of those options,
+  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
+  """
+  @spec show(server, String.t(), Keyword.t()) ::
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
+  def show(pid, name, opts \\ []) do
+    opts = [name: name] ++ opts
+    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    call(pid, {:show, opts}, timeout)
   end
 
   ## CALLBACKS ##
@@ -435,8 +463,8 @@ defmodule Postgrex.Replication do
     statement = command(name, opts)
 
     case Protocol.handle_simple(statement, protocol) do
-      {:ok, %Postgrex.Result{}, protocol} ->
-        {:reply, :ok, %{s | protocol: protocol}}
+      {:ok, %Postgrex.Result{} = result, protocol} ->
+        {:reply, {:ok, result}, %{s | protocol: protocol}}
 
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
@@ -564,6 +592,12 @@ defmodule Postgrex.Replication do
       start_pos,
       escape_options(options)
     ]
+  end
+
+  defp command(:show, opts) do
+    name = Keyword.fetch!(opts, :name)
+
+    ["SHOW ", name]
   end
 
   defp snapshot(:noexport), do: " NOEXPORT_SNAPSHOT"

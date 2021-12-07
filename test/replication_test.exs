@@ -94,9 +94,24 @@ defmodule ReplicationTest do
                    @timeout
   end
 
+  test "show returns values", context do
+    {:ok, %Postgrex.Result{} = result} = PR.show(context.repl, "SERVER_VERSION")
+    assert result.num_rows == 1
+    refute is_nil(result.columns)
+    refute is_nil(result.rows)
+  end
+
+  test "create slot returns results", context do
+    %{slot: slot, plugin: plugin} = @repl_opts
+    {:ok, %Postgrex.Result{} = result} = PR.create_slot(context.repl, slot, plugin)
+    refute is_nil(result.columns)
+    refute is_nil(result.rows)
+    refute is_nil(result.num_rows)
+  end
+
   test "can't create same slot twice", context do
     %{slot: slot, plugin: plugin} = @repl_opts
-    :ok = PR.create_slot(context.repl, slot, plugin)
+    {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin)
     {:error, %Postgrex.Error{} = error} = PR.create_slot(context.repl, slot, plugin)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" already exists"
   end
@@ -124,7 +139,7 @@ defmodule ReplicationTest do
 
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
-    :ok = PR.create_slot(repl, slot, plugin)
+    {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
     :ok = PR.start_replication(repl, slot, plugin_opts: plugin_opts)
   end
 end

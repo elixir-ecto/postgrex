@@ -317,6 +317,13 @@ defmodule Postgrex.Types do
   end
 
   @doc false
+  @spec decode_simple_row(binary, [oid], state) :: {:ok, list()}
+        when row: var
+  def decode_simple_row(binary, oids, {mod, _} = state) do
+    apply(mod, :decode_simple_row, [binary, oids, state])
+  end
+
+  @doc false
   @spec fetch(oid, state) ::
           {:ok, {:binary | :text, type}} | {:error, TypeInfo.t() | nil, module}
   def fetch(oid, {mod, table}) do
