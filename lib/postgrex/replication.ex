@@ -364,7 +364,7 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-  Requests the server to send the current setting of a run-time parameter.
+  Returns the current setting of a run-time parameter.
 
   Once replication has begun, no other commands can be given and this
   function will return `{:error, :replication_started}`.
