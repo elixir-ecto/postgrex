@@ -318,7 +318,6 @@ defmodule Postgrex.Types do
 
   @doc false
   @spec decode_simple_row(binary, [oid], state) :: {:ok, list()}
-        when row: var
   def decode_simple_row(binary, oids, {mod, _} = state) do
     apply(mod, :decode_simple_row, [binary, oids, state])
   end
