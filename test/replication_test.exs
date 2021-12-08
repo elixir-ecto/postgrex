@@ -97,9 +97,9 @@ defmodule ReplicationTest do
   test "create slot returns results", context do
     %{slot: slot, plugin: plugin} = @repl_opts
     {:ok, %Postgrex.Result{} = result} = PR.create_slot(context.repl, slot, plugin)
-    refute is_nil(result.columns)
-    refute is_nil(result.rows)
-    refute is_nil(result.num_rows)
+    assert result.num_rows == 1
+    assert result.columns == ["slot_name", "consistent_point", "snapshot_name", "output_plugin"]
+    assert [[_, _, _, _]] = result.rows
   end
 
   test "can't create same slot twice", context do
@@ -133,15 +133,15 @@ defmodule ReplicationTest do
   test "identify system returns values", context do
     {:ok, %Postgrex.Result{} = result} = PR.identify_system(context.repl)
     assert result.num_rows == 1
-    refute is_nil(result.columns)
-    refute is_nil(result.rows)
+    assert result.columns == ["systemid", "timeline", "xlogpos", "dbname"]
+    assert [[_, _, _, _]] = result.rows
   end
 
   test "show returns values", context do
     {:ok, %Postgrex.Result{} = result} = PR.show(context.repl, "SERVER_VERSION")
     assert result.num_rows == 1
-    refute is_nil(result.columns)
-    refute is_nil(result.rows)
+    assert result.columns == ["server_version"]
+    assert [[_]] = result.rows
   end
 
   defp start_replication(repl) do

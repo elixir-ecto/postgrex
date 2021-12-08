@@ -388,7 +388,7 @@ defmodule Postgrex.Replication do
           {:ok, Postgrex.Result.t()}
           | {:error, Postgrex.Error.t()}
           | {:error, :replication_started}
-  def show(pid, name, opts \\ []) do
+  def show(pid, name, opts \\ []) when is_binary(name) do
     opts = [name: name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:show, opts}, timeout)
@@ -435,7 +435,7 @@ defmodule Postgrex.Replication do
           {:ok, Postgrex.Result.t()}
           | {:error, Postgrex.Error.t()}
           | {:error, :replication_started}
-  def timeline_history(pid, timeline_id, opts \\ []) do
+  def timeline_history(pid, timeline_id, opts \\ []) when is_binary(timeline_id) do
     opts = [timeline_id: timeline_id] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:timeline_history, opts}, timeout)
