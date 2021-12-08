@@ -292,7 +292,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec create_slot(server, String.t(), atom(), Keyword.t()) ::
@@ -320,7 +320,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec drop_slot(server, String.t(), Keyword.t()) ::
@@ -359,7 +359,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec start_replication(server, String.t(), Keyword.t()) ::
@@ -381,7 +381,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec show(server, String.t(), Keyword.t()) ::
@@ -405,7 +405,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec identify_system(server, Keyword.t()) ::
@@ -428,7 +428,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec timeline_history(server, String.t(), Keyword.t()) ::
