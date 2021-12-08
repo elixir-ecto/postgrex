@@ -418,7 +418,7 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-  Returns timeline history file for the specified timeline ID.
+  Returns the timeline history file for the specified timeline ID.
 
   Once replication has begun, no other commands can be given and this
   function will return `{:error, :replication_started}`.
