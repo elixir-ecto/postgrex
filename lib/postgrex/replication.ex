@@ -151,7 +151,14 @@ defmodule Postgrex.Replication do
   @type state :: term
   @type copy :: binary
   @timeout 5000
-  @commands [:create_slot, :drop_slot, :start_replication, :show]
+  @commands [
+    :create_slot,
+    :drop_slot,
+    :start_replication,
+    :show,
+    :identify_system,
+    :timeline_history
+  ]
 
   @doc """
   Callback for process initialization.
@@ -387,6 +394,53 @@ defmodule Postgrex.Replication do
     call(pid, {:show, opts}, timeout)
   end
 
+  @doc """
+  Returns identification information for the server.
+
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
+
+  ## Options
+
+    * `:timeout` - Call timeout.
+      Defaults to `5000`.
+
+  To better understand the meaning of those options,
+  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
+  """
+  @spec identify_system(server, Keyword.t()) ::
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
+  def identify_system(pid, opts \\ []) do
+    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    call(pid, {:identify_system, opts}, timeout)
+  end
+
+  @doc """
+  Returns timeline history file for the specified timeline ID.
+
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
+
+  ## Options
+
+    * `:timeout` - Call timeout.
+      Defaults to `5000`.
+
+  To better understand the meaning of those options,
+  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
+  """
+  @spec timeline_history(server, String.t(), Keyword.t()) ::
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
+  def timeline_history(pid, timeline_id, opts \\ []) do
+    opts = [timeline_id: timeline_id] ++ opts
+    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    call(pid, {:timeline_history, opts}, timeout)
+  end
+
   ## CALLBACKS ##
 
   @doc false
@@ -596,8 +650,14 @@ defmodule Postgrex.Replication do
 
   defp command(:show, opts) do
     name = Keyword.fetch!(opts, :name)
-
     ["SHOW ", name]
+  end
+
+  defp command(:identify_system, _opts), do: ["IDENTIFY_SYSTEM"]
+
+  defp command(:timeline_history, opts) do
+    timeline_id = Keyword.fetch!(opts, :timeline_id)
+    ["TIMELINE_HISTORY ", timeline_id]
   end
 
   defp snapshot(:noexport), do: " NOEXPORT_SNAPSHOT"

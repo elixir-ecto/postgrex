@@ -94,13 +94,6 @@ defmodule ReplicationTest do
                    @timeout
   end
 
-  test "show returns values", context do
-    {:ok, %Postgrex.Result{} = result} = PR.show(context.repl, "SERVER_VERSION")
-    assert result.num_rows == 1
-    refute is_nil(result.columns)
-    refute is_nil(result.rows)
-  end
-
   test "create slot returns results", context do
     %{slot: slot, plugin: plugin} = @repl_opts
     {:ok, %Postgrex.Result{} = result} = PR.create_slot(context.repl, slot, plugin)
@@ -135,6 +128,20 @@ defmodule ReplicationTest do
     repl1 = start_supervised!({Repl, {self(), @opts}}, id: :repl1)
     {:error, %Postgrex.Error{} = error} = PR.drop_slot(repl1, slot, wait: false)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" is active for PID"
+  end
+
+  test "identify system returns values", context do
+    {:ok, %Postgrex.Result{} = result} = PR.identify_system(context.repl)
+    assert result.num_rows == 1
+    refute is_nil(result.columns)
+    refute is_nil(result.rows)
+  end
+
+  test "show returns values", context do
+    {:ok, %Postgrex.Result{} = result} = PR.show(context.repl, "SERVER_VERSION")
+    assert result.num_rows == 1
+    refute is_nil(result.columns)
+    refute is_nil(result.rows)
   end
 
   defp start_replication(repl) do

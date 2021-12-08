@@ -1062,18 +1062,18 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp recv_simple(s, status, columns \\ [], result_oids \\ [], rows \\ [], tags \\ [], buffer) do
+  defp recv_simple(s, status, columns \\ [], rows \\ [], tags \\ [], buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {result_oids, columns} = columns(fields)
-        recv_simple(s, status, columns, result_oids, rows, tags, buffer)
+        columns = column_names(fields)
+        recv_simple(s, status, columns, rows, tags, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
-        {:ok, row} = Types.decode_simple_row(values, result_oids, s.types)
-        recv_simple(s, status, columns, result_oids, [row | rows], tags, buffer)
+        row = Types.decode_simple(values, s.types)
+        recv_simple(s, status, columns, [row | rows], tags, buffer)
 
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        recv_simple(s, status, columns, result_oids, rows, [tag | tags], buffer)
+        recv_simple(s, status, columns, rows, [tag | tags], buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
@@ -3033,6 +3033,10 @@ defmodule Postgrex.Protocol do
     fields
     |> Enum.map(fn row_field(type_oid: oid, name: name) -> {oid, name} end)
     |> :lists.unzip()
+  end
+
+  defp column_names(fields) do
+    Enum.map(fields, fn row_field(name: name) -> name end)
   end
 
   defp tag(:gen_tcp), do: :tcp
