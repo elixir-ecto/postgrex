@@ -94,14 +94,22 @@ defmodule ReplicationTest do
                    @timeout
   end
 
+  test "create slot returns results", context do
+    %{slot: slot, plugin: plugin} = @repl_opts
+    {:ok, %Postgrex.Result{} = result} = PR.create_slot(context.repl, slot, plugin)
+    assert result.num_rows == 1
+    assert result.columns == ["slot_name", "consistent_point", "snapshot_name", "output_plugin"]
+    assert [[_, _, _, _]] = result.rows
+  end
+
   test "can't create same slot twice", context do
     %{slot: slot, plugin: plugin} = @repl_opts
-    :ok = PR.create_slot(context.repl, slot, plugin)
+    {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin)
     {:error, %Postgrex.Error{} = error} = PR.create_slot(context.repl, slot, plugin)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" already exists"
   end
 
-  test "can't drop a lot that doesn't exist", context do
+  test "can't drop a slot that doesn't exist", context do
     %{slot: slot} = @repl_opts
     {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" does not exist"
@@ -122,9 +130,23 @@ defmodule ReplicationTest do
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" is active for PID"
   end
 
+  test "identify system returns values", context do
+    {:ok, %Postgrex.Result{} = result} = PR.identify_system(context.repl)
+    assert result.num_rows == 1
+    assert result.columns == ["systemid", "timeline", "xlogpos", "dbname"]
+    assert [[_, _, _, _]] = result.rows
+  end
+
+  test "show returns values", context do
+    {:ok, %Postgrex.Result{} = result} = PR.show(context.repl, "SERVER_VERSION")
+    assert result.num_rows == 1
+    assert result.columns == ["server_version"]
+    assert [[_]] = result.rows
+  end
+
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
-    :ok = PR.create_slot(repl, slot, plugin)
+    {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
     :ok = PR.start_replication(repl, slot, plugin_opts: plugin_opts)
   end
 end

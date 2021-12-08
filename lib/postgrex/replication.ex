@@ -151,7 +151,14 @@ defmodule Postgrex.Replication do
   @type state :: term
   @type copy :: binary
   @timeout 5000
-  @commands [:create_slot, :drop_slot, :start_replication]
+  @commands [
+    :create_slot,
+    :drop_slot,
+    :start_replication,
+    :show,
+    :identify_system,
+    :timeline_history
+  ]
 
   @doc """
   Callback for process initialization.
@@ -285,11 +292,13 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec create_slot(server, String.t(), atom(), Keyword.t()) ::
-          :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
   def create_slot(pid, slot_name, plugin, opts \\ []) do
     opts = [slot: slot_name, plugin: plugin] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -311,11 +320,13 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec drop_slot(server, String.t(), Keyword.t()) ::
-          :ok | {:error, Postgrex.Error.t()} | {:error, :replication_started}
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
   def drop_slot(pid, slot_name, opts \\ []) do
     opts = [slot: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -348,7 +359,7 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
 
-  To better understand the meaning of those options,
+  To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec start_replication(server, String.t(), Keyword.t()) ::
@@ -357,6 +368,77 @@ defmodule Postgrex.Replication do
     opts = [slot: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:start_replication, opts}, timeout)
+  end
+
+  @doc """
+  Returns the current setting of a run-time parameter.
+
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
+
+  ## Options
+
+    * `:timeout` - Call timeout.
+      Defaults to `5000`.
+
+  To better understand the meaning of this command,
+  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
+  """
+  @spec show(server, String.t(), Keyword.t()) ::
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
+  def show(pid, name, opts \\ []) when is_binary(name) do
+    opts = [name: name] ++ opts
+    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    call(pid, {:show, opts}, timeout)
+  end
+
+  @doc """
+  Returns identification information for the server.
+
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
+
+  ## Options
+
+    * `:timeout` - Call timeout.
+      Defaults to `5000`.
+
+  To better understand the meaning of this command,
+  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
+  """
+  @spec identify_system(server, Keyword.t()) ::
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
+  def identify_system(pid, opts \\ []) do
+    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    call(pid, {:identify_system, opts}, timeout)
+  end
+
+  @doc """
+  Returns the timeline history file for the specified timeline ID.
+
+  Once replication has begun, no other commands can be given and this
+  function will return `{:error, :replication_started}`.
+
+  ## Options
+
+    * `:timeout` - Call timeout.
+      Defaults to `5000`.
+
+  To better understand the meaning of this command,
+  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
+  """
+  @spec timeline_history(server, String.t(), Keyword.t()) ::
+          {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :replication_started}
+  def timeline_history(pid, timeline_id, opts \\ []) when is_binary(timeline_id) do
+    opts = [timeline_id: timeline_id] ++ opts
+    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    call(pid, {:timeline_history, opts}, timeout)
   end
 
   ## CALLBACKS ##
@@ -435,8 +517,8 @@ defmodule Postgrex.Replication do
     statement = command(name, opts)
 
     case Protocol.handle_simple(statement, protocol) do
-      {:ok, %Postgrex.Result{}, protocol} ->
-        {:reply, :ok, %{s | protocol: protocol}}
+      {:ok, %Postgrex.Result{} = result, protocol} ->
+        {:reply, {:ok, result}, %{s | protocol: protocol}}
 
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
@@ -564,6 +646,18 @@ defmodule Postgrex.Replication do
       start_pos,
       escape_options(options)
     ]
+  end
+
+  defp command(:show, opts) do
+    name = Keyword.fetch!(opts, :name)
+    ["SHOW ", name]
+  end
+
+  defp command(:identify_system, _opts), do: ["IDENTIFY_SYSTEM"]
+
+  defp command(:timeline_history, opts) do
+    timeline_id = Keyword.fetch!(opts, :timeline_id)
+    ["TIMELINE_HISTORY ", timeline_id]
   end
 
   defp snapshot(:noexport), do: " NOEXPORT_SNAPSHOT"

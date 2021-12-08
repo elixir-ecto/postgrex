@@ -320,6 +320,8 @@ defmodule Postgrex.TypeModule do
     quote location: :keep do
       unquote(decode_rows(row_dispatch, rest, acc, rem, full, rows))
 
+      unquote(decode_simple())
+
       unquote(decode_list(config))
 
       unquote(decode_tuple(config))
@@ -409,6 +411,28 @@ defmodule Postgrex.TypeModule do
       [] ->
         rows = [Enum.reverse(unquote(acc)) | unquote(rows)]
         decode_rows(unquote(rest), unquote(rem), unquote(full), rows)
+    end
+  end
+
+  defp decode_simple() do
+    rest = quote do: rest
+    acc = quote do: acc
+
+    dispatch = decode_simple_dispatch(Postgrex.Extensions.Raw, rest, acc)
+
+    quote do
+      def decode_simple(binary) do
+        decode_simple(binary, [])
+      end
+
+      defp decode_simple(<<>>, unquote(acc)), do: Enum.reverse(acc)
+      defp decode_simple(<<unquote(rest)::binary>>, unquote(acc)), do: unquote(dispatch)
+    end
+  end
+
+  defp decode_simple_dispatch(extension, rest, acc) do
+    quote do
+      unquote(extension)(unquote(rest), unquote(acc), &decode_simple/2)
     end
   end
 
@@ -601,6 +625,11 @@ defmodule Postgrex.TypeModule do
         unquote(extension)(rest, [unquote(body) | acc])
       end
 
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, acc, callback)
+           when unquote(guard) do
+        unquote(extension)(rest, [unquote(body) | acc], callback)
+      end
+
       defp unquote(extension)(<<unquote(pattern), rest::binary>>, oids, types, n, acc)
            when unquote(guard) do
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
@@ -628,6 +657,11 @@ defmodule Postgrex.TypeModule do
       defp unquote(extension)(<<unquote(pattern), rest::binary>>, acc) do
         decoded = unquote(body)
         unquote(extension)(rest, [decoded | acc])
+      end
+
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, acc, callback) do
+        decoded = unquote(body)
+        unquote(extension)(rest, [decoded | acc], callback)
       end
 
       defp unquote(extension)(<<unquote(pattern), rest::binary>>, oids, types, n, acc) do
@@ -659,6 +693,14 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<>>, acc) do
         acc
+      end
+
+      defp unquote(extension)(<<-1::int32, rest::binary>>, acc, callback) do
+        unquote(extension)(rest, [@null | acc], callback)
+      end
+
+      defp unquote(extension)(<<rest::binary-size(0)>>, acc, callback) do
+        callback.(rest, acc)
       end
 
       defp unquote(extension)(<<-1::int32, rest::binary>>, oids, types, n, acc) do
