@@ -109,7 +109,7 @@ defmodule ReplicationTest do
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" already exists"
   end
 
-  test "can't drop a lot that doesn't exist", context do
+  test "can't drop a slot that doesn't exist", context do
     %{slot: slot} = @repl_opts
     {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" does not exist"
