@@ -133,6 +133,7 @@ defmodule Postgrex.Replication do
   `GenServer`. Read more about them in the `GenServer` docs.
   """
 
+  use Bitwise
   use Connection
   require Logger
 
@@ -151,6 +152,8 @@ defmodule Postgrex.Replication do
   @type state :: term
   @type copy :: binary
   @timeout 5000
+  @max_lsn_component_size 8
+  @max_uint64 18_446_744_073_709_551_615
   @commands [
     :create_slot,
     :drop_slot,
@@ -439,6 +442,66 @@ defmodule Postgrex.Replication do
     opts = [timeline_id: timeline_id] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:timeline_history, opts}, timeout)
+  end
+
+  @doc """
+  Returns the string representation of an LSN value, given its integer representation.
+
+  PostgreSQL uses 2 representations for the Log Sequence Number (LSN):
+
+    * An unsigned 64-bit integer. Used internally by PostgreSQL and sent in the XLogData
+    replication messages.
+
+    * A string of two hexadecimal numbers of up to 8 digits each, separated
+    by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/3`.
+
+  For more information on Log Sequence Numbers, see
+  [PostgreSQL pg_lsn docs](https://www.postgresql.org/docs/current/datatype-pg-lsn.html) and
+  [PostgreSQL WAL internals docs](https://www.postgresql.org/docs/current/wal-internals.html).
+  """
+  @spec lsn_int_to_string(integer) :: String.t()
+  def lsn_int_to_string(lsn) when is_integer(lsn) do
+    if 0 <= lsn and lsn <= @max_uint64 do
+      <<file_id::32, offset::32>> = <<lsn::64>>
+      Integer.to_string(file_id, 16) <> "/" <> Integer.to_string(offset, 16)
+    else
+      raise ArgumentError, "invalid unsigned 64-bit integer"
+    end
+  end
+
+  @doc """
+  Returns the integer representation of an LSN value, given its string representation.
+
+  PostgreSQL uses 2 representations for the Log Sequence Number (LSN):
+
+    * An unsigned 64-bit integer. Used internally by PostgreSQL and sent in the XLogData
+    replication messages.
+
+    * A string of two hexadecimal numbers of up to 8 digits each, separated
+    by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/3`.
+
+  For more information on Log Sequence Numbers, see
+  [PostgreSQL pg_lsn docs](https://www.postgresql.org/docs/current/datatype-pg-lsn.html) and
+  [PostgreSQL WAL internals docs](https://www.postgresql.org/docs/current/wal-internals.html).
+  """
+  @spec lsn_string_to_int(String.t()) :: integer
+  def lsn_string_to_int(lsn) when is_binary(lsn) do
+    with [file_id, offset] <- String.split(lsn, "/", trim: true),
+         true <- byte_size(file_id) <= @max_lsn_component_size,
+         true <- byte_size(offset) <= @max_lsn_component_size do
+      try do
+        file_id = String.to_integer(file_id, 16)
+        offset = String.to_integer(offset, 16)
+
+        file_id <<< 32 ||| offset
+      rescue
+        ArgumentError ->
+          reraise ArgumentError, "invalid LSN format", __STACKTRACE__
+      end
+    else
+      _ ->
+        raise ArgumentError, "invalid LSN format"
+    end
   end
 
   ## CALLBACKS ##

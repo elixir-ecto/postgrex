@@ -4,6 +4,7 @@ defmodule ReplicationTest do
   alias Postgrex.Replication, as: PR
 
   @timeout 2000
+  @max_uint64 18_446_744_073_709_551_615
   @moduletag :logical_replication
   @moduletag min_pg_version: "10.0"
 
@@ -144,9 +145,60 @@ defmodule ReplicationTest do
     assert [[_]] = result.rows
   end
 
+  test "converts LSN from integer to string" do
+    lsn_int = Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
+    lsn_str = PR.lsn_int_to_string(lsn_int)
+    assert lsn_str == "FEDCBA98/76543210"
+    assert PR.lsn_int_to_string(0) == "0/0"
+    assert PR.lsn_int_to_string(@max_uint64) == "FFFFFFFF/FFFFFFFF"
+  end
+
+  test "converts LSN from string to integer" do
+    lsn_str = "FEDCBA98/76543210"
+    lsn_int = PR.lsn_string_to_int(lsn_str)
+    assert lsn_int == Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
+    assert PR.lsn_string_to_int("0/0") == 0
+    assert PR.lsn_string_to_int("FFFFFFFF/FFFFFFFF") == @max_uint64
+  end
+
+  test "convert LSN from string to integer to string" do
+    lsn_str = "FEDCBA98/76543210"
+    lsn_str_computed = lsn_str |> PR.lsn_string_to_int() |> PR.lsn_int_to_string()
+    assert lsn_str == lsn_str_computed
+  end
+
+  test "convert LSN from integer to string to integer" do
+    lsn_int = Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
+    lsn_int_computed = lsn_int |> PR.lsn_int_to_string() |> PR.lsn_string_to_int()
+    assert lsn_int == lsn_int_computed
+  end
+
+  test "invalid LSN strings raise ArgumentError" do
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0123ABC") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("/0123ABC") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0123ABC/") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("123G/0123ABC") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0/012345678") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("012345678/0") end
+  end
+
+  test "invalid LSN integers raise ArgumentError" do
+    assert_raise ArgumentError, ~r/invalid unsigned 64-bit integer/, fn ->
+      PR.lsn_int_to_string(-1)
+    end
+
+    assert_raise ArgumentError, ~r/invalid unsigned 64-bit integer/, fn ->
+      PR.lsn_int_to_string(@max_uint64 + 1)
+    end
+  end
+
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
     {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
     :ok = PR.start_replication(repl, slot, plugin_opts: plugin_opts)
+  end
+
+  defp pow(base, exp) do
+    :math.pow(base, exp) |> round()
   end
 end
