@@ -447,7 +447,7 @@ defmodule Postgrex.Replication do
   @doc """
   Returns the string representation of an LSN value, given its integer representation.
 
-  PostgreSQL uses 2 representations for the Log Sequence Number (LSN):
+  PostgreSQL uses two representations for the Log Sequence Number (LSN):
 
     * An unsigned 64-bit integer. Used internally by PostgreSQL and sent in the XLogData
     replication messages.
@@ -472,7 +472,7 @@ defmodule Postgrex.Replication do
   @doc """
   Returns the integer representation of an LSN value, given its string representation.
 
-  PostgreSQL uses 2 representations for the Log Sequence Number (LSN):
+  PostgreSQL uses two representations for the Log Sequence Number (LSN):
 
     * An unsigned 64-bit integer. Used internally by PostgreSQL and sent in the XLogData
     replication messages.
