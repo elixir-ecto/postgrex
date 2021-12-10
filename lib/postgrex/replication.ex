@@ -133,9 +133,9 @@ defmodule Postgrex.Replication do
   `GenServer`. Read more about them in the `GenServer` docs.
   """
 
-  use Bitwise
   use Connection
   require Logger
+  import Bitwise
 
   alias Postgrex.Protocol
 
@@ -447,62 +447,62 @@ defmodule Postgrex.Replication do
   @doc """
   Returns the string representation of an LSN value, given its integer representation.
 
+  It returns `:error` if the provided integer falls outside the range for a valid
+  unsigned 64-bit integer.
+
+  ## Log Sequence Numbers
+
   PostgreSQL uses two representations for the Log Sequence Number (LSN):
 
     * An unsigned 64-bit integer. Used internally by PostgreSQL and sent in the XLogData
     replication messages.
 
-    * A string of two hexadecimal numbers of up to 8 digits each, separated
+    * A string of two hexadecimal numbers of up to eight digits each, separated
     by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/3`.
 
   For more information on Log Sequence Numbers, see
   [PostgreSQL pg_lsn docs](https://www.postgresql.org/docs/current/datatype-pg-lsn.html) and
   [PostgreSQL WAL internals docs](https://www.postgresql.org/docs/current/wal-internals.html).
   """
-  @spec lsn_int_to_string(integer) :: String.t()
-  def lsn_int_to_string(lsn) when is_integer(lsn) do
+  @spec encode_lsn(integer) :: {:ok, String.t()} | :error
+  def encode_lsn(lsn) when is_integer(lsn) do
     if 0 <= lsn and lsn <= @max_uint64 do
       <<file_id::32, offset::32>> = <<lsn::64>>
-      Integer.to_string(file_id, 16) <> "/" <> Integer.to_string(offset, 16)
+      {:ok, Integer.to_string(file_id, 16) <> "/" <> Integer.to_string(offset, 16)}
     else
-      raise ArgumentError, "invalid unsigned 64-bit integer"
+      :error
     end
   end
 
   @doc """
   Returns the integer representation of an LSN value, given its string representation.
 
+  It returns `:error` if the provided string is not a valid LSN.
+
+  ## Log Sequence Numbers
+
   PostgreSQL uses two representations for the Log Sequence Number (LSN):
 
     * An unsigned 64-bit integer. Used internally by PostgreSQL and sent in the XLogData
     replication messages.
 
-    * A string of two hexadecimal numbers of up to 8 digits each, separated
+    * A string of two hexadecimal numbers of up to eight digits each, separated
     by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/3`.
 
   For more information on Log Sequence Numbers, see
   [PostgreSQL pg_lsn docs](https://www.postgresql.org/docs/current/datatype-pg-lsn.html) and
   [PostgreSQL WAL internals docs](https://www.postgresql.org/docs/current/wal-internals.html).
   """
-  @spec lsn_string_to_int(String.t()) :: integer
-  def lsn_string_to_int(lsn) when is_binary(lsn) do
+  @spec decode_lsn(String.t()) :: {:ok, integer} | :error
+  def decode_lsn(lsn) when is_binary(lsn) do
     with [file_id, offset] <- String.split(lsn, "/", trim: true),
          true <- byte_size(file_id) <= @max_lsn_component_size,
          true <- byte_size(offset) <= @max_lsn_component_size,
-         false <- String.first(file_id) == "-",
-         false <- String.first(offset) == "-" do
-      try do
-        file_id = String.to_integer(file_id, 16)
-        offset = String.to_integer(offset, 16)
-
-        file_id <<< 32 ||| offset
-      rescue
-        ArgumentError ->
-          reraise ArgumentError, "invalid LSN format", __STACKTRACE__
-      end
+         {file_id, ""} when file_id >= 0 <- Integer.parse(file_id, 16),
+         {offset, ""} when offset >= 0 <- Integer.parse(offset, 16) do
+      {:ok, file_id <<< 32 ||| offset}
     else
-      _ ->
-        raise ArgumentError, "invalid LSN format"
+      _ -> :error
     end
   end
 

@@ -145,53 +145,52 @@ defmodule ReplicationTest do
     assert [[_]] = result.rows
   end
 
-  test "converts LSN from integer to string" do
+  test "encodes LSN" do
     lsn_int = Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
-    lsn_str = PR.lsn_int_to_string(lsn_int)
+    {:ok, lsn_str} = PR.encode_lsn(lsn_int)
+    {:ok, lsn_min} = PR.encode_lsn(0)
+    {:ok, lsn_max} = PR.encode_lsn(@max_uint64)
     assert lsn_str == "FEDCBA98/76543210"
-    assert PR.lsn_int_to_string(0) == "0/0"
-    assert PR.lsn_int_to_string(@max_uint64) == "FFFFFFFF/FFFFFFFF"
+    assert lsn_min == "0/0"
+    assert lsn_max == "FFFFFFFF/FFFFFFFF"
   end
 
-  test "converts LSN from string to integer" do
+  test "decodes LSN" do
     lsn_str = "FEDCBA98/76543210"
-    lsn_int = PR.lsn_string_to_int(lsn_str)
+    {:ok, lsn_int} = PR.decode_lsn(lsn_str)
+    {:ok, lsn_min} = PR.decode_lsn("0/0")
+    {:ok, lsn_max} = PR.decode_lsn("FFFFFFFF/FFFFFFFF")
     assert lsn_int == Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
-    assert PR.lsn_string_to_int("0/0") == 0
-    assert PR.lsn_string_to_int("FFFFFFFF/FFFFFFFF") == @max_uint64
+    assert lsn_min == 0
+    assert lsn_max == @max_uint64
   end
 
-  test "convert LSN from string to integer to string" do
+  test "decode then encode LSN returns original" do
     lsn_str = "FEDCBA98/76543210"
-    lsn_str_computed = lsn_str |> PR.lsn_string_to_int() |> PR.lsn_int_to_string()
+    lsn_str_computed = lsn_str |> PR.decode_lsn() |> elem(1) |> PR.encode_lsn() |> elem(1)
     assert lsn_str == lsn_str_computed
   end
 
-  test "convert LSN from integer to string to integer" do
+  test "encode then decode LSN returns original" do
     lsn_int = Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
-    lsn_int_computed = lsn_int |> PR.lsn_int_to_string() |> PR.lsn_string_to_int()
+    lsn_int_computed = lsn_int |> PR.encode_lsn() |> elem(1) |> PR.decode_lsn() |> elem(1)
     assert lsn_int == lsn_int_computed
   end
 
-  test "invalid LSN strings raise ArgumentError" do
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0123ABC") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("/0123ABC") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0123ABC/") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("123G/0123ABC") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0/012345678") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("012345678/0") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("-0FA23/08FACD1") end
-    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0FA23/-08FACD1") end
+  test "decode invalid LSN returns :error" do
+    assert PR.decode_lsn("0123ABC") == :error
+    assert PR.decode_lsn("/0123ABC") == :error
+    assert PR.decode_lsn("0123ABC/") == :error
+    assert PR.decode_lsn("123G/0123ABC") == :error
+    assert PR.decode_lsn("0/012345678") == :error
+    assert PR.decode_lsn("012345678/0") == :error
+    assert PR.decode_lsn("-0FA23/08FACD1") == :error
+    assert PR.decode_lsn("0FA23/-08FACD1") == :error
   end
 
-  test "invalid LSN integers raise ArgumentError" do
-    assert_raise ArgumentError, ~r/invalid unsigned 64-bit integer/, fn ->
-      PR.lsn_int_to_string(-1)
-    end
-
-    assert_raise ArgumentError, ~r/invalid unsigned 64-bit integer/, fn ->
-      PR.lsn_int_to_string(@max_uint64 + 1)
-    end
+  test "encode invalid LSN returns :error" do
+    assert PR.encode_lsn(-1) == :error
+    assert PR.encode_lsn(@max_uint64 + 1) == :error
   end
 
   defp start_replication(repl) do
