@@ -1039,7 +1039,7 @@ defmodule Postgrex.Protocol do
 
     case msg_send(%{s | buffer: nil}, msgs, buffer) do
       :ok ->
-        recv_simple(s, status, buffer)
+        recv_simple(s, status, [], [], [], buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -1049,7 +1049,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp recv_simple(s, status, columns \\ [], rows \\ [], tags \\ [], buffer) do
+  defp recv_simple(s, status, columns, rows, tags, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
         columns = column_names(fields)
@@ -1069,6 +1069,10 @@ defmodule Postgrex.Protocol do
       {:ok, msg_ready(status: postgres), buffer} ->
         s = %{s | postgres: postgres, buffer: buffer}
         {:ok, done(s, status, columns, Enum.reverse(rows), Enum.reverse(tags)), s}
+
+      {:ok, msg, buffer} ->
+        {s, status} = handle_msg(s, status, msg)
+        recv_simple(s, status, columns, rows, tags, buffer)
 
       {:disconnect, _, _} = dis ->
         dis

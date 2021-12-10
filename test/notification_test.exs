@@ -102,7 +102,7 @@ defmodule NotificationTest do
     end)
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
-    :timer.sleep(300)
+    Process.sleep(300)
   end
 
   describe "reconnection" do
