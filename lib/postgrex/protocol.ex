@@ -551,19 +551,6 @@ defmodule Postgrex.Protocol do
   def handle_status(_, %{postgres: {postgres, _}} = s), do: {postgres, s}
   def handle_status(_, %{postgres: postgres} = s), do: {postgres, s}
 
-  @spec handle_listener(String.t(), Keyword.t(), state) ::
-          {:ok, Postgrex.Result.t(), state}
-          | {:error, Postgrex.Error.t(), state}
-          | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_listener(statement, opts, s) do
-    %{buffer: buffer, timeout: timeout, sock: sock} = s
-    status = new_status(opts, mode: :transaction)
-    timer = start_listener_timer(timeout, sock)
-    result = listener(%{s | buffer: nil}, status, statement, buffer)
-    cancel_listener_timer(timer)
-    result
-  end
-
   @spec handle_info(any, Keyword.t(), state) ::
           {:ok, state}
           | {:error, Postgrex.Error.t(), state}
@@ -1040,14 +1027,14 @@ defmodule Postgrex.Protocol do
     DBConnection.ConnectionError.exception(msg)
   end
 
-  ## replication
+  ## replication/notifications
 
   @spec handle_simple(String.t() | iolist(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_simple(statement, %{buffer: buffer} = s) do
-    status = new_status([], mode: :transaction)
+  def handle_simple(statement, opts \\ [], %{buffer: buffer} = s) do
+    status = new_status(opts, mode: :transaction)
     msgs = [msg_query(statement: statement)]
 
     case msg_send(%{s | buffer: nil}, msgs, buffer) do
@@ -1160,64 +1147,6 @@ defmodule Postgrex.Protocol do
       {:disconnect, _, _} = dis ->
         dis
     end
-  end
-
-  ## listener
-
-  defp listener(s, status, statement, buffer) do
-    msgs = [
-      msg_parse(name: "", statement: statement, type_oids: []),
-      msg_bind(name_port: "", name_stat: "", param_formats: [], params: [], result_formats: []),
-      msg_execute(name_port: "", max_rows: 0),
-      msg_close(type: :statement, name: ""),
-      msg_sync()
-    ]
-
-    with :ok <- msg_send(s, msgs, buffer),
-         {:ok, s, buffer} <- recv_parse(s, status, buffer),
-         {:ok, s, buffer} <- recv_bind(s, status, buffer),
-         {:ok, result, s, buffer} <- recv_listener(s, status, buffer),
-         {:ok, s, buffer} <- recv_close(s, status, buffer),
-         {:ok, s} <- recv_ready(s, status, buffer) do
-      {:ok, result, s}
-    else
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        error_ready(s, status, err, buffer)
-
-      {:disconnect, _err, _s} = disconnect ->
-        disconnect
-    end
-  end
-
-  defp recv_listener(s, status, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_command_complete(tag: tag), buffer} ->
-        {:ok, done(s, status, [tag]), s, buffer}
-
-      {:ok, msg_error(fields: fields), buffer} ->
-        {:error, Postgrex.Error.exception(postgres: fields), s, buffer}
-
-      {:ok, msg, buffer} ->
-        {s, status} = handle_msg(s, status, msg)
-        recv_listener(s, status, buffer)
-
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp start_listener_timer(:infinity, _), do: :infinity
-
-  defp start_listener_timer(timeout, {mod, sock}) do
-    {:ok, tref} = :timer.apply_after(timeout, mod, :close, [sock])
-    {:timer, tref}
-  end
-
-  def cancel_listener_timer(:infinity), do: :ok
-
-  def cancel_listener_timer({:timer, tref}) do
-    {:ok, _} = :timer.cancel(tref)
-    :ok
   end
 
   ## prepare
