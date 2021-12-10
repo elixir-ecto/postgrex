@@ -488,7 +488,9 @@ defmodule Postgrex.Replication do
   def lsn_string_to_int(lsn) when is_binary(lsn) do
     with [file_id, offset] <- String.split(lsn, "/", trim: true),
          true <- byte_size(file_id) <= @max_lsn_component_size,
-         true <- byte_size(offset) <= @max_lsn_component_size do
+         true <- byte_size(offset) <= @max_lsn_component_size,
+         false <- String.first(file_id) == "-",
+         false <- String.first(offset) == "-" do
       try do
         file_id = String.to_integer(file_id, 16)
         offset = String.to_integer(offset, 16)

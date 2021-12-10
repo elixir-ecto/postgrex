@@ -180,6 +180,8 @@ defmodule ReplicationTest do
     assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("123G/0123ABC") end
     assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0/012345678") end
     assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("012345678/0") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("-0FA23/08FACD1") end
+    assert_raise ArgumentError, ~r/invalid LSN/, fn -> PR.lsn_string_to_int("0FA23/-08FACD1") end
   end
 
   test "invalid LSN integers raise ArgumentError" do
