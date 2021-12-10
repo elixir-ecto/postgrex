@@ -4,6 +4,7 @@ defmodule ReplicationTest do
   alias Postgrex.Replication, as: PR
 
   @timeout 2000
+  @max_uint64 18_446_744_073_709_551_615
   @moduletag :logical_replication
   @moduletag min_pg_version: "10.0"
 
@@ -144,9 +145,61 @@ defmodule ReplicationTest do
     assert [[_]] = result.rows
   end
 
+  test "encodes LSN" do
+    lsn_int = Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
+    {:ok, lsn_str} = PR.encode_lsn(lsn_int)
+    {:ok, lsn_min} = PR.encode_lsn(0)
+    {:ok, lsn_max} = PR.encode_lsn(@max_uint64)
+    assert lsn_str == "FEDCBA98/76543210"
+    assert lsn_min == "0/0"
+    assert lsn_max == "FFFFFFFF/FFFFFFFF"
+  end
+
+  test "decodes LSN" do
+    lsn_str = "FEDCBA98/76543210"
+    {:ok, lsn_int} = PR.decode_lsn(lsn_str)
+    {:ok, lsn_min} = PR.decode_lsn("0/0")
+    {:ok, lsn_max} = PR.decode_lsn("FFFFFFFF/FFFFFFFF")
+    assert lsn_int == Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
+    assert lsn_min == 0
+    assert lsn_max == @max_uint64
+  end
+
+  test "decode then encode LSN returns original" do
+    lsn_str = "FEDCBA98/76543210"
+    lsn_str_computed = lsn_str |> PR.decode_lsn() |> elem(1) |> PR.encode_lsn() |> elem(1)
+    assert lsn_str == lsn_str_computed
+  end
+
+  test "encode then decode LSN returns original" do
+    lsn_int = Enum.reduce(1..15, 0, &(&1 * pow(16, &1) + &2))
+    lsn_int_computed = lsn_int |> PR.encode_lsn() |> elem(1) |> PR.decode_lsn() |> elem(1)
+    assert lsn_int == lsn_int_computed
+  end
+
+  test "decode invalid LSN returns :error" do
+    assert PR.decode_lsn("0123ABC") == :error
+    assert PR.decode_lsn("/0123ABC") == :error
+    assert PR.decode_lsn("0123ABC/") == :error
+    assert PR.decode_lsn("123G/0123ABC") == :error
+    assert PR.decode_lsn("0/012345678") == :error
+    assert PR.decode_lsn("012345678/0") == :error
+    assert PR.decode_lsn("-0FA23/08FACD1") == :error
+    assert PR.decode_lsn("0FA23/-08FACD1") == :error
+  end
+
+  test "encode invalid LSN returns :error" do
+    assert PR.encode_lsn(-1) == :error
+    assert PR.encode_lsn(@max_uint64 + 1) == :error
+  end
+
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
     {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
     :ok = PR.start_replication(repl, slot, plugin_opts: plugin_opts)
+  end
+
+  defp pow(base, exp) do
+    :math.pow(base, exp) |> round()
   end
 end
