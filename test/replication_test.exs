@@ -123,6 +123,11 @@ defmodule ReplicationTest do
     assert {:error, :stream_in_progress} == PR.create_slot(context.repl, "slot", :plugin)
     assert {:error, :stream_in_progress} == PR.drop_slot(context.repl, "slot")
     assert {:error, :stream_in_progress} == PR.start_replication(context.repl, "slot")
+    assert {:error, :stream_in_progress} == PR.identify_system(context.repl)
+    assert {:error, :stream_in_progress} == PR.show(context.repl, "value")
+    assert {:error, :stream_in_progress} == PR.timeline_history(context.repl, "timeline_id")
+    assert {:error, :stream_in_progress} == PR.publication_tables(context.repl, "publication")
+    assert {:error, :stream_in_progress} == PR.copy_table(context.repl, "table")
   end
 
   test "drop_slot with wait = false returns an error when being used by a connection", context do
