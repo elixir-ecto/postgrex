@@ -261,10 +261,9 @@ defmodule ReplicationTest do
     end
 
     test "can issue commands after copying is finished", context do
-      %{slot: slot, plugin: plugin} = @repl_opts
       {:ok, _} = PR.copy_table(context.repl, "repl_test")
       assert_receive {:copy_done, "repl_test"}, @timeout
-      assert {:ok, _} = PR.create_slot(context.repl, slot, plugin)
+      assert {:ok, _} = PR.identify_system(context.repl)
     end
 
     test "can start replication after copying is finished", context do
