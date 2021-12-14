@@ -243,6 +243,36 @@ defmodule ReplicationTest do
     P.query!(pid, "DROP TABLE repl_test", [])
   end
 
+  test "can issue commands after copying is finished", context do
+    %{slot: slot, plugin: plugin} = @repl_opts
+    pid = start_supervised!({P, @opts})
+    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
+    {:ok, _} = PR.copy_table(context.repl, "repl_test")
+    assert_receive {:copy_done, "repl_test"}, @timeout
+    assert {:ok, _} = PR.create_slot(context.repl, slot, plugin)
+    P.query!(pid, "DROP TABLE repl_test", [])
+  end
+
+  test "can start replication after copying is finished", context do
+    pid = start_supervised!({P, @opts})
+    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
+    {:ok, _} = PR.copy_table(context.repl, "repl_test")
+    assert_receive {:copy_done, "repl_test"}, @timeout
+    start_replication(context.repl)
+    P.query!(pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
+
+    assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
+                   @timeout
+
+    assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?I, _rid::32, ?N, _nc::16, _::binary>>,
+                   @timeout
+
+    assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>,
+                   @timeout
+
+    P.query!(pid, "DROP TABLE repl_test", [])
+  end
+
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
     {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
