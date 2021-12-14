@@ -891,7 +891,7 @@ defmodule Postgrex.Replication do
 
   defp format_text_copy(@copy_done, opts, _) do
     table_name = Keyword.fetch!(opts, :table_name)
-    {:copy_done, table_name}
+    {@copy_done, table_name}
   end
 
   defp format_text_copy(copy, opts, %{connection_id: connection_id}) do
