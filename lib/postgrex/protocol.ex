@@ -1165,6 +1165,9 @@ defmodule Postgrex.Protocol do
         s = %{s | postgres: postgres, buffer: buffer}
         {:ok, Enum.reverse([:copy_done | copies]), s}
 
+      {:ok, _msg, buffer} ->
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+
       {:disconnect, _, _} = dis ->
         dis
     end
