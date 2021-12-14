@@ -93,6 +93,8 @@ defmodule ReplicationTest do
 
     assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>,
                    @timeout
+
+    P.query!(pid, "DROP TABLE repl_test", [])
   end
 
   test "create slot returns results", context do
@@ -118,9 +120,9 @@ defmodule ReplicationTest do
 
   test "can't run other commands after replication has started", context do
     start_replication(context.repl)
-    assert {:error, :replication_started} == PR.create_slot(context.repl, "slot", :plugin)
-    assert {:error, :replication_started} == PR.drop_slot(context.repl, "slot")
-    assert {:error, :replication_started} == PR.start_replication(context.repl, "slot")
+    assert {:error, :stream_in_progress} == PR.create_slot(context.repl, "slot", :plugin)
+    assert {:error, :stream_in_progress} == PR.drop_slot(context.repl, "slot")
+    assert {:error, :stream_in_progress} == PR.start_replication(context.repl, "slot")
   end
 
   test "drop_slot with wait = false returns an error when being used by a connection", context do
@@ -191,6 +193,54 @@ defmodule ReplicationTest do
   test "encode invalid LSN returns :error" do
     assert PR.encode_lsn(-1) == :error
     assert PR.encode_lsn(@max_uint64 + 1) == :error
+  end
+
+  test "empty table list for publication that doesn't exist", context do
+    {:ok, %Postgrex.Result{} = result} = PR.publication_tables(context.repl, "not_a_publication")
+    assert result.num_rows
+    assert result.rows == []
+  end
+
+  test "return list of tables contained in a publication", context do
+    %{plugin_opts: [proto_version: _, publication_names: publication]} = @repl_opts
+    {:ok, %Postgrex.Result{} = result} = PR.publication_tables(context.repl, publication)
+    assert result.num_rows > 0
+    assert result.columns == ["pubname", "schemaname", "tablename"]
+    assert [_ | _] = result.rows
+  end
+
+  test "copy table", context do
+    pid = start_supervised!({P, @opts})
+    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
+    P.query!(pid, "INSERT INTO repl_test VALUES ($1, $2), ($3, $4)", [42, "fortytwo", 1, "one"])
+    {:ok, _} = PR.copy_table(context.repl, "repl_test")
+    assert_receive %Postgrex.Result{columns: ["id", "text"], rows: [["42", "fortytwo"]]}, @timeout
+    assert_receive %Postgrex.Result{columns: ["id", "text"], rows: [["1", "one"]]}, @timeout
+    assert_receive {:copy_done, "repl_test"}, @timeout
+    P.query!(pid, "DROP TABLE repl_test", [])
+  end
+
+  test "copy table, slot is automatically dropped", context do
+    pid = start_supervised!({P, @opts})
+    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
+
+    {:ok, %Postgrex.Result{rows: [[slot_name | _]]}} =
+      PR.copy_table(context.repl, "repl_test", drop_slot: true)
+
+    {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot_name)
+    assert Exception.message(error) =~ "replication slot \"#{slot_name}\" does not exist"
+    P.query!(pid, "DROP TABLE repl_test", [])
+  end
+
+  test "copy table, slot is not automatically dropped", context do
+    pid = start_supervised!({P, @opts})
+    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
+
+    {:ok, %Postgrex.Result{rows: [[slot_name | _]]}} =
+      PR.copy_table(context.repl, "repl_test", drop_slot: false)
+
+    assert {:ok, _} = PR.drop_slot(context.repl, slot_name)
+    P.query!(pid, "DROP TABLE repl_test", [])
   end
 
   defp start_replication(repl) do
