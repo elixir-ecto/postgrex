@@ -1080,7 +1080,7 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_replication(String.t() | iolist(), state) ::
-          {:ok, Postgrex.Result.t(), state}
+          {:ok, state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_replication(statement, %{buffer: buffer} = s) do
@@ -1124,18 +1124,25 @@ defmodule Postgrex.Protocol do
   end
 
   @spec handle_copy_recv(any, Keyword.t(), state) ::
-          {:ok, [binary], state}
+          {:ok, [binary | atom], state}
+          | :unknown
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_copy_recv(msg, s) do
+  def handle_copy_recv(msg, max_copies, s) do
     case handle_socket(msg, s) do
-      {:data, data} -> handle_copy_recv(s, [], data)
+      {:data, data} -> handle_copy_recv(s, max_copies, [], 0, data)
       :unknown -> :unknown
       disconnect -> disconnect
     end
   end
 
-  defp handle_copy_recv(%{timeout: timeout} = s, copies, buffer) do
+  defp handle_copy_recv(s, max_copies, copies, max_copies, buffer) do
+    with {:ok, s} <- activate(s, buffer) do
+      {:ok, Enum.reverse(copies), s}
+    end
+  end
+
+  defp handle_copy_recv(%{timeout: timeout} = s, max_copies, copies, ncopies, buffer) do
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
@@ -1146,7 +1153,55 @@ defmodule Postgrex.Protocol do
         end
 
       {:ok, msg_copy_data(data: data), buffer} ->
-        handle_copy_recv(s, [data | copies], buffer)
+        handle_copy_recv(s, max_copies, [data | copies], ncopies + 1, buffer)
+
+      {:ok, msg_copy_done(), buffer} ->
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+
+      {:ok, msg_command_complete(), buffer} ->
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+
+      {:ok, msg_ready(status: postgres), buffer} ->
+        s = %{s | postgres: postgres, buffer: buffer}
+        {:ok, Enum.reverse([:copy_done | copies]), s}
+
+      {:ok, _msg, buffer} ->
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+
+      {:disconnect, _, _} = dis ->
+        dis
+    end
+  end
+
+  @spec handle_copy_table(String.t() | iolist(), state) ::
+          {:ok, state}
+          | {:error, Postgrex.Error.t(), state}
+          | {:disconnect, %DBConnection.ConnectionError{}, state}
+  def handle_copy_table(statement, %{buffer: buffer} = s) do
+    status = new_status([], mode: :transaction)
+    msgs = [msg_query(statement: statement)]
+
+    case msg_send(%{s | buffer: nil}, msgs, buffer) do
+      :ok ->
+        recv_copy_table(s, buffer)
+
+      {:disconnect, err, s} ->
+        {:disconnect, err, s}
+
+      {:error, %Postgrex.Error{} = err, s, buffer} ->
+        error_ready(s, status, err, buffer)
+    end
+  end
+
+  defp recv_copy_table(s, buffer) do
+    case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_copy_out_response(), buffer} ->
+        {:ok, %{s | buffer: buffer}}
+
+      {:ok, msg_error(fields: fields), buffer} ->
+        status = new_status([], mode: :transaction)
+        err = Postgrex.Error.exception(postgres: fields)
+        error_ready(s, status, err, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
@@ -2884,7 +2939,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp done(%{connection_id: connection_id}, %{messages: messages}, columns, rows, tags) do
-    {command, nil} = decode_tags(tags)
+    {command, _} = decode_tags(tags)
 
     %Postgrex.Result{
       command: command,

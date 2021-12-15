@@ -33,6 +33,12 @@ defmodule ReplicationTest do
     end
 
     @impl true
+    def handle_copy(msg, pid) do
+      send(pid, msg)
+      {:noreply, [], pid}
+    end
+
+    @impl true
     def handle_info(:ping, pid) do
       send(pid, :pong)
       {:noreply, [], pid}
@@ -74,27 +80,6 @@ defmodule ReplicationTest do
     assert_receive :pong
   end
 
-  test "handle_data", context do
-    start_replication(context.repl)
-    assert_receive <<?k, _::64, _::64, _>>, @timeout
-  end
-
-  test "receives pgoutput", context do
-    start_replication(context.repl)
-    pid = start_supervised!({P, @opts})
-    P.query!(pid, "CREATE TABLE repl_test (id int, text text)", [])
-    P.query!(pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
-
-    assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
-                   @timeout
-
-    assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?I, _rid::32, ?N, _nc::16, _::binary>>,
-                   @timeout
-
-    assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>,
-                   @timeout
-  end
-
   test "create slot returns results", context do
     %{slot: slot, plugin: plugin} = @repl_opts
     {:ok, %Postgrex.Result{} = result} = PR.create_slot(context.repl, slot, plugin)
@@ -114,13 +99,6 @@ defmodule ReplicationTest do
     %{slot: slot} = @repl_opts
     {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot)
     assert Exception.message(error) =~ "replication slot \"postgrex_example\" does not exist"
-  end
-
-  test "can't run other commands after replication has started", context do
-    start_replication(context.repl)
-    assert {:error, :replication_started} == PR.create_slot(context.repl, "slot", :plugin)
-    assert {:error, :replication_started} == PR.drop_slot(context.repl, "slot")
-    assert {:error, :replication_started} == PR.start_replication(context.repl, "slot")
   end
 
   test "drop_slot with wait = false returns an error when being used by a connection", context do
@@ -191,6 +169,124 @@ defmodule ReplicationTest do
   test "encode invalid LSN returns :error" do
     assert PR.encode_lsn(-1) == :error
     assert PR.encode_lsn(@max_uint64 + 1) == :error
+  end
+
+  test "empty table list for publication that doesn't exist", context do
+    {:ok, %Postgrex.Result{} = result} = PR.publication_tables(context.repl, "not_a_publication")
+    assert result.num_rows
+    assert result.rows == []
+  end
+
+  test "return list of tables contained in a publication", context do
+    %{plugin_opts: [proto_version: _, publication_names: publication]} = @repl_opts
+    {:ok, %Postgrex.Result{} = result} = PR.publication_tables(context.repl, publication)
+    assert result.num_rows > 0
+    assert result.columns == ["pubname", "schemaname", "tablename"]
+    assert [_ | _] = result.rows
+  end
+
+  describe "replication" do
+    setup do
+      pid = start_supervised!({P, @opts}, id: :repl_conn)
+      repl = start_supervised!({Repl, {self(), @opts}}, id: :repl_repl)
+
+      P.query!(pid, "CREATE TABLE IF NOT EXISTS repl_test (id int, text text)", [])
+      start_replication(repl)
+
+      on_exit(fn ->
+        {:ok, pid} = P.start_link(@opts)
+        P.query!(pid, "DROP TABLE IF EXISTS repl_test", [])
+      end)
+
+      {:ok, pid: pid, repl: repl}
+    end
+
+    test "handle_data" do
+      assert_receive <<?k, _::64, _::64, _>>, @timeout
+    end
+
+    test "receives pgoutput", context do
+      P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
+                     @timeout
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?I, _rid::32, ?N, _nc::16, _::binary>>,
+                     @timeout
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>,
+                     @timeout
+    end
+
+    test "can't run other commands after replication has started", context do
+      assert {:error, :stream_in_progress} == PR.create_slot(context.repl, "slot", :plugin)
+      assert {:error, :stream_in_progress} == PR.drop_slot(context.repl, "slot")
+      assert {:error, :stream_in_progress} == PR.start_replication(context.repl, "slot")
+      assert {:error, :stream_in_progress} == PR.identify_system(context.repl)
+      assert {:error, :stream_in_progress} == PR.show(context.repl, "value")
+      assert {:error, :stream_in_progress} == PR.timeline_history(context.repl, "timeline_id")
+      assert {:error, :stream_in_progress} == PR.publication_tables(context.repl, "publication")
+      assert {:error, :stream_in_progress} == PR.copy_table(context.repl, "table")
+    end
+  end
+
+  describe "copy_table" do
+    setup do
+      pid = start_supervised!({P, @opts}, id: :copy_conn)
+      repl = start_supervised!({Repl, {self(), @opts}}, id: :copy_repl)
+
+      P.query!(pid, "CREATE TABLE IF NOT EXISTS repl_test (id int, text text)", [])
+
+      on_exit(fn ->
+        {:ok, pid} = P.start_link(@opts)
+        P.query!(pid, "DROP TABLE IF EXISTS repl_test", [])
+      end)
+
+      {:ok, pid: pid, repl: repl}
+    end
+
+    test "copy table", context do
+      P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2), ($3, $4)", [42, "42", 1, "1"])
+      {:ok, _} = PR.copy_table(context.repl, "repl_test")
+      assert_receive %Postgrex.Result{columns: ["id", "text"], rows: [["42", "42"]]}, @timeout
+      assert_receive %Postgrex.Result{columns: ["id", "text"], rows: [["1", "1"]]}, @timeout
+      assert_receive {:copy_done, "repl_test"}, @timeout
+    end
+
+    test "copy table, slot is automatically dropped", context do
+      {:ok, result} = PR.copy_table(context.repl, "repl_test", drop_slot: true)
+      %Postgrex.Result{rows: [[slot_name | _]]} = result
+      {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot_name)
+      assert Exception.message(error) =~ "replication slot \"#{slot_name}\" does not exist"
+    end
+
+    test "copy table, slot is not automatically dropped", context do
+      {:ok, result} = PR.copy_table(context.repl, "repl_test", drop_slot: false)
+      %Postgrex.Result{rows: [[slot_name | _]]} = result
+      assert {:ok, _} = PR.drop_slot(context.repl, slot_name)
+    end
+
+    test "can issue commands after copying is finished", context do
+      {:ok, _} = PR.copy_table(context.repl, "repl_test")
+      assert_receive {:copy_done, "repl_test"}, @timeout
+      assert {:ok, _} = PR.identify_system(context.repl)
+    end
+
+    test "can start replication after copying is finished", context do
+      {:ok, _} = PR.copy_table(context.repl, "repl_test")
+      assert_receive {:copy_done, "repl_test"}, @timeout
+      start_replication(context.repl)
+      P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
+                     @timeout
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?I, _rid::32, ?N, _nc::16, _::binary>>,
+                     @timeout
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>,
+                     @timeout
+    end
   end
 
   defp start_replication(repl) do
