@@ -33,6 +33,12 @@ defmodule ReplicationTest do
     end
 
     @impl true
+    def handle_copy(msg, pid) do
+      send(pid, msg)
+      {:noreply, [], pid}
+    end
+
+    @impl true
     def handle_info(:ping, pid) do
       send(pid, :pong)
       {:noreply, [], pid}

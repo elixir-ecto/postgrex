@@ -156,7 +156,6 @@ defmodule Postgrex.Replication do
   @max_lsn_component_size 8
   @max_uint64 18_446_744_073_709_551_615
   @max_copy_messages 500
-  @copy_done :copy_done
   @slot_name_prefix "pg_"
   @slot_name_rand_bytes 18
   @public_commands [
@@ -178,17 +177,25 @@ defmodule Postgrex.Replication do
   @callback init(term) :: {:ok, state}
 
   @doc """
-  Receives `binary` messages during replication and `Postgrex.Result.t()` messages during table copying.
+  Receives `binary` replication messages.
 
-  The format of the row values in the copy messages are `text`.
-
-  The format of the replication messages are described [under the START_REPLICATION
+  The format of the messages are described [under the START_REPLICATION
   section in PostgreSQL docs](https://www.postgresql.org/docs/14/protocol-replication.html).
 
-  Some replication messages require explicit acknowledgement, which can be done
+  Some messages require explicit acknowledgement, which can be done
   by returning a list of binaries according to the replication protocol.
   """
   @callback handle_data(binary, state) :: {:noreply, [copy], state}
+
+  @doc """
+  Receives copy messages.
+
+  The format of the message is `Postgrex.Result.t()` with the row values
+  formatted as `text`. A `{:copy,done, table_name}` message will be sent
+  to signal copying has completed.
+  """
+  @callback handle_copy(Postgrex.Result.t() | {:copy_done, String.t()}, state) ::
+              {:noreply, [copy], state}
 
   @doc """
   Callback for `Kernel.send/2`.
@@ -202,7 +209,7 @@ defmodule Postgrex.Replication do
   """
   @callback handle_call(term, GenServer.from(), state) :: {:noreply, [copy], state}
 
-  @optional_callbacks handle_info: 2, handle_call: 3
+  @optional_callbacks handle_info: 2, handle_call: 3, handle_copy: 2
 
   @doc """
   Replies to the given client.
@@ -754,7 +761,7 @@ defmodule Postgrex.Replication do
 
     case Protocol.handle_copy_recv(msg, max_copies, protocol) do
       {:ok, copies, protocol} ->
-        handle_data(copies, %{s | protocol: protocol})
+        copy_recv_dispatch(copies, %{s | protocol: protocol})
 
       :unknown ->
         %{state: {mod, mod_state}} = s
@@ -770,24 +777,26 @@ defmodule Postgrex.Replication do
     end
   end
 
+  defp copy_recv_dispatch(copies, %{copy_opts: nil} = s), do: handle_data(copies, s)
+  defp copy_recv_dispatch(copies, s), do: handle_copy(copies, s)
+
   defp handle_data([], s), do: {:noreply, s}
 
-  defp handle_data([copy | copies], %{copy_opts: nil} = s) do
-    %{state: {mod, mod_state}} = s
-
+  defp handle_data([copy | copies], %{state: {mod, mod_state}} = s) do
     with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], s) do
       handle_data(copies, s)
     end
   end
 
-  defp handle_data([@copy_done | copies], s) do
-    %{state: {mod, mod_state}, copy_opts: copy_opts} = s
-    copy = format_text_copy(@copy_done, copy_opts, nil)
+  defp handle_copy([], s), do: {:noreply, s}
 
-    with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], s),
+  defp handle_copy([:copy_done | copies], %{state: {mod, mod_state}} = s) do
+    copy = copy_message(:copy_done, s.copy_opts, nil)
+
+    with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s),
          {:ok, _, protocol} <- Protocol.handle_simple("COMMIT", s.protocol),
-         {:ok, _, protocol} <- maybe_drop_slot(copy_opts, protocol) do
-      handle_data(copies, %{s | protocol: protocol, copy_opts: nil})
+         {:ok, _, protocol} <- maybe_drop_slot(s.copy_opts, protocol) do
+      handle_copy(copies, %{s | protocol: protocol, copy_opts: nil})
     else
       {:error, reason, _protocol} ->
         # If we can't commit the copy or drop the slot, we assume that auto_reconnect
@@ -802,12 +811,11 @@ defmodule Postgrex.Replication do
     end
   end
 
-  defp handle_data([copy | copies], s) do
-    %{state: {mod, mod_state}, copy_opts: copy_opts, protocol: protocol} = s
-    copy = format_text_copy(copy, copy_opts, protocol)
+  defp handle_copy([copy | copies], %{state: {mod, mod_state}} = s) do
+    copy = copy_message(copy, s.copy_opts, s.protocol)
 
-    with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], s) do
-      handle_data(copies, s)
+    with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s) do
+      handle_copy(copies, s)
     end
   end
 
@@ -879,7 +887,7 @@ defmodule Postgrex.Replication do
       |> :crypto.strong_rand_bytes()
       |> Base.encode32(padding: false)
 
-    "#{@slot_name_prefix}#{rand_name}"
+    @slot_name_prefix <> rand_name
   end
 
   defp max_copy_messages(%{repl_opts: nil, copy_opts: nil}), do: nil
@@ -889,12 +897,12 @@ defmodule Postgrex.Replication do
 
   defp max_copy_messages(s), do: Keyword.get(s.repl_opts, :max_messages, @max_copy_messages)
 
-  defp format_text_copy(@copy_done, opts, _) do
+  defp copy_message(:copy_done, opts, _protocol) do
     table_name = Keyword.fetch!(opts, :table_name)
-    {@copy_done, table_name}
+    {:copy_done, table_name}
   end
 
-  defp format_text_copy(copy, opts, %{connection_id: connection_id}) do
+  defp copy_message(copy, opts, %{connection_id: connection_id}) do
     columns = Keyword.fetch!(opts, :columns)
     row = copy |> String.trim() |> String.split("\t")
 
@@ -911,9 +919,9 @@ defmodule Postgrex.Replication do
     show_statement = command(:show, name: "server_version_num")
 
     with {:ok, show_result, protocol} <- Protocol.handle_simple(show_statement, protocol),
-         %Postgrex.Result{rows: [[version]]} <- show_result,
-         columns_statement_opts <- [server_version: version, table_name: table_name],
-         columns_statement <- command(:table_columns, columns_statement_opts),
+         %Postgrex.Result{rows: [[version]]} = show_result,
+         columns_statement_opts = [server_version: version, table_name: table_name],
+         columns_statement = command(:table_columns, columns_statement_opts),
          {:ok, columns_result, protocol} <- Protocol.handle_simple(columns_statement, protocol) do
       {:ok, Enum.flat_map(columns_result.rows, & &1), protocol}
     end
