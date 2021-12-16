@@ -950,11 +950,17 @@ defmodule Postgrex.Replication do
     state_statement = command(:slot_state, slot_name: slot)
 
     with {:ok, state_result, protocol} <- Protocol.handle_simple(state_statement, protocol) do
-      if state_result.rows == [] do
-        create_statement = command(:create_slot, opts)
-        Protocol.handle_simple(create_statement, protocol)
-      else
-        {:ok, nil, protocol}
+      cond do
+        state_result.rows == [] and Keyword.has_key?(opts, :plugin) ->
+          create_statement = command(:create_slot, opts)
+          Protocol.handle_simple(create_statement, protocol)
+
+        state_result.rows == [] ->
+          msg = "expected :plugin to be given. cannot restart replication."
+          {:error, %Postgrex.Error{message: msg}, protocol}
+
+        true ->
+          {:ok, nil, protocol}
       end
     end
   end
