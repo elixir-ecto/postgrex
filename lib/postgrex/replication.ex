@@ -362,7 +362,7 @@ defmodule Postgrex.Replication do
   If the connection was started with `auto_reconnect` set to `true`, then
   replication will automatically restart with the options passed into this
   function. You must ensure your system will not be affected by receiving
-  duplicate WAL updates. Restarting temporary slots requires the `plugin`
+  duplicate WAL updates. Restarting temporary slots requires the `temporary`
   option in order to recreate the slot.
 
   This function will return `{:error, :stream_in_progress}` while a table
@@ -378,10 +378,10 @@ defmodule Postgrex.Replication do
     * `:plugin_opts` - It must be a keyword list and is used to configure
       the output plugin assigned to the given slot.
 
-    * `:plugin` - Used to recreate temporary slots when `auto_reconnect = true`.
-      If not provided, the slot cannot be recreated and an error will be raised
-      during reconnection. Recreated slots will be made with `temporary = true`
-      and `snapshot = :noexport`. See `create_slot/4` for more details.
+    * `:temporary` - It must be a keyword list and is used to recreate temporary
+      slots when `auto_reconnect` is set to `true`. If provided, it must contain
+      the keys `:plugin` and `:snapshot`. If either of them is missing, an error
+      will be raised.
 
     * `:max_messages` - The maximum number of replications messages that can be
       accumulated from the wire until they are relayed to `handle_data/2`.
@@ -396,8 +396,15 @@ defmodule Postgrex.Replication do
   @spec start_replication(server, String.t(), Keyword.t()) ::
           :ok | {:error, Postgrex.Error.t()} | {:error, :stream_in_progress}
   def start_replication(pid, slot_name, opts \\ []) do
-    opts = [slot_name: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
+    {temp_opts, opts} = Keyword.pop(opts, :temporary, temporary: false)
+
+    temp_opts =
+      temp_opts
+      |> Keyword.take([:temporary, :plugin, :snapshot])
+      |> Keyword.put_new(:temporary, true)
+
+    opts = [slot_name: slot_name] ++ temp_opts ++ opts
     call(pid, {:start_replication, opts}, timeout)
   end
 
@@ -573,12 +580,12 @@ defmodule Postgrex.Replication do
     slot_opts =
       slot_opts
       |> Keyword.take([:slot_name, :temporary, :plugin])
-      |> Keyword.put_new(:plugin, :pgoutput)
       |> Keyword.put_new(:slot_name, copy_table_slot_name())
+      |> Keyword.put_new(:plugin, :pgoutput)
+      |> Keyword.put_new(:temporary, true)
       |> Keyword.put(:snapshot, :use)
 
     opts = [table_name: table_name] ++ slot_opts ++ opts
-
     call(pid, {:copy_table, opts}, timeout)
   end
 
@@ -698,13 +705,20 @@ defmodule Postgrex.Replication do
 
   @doc false
   def handle_call({:start_replication, opts}, _from, %{repl_opts: nil, copy_opts: nil} = s) do
+    temporary = Keyword.fetch!(opts, :temporary)
     statement = command(:start_replication, opts)
 
-    with {:ok, protocol} <- Protocol.handle_replication(statement, s.protocol),
+    with :ok <- validate_reconnect_options(s.auto_reconnect, temporary, opts),
+         {:ok, protocol} <- Protocol.handle_replication(statement, s.protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
       s = %{s | protocol: protocol, repl_opts: opts}
       {:reply, :ok, s}
     else
+      :error ->
+        # If auto_reconnect is enabled and the temporary option is given,
+        # raise an error if any of the keys in temporary are missing.
+        raise ArgumentError, "expected :plugin and :snapshot to be given in the :temporary option"
+
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
 
@@ -856,9 +870,8 @@ defmodule Postgrex.Replication do
 
   defp maybe_restart_streaming(%{copy_opts: nil} = s) do
     start = command(:start_replication, s.repl_opts)
-    slot_opts = [temporary: true, snapshot: :noexport] ++ s.repl_opts
 
-    with {:ok, _slot, protocol} <- maybe_create_slot(slot_opts, s.protocol),
+    with {:ok, _slot, protocol} <- maybe_recreate_slot(s.repl_opts, s.protocol),
          {:ok, protocol} <- Protocol.handle_replication(start, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
       {:ok, %{s | protocol: protocol}}
@@ -876,7 +889,7 @@ defmodule Postgrex.Replication do
     copy_statement = command(:copy_table, s.copy_opts)
 
     with {:ok, _, protocol} <- Protocol.handle_simple(begin_statement, s.protocol),
-         {:ok, _, protocol} <- maybe_create_slot(s.copy_opts, protocol),
+         {:ok, _, protocol} <- maybe_recreate_slot(s.copy_opts, protocol),
          {:ok, columns, protocol} <- table_columns(table_name, protocol),
          {:ok, protocol} <- Protocol.handle_copy_table(copy_statement, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
@@ -887,6 +900,24 @@ defmodule Postgrex.Replication do
       # solve it either, so we just raise the error as a readable message.
       {_error, reason, _protocol} ->
         raise reason
+    end
+  end
+
+  defp maybe_drop_slot(opts, protocol) do
+    if Keyword.get(opts, :drop_slot, true) do
+      statement = command(:drop_slot, opts)
+      Protocol.handle_simple(statement, protocol)
+    else
+      {:ok, nil, protocol}
+    end
+  end
+
+  defp maybe_recreate_slot(opts, protocol) do
+    if Keyword.fetch!(opts, :temporary) do
+      create_statement = command(:create_slot, opts)
+      Protocol.handle_simple(create_statement, protocol)
+    else
+      {:ok, nil, protocol}
     end
   end
 
@@ -936,34 +967,16 @@ defmodule Postgrex.Replication do
     end
   end
 
-  defp maybe_drop_slot(opts, protocol) do
-    if Keyword.get(opts, :drop_slot, true) do
-      statement = command(:drop_slot, opts)
-      Protocol.handle_simple(statement, protocol)
+  defp validate_reconnect_options(true = _auto_reconnect, true = _temporary, opts) do
+    with true <- Keyword.has_key?(opts, :plugin),
+         true <- Keyword.has_key?(opts, :snapshot) do
+      :ok
     else
-      {:ok, nil, protocol}
+      _ -> :error
     end
   end
 
-  defp maybe_create_slot(opts, protocol) do
-    slot = Keyword.fetch!(opts, :slot_name)
-    state_statement = command(:slot_state, slot_name: slot)
-
-    with {:ok, state_result, protocol} <- Protocol.handle_simple(state_statement, protocol) do
-      cond do
-        state_result.rows == [] and Keyword.has_key?(opts, :plugin) ->
-          create_statement = command(:create_slot, opts)
-          Protocol.handle_simple(create_statement, protocol)
-
-        state_result.rows == [] ->
-          msg = "expected :plugin to be given. cannot restart replication."
-          {:error, %Postgrex.Error{message: msg}, protocol}
-
-        true ->
-          {:ok, nil, protocol}
-      end
-    end
-  end
+  defp validate_reconnect_options(_auto_reconnect, _temporary, _opts), do: :ok
 
   ## Queries
   defp command(:create_slot, opts) do

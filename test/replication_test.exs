@@ -330,7 +330,13 @@ defmodule ReplicationTest do
     test "replication with temporary slot auto-reconnects", context do
       %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
       {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin, temporary: true)
-      :ok = PR.start_replication(context.repl, slot, plugin_opts: plugin_opts, plugin: plugin)
+
+      :ok =
+        PR.start_replication(context.repl, slot,
+          plugin_opts: plugin_opts,
+          temporary: [plugin: plugin, snapshot: :noexport]
+        )
+
       disconnect(context.repl)
 
       # allow time for the process to reconnect
