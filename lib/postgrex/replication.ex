@@ -357,12 +357,12 @@ defmodule Postgrex.Replication do
   Starts logical replication on the given slot.
 
   If the slot's plugin requires additional options, the `plugin_opts`
-  option is required.
+  option must be specified.
 
   If the connection was started with `auto_reconnect` set to `true`, then
   replication will automatically restart with the options passed into this
   function. You must ensure your system will not be affected by receiving
-  duplicate WAL updates. Reconnecting temporary slots requires the `plugin`
+  duplicate WAL updates. Restarting temporary slots requires the `plugin`
   option in order to recreate the slot.
 
   This function will return `{:error, :stream_in_progress}` while a table
