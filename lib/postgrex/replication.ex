@@ -354,27 +354,34 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-  Starts logical replication on the given slot. If the slot's plugin requires
-  additional options, make sure to specify them using the `plugin_opts` option.
+  Starts logical replication on the given slot.
+
+  If the slot's plugin requires additional options, make sure to specify
+  them using the `plugin_opts` option.
 
   If the connection was started with `auto_reconnect` set to `true`, then
   replication will automatically restart with the options passed into this
   function. You must ensure your system will not be affected by receiving
-  duplicate WAL updates. Note that temporary slots cannot be restarted due to the
-  fact that they automatically drop upon disconnect.
+  duplicate WAL updates. Reconnecting temporary slots requires extra
+  configuration. See the `plugin` option for more details.
 
   This function will return `{:error, :stream_in_progress}` while a table
   is being copied or after replication has begun.
 
   ## Options
 
-    * `:plugin_opts` - It must be a keyword list and is used to configure
-      the output plugin assigned to the given slot.
-
     * `:start_pos` - The LSN value to start replication from. Must be
       formatted as a string of two hexadecimal numbers of up to 8 digits
       each, separated by a slash. e.g. `1/F73E0220`.
       Defaults to `0/0`.
+
+    * `:plugin_opts` - It must be a keyword list and is used to configure
+      the output plugin assigned to the given slot.
+
+    * `:plugin` - Used to recreate temporary slots when `auto_reconnect = true`.
+      If not provided, the slot cannot be recreated and an error will be raised
+      during reconnection. Recreated slots will be made with `temporary = true`
+      and `snapshot = :noexport`. See `create_slot/4` for more details.
 
     * `:max_messages` - The maximum number of replications messages that can be
       accumulated from the wire until they are relayed to `handle_data/2`.
@@ -389,7 +396,7 @@ defmodule Postgrex.Replication do
   @spec start_replication(server, String.t(), Keyword.t()) ::
           :ok | {:error, Postgrex.Error.t()} | {:error, :stream_in_progress}
   def start_replication(pid, slot_name, opts \\ []) do
-    opts = [slot: slot_name] ++ opts
+    opts = [slot_name: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:start_replication, opts}, timeout)
   end
@@ -542,7 +549,7 @@ defmodule Postgrex.Replication do
       it is not needed anymore. See `create_slot/4` for more details.
       Defaults to `true`.
 
-    * `:slot_opts` - Keyword list of options to create the slot with.
+    * `:slot_opts` - Keyword list of options used to create the slot.
       Only the keys `:slot_name`, `:temporary` and `:plugin` are allowed.
       By default, a temporary slot with the `:pgoutput` plugin is created.
       See `create_slot/4` for more details.
@@ -849,8 +856,10 @@ defmodule Postgrex.Replication do
 
   defp maybe_restart_streaming(%{copy_opts: nil} = s) do
     start = command(:start_replication, s.repl_opts)
+    slot_opts = [temporary: true, snapshot: :noexport] ++ s.repl_opts
 
-    with {:ok, protocol} <- Protocol.handle_replication(start, s.protocol),
+    with {:ok, _slot, protocol} <- maybe_create_slot(slot_opts, s.protocol),
+         {:ok, protocol} <- Protocol.handle_replication(start, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
       {:ok, %{s | protocol: protocol}}
     else
@@ -937,10 +946,11 @@ defmodule Postgrex.Replication do
   end
 
   defp maybe_create_slot(opts, protocol) do
-    state_statement = command(:slot_state, slot_name: opts.slot_name)
+    slot = Keyword.fetch!(opts, :slot_name)
+    state_statement = command(:slot_state, slot_name: slot)
 
     with {:ok, state_result, protocol} <- Protocol.handle_simple(state_statement, protocol) do
-      if state_result.rows == [[]] do
+      if state_result.rows == [] do
         create_statement = command(:create_slot, opts)
         Protocol.handle_simple(create_statement, protocol)
       else
@@ -977,7 +987,7 @@ defmodule Postgrex.Replication do
   end
 
   defp command(:start_replication, opts) do
-    slot = Keyword.fetch!(opts, :slot)
+    slot = Keyword.fetch!(opts, :slot_name)
     options = Keyword.get(opts, :plugin_opts, [])
     start_pos = Keyword.get(opts, :start_pos, "0/0")
 

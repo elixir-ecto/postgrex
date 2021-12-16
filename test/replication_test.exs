@@ -45,6 +45,11 @@ defmodule ReplicationTest do
     end
 
     @impl true
+    def handle_info(_, pid) do
+      {:noreply, [], pid}
+    end
+
+    @impl true
     def handle_call(:ping, from, pid) do
       Postgrex.Replication.reply(from, :pong)
       {:noreply, [], pid}
@@ -289,6 +294,54 @@ defmodule ReplicationTest do
     end
   end
 
+  describe "auto-reconnect" do
+    setup do
+      opts = Keyword.put(@opts, :auto_reconnect, true)
+      repl = start_supervised!({Repl, {self(), opts}}, id: :reconnect_repl)
+      pid = start_supervised!({P, @opts}, id: :reconnect_conn)
+
+      P.query!(pid, "CREATE TABLE IF NOT EXISTS repl_test (id int, text text)", [])
+
+      on_exit(fn ->
+        {:ok, pid} = P.start_link(@opts)
+        {:ok, repl} = PR.start_link(Repl, self(), @opts)
+
+        P.query!(pid, "DROP TABLE IF EXISTS repl_test", [])
+        PR.drop_slot(repl, @repl_opts.slot)
+      end)
+
+      {:ok, pid: pid, repl: repl}
+    end
+
+    test "replication with permanent slot auto-reconnects", context do
+      %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
+      {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin, temporary: false)
+      :ok = PR.start_replication(context.repl, slot, plugin_opts: plugin_opts)
+      disconnect(context.repl)
+
+      # allow time for the process to reconnect
+      :timer.sleep(500)
+      P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
+                     @timeout
+    end
+
+    test "replication with temporary slot auto-reconnects", context do
+      %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
+      {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin, temporary: true)
+      :ok = PR.start_replication(context.repl, slot, plugin_opts: plugin_opts, plugin: plugin)
+      disconnect(context.repl)
+
+      # allow time for the process to reconnect
+      :timer.sleep(500)
+      P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
+
+      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
+                     @timeout
+    end
+  end
+
   defp start_replication(repl) do
     %{slot: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
     {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
@@ -297,5 +350,10 @@ defmodule ReplicationTest do
 
   defp pow(base, exp) do
     :math.pow(base, exp) |> round()
+  end
+
+  defp disconnect(repl) do
+    {:gen_tcp, sock} = :sys.get_state(repl).mod_state.protocol.sock
+    :gen_tcp.shutdown(sock, :read_write)
   end
 end
