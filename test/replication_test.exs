@@ -346,6 +346,28 @@ defmodule ReplicationTest do
       assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
                      @timeout
     end
+
+    @tag :capture_log
+    test "must provide all temporary keys" do
+      Process.flag(:trap_exit, true)
+      opts = Keyword.put(@opts, :auto_reconnect, true)
+      %{slot: slot, plugin_opts: plugin_opts} = @repl_opts
+
+      {:ok, repl} = PR.start_link(Repl, self(), opts)
+      temporary = []
+      catch_exit(PR.start_replication(repl, slot, plugin_opts: plugin_opts, temporary: temporary))
+      assert_receive {:EXIT, ^repl, {%ArgumentError{}, _}}
+
+      {:ok, repl} = PR.start_link(Repl, self(), opts)
+      temporary = [plugin: "plugin"]
+      catch_exit(PR.start_replication(repl, slot, plugin_opts: plugin_opts, temporary: temporary))
+      assert_receive {:EXIT, ^repl, {%ArgumentError{}, _}}
+
+      {:ok, repl} = PR.start_link(Repl, self(), opts)
+      temporary = [snap_shot: "snapshot"]
+      catch_exit(PR.start_replication(repl, slot, plugin_opts: plugin_opts, temporary: temporary))
+      assert_receive {:EXIT, ^repl, {%ArgumentError{}, _}}
+    end
   end
 
   defp start_replication(repl) do
