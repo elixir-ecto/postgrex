@@ -594,7 +594,7 @@ defmodule Postgrex.Replication do
           | {:error, :stream_in_progress}
   def copy_table(pid, table_name, slot_name, plugin, opts \\ []) do
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    opts = opts |> Keyword.put(:snapshot, :use)
+    opts = opts |> Keyword.put(:snapshot, :use) |> Keyword.put_new(:temporary, true)
     opts = [table_name: table_name, slot_name: slot_name, plugin: plugin] ++ opts
     call(pid, {:copy_table, opts}, timeout)
   end
