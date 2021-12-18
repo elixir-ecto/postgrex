@@ -156,8 +156,6 @@ defmodule Postgrex.Replication do
   @max_lsn_component_size 8
   @max_uint64 18_446_744_073_709_551_615
   @max_copy_messages 500
-  @slot_name_prefix "pg_"
-  @slot_name_rand_bytes 18
   @public_commands [
     :create_slot,
     :drop_slot,
@@ -274,7 +272,7 @@ defmodule Postgrex.Replication do
       above. Defaults to `false`, which means the process terminates.
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
-      `auto_reconnect` is enabled. Defaults to `500`.
+      `:auto_reconnect` is enabled. Defaults to `500`.
   """
   @spec start_link(module(), term(), Keyword.t()) ::
           {:ok, pid} | {:error, Postgrex.Error.t() | term}
@@ -354,34 +352,50 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-  Starts logical replication on the given slot.
+  Starts logical replication on a slot.
 
-  If the slot's plugin requires additional options, the `plugin_opts`
-  option must be specified.
+  Replication can be started on an already existing slot or a temporary
+  slot can be created as part of this function. See the `:slot_name` and
+  `:create_temporary_slot` options for more details. If the slot's plugin
+  requires additional options, the `:plugin_opts` option must be specified.
 
-  If the connection was started with `auto_reconnect` set to `true`, then
+  If the connection was started with `:auto_reconnect` set to `true`, then
   replication will automatically restart with the options passed into this
-  function. You must ensure your system will not be affected by receiving
-  duplicate WAL updates. Restarting temporary slots requires the `temporary`
-  option in order to recreate the slot.
+  function. Providing a temporary slot to the `:slot_name` option will cause
+  reconnection to fail. This is due to the fact that temporary slots are
+  dropped when a PostgreSQL session ends. If you wish to use `:auto_reconnect`
+  with a temporary slot, use the `:create_temporary_slot` option instead. This
+  provides the information needed to recreate the slot.
+
+  If replication is sucessfully started, this function will return `:ok` when
+  `:slot_name` is provided or `{:ok, Postgrex.Result()}` when `:create_temporary_slot`
+  is provided. `{:ok, Postgrex.Result()}` is the result from creating the temporary
+  slot and is identical to what is returned by `create_slot/4`.
 
   This function will return `{:error, :stream_in_progress}` while a table
   is being copied or after replication has begun.
 
   ## Options
 
+    * `:slot_name` - It must be a string and is the name of an existing
+      slot that will be used to start replication. Providing either this
+      option or `:create_temporary_slot` is required. If neither of these
+      options are provided, an error is raised.
+
+    * `:create_temporary_slot` - It must be a keyword list and is used to
+      create a temporary slot for replication. The `:slot_name`, `:plugin`
+      and `:snapshot` keywords must be provided. See `create_slot/4` for
+      more details about these keywords. Providing either this option or
+      `:slot_name` is required. If neither of these options are provided,
+      an error is raised.
+
+    * `:plugin_opts` - It must be a keyword list and is used to configure
+      the output plugin assigned to the slot.
+
     * `:start_pos` - The LSN value to start replication from. Must be
       formatted as a string of two hexadecimal numbers of up to 8 digits
       each, separated by a slash. e.g. `1/F73E0220`.
       Defaults to `0/0`.
-
-    * `:plugin_opts` - It must be a keyword list and is used to configure
-      the output plugin assigned to the given slot.
-
-    * `:temporary` - It must be a keyword list and is used to recreate temporary
-      slots when `auto_reconnect` is set to `true`. If provided, it must contain
-      the keys `:plugin` and `:snapshot`. If either of them is missing, an error
-      will be raised.
 
     * `:max_messages` - The maximum number of replications messages that can be
       accumulated from the wire until they are relayed to `handle_data/2`.
@@ -393,18 +407,36 @@ defmodule Postgrex.Replication do
   To better understand the meaning of this command,
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
-  @spec start_replication(server, String.t(), Keyword.t()) ::
-          :ok | {:error, Postgrex.Error.t()} | {:error, :stream_in_progress}
-  def start_replication(pid, slot_name, opts \\ []) do
+  @spec start_replication(server, Keyword.t()) ::
+          :ok
+          | {:ok, Postgrex.Result.t()}
+          | {:error, Postgrex.Error.t()}
+          | {:error, :stream_in_progress}
+  def start_replication(pid, opts \\ []) do
+    opts =
+      case Keyword.has_key?(opts, :slot_name) do
+        true ->
+          Keyword.drop(opts, [:create_temporary_slot])
+
+        false ->
+          case Keyword.has_key?(opts, :create_temporary_slot) do
+            true ->
+              {slot_opts, opts} = Keyword.pop(opts, :create_temporary_slot)
+              slot_opts = Keyword.put(slot_opts, :temporary, true)
+
+              if valid_slot_options?(slot_opts) do
+                slot_opts ++ opts
+              else
+                raise ArgumentError,
+                      "expected :slot_name, :plugin and :snapshot to be provided in :create_temporary_slot"
+              end
+
+            false ->
+              raise ArgumentError, "expected one of :slot_name or :create_temporary slot"
+          end
+      end
+
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    {temp_opts, opts} = Keyword.pop(opts, :temporary, temporary: false)
-
-    temp_opts =
-      temp_opts
-      |> Keyword.take([:temporary, :plugin, :snapshot])
-      |> Keyword.put_new(:temporary, true)
-
-    opts = [slot_name: slot_name] ++ temp_opts ++ opts
     call(pid, {:start_replication, opts}, timeout)
   end
 
@@ -502,64 +534,51 @@ defmodule Postgrex.Replication do
   end
 
   @doc """
-  Starts streaming a copy of the given table.
+  Streams a copy of the given table.
 
-  This function can be used to initially synchronize the target system with
-  the primary PostgreSQL instance before starting replication. For increased
-  performance, a pool of replication processes can be created, each one
-  synchronizing a single table at at time.
+  This function is meant to aid in the initial synchronization of large
+  databases with high traffic. For simpler situations, it may be desirable
+  to use a non-replication connection to copy the table.
 
-  The function performs the following steps:
+  In addition to copying the table, a replication slot will be created using
+  the `slot_name`, `plugin` and `:temporary` values passed into this function.
+  The replication slot is returned to the user so it can be used to catch up
+  with the changes that occur during copying. The slot's `:snapshot` value
+  is automatically set to `:use` to ensure the user can start replication where
+  the copying transaction left off.
 
-    * A transaction will begin with the `REPEATABLE READ` isolation level.
+  The ideal situation for using this function is to have a single main
+  replication process and a pool of secondary replication processes, each
+  one responsible for synchronizing a single table at a time. Synchronization
+  is comprised of copying the table and then streaming the replication
+  messages that were missed during that time. Once completed, the process
+  can be terminated and control of the table's replication messages given back
+  to the main process. The strategy limits the amount of WAL that must be retained
+  and the amount of time transaction IDs must be held onto. These are important
+  considerations to prevent disk bloat and transaction ID wraparound.
 
-    * A replication slot will be created with option `:snap_shot = :use`.
-      This ensures the data read during the transaction is consistent with
-      the way it  was when the slot was created.
-
-    * A `COPY` command will be issued for the given table and the rows
-      will be streamed to `handle_data/2`. The messages will be of the type
-      `Postgrex.Result.t()` with the row values having `text` format.
-
-    * Once all the rows have been copied, a final message of the form
-      `{:copy_done, table_name}` will be sent, the transaction will be
-      committed and the slot (optionally) dropped.
-
-  This function will return the created slot's information, the same as
-  `create_slot/4`. This information may be useful, for example, with the
-  following tasks:
-
-    * Using the slot's `consistent_point` to determine where to start
-      replication.
-
-    * Using the slot to catch up with the changes that occurred during copying.
-      In this scenario, there may be a single main replication process alongside
-      secondary replication processes for each table. An individual secondary process
-      can be used to copy the initial snapshot for a given table and then stream
-      replication messages for that table until it is caught up to the main process.
-      Once caught up, the secondary process can be terminated and control of the table
-      given back to the main process. This strategy minimizes the amount of time a
-      transaction must hold onto old transaction IDs as well as the amount of time
-      a slot must hold onto old WAL files.
-
-  If the connection was started with `auto_reconnect` set to `true`, then
+  If the connection was started with `:auto_reconnect` set to `true`, then
   copying will automatically restart from the beginning. You must ensure
   your system will not be affected by receiving duplicate messages.
+
+  If copying is sucessfully started, `{:ok, Postgrex.Result()}` will be returned.
+  `{:ok, Postgrex.Result()}` is the result from creating the replication slot
+  and is identical to what is returned by `create_slot/4`.
 
   This function will return `{:error, :stream_in_progress}` while a table
   is being copied or after replication has begun.
 
   ## Options
 
-    * `:drop_slot` - Automatically drops the slot created by this function.
-      If `false`, care must be taken by the caller to drop the slot once
-      it is not needed anymore. See `create_slot/4` for more details.
+    * `:temporary` - When `true`, the slot will automatically drop when a session
+      finishes. When `false`, the slot will persist outside of the session.
+      Note that `false`  can lead to an unwanted build-up of WAL segments
+      that eventually kill your primary instance. Prior to PostgreSQL 13, replication
+      slots stop WAL segments from being removed until they are read by a consumer.
+      Since PostgreSQL 13, the system parameter `max_slot_wal_keep_size` can be used
+      to prevent this.
+      [See PostgreSQL docs](https://www.postgresql.org/docs/current/runtime-config-replication.html).
       Defaults to `true`.
-
-    * `:slot_opts` - Keyword list of options used to create the slot.
-      Only the keys `:slot_name`, `:temporary` and `:plugin` are allowed.
-      By default, a temporary slot with the `:pgoutput` plugin is created.
-      See `create_slot/4` for more details.
 
     * `:max_messages` - The maximum number of messages that can be
       accumulated from the wire until they are relayed to `handle_data/2`.
@@ -569,23 +588,14 @@ defmodule Postgrex.Replication do
     * `:timeout` - Call timeout.
       Defaults to `5000`.
   """
-  @spec copy_table(server, String.t(), Keyword.t()) ::
+  @spec copy_table(server, String.t(), String.t(), atom(), Keyword.t()) ::
           {:ok, Postgrex.Result.t()}
           | {:error, Postgrex.Error.t()}
           | {:error, :stream_in_progress}
-  def copy_table(pid, table_name, opts \\ []) when is_binary(table_name) do
+  def copy_table(pid, table_name, slot_name, plugin, opts \\ []) do
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    {slot_opts, opts} = Keyword.pop(opts, :slot_opts, [])
-
-    slot_opts =
-      slot_opts
-      |> Keyword.take([:slot_name, :temporary, :plugin])
-      |> Keyword.put_new(:slot_name, copy_table_slot_name())
-      |> Keyword.put_new(:plugin, :pgoutput)
-      |> Keyword.put_new(:temporary, true)
-      |> Keyword.put(:snapshot, :use)
-
-    opts = [table_name: table_name] ++ slot_opts ++ opts
+    opts = opts |> Keyword.put(:snapshot, :use)
+    opts = [table_name: table_name, slot_name: slot_name, plugin: plugin] ++ opts
     call(pid, {:copy_table, opts}, timeout)
   end
 
@@ -603,7 +613,7 @@ defmodule Postgrex.Replication do
     replication messages.
 
     * A string of two hexadecimal numbers of up to eight digits each, separated
-    by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/3`.
+    by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/2`.
 
   For more information on Log Sequence Numbers, see
   [PostgreSQL pg_lsn docs](https://www.postgresql.org/docs/current/datatype-pg-lsn.html) and
@@ -632,7 +642,7 @@ defmodule Postgrex.Replication do
     replication messages.
 
     * A string of two hexadecimal numbers of up to eight digits each, separated
-    by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/3`.
+    by a slash. e.g. `1/F73E0220`. This is the form accepted by `start_replication/2`.
 
   For more information on Log Sequence Numbers, see
   [PostgreSQL pg_lsn docs](https://www.postgresql.org/docs/current/datatype-pg-lsn.html) and
@@ -705,20 +715,14 @@ defmodule Postgrex.Replication do
 
   @doc false
   def handle_call({:start_replication, opts}, _from, %{repl_opts: nil, copy_opts: nil} = s) do
-    temporary = Keyword.fetch!(opts, :temporary)
     statement = command(:start_replication, opts)
 
-    with :ok <- validate_reconnect_options(s.auto_reconnect, temporary, opts),
-         {:ok, protocol} <- Protocol.handle_replication(statement, s.protocol),
+    with {:ok, slot, protocol} <- maybe_create_slot(opts, s.protocol),
+         {:ok, protocol} <- Protocol.handle_replication(statement, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
-      s = %{s | protocol: protocol, repl_opts: opts}
-      {:reply, :ok, s}
+      reply = (slot && {:ok, slot}) || :ok
+      {:reply, reply, %{s | protocol: protocol, repl_opts: opts}}
     else
-      :error ->
-        # If auto_reconnect is enabled and the temporary option is given,
-        # raise an error if any of the keys in temporary are missing.
-        raise ArgumentError, "expected :plugin and :snapshot to be given in the :temporary option"
-
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
 
@@ -815,8 +819,7 @@ defmodule Postgrex.Replication do
     copy = copy_message(:copy_done, s.copy_opts, nil)
 
     with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s),
-         {:ok, _, protocol} <- Protocol.handle_simple("COMMIT", s.protocol),
-         {:ok, _, protocol} <- maybe_drop_slot(s.copy_opts, protocol) do
+         {:ok, _, protocol} <- Protocol.handle_simple("COMMIT", s.protocol) do
       handle_copy(copies, %{s | protocol: protocol, copy_opts: nil})
     else
       {:error, reason, _protocol} ->
@@ -871,7 +874,7 @@ defmodule Postgrex.Replication do
   defp maybe_restart_streaming(%{copy_opts: nil} = s) do
     start = command(:start_replication, s.repl_opts)
 
-    with {:ok, _slot, protocol} <- maybe_recreate_slot(s.repl_opts, s.protocol),
+    with {:ok, _slot, protocol} <- maybe_create_slot(s.repl_opts, s.protocol),
          {:ok, protocol} <- Protocol.handle_replication(start, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
       {:ok, %{s | protocol: protocol}}
@@ -889,7 +892,7 @@ defmodule Postgrex.Replication do
     copy_statement = command(:copy_table, s.copy_opts)
 
     with {:ok, _, protocol} <- Protocol.handle_simple(begin_statement, s.protocol),
-         {:ok, _, protocol} <- maybe_recreate_slot(s.copy_opts, protocol),
+         {:ok, _, protocol} <- maybe_create_slot(s.copy_opts, protocol),
          {:ok, columns, protocol} <- table_columns(table_name, protocol),
          {:ok, protocol} <- Protocol.handle_copy_table(copy_statement, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
@@ -903,31 +906,15 @@ defmodule Postgrex.Replication do
     end
   end
 
-  defp maybe_drop_slot(opts, protocol) do
-    if Keyword.get(opts, :drop_slot, true) do
-      statement = command(:drop_slot, opts)
-      Protocol.handle_simple(statement, protocol)
-    else
-      {:ok, nil, protocol}
+  defp maybe_create_slot(opts, protocol) do
+    case Keyword.fetch(opts, :temporary) do
+      {:ok, true} ->
+        create_statement = command(:create_slot, opts)
+        Protocol.handle_simple(create_statement, protocol)
+
+      _ ->
+        {:ok, nil, protocol}
     end
-  end
-
-  defp maybe_recreate_slot(opts, protocol) do
-    if Keyword.fetch!(opts, :temporary) do
-      create_statement = command(:create_slot, opts)
-      Protocol.handle_simple(create_statement, protocol)
-    else
-      {:ok, nil, protocol}
-    end
-  end
-
-  defp copy_table_slot_name do
-    rand_name =
-      @slot_name_rand_bytes
-      |> :crypto.strong_rand_bytes()
-      |> Base.encode32(padding: false)
-
-    @slot_name_prefix <> rand_name
   end
 
   defp max_copy_messages(%{repl_opts: nil, copy_opts: nil}), do: nil
@@ -967,16 +954,14 @@ defmodule Postgrex.Replication do
     end
   end
 
-  defp validate_reconnect_options(true = _auto_reconnect, true = _temporary, opts) do
-    with true <- Keyword.has_key?(opts, :plugin),
+  defp valid_slot_options?(opts) do
+    with true <- Keyword.has_key?(opts, :slot_name),
+         true <- Keyword.has_key?(opts, :plugin),
+         true <- Keyword.has_key?(opts, :temporary),
          true <- Keyword.has_key?(opts, :snapshot) do
-      :ok
-    else
-      _ -> :error
+      true
     end
   end
-
-  defp validate_reconnect_options(_auto_reconnect, _temporary, _opts), do: :ok
 
   ## Queries
   defp command(:create_slot, opts) do
@@ -1041,11 +1026,6 @@ defmodule Postgrex.Replication do
   defp command(:publication_tables, opts) do
     publication_name = Keyword.fetch!(opts, :publication_name)
     ["SELECT * FROM pg_publication_tables WHERE pubname = ", escape_string(publication_name)]
-  end
-
-  defp command(:slot_state, opts) do
-    slot_name = Keyword.fetch!(opts, :slot_name)
-    ["SELECT * FROM pg_replication_slots WHERE slot_name = ", escape_string(slot_name)]
   end
 
   defp command(:table_columns, opts) do
