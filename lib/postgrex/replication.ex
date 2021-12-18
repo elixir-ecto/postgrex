@@ -314,9 +314,7 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec create_slot(server, String.t(), atom(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def create_slot(pid, slot_name, plugin, opts \\ []) do
     opts = [slot_name: slot_name, plugin: plugin] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -342,9 +340,7 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec drop_slot(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def drop_slot(pid, slot_name, opts \\ []) do
     opts = [slot_name: slot_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -367,7 +363,7 @@ defmodule Postgrex.Replication do
   with a temporary slot, use the `:create_temporary_slot` option instead. This
   provides the information needed to recreate the slot.
 
-  If replication is sucessfully started, this function will return `:ok` when
+  If replication is sucessfully started, this function will return `{:ok, nil}` when
   `:slot_name` is provided or `{:ok, Postgrex.Result()}` when `:create_temporary_slot`
   is provided. `{:ok, Postgrex.Result()}` is the result from creating the temporary
   slot and is identical to what is returned by `create_slot/4`.
@@ -408,32 +404,26 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec start_replication(server, Keyword.t()) ::
-          :ok
-          | {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t() | nil} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def start_replication(pid, opts \\ []) do
     opts =
-      case Keyword.has_key?(opts, :slot_name) do
-        true ->
+      cond do
+        Keyword.has_key?(opts, :slot_name) ->
           Keyword.drop(opts, [:create_temporary_slot])
 
-        false ->
-          case Keyword.has_key?(opts, :create_temporary_slot) do
-            true ->
-              {slot_opts, opts} = Keyword.pop(opts, :create_temporary_slot)
-              slot_opts = Keyword.put(slot_opts, :temporary, true)
+        Keyword.has_key?(opts, :create_temporary_slot) ->
+          {slot_opts, opts} = Keyword.pop(opts, :create_temporary_slot)
+          slot_opts = Keyword.put(slot_opts, :temporary, true)
 
-              if valid_slot_options?(slot_opts) do
-                slot_opts ++ opts
-              else
-                raise ArgumentError,
-                      "expected :slot_name, :plugin and :snapshot to be provided in :create_temporary_slot"
-              end
-
-            false ->
-              raise ArgumentError, "expected one of :slot_name or :create_temporary slot"
+          if valid_slot_options?(slot_opts) do
+            slot_opts ++ opts
+          else
+            raise ArgumentError,
+                  "expected :slot_name, :plugin and :snapshot to be provided in :create_temporary_slot"
           end
+
+        true ->
+          raise ArgumentError, "expected one of :slot_name or :create_temporary slot"
       end
 
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -455,9 +445,7 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec show(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def show(pid, name, opts \\ []) when is_binary(name) do
     opts = [name: name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -479,9 +467,7 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec identify_system(server, Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def identify_system(pid, opts \\ []) do
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     call(pid, {:identify_system, opts}, timeout)
@@ -502,9 +488,7 @@ defmodule Postgrex.Replication do
   [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
   """
   @spec timeline_history(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def timeline_history(pid, timeline_id, opts \\ []) when is_binary(timeline_id) do
     opts = [timeline_id: timeline_id] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -524,9 +508,7 @@ defmodule Postgrex.Replication do
       Defaults to `5000`.
   """
   @spec publication_tables(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def publication_tables(pid, publication_name, opts \\ []) when is_binary(publication_name) do
     opts = [publication_name: publication_name] ++ opts
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
@@ -541,7 +523,8 @@ defmodule Postgrex.Replication do
   to use a non-replication connection to copy the table.
 
   In addition to copying the table, a replication slot will be created using
-  the `slot_name`, `plugin` and `:temporary` values passed into this function.
+  the `slot_name` and `plugin` arguments passed into this function. The slot
+  is temporary by default but it can be changed via the `:temporary` option.
   The replication slot is returned to the user so it can be used to catch up
   with the changes that occur during copying. The slot's `:snapshot` value
   is automatically set to `:use` to ensure the user can start replication where
@@ -589,9 +572,7 @@ defmodule Postgrex.Replication do
       Defaults to `5000`.
   """
   @spec copy_table(server, String.t(), String.t(), atom(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()}
-          | {:error, Postgrex.Error.t()}
-          | {:error, :stream_in_progress}
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
   def copy_table(pid, table_name, slot_name, plugin, opts \\ []) do
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     opts = opts |> Keyword.put(:snapshot, :use) |> Keyword.put_new(:temporary, true)
@@ -720,8 +701,7 @@ defmodule Postgrex.Replication do
     with {:ok, slot, protocol} <- maybe_create_slot(opts, s.protocol),
          {:ok, protocol} <- Protocol.handle_replication(statement, protocol),
          {:ok, protocol} <- Protocol.checkin(protocol) do
-      reply = (slot && {:ok, slot}) || :ok
-      {:reply, reply, %{s | protocol: protocol, repl_opts: opts}}
+      {:reply, {:ok, slot}, %{s | protocol: protocol, repl_opts: opts}}
     else
       {:error, reason, protocol} ->
         {:reply, {:error, reason}, %{s | protocol: protocol}}
@@ -957,7 +937,6 @@ defmodule Postgrex.Replication do
   defp valid_slot_options?(opts) do
     with true <- Keyword.has_key?(opts, :slot_name),
          true <- Keyword.has_key?(opts, :plugin),
-         true <- Keyword.has_key?(opts, :temporary),
          true <- Keyword.has_key?(opts, :snapshot) do
       true
     end
