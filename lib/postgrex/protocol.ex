@@ -1178,7 +1178,6 @@ defmodule Postgrex.Protocol do
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_copy_table(statement, %{buffer: buffer} = s) do
-    status = new_status([], mode: :transaction)
     msgs = [msg_query(statement: statement)]
 
     case msg_send(%{s | buffer: nil}, msgs, buffer) do
@@ -1189,6 +1188,7 @@ defmodule Postgrex.Protocol do
         {:disconnect, err, s}
 
       {:error, %Postgrex.Error{} = err, s, buffer} ->
+        status = new_status([], mode: :transaction)
         error_ready(s, status, err, buffer)
     end
   end
