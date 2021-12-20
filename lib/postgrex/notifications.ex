@@ -78,11 +78,28 @@ defmodule Postgrex.Notifications do
             listener_channels: %{},
             auto_reconnect: false,
             reconnect_backoff: 500,
-            connected: false
+            connected: false,
+            state: nil
 
   ## PUBLIC API ##
 
   @type server :: GenServer.server()
+  @type state :: term
+
+  @doc """
+  Callback for process initialization.
+
+  This is called once and before the Postgrex notification connection is established.
+  """
+  @callback init(term) :: {:ok, state}
+
+  @doc """
+  Callback for `call/3`.
+
+  Replies must be sent with `reply/2`.
+  """
+  @callback handle_call(term, GenServer.from(), state) ::
+              {:reply, term, state} | {:noreply, state}
 
   @doc false
   def child_spec(opts) do
@@ -119,12 +136,13 @@ defmodule Postgrex.Notifications do
       configure the options as a `{module, function, args}`, where the current
       options will prepended to `args`. Defaults to `nil`.
   """
-  @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
-  def start_link(opts) do
+  @spec start_link(module(), term(), Keyword.t()) ::
+          {:ok, pid} | {:error, Postgrex.Error.t() | term}
+  def start_link(module \\ Postgrex.Notifications.Default, args \\ nil, opts) do
     {server_opts, opts} = Keyword.split(opts, [:name])
     opts = Keyword.put_new(opts, :sync_connect, true)
     connection_opts = Postgrex.Utils.default_opts(opts)
-    Connection.start_link(__MODULE__, connection_opts, server_opts)
+    Connection.start_link(__MODULE__, {module, args, connection_opts}, server_opts)
   end
 
   @doc """
@@ -188,38 +206,39 @@ defmodule Postgrex.Notifications do
   ## CALLBACKS ##
 
   @doc false
-  def init(opts) do
-    idle_timeout = opts[:idle_timeout]
+  def init({mod, args, opts}) do
+    with {:ok, mod_state} <- mod.init(args) do
+      idle_timeout = opts[:idle_timeout]
 
-    if idle_timeout do
-      require Logger
-
-      Logger.warn(
-        ":idle_timeout in Postgrex.Notifications is deprecated, " <>
-          "please use :idle_interval instead"
-      )
-    end
-
-    {idle_interval, opts} = Keyword.pop(opts, :idle_interval, idle_timeout || 5000)
-    {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
-    {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
-
-    state = %__MODULE__{
-      idle_interval: idle_interval,
-      auto_reconnect: auto_reconnect,
-      reconnect_backoff: reconnect_backoff
-    }
-
-    put_opts(opts)
-
-    if opts[:sync_connect] do
-      case connect(:init, state) do
-        {:ok, _, _} = ok -> ok
-        {:backoff, _, _} = backoff -> backoff
-        {:stop, reason, _} -> {:stop, reason}
+      if idle_timeout do
+        Logger.warn(
+          ":idle_timeout in Postgrex.Notifications is deprecated, " <>
+            "please use :idle_interval instead"
+        )
       end
-    else
-      {:connect, :init, state}
+
+      {idle_interval, opts} = Keyword.pop(opts, :idle_interval, idle_timeout || 5000)
+      {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
+      {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
+
+      state = %__MODULE__{
+        idle_interval: idle_interval,
+        auto_reconnect: auto_reconnect,
+        reconnect_backoff: reconnect_backoff,
+        state: {mod, mod_state}
+      }
+
+      put_opts(opts)
+
+      if opts[:sync_connect] do
+        case connect(:init, state) do
+          {:ok, _, _} = ok -> ok
+          {:backoff, _, _} = backoff -> backoff
+          {:stop, reason, _} -> {:stop, reason}
+        end
+      else
+        {:connect, :init, state}
+      end
     end
   end
 
@@ -261,6 +280,16 @@ defmodule Postgrex.Notifications do
 
       %{} ->
         {:reply, :error, s, s.idle_interval}
+    end
+  end
+
+  def handle_call(msg, from, %{state: {mod, mod_state}} = s) do
+    case apply(mod, :handle_call, [msg, from, mod_state]) do
+      {:noreply, mod_state} ->
+        {:noreply, %{s | state: {mod, mod_state}}}
+
+      {:reply, reply, mod_state} ->
+        {:reply, reply, %{s | state: {mod, mod_state}}}
     end
   end
 
@@ -388,4 +417,20 @@ defmodule Postgrex.Notifications do
 
   defp opts(), do: Process.get(__MODULE__)
   defp put_opts(opts), do: Process.put(__MODULE__, opts)
+end
+
+defmodule Postgrex.Notifications.Default do
+  @moduledoc false
+
+  @behaviour Postgrex.Notifications
+
+  @impl true
+  def init(state) do
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_call(_message, _from, state) do
+    {:noreply, state}
+  end
 end
