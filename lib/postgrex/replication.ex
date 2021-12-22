@@ -166,7 +166,7 @@ defmodule Postgrex.Replication do
 
   @type server :: GenServer.server()
   @type state :: term
-  @type copy :: binary
+  @type copy :: iodata
   @timeout 5000
   @max_lsn_component_size 8
   @max_uint64 18_446_744_073_709_551_615
@@ -189,7 +189,7 @@ defmodule Postgrex.Replication do
   by returning a list of binaries according to the replication protocol.
   """
   @callback handle_data(binary, state) ::
-              {:noreply, [copy], state} | {:query, String.t(), state}
+              {:noreply, [copy], state} | {:query, iodata, state}
 
   @doc """
   Receives copy messages.
@@ -199,13 +199,13 @@ defmodule Postgrex.Replication do
   to signal copying has completed.
   """
   @callback handle_copy(Postgrex.Result.t() | {:copy_done, String.t()}, state) ::
-              {:noreply, [copy], state} | {:query, String.t(), state}
+              {:noreply, [copy], state} | {:query, iodata, state}
 
   @doc """
   Callback for `Kernel.send/2`.
   """
   @callback handle_info(term, state) ::
-              {:noreply, [copy], state} | {:query, String.t(), state}
+              {:noreply, [copy], state} | {:query, iodata, state}
 
   @doc """
   Callback for `call/3`.
