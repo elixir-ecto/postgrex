@@ -55,6 +55,17 @@ defmodule ReplicationTest do
       {:noreply, [], pid}
     end
 
+    @impl true
+    def handle_call({:query, query}, from, pid) do
+      {:query, query, {from, pid}}
+    end
+
+    @impl true
+    def handle_result(%Postgrex.Result{} = result, {from, pid}) do
+      Postgrex.Replication.reply(from, {:ok, result})
+      {:noreply, [], pid}
+    end
+
     @epoch DateTime.to_unix(~U[2000-01-01 00:00:00Z], :microsecond)
     defp current_time(), do: System.os_time(:microsecond) - @epoch
   end
@@ -85,49 +96,6 @@ defmodule ReplicationTest do
   test "handle_info", context do
     send(context.repl, :ping)
     assert_receive :pong
-  end
-
-  test "create slot returns results", context do
-    %{slot_name: slot, plugin: plugin} = @repl_opts
-    {:ok, %Postgrex.Result{} = result} = PR.create_slot(context.repl, slot, plugin)
-    assert result.num_rows == 1
-    assert result.columns == ["slot_name", "consistent_point", "snapshot_name", "output_plugin"]
-    assert [[_, _, _, _]] = result.rows
-  end
-
-  test "can't create same slot twice", context do
-    %{slot_name: slot, plugin: plugin} = @repl_opts
-    {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin)
-    {:error, %Postgrex.Error{} = error} = PR.create_slot(context.repl, slot, plugin)
-    assert Exception.message(error) =~ "replication slot \"postgrex_example\" already exists"
-  end
-
-  test "can't drop a slot that doesn't exist", context do
-    %{slot_name: slot} = @repl_opts
-    {:error, %Postgrex.Error{} = error} = PR.drop_slot(context.repl, slot)
-    assert Exception.message(error) =~ "replication slot \"postgrex_example\" does not exist"
-  end
-
-  test "drop_slot with wait = false returns an error when being used by a connection", context do
-    %{slot_name: slot} = @repl_opts
-    start_replication(context.repl)
-    repl1 = start_supervised!({Repl, {self(), @opts}}, id: :repl1)
-    {:error, %Postgrex.Error{} = error} = PR.drop_slot(repl1, slot, wait: false)
-    assert Exception.message(error) =~ "replication slot \"postgrex_example\" is active for PID"
-  end
-
-  test "identify system returns values", context do
-    {:ok, %Postgrex.Result{} = result} = PR.identify_system(context.repl)
-    assert result.num_rows == 1
-    assert result.columns == ["systemid", "timeline", "xlogpos", "dbname"]
-    assert [[_, _, _, _]] = result.rows
-  end
-
-  test "show returns values", context do
-    {:ok, %Postgrex.Result{} = result} = PR.show(context.repl, "SERVER_VERSION")
-    assert result.num_rows == 1
-    assert result.columns == ["server_version"]
-    assert [[_]] = result.rows
   end
 
   test "encodes LSN" do
@@ -176,20 +144,6 @@ defmodule ReplicationTest do
   test "encode invalid LSN returns :error" do
     assert PR.encode_lsn(-1) == :error
     assert PR.encode_lsn(@max_uint64 + 1) == :error
-  end
-
-  test "empty table list for publication that doesn't exist", context do
-    {:ok, %Postgrex.Result{} = result} = PR.publication_tables(context.repl, "not_a_publication")
-    assert result.num_rows
-    assert result.rows == []
-  end
-
-  test "return list of tables contained in a publication", context do
-    %{plugin_opts: [proto_version: _, publication_names: publication]} = @repl_opts
-    {:ok, %Postgrex.Result{} = result} = PR.publication_tables(context.repl, publication)
-    assert result.num_rows > 0
-    assert result.columns == ["pubname", "schemaname", "tablename"]
-    assert [_ | _] = result.rows
   end
 
   describe "replication" do
@@ -311,12 +265,8 @@ defmodule ReplicationTest do
       assert {:error, :stream_in_progress} ==
                PR.copy_table(context.repl, "table", "slot", :plugin)
 
-      assert {:error, :stream_in_progress} == PR.create_slot(context.repl, "slot", :plugin)
-      assert {:error, :stream_in_progress} == PR.drop_slot(context.repl, "slot")
-      assert {:error, :stream_in_progress} == PR.identify_system(context.repl)
-      assert {:error, :stream_in_progress} == PR.show(context.repl, "value")
-      assert {:error, :stream_in_progress} == PR.timeline_history(context.repl, "timeline_id")
-      assert {:error, :stream_in_progress} == PR.publication_tables(context.repl, "publication")
+      assert {:error, :stream_in_progress} ==
+               PR.call(context.repl, {:query, "SHOW server_version_num"})
     end
   end
 
@@ -348,7 +298,7 @@ defmodule ReplicationTest do
       %{table_name: table, slot_name: slot, plugin: plugin} = @repl_opts
       {:ok, _} = PR.copy_table(context.repl, table, slot, plugin)
       assert_receive {:copy_done, ^table}, @timeout
-      assert {:ok, _} = PR.identify_system(context.repl)
+      assert {:ok, _} = PR.call(context.repl, {:query, "SHOW server_version_num"})
     end
 
     test "can start replication after copying is finished", context do
@@ -382,15 +332,15 @@ defmodule ReplicationTest do
         P.query!(pid, "DROP TABLE IF EXISTS repl_test", [])
 
         {:ok, repl} = PR.start_link(Repl, self(), @opts)
-        PR.drop_slot(repl, @repl_opts.slot_name)
+        drop_slot(repl, @repl_opts.slot_name)
       end)
 
       {:ok, pid: pid, repl: repl}
     end
 
     test "replication with permanent slot auto-reconnects", context do
-      %{slot_name: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
-      {:ok, %Postgrex.Result{}} = PR.create_slot(context.repl, slot, plugin, temporary: false)
+      %{slot_name: slot, plugin_opts: plugin_opts} = @repl_opts
+      {:ok, %Postgrex.Result{}} = create_slot(context.repl, slot, "LOGICAL")
       {:ok, nil} = PR.start_replication(context.repl, slot_name: slot, plugin_opts: plugin_opts)
       disconnect(context.repl)
 
@@ -422,11 +372,11 @@ defmodule ReplicationTest do
     end
   end
 
-  defp start_replication(repl, create_slot_method \\ :slot_name)
+  defp start_replication(repl, create_slot_method \\ :create_temporary_slot)
 
   defp start_replication(repl, :slot_name) do
-    %{slot_name: slot, plugin: plugin, plugin_opts: plugin_opts} = @repl_opts
-    {:ok, %Postgrex.Result{}} = PR.create_slot(repl, slot, plugin)
+    %{slot_name: slot, plugin_opts: plugin_opts} = @repl_opts
+    {:ok, %Postgrex.Result{}} = create_slot(repl, slot, "TEMPORARY LOGICAL")
     {:ok, nil} = PR.start_replication(repl, slot_name: slot, plugin_opts: plugin_opts)
   end
 
@@ -435,6 +385,14 @@ defmodule ReplicationTest do
 
     {:ok, %Postgrex.Result{}} =
       PR.start_replication(repl, create_temporary_slot: temp_slot, plugin_opts: plugin_opts)
+  end
+
+  defp create_slot(repl, slot, type) do
+    PR.call(repl, {:query, "CREATE_REPLICATION_SLOT #{slot} #{type} pgoutput NOEXPORT_SNAPSHOT"})
+  end
+
+  defp drop_slot(repl, slot) do
+    PR.call(repl, {:query, "DROP_REPLICATION_SLOT #{slot}"})
   end
 
   defp pow(base, exp) do

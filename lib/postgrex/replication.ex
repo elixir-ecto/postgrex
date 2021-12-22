@@ -71,7 +71,19 @@ defmodule Postgrex.Replication do
 
         @impl true
         def init(:ok) do
+          send(self(), :create_slot)
           {:ok, %{}}
+        end
+
+        @impl true
+        def handle_info(:create_slot, state) do
+          query = "CREATE_REPLICATION_SLOT postgrex TEMPORARY LOGICAL pg_output NOEXPORT_SNAPSHOT"
+          {:query, query, state}
+        end
+
+        @impl true
+        def handle_result(_result, state) do
+          {:noreply, state}
         end
 
         @impl true
@@ -101,10 +113,13 @@ defmodule Postgrex.Replication do
           database: "demo_dev",
           username: "postgres",
         )
-      Postgrex.Replication.create_slot(pid, "postgrex", :pgoutput)
-      Postgrex.Replication.start_replication(pid, "postgrex",
+
+      Postgrex.Replication.start_replication(
+        pid,
+        "postgrex",
         plugin_opts: [proto_version: 1, publication_names: "postgrex_example"]
       )
+
       Process.sleep(:infinity)
 
   ## `use` options
@@ -156,16 +171,6 @@ defmodule Postgrex.Replication do
   @max_lsn_component_size 8
   @max_uint64 18_446_744_073_709_551_615
   @max_copy_messages 500
-  @public_commands [
-    :create_slot,
-    :drop_slot,
-    :start_replication,
-    :show,
-    :identify_system,
-    :timeline_history,
-    :copy_table,
-    :publication_tables
-  ]
 
   @doc """
   Callback for process initialization.
@@ -183,7 +188,8 @@ defmodule Postgrex.Replication do
   Some messages require explicit acknowledgement, which can be done
   by returning a list of binaries according to the replication protocol.
   """
-  @callback handle_data(binary, state) :: {:noreply, [copy], state}
+  @callback handle_data(binary, state) ::
+              {:noreply, [copy], state} | {:query, String.t(), state}
 
   @doc """
   Receives copy messages.
@@ -193,21 +199,33 @@ defmodule Postgrex.Replication do
   to signal copying has completed.
   """
   @callback handle_copy(Postgrex.Result.t() | {:copy_done, String.t()}, state) ::
-              {:noreply, [copy], state}
+              {:noreply, [copy], state} | {:query, String.t(), state}
 
   @doc """
   Callback for `Kernel.send/2`.
   """
-  @callback handle_info(term, state) :: {:noreply, [copy], state}
+  @callback handle_info(term, state) ::
+              {:noreply, [copy], state} | {:query, String.t(), state}
 
   @doc """
   Callback for `call/3`.
 
   Replies must be sent with `reply/2`.
   """
-  @callback handle_call(term, GenServer.from(), state) :: {:noreply, [copy], state}
+  @callback handle_call(term, GenServer.from(), state) ::
+              {:noreply, [copy], state} | {:query, String.t(), state}
 
-  @optional_callbacks handle_info: 2, handle_call: 3, handle_copy: 2
+  @doc """
+  Handles result from a query command.
+
+  If any callback returns `{:query, String.t(), state}`,
+  then this callback will be immediatelly called with
+  the result of the query.
+  """
+  @callback handle_result(%Postgrex.Result{}, state) ::
+              {:noreply, [copy], state} | {:query, String.t(), state}
+
+  @optional_callbacks handle_info: 2, handle_call: 3, handle_copy: 2, handle_result: 2
 
   @doc """
   Replies to the given client.
@@ -281,70 +299,6 @@ defmodule Postgrex.Replication do
     opts = Keyword.put_new(opts, :sync_connect, true)
     connection_opts = Postgrex.Utils.default_opts(opts)
     Connection.start_link(__MODULE__, {module, arg, connection_opts}, server_opts)
-  end
-
-  @doc """
-  Creates a logical replication slot with the given name and output plugin.
-
-  By default, PostgreSQL includes the `pgoutput` plugin.
-
-  This function will return `{:error, :stream_in_progress}` while a table
-  is being copied or after replication has begun.
-
-  ## Options
-
-    * `:temporary` - When `true`, the slot will automatically drop when a session
-      finishes. When `false`, the slot will persist outside of the session.
-      Note that `false`  can lead to an unwanted build-up of WAL segments
-      that eventually kill your primary instance. Prior to PostgreSQL 13, replication
-      slots stop WAL segments from being removed until they are read by a consumer.
-      Since PostgreSQL 13, the system parameter `max_slot_wal_keep_size` can be used
-      to prevent this.
-      [See PostgreSQL docs](https://www.postgresql.org/docs/current/runtime-config-replication.html).
-      Defaults to `true`.
-
-    * `:snapshot` - The type of logical snapshot for the slot. Must be one of
-      `:export`, `:noexport`, or `:use`.
-      Defaults to `:export`.
-
-    * `:timeout` - Call timeout.
-      Defaults to `5000`.
-
-  To better understand the meaning of this command,
-  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-  """
-  @spec create_slot(server, String.t(), atom(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
-  def create_slot(pid, slot_name, plugin, opts \\ []) do
-    opts = [slot_name: slot_name, plugin: plugin] ++ opts
-    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:create_slot, opts}, timeout)
-  end
-
-  @doc """
-  Drops logical replication slot with the given name.
-
-  This function will return `{:error, :stream_in_progress}` while a table
-  is being copied or after replication has begun.
-
-  ## Options
-
-    * `:wait` - When `true`, blocks while the slot is being used by a connection.
-      When `false`, returns an error if the slot is being used by a connection.
-      Defaults to `false`.
-
-    * `:timeout` - Call timeout.
-      Defaults to `5000`.
-
-  To better understand the meaning of this command,
-  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-  """
-  @spec drop_slot(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
-  def drop_slot(pid, slot_name, opts \\ []) do
-    opts = [slot_name: slot_name] ++ opts
-    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:drop_slot, opts}, timeout)
   end
 
   @doc """
@@ -427,92 +381,7 @@ defmodule Postgrex.Replication do
       end
 
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:start_replication, opts}, timeout)
-  end
-
-  @doc """
-  Returns the current setting of a run-time parameter.
-
-  This function will return `{:error, :stream_in_progress}` while a table
-  is being copied or after replication has begun.
-
-  ## Options
-
-    * `:timeout` - Call timeout.
-      Defaults to `5000`.
-
-  To better understand the meaning of this command,
-  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-  """
-  @spec show(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
-  def show(pid, name, opts \\ []) when is_binary(name) do
-    opts = [name: name] ++ opts
-    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:show, opts}, timeout)
-  end
-
-  @doc """
-  Returns identification information for the server.
-
-  This function will return `{:error, :stream_in_progress}` while a table
-  is being copied or after replication has begun.
-
-  ## Options
-
-    * `:timeout` - Call timeout.
-      Defaults to `5000`.
-
-  To better understand the meaning of this command,
-  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-  """
-  @spec identify_system(server, Keyword.t()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
-  def identify_system(pid, opts \\ []) do
-    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:identify_system, opts}, timeout)
-  end
-
-  @doc """
-  Returns the timeline history file for the specified timeline ID.
-
-  This function will return `{:error, :stream_in_progress}` while a table
-  is being copied or after replication has begun.
-
-  ## Options
-
-    * `:timeout` - Call timeout.
-      Defaults to `5000`.
-
-  To better understand the meaning of this command,
-  [see PostgreSQL replication docs](https://www.postgresql.org/docs/14/protocol-replication.html).
-  """
-  @spec timeline_history(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
-  def timeline_history(pid, timeline_id, opts \\ []) when is_binary(timeline_id) do
-    opts = [timeline_id: timeline_id] ++ opts
-    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:timeline_history, opts}, timeout)
-  end
-
-  @doc """
-  Returns the tables contained by the given publication using the system catalog
-  [pg_publication_tables](https://www.postgresql.org/docs/current/view-pg-publication-tables.html).
-
-  This function will return `{:error, :stream_in_progress}` while a table
-  is being copied or after replication has begun.
-
-  ## Options
-
-    * `:timeout` - Call timeout.
-      Defaults to `5000`.
-  """
-  @spec publication_tables(server, String.t(), Keyword.t()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t() | :stream_in_progress}
-  def publication_tables(pid, publication_name, opts \\ []) when is_binary(publication_name) do
-    opts = [publication_name: publication_name] ++ opts
-    {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
-    call(pid, {:publication_tables, opts}, timeout)
+    call(pid, {__MODULE__, :start_replication, opts}, timeout)
   end
 
   @doc """
@@ -577,7 +446,7 @@ defmodule Postgrex.Replication do
     {timeout, opts} = Keyword.pop(opts, :timeout, @timeout)
     opts = opts |> Keyword.put(:snapshot, :use) |> Keyword.put_new(:temporary, true)
     opts = [table_name: table_name, slot_name: slot_name, plugin: plugin] ++ opts
-    call(pid, {:copy_table, opts}, timeout)
+    call(pid, {__MODULE__, :copy_table, opts}, timeout)
   end
 
   @doc """
@@ -695,7 +564,11 @@ defmodule Postgrex.Replication do
   end
 
   @doc false
-  def handle_call({:start_replication, opts}, _from, %{repl_opts: nil, copy_opts: nil} = s) do
+  def handle_call(
+        {__MODULE__, :start_replication, opts},
+        _from,
+        %{repl_opts: nil, copy_opts: nil} = s
+      ) do
     statement = command(:start_replication, opts)
 
     with {:ok, slot, protocol} <- maybe_create_slot(opts, s.protocol),
@@ -711,8 +584,7 @@ defmodule Postgrex.Replication do
     end
   end
 
-  @doc false
-  def handle_call({:copy_table, opts}, _from, %{repl_opts: nil, copy_opts: nil} = s) do
+  def handle_call({__MODULE__, :copy_table, opts}, _from, %{repl_opts: nil, copy_opts: nil} = s) do
     table_name = Keyword.fetch!(opts, :table_name)
     begin_statement = command(:begin_copy, opts)
     create_slot_statement = command(:create_slot, opts)
@@ -734,30 +606,12 @@ defmodule Postgrex.Replication do
     end
   end
 
-  @doc false
-  def handle_call({name, opts}, _from, %{repl_opts: nil, copy_opts: nil} = s)
-      when name in @public_commands do
-    statement = command(name, opts)
-
-    case Protocol.handle_simple(statement, s.protocol) do
-      {:ok, %Postgrex.Result{} = result, protocol} ->
-        {:reply, {:ok, result}, %{s | protocol: protocol}}
-
-      {:error, reason, protocol} ->
-        {:reply, {:error, reason}, %{s | protocol: protocol}}
-
-      {:disconnect, reason, protocol} ->
-        reconnect_or_stop(:disconnect, reason, protocol, s)
-    end
+  def handle_call({__MODULE__, _, _}, _from, s) do
+    {:reply, {:error, :stream_in_progress}, s}
   end
 
-  @doc false
-  def handle_call({name, _opts}, _from, s) when name in @public_commands,
-    do: {:reply, {:error, :stream_in_progress}, s}
-
-  @doc false
   def handle_call(msg, from, %{state: {mod, mod_state}} = s) do
-    handle(mod, :handle_call, [msg, from, mod_state], s)
+    handle(mod, :handle_call, [msg, from, mod_state], s, from)
   end
 
   @doc false
@@ -772,7 +626,7 @@ defmodule Postgrex.Replication do
         %{state: {mod, mod_state}} = s
 
         if function_exported?(mod, :handle_info, 2) do
-          handle(mod, :handle_info, [msg, mod_state], s)
+          handle(mod, :handle_info, [msg, mod_state], s, nil)
         else
           {:noreply, s}
         end
@@ -788,7 +642,7 @@ defmodule Postgrex.Replication do
   defp handle_data([], s), do: {:noreply, s}
 
   defp handle_data([copy | copies], %{state: {mod, mod_state}} = s) do
-    with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], s) do
+    with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], s, nil) do
       handle_data(copies, s)
     end
   end
@@ -798,7 +652,7 @@ defmodule Postgrex.Replication do
   defp handle_copy([:copy_done | copies], %{state: {mod, mod_state}} = s) do
     copy = copy_message(:copy_done, s.copy_opts, nil)
 
-    with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s),
+    with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s, nil),
          {:ok, _, protocol} <- Protocol.handle_simple("COMMIT", s.protocol) do
       handle_copy(copies, %{s | protocol: protocol, copy_opts: nil})
     else
@@ -818,12 +672,12 @@ defmodule Postgrex.Replication do
   defp handle_copy([copy | copies], %{state: {mod, mod_state}} = s) do
     copy = copy_message(copy, s.copy_opts, s.protocol)
 
-    with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s) do
+    with {:noreply, s} <- handle(mod, :handle_copy, [copy, mod_state], s, nil) do
       handle_copy(copies, s)
     end
   end
 
-  defp handle(mod, fun, args, s) do
+  defp handle(mod, fun, args, s, from) do
     case apply(mod, fun, args) do
       {:noreply, [], mod_state} ->
         s = %{s | state: {mod, mod_state}}
@@ -835,6 +689,23 @@ defmodule Postgrex.Replication do
         case Protocol.handle_copy_send(replies, s.protocol) do
           :ok -> {:noreply, s}
           {error, reason, protocol} -> reconnect_or_stop(error, reason, protocol, s)
+        end
+
+      {:query, query, mod_state} ->
+        case s do
+          %{repl_opts: nil, copy_opts: nil} ->
+            case Protocol.handle_simple(query, [], s.protocol) do
+              {:ok, %Postgrex.Result{} = result, protocol} ->
+                handle(mod, :handle_result, [result, mod_state], %{s | protocol: protocol}, from)
+
+              {error, reason, protocol} ->
+                from && reply(from, {error, reason})
+                reconnect_or_stop(error, reason, protocol, %{s | state: {mod, mod_state}})
+            end
+
+          _ ->
+            reply(from, {:error, :stream_in_progress})
+            raise "cannot perform queries after replication or copying has started"
         end
     end
   end
@@ -958,17 +829,6 @@ defmodule Postgrex.Replication do
     ]
   end
 
-  defp command(:drop_slot, opts) do
-    slot = Keyword.fetch!(opts, :slot_name)
-    wait? = Keyword.get(opts, :wait, false)
-
-    [
-      "DROP_REPLICATION_SLOT ",
-      slot,
-      (wait? && " WAIT") || ""
-    ]
-  end
-
   defp command(:start_replication, opts) do
     slot = Keyword.fetch!(opts, :slot_name)
     options = Keyword.get(opts, :plugin_opts, [])
@@ -988,24 +848,12 @@ defmodule Postgrex.Replication do
     ["SHOW ", name]
   end
 
-  defp command(:identify_system, _opts), do: ["IDENTIFY_SYSTEM"]
-
-  defp command(:timeline_history, opts) do
-    timeline_id = Keyword.fetch!(opts, :timeline_id)
-    ["TIMELINE_HISTORY ", timeline_id]
-  end
-
   defp command(:copy_table, opts) do
     table_name = Keyword.fetch!(opts, :table_name)
     ["COPY ", table_name, " TO STDOUT"]
   end
 
   defp command(:begin_copy, _opts), do: ["BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ"]
-
-  defp command(:publication_tables, opts) do
-    publication_name = Keyword.fetch!(opts, :publication_name)
-    ["SELECT * FROM pg_publication_tables WHERE pubname = ", escape_string(publication_name)]
-  end
 
   defp command(:table_columns, opts) do
     attgenerated_version = 120_000
