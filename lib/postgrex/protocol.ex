@@ -2866,7 +2866,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp done(%{connection_id: connection_id}, %{messages: messages}, tags) do
-    {command, nil} = decode_tags(tags)
+    {command, _} = decode_tags(tags)
 
     %Postgrex.Result{
       command: command,
@@ -2884,7 +2884,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp done(%{connection_id: connection_id}, %{messages: messages}, columns, rows, tags) do
-    {command, nil} = decode_tags(tags)
+    {command, _} = decode_tags(tags)
 
     %Postgrex.Result{
       command: command,

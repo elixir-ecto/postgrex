@@ -83,6 +83,7 @@ defmodule Postgrex.Notifications do
 
   ## PUBLIC API ##
 
+  @type query :: binary()
   @type server :: GenServer.server()
   @type state :: term
 
@@ -95,18 +96,25 @@ defmodule Postgrex.Notifications do
 
   @doc """
   Callback for `call/3`.
-
-  Replies must be sent with `reply/2`.
   """
   @callback handle_call(term, GenServer.from(), state) ::
-              {:reply, term, state} | {:noreply, state}
+              {:noreply, state} | {:reply, term, state} | {:query, query, state}
+
+  @doc """
+  Callback for processing or relaying query results.
+  """
+  @callback handle_result(Result.t(), state) :: {:noreply, state}
 
   @doc false
   def child_spec(opts) do
-    %{
-      id: __MODULE__,
-      start: {__MODULE__, :start_link, [opts]}
-    }
+    opts =
+      if match?([mod, _args, _opts] when is_atom(mod), opts) do
+        opts
+      else
+        [opts]
+      end
+
+    %{id: __MODULE__, start: {__MODULE__, :start_link, opts}}
   end
 
   @doc """
@@ -251,7 +259,7 @@ defmodule Postgrex.Notifications do
         nil -> opts()
       end
 
-    case Protocol.connect([types: nil] ++ opts) do
+    case Protocol.connect(opts) do
       {:ok, protocol} ->
         s = %{s | listener_channels: %{}, connected: true, protocol: protocol}
         Enum.reduce_while(s.listeners, {:ok, s, s.idle_interval}, &reestablish_listener/2)
@@ -284,12 +292,23 @@ defmodule Postgrex.Notifications do
   end
 
   def handle_call(msg, from, %{state: {mod, mod_state}} = s) do
-    case apply(mod, :handle_call, [msg, from, mod_state]) do
+    case mod.handle_call(msg, from, mod_state) do
       {:noreply, mod_state} ->
         {:noreply, %{s | state: {mod, mod_state}}}
 
       {:reply, reply, mod_state} ->
         {:reply, reply, %{s | state: {mod, mod_state}}}
+
+      {:query, query, mod_state} ->
+        case Protocol.handle_simple(query, [], s.protocol) do
+          {:ok, %Postgrex.Result{} = result, protocol} ->
+            {:noreply, mod_state} = mod.handle_result(result, %{mod_state | from: from})
+
+            checkin(protocol, %{s | state: {mod, mod_state}})
+
+          {error, reason, protocol} ->
+            reconnect_or_stop(error, reason, protocol, %{s | state: {mod, mod_state}})
+        end
     end
   end
 
@@ -431,6 +450,11 @@ defmodule Postgrex.Notifications.Default do
 
   @impl true
   def handle_call(_message, _from, state) do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_result(_message, state) do
     {:noreply, state}
   end
 end

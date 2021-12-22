@@ -188,6 +188,35 @@ defmodule NotificationTest do
     assert_received :configured
   end
 
+  describe "callback modules" do
+    defmodule MyCallback do
+      @behaviour Postgrex.Notifications
+
+      @impl true
+      def init(_args) do
+        {:ok, %{from: nil}}
+      end
+
+      @impl true
+      def handle_call(:select, from, state) do
+        {:query, "SELECT 1", %{state | from: from}}
+      end
+
+      @impl true
+      def handle_result(result, %{from: from} = state) do
+        GenServer.reply(from, {:ok, result})
+
+        {:noreply, %{state | from: nil}}
+      end
+    end
+
+    test "running simple queries with a callback module" do
+      {:ok, pid} = start_supervised({PN, [MyCallback, [], @opts]})
+
+      {:ok, %{command: :select, rows: [["1"]]}} = GenServer.call(pid, :select)
+    end
+  end
+
   def configure(opts, parent, :bar, :baz) do
     assert :bar = Keyword.get(opts, :foo)
     send(parent, :configured)
