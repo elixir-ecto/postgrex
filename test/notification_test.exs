@@ -190,7 +190,9 @@ defmodule NotificationTest do
 
   describe "callback modules" do
     defmodule MyCallback do
-      @behaviour Postgrex.Notifications
+      alias Postgrex.Notifications
+
+      @behaviour Notifications
 
       @impl true
       def init(_args) do
@@ -198,22 +200,37 @@ defmodule NotificationTest do
       end
 
       @impl true
-      def handle_call(:select, from, state) do
-        {:query, "SELECT 1", %{state | from: from}}
+      def connect(state) do
+        {:ok, state}
+      end
+
+      @impl true
+      def handle_call({:select, val}, from, state) when is_integer(val) do
+        {:query, "SELECT #{val}", %{state | from: from}}
+      end
+
+      @impl true
+      def handle_info(_message, state) do
+        {:noreply, state}
       end
 
       @impl true
       def handle_result(result, %{from: from} = state) do
-        GenServer.reply(from, {:ok, result})
+        Notifications.reply(from, {:ok, result})
 
         {:noreply, %{state | from: nil}}
+      end
+
+      @impl true
+      def handle_notification(_channel, _payload, state) do
+        {:noreply, state}
       end
     end
 
     test "running simple queries with a callback module" do
       {:ok, pid} = start_supervised({PN, [MyCallback, [], @opts]})
 
-      {:ok, %{command: :select, rows: [["1"]]}} = GenServer.call(pid, :select)
+      {:ok, %{command: :select, rows: [["1"]]}} = GenServer.call(pid, {:select, 1})
     end
   end
 

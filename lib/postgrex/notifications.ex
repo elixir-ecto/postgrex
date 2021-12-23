@@ -74,16 +74,17 @@ defmodule Postgrex.Notifications do
   @doc false
   defstruct idle_interval: 5000,
             protocol: nil,
-            listeners: %{},
-            listener_channels: %{},
             auto_reconnect: false,
             reconnect_backoff: 500,
             connected: false,
             state: nil
 
+  # TODO: Return :eventually tuple when connected: false
+  # TODO: Handle reply on error/auto-connect
+
   ## PUBLIC API ##
 
-  @type query :: binary()
+  @type query :: iodata
   @type server :: GenServer.server()
   @type state :: term
 
@@ -95,9 +96,20 @@ defmodule Postgrex.Notifications do
   @callback init(term) :: {:ok, state}
 
   @doc """
+  Callback for state management after connection or reconnection.
+  """
+  @callback connect(state) :: {:ok, state}
+
+  @doc """
   Callback for `call/3`.
   """
   @callback handle_call(term, GenServer.from(), state) ::
+              {:noreply, state} | {:reply, term, state} | {:query, query, state}
+
+  @doc """
+  Callback for unstructured messages.
+  """
+  @callback handle_info(term, state) ::
               {:noreply, state} | {:reply, term, state} | {:query, query, state}
 
   @doc """
@@ -105,13 +117,31 @@ defmodule Postgrex.Notifications do
   """
   @callback handle_result(Result.t(), state) :: {:noreply, state}
 
+  @doc """
+  Callback for processing or relaying pubsub notifications.
+  """
+  @callback handle_notification(binary, binary, state) :: {:noreply, state}
+
+  @doc """
+  Replies to the given client.
+
+  Wrapper for `GenServer.reply/2`.
+  """
+  defdelegate reply(client, reply), to: GenServer
+
+  @doc """
+  Calls the given replication server.
+
+  Wrapper for `GenServer.call/3`.
+  """
+  defdelegate call(server, message, timeout \\ 5000), to: GenServer
+
   @doc false
   def child_spec(opts) do
     opts =
-      if match?([mod, _args, _opts] when is_atom(mod), opts) do
-        opts
-      else
-        [opts]
+      case opts do
+        [mod, _args, _opts] when is_atom(mod) -> opts
+        _ -> [opts]
       end
 
     %{id: __MODULE__, start: {__MODULE__, :start_link, opts}}
@@ -146,7 +176,7 @@ defmodule Postgrex.Notifications do
   """
   @spec start_link(module(), term(), Keyword.t()) ::
           {:ok, pid} | {:error, Postgrex.Error.t() | term}
-  def start_link(module \\ Postgrex.Notifications.Default, args \\ nil, opts) do
+  def start_link(module \\ Postgrex.Notifications.Default, args \\ [], opts) do
     {server_opts, opts} = Keyword.split(opts, [:name])
     opts = Keyword.put_new(opts, :sync_connect, true)
     connection_opts = Postgrex.Utils.default_opts(opts)
@@ -170,9 +200,7 @@ defmodule Postgrex.Notifications do
   """
   @spec listen(server, String.t(), Keyword.t()) :: {:ok, reference} | {:eventually, reference}
   def listen(pid, channel, opts \\ []) do
-    message = {:listen, channel}
-    timeout = opts[:timeout] || @timeout
-    Connection.call(pid, message, timeout)
+    call(pid, {:listen, channel}, Keyword.get(opts, :timeout, @timeout))
   end
 
   @doc """
@@ -194,9 +222,7 @@ defmodule Postgrex.Notifications do
   """
   @spec unlisten(server, reference, Keyword.t()) :: :ok | :error
   def unlisten(pid, ref, opts \\ []) do
-    message = {:unlisten, ref}
-    timeout = opts[:timeout] || @timeout
-    Connection.call(pid, message, timeout)
+    call(pid, {:unlisten, ref}, Keyword.get(opts, :timeout, @timeout))
   end
 
   @doc """
@@ -215,43 +241,44 @@ defmodule Postgrex.Notifications do
 
   @doc false
   def init({mod, args, opts}) do
-    with {:ok, mod_state} <- mod.init(args) do
-      idle_timeout = opts[:idle_timeout]
+    case mod.init(args) do
+      {:ok, mod_state} ->
+        idle_timeout = opts[:idle_timeout]
 
-      if idle_timeout do
-        Logger.warn(
-          ":idle_timeout in Postgrex.Notifications is deprecated, " <>
-            "please use :idle_interval instead"
-        )
-      end
-
-      {idle_interval, opts} = Keyword.pop(opts, :idle_interval, idle_timeout || 5000)
-      {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
-      {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
-
-      state = %__MODULE__{
-        idle_interval: idle_interval,
-        auto_reconnect: auto_reconnect,
-        reconnect_backoff: reconnect_backoff,
-        state: {mod, mod_state}
-      }
-
-      put_opts(opts)
-
-      if opts[:sync_connect] do
-        case connect(:init, state) do
-          {:ok, _, _} = ok -> ok
-          {:backoff, _, _} = backoff -> backoff
-          {:stop, reason, _} -> {:stop, reason}
+        if idle_timeout do
+          Logger.warn(
+            ":idle_timeout in Postgrex.Notifications is deprecated, " <>
+              "please use :idle_interval instead"
+          )
         end
-      else
-        {:connect, :init, state}
-      end
+
+        {idle_interval, opts} = Keyword.pop(opts, :idle_interval, idle_timeout || 5000)
+        {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
+        {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
+
+        state = %__MODULE__{
+          idle_interval: idle_interval,
+          auto_reconnect: auto_reconnect,
+          reconnect_backoff: reconnect_backoff,
+          state: {mod, mod_state}
+        }
+
+        put_opts(opts)
+
+        if opts[:sync_connect] do
+          case connect(:init, state) do
+            {:ok, _, _} = ok -> ok
+            {:backoff, _, _} = backoff -> backoff
+            {:stop, reason, _} -> {:stop, reason}
+          end
+        else
+          {:connect, :init, state}
+        end
     end
   end
 
   @doc false
-  def connect(_, s) do
+  def connect(_, %{state: {mod, mod_state}} = s) do
     opts =
       case Keyword.get(opts(), :configure) do
         {module, fun, args} -> apply(module, fun, [opts() | args])
@@ -261,8 +288,10 @@ defmodule Postgrex.Notifications do
 
     case Protocol.connect(opts) do
       {:ok, protocol} ->
-        s = %{s | listener_channels: %{}, connected: true, protocol: protocol}
-        Enum.reduce_while(s.listeners, {:ok, s, s.idle_interval}, &reestablish_listener/2)
+        # TODO: This needs to execute a query after connection
+        {:noreply, mod_state} = mod.connect(mod_state)
+
+        {:ok, %{s | protocol: protocol, state: {mod, mod_state}}, s.idle_interval}
 
       {:error, reason} ->
         if s.auto_reconnect do
@@ -274,55 +303,11 @@ defmodule Postgrex.Notifications do
   end
 
   @doc false
-  def handle_call({:listen, channel}, {pid, _} = from, s) do
-    ref = Process.monitor(pid)
-    s = put_in(s.listeners[ref], {channel, pid})
-    do_listen(channel, pid, ref, from, s)
-  end
-
-  def handle_call({:unlisten, ref}, from, s) do
-    case s.listeners do
-      %{^ref => {channel, _pid}} ->
-        Process.demonitor(ref, [:flush])
-        do_unlisten(channel, ref, from, s)
-
-      %{} ->
-        {:reply, :error, s, s.idle_interval}
-    end
-  end
-
-  def handle_call(msg, from, %{state: {mod, mod_state}} = s) do
-    case mod.handle_call(msg, from, mod_state) do
-      {:noreply, mod_state} ->
-        {:noreply, %{s | state: {mod, mod_state}}}
-
-      {:reply, reply, mod_state} ->
-        {:reply, reply, %{s | state: {mod, mod_state}}}
-
-      {:query, query, mod_state} ->
-        case Protocol.handle_simple(query, [], s.protocol) do
-          {:ok, %Postgrex.Result{} = result, protocol} ->
-            {:noreply, mod_state} = mod.handle_result(result, %{mod_state | from: from})
-
-            checkin(protocol, %{s | state: {mod, mod_state}})
-
-          {error, reason, protocol} ->
-            reconnect_or_stop(error, reason, protocol, %{s | state: {mod, mod_state}})
-        end
-    end
+  def handle_call(msg, from, %{state: {mod, mod_state}} = state) do
+    handle(mod, :handle_call, [msg, from, mod_state], state)
   end
 
   @doc false
-  def handle_info({:DOWN, ref, :process, _, _}, s) do
-    case s.listeners do
-      %{^ref => {channel, _pid}} ->
-        do_unlisten(channel, ref, nil, s)
-
-      %{} ->
-        {:noreply, s, s.idle_interval}
-    end
-  end
-
   def handle_info(:timeout, %{protocol: protocol} = state) do
     case Protocol.ping(protocol) do
       {:ok, protocol} ->
@@ -333,105 +318,51 @@ defmodule Postgrex.Notifications do
     end
   end
 
-  def handle_info(msg, s) do
-    %{protocol: protocol, listener_channels: channels, listeners: listeners} = s
-    opts = [notify: &notify_listeners(channels, listeners, &1, &2)]
+  def handle_info(msg, %{protocol: protocol, state: {mod, mod_state}} = state) do
+    opts = [notify: &mod.handle_notification(&1, &2, mod_state)]
 
     case Protocol.handle_info(msg, opts, protocol) do
       {:ok, protocol} ->
-        {:noreply, %{s | protocol: protocol}, s.idle_interval}
+        {:noreply, %{state | protocol: protocol}, state.idle_interval}
 
       {error, reason, protocol} ->
-        reconnect_or_stop(error, reason, protocol, s)
+        reconnect_or_stop(error, reason, protocol, state)
     end
   end
 
-  defp reestablish_listener({ref, {channel, pid}}, {:ok, s, timeout}) do
-    case do_listen(channel, pid, ref, nil, s) do
-      {:noreply, s, _} -> {:cont, {:ok, s, timeout}}
-      error -> {:halt, error}
-    end
+  def handle_info(msg, %{state: {mod, mod_state}} = state) do
+    handle(mod, :handle_info, [msg, mod_state], state)
   end
 
-  defp do_listen(channel, pid, ref, from, s) do
-    s = update_in(s.listener_channels[channel], &((&1 || %{}) |> Map.put(ref, pid)))
+  defp handle(mod, fun, args, state) do
+    case apply(mod, fun, args) do
+      {:noreply, mod_state} ->
+        {:noreply, %{state | state: {mod, mod_state}}, state.idle_interval}
 
-    # If this is the first listener for the given channel,
-    # we need to actually issue the LISTEN query.
-    if map_size(s.listener_channels[channel]) == 1 do
-      listener_query("LISTEN \"#{channel}\"", {:ok, ref}, {:eventually, ref}, from, s)
-    else
-      if from, do: Connection.reply(from, {:ok, ref})
-      {:noreply, s, s.idle_interval}
-    end
-  end
+      {:reply, reply, mod_state} ->
+        {:reply, reply, %{state | state: {mod, mod_state}}, state.idle_interval}
 
-  defp do_unlisten(channel, ref, from, s) do
-    s = update_in(s.listeners, &Map.delete(&1, ref))
-    s = update_in(s.listener_channels[channel], &Map.delete(&1, ref))
+      {:query, query, mod_state} ->
+        opts = [notify: &mod.handle_notification(&1, &2, mod_state)]
 
-    # If this was the last listener for the given channel,
-    # we need to issue the UNLISTEN query.
-    if map_size(s.listener_channels[channel]) == 0 do
-      s = update_in(s.listener_channels, &Map.delete(&1, channel))
-      listener_query("UNLISTEN \"#{channel}\"", :ok, :ok, from, s)
-    else
-      if from, do: Connection.reply(from, :ok)
-      {:noreply, s, s.idle_interval}
-    end
-  end
+        case Protocol.handle_simple(query, opts, state.protocol) do
+          {:ok, %Postgrex.Result{} = result, protocol} ->
+            state = %{state | protocol: protocol, state: {mod, mod_state}}
 
-  defp listener_query(_statement, _ok_result, async_result, from, %{connected: false} = s) do
-    if from, do: Connection.reply(from, async_result)
-    {:noreply, s, s.idle_interval}
-  end
+            handle(mod, :handle_result, [result, mod_state], state)
 
-  defp listener_query(statement, ok_result, async_result, from, s) do
-    %{protocol: protocol, listener_channels: channels, listeners: listeners} = s
-    opts = [notify: &notify_listeners(channels, listeners, &1, &2)]
-
-    case Protocol.handle_simple(statement, opts, protocol) do
-      {:ok, %Postgrex.Result{}, protocol} ->
-        if from, do: Connection.reply(from, ok_result)
-        checkin(protocol, s)
-
-      {error, reason, protocol} ->
-        case reconnect_or_stop(error, reason, protocol, s) do
-          {:stop, _, _} = stop ->
-            stop
-
-          {:connect, _, _} = connect ->
-            if from, do: Connection.reply(from, async_result)
-            connect
+          {error, reason, protocol} ->
+            reconnect_or_stop(error, reason, protocol, %{state | state: {mod, mod_state}})
         end
     end
   end
 
-  defp notify_listeners(channels, listeners, channel, payload) do
-    Enum.each(Map.get(channels, channel) || [], fn {ref, _pid} ->
-      {_, pid} = Map.fetch!(listeners, ref)
-      send(pid, {:notification, self(), ref, channel, payload})
-    end)
+  defp reconnect_or_stop(error, reason, protocol, %{auto_reconnect: false} = state) do
+    {:stop, reason, %{state | protocol: protocol}}
   end
 
-  defp checkin(protocol, s) do
-    case Protocol.checkin(protocol) do
-      {:ok, protocol} ->
-        {:noreply, %{s | protocol: protocol}, s.idle_interval}
-
-      {error, reason, protocol} ->
-        reconnect_or_stop(error, reason, protocol, s)
-    end
-  end
-
-  defp reconnect_or_stop(error, reason, protocol, %{auto_reconnect: false} = s)
-       when error in [:error, :disconnect] do
-    {:stop, reason, %{s | protocol: protocol}}
-  end
-
-  defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = s)
-       when error in [:error, :disconnect] do
-    {:connect, :reconnect, %{s | connected: false}}
+  defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = state) do
+    {:connect, :reconnect, %{state | connected: false}}
   end
 
   defp opts(), do: Process.get(__MODULE__)
@@ -443,18 +374,81 @@ defmodule Postgrex.Notifications.Default do
 
   @behaviour Postgrex.Notifications
 
+  defstruct [:ref, listeners: %{}, listener_channels: %{}]
+
   @impl true
-  def init(state) do
-    {:ok, state}
+  def init(args) do
+    {:ok, struct!(__MODULE__, args)}
   end
 
   @impl true
-  def handle_call(_message, _from, state) do
-    {:noreply, state}
+  def connect(state) do
+    if map_size(state.listener_channels) > 0 do
+      listen_statements =
+        state.listener_channels
+        |> Map.keys()
+        |> Enum.map_join(";\n", &~s(LISTEN "#{&1}"))
+
+      query = "DO $$BEGIN #{listen_statements} END$$"
+
+      {:query, query, state}
+    else
+      {:noreply, state}
+    end
   end
 
   @impl true
-  def handle_result(_message, state) do
-    {:noreply, state}
+  def handle_call({:listen, channel}, {pid, _} = from, state) do
+    ref = Process.monitor(pid)
+
+    state = put_in(state.listeners[ref], {channel, pid})
+    state = update_in(state.listener_channels[channel], &Map.put(&1 || %{}, ref, pid))
+
+    if map_size(state.listener_channels[channel]) == 1 do
+      {:query, ~s(LISTEN "#{channel}"), %{state | ref: ref}}
+    else
+      {:reply, {:ok, ref}, state}
+    end
+  end
+
+  def handle_call({:unlisten, ref}, from, state) do
+    case state.listeners do
+      %{^ref => {channel, _pid}} ->
+        Process.demonitor(ref, [:flush])
+
+        state = update_in(state.listeners, &Map.delete(&1, ref))
+        state = update_in(state.listener_channels[channel], &Map.delete(&1, ref))
+
+        if map_size(state.listener_channels[channel]) == 0 do
+          state = update_in(state.listener_channels, &Map.delete(&1, channel))
+
+          {:query, ~s(UNLISTEN "#{channel}"), state}
+        else
+          {:reply, :ok, state}
+        end
+
+      _ ->
+        {:reply, :error, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _, _}, state) do
+    # TODO: There's no point in replying here.
+    handle_call({:unlisten, ref}, nil, state)
+  end
+
+  @impl true
+  def handle_result(message, state) do
+    {:reply, {:ok, state.ref}, %{state | ref: nil}}
+  end
+
+  @impl true
+  def handle_notification(channel, payload, state) do
+    for {ref, _pid} <- Map.get(state.listener_channels, channel, []) do
+      {_, pid} = Map.fetch!(state.listeners, ref)
+
+      send(pid, {:notification, self(), ref, channel, payload})
+    end
   end
 end
