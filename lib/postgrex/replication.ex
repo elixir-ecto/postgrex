@@ -191,6 +191,9 @@ defmodule Postgrex.Replication do
   The format of the message is `Postgrex.Result.t()` with the row values
   formatted as `text`. A `{:copy,done, table_name}` message will be sent
   to signal copying has completed.
+
+  Copy messages do not require explicit acknowledgement. Acknowledgement
+  can be skipped by returning an empty list.
   """
   @callback handle_copy(Postgrex.Result.t() | {:copy_done, String.t()}, state) ::
               {:noreply, [copy], state}
