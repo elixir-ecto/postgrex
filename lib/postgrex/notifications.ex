@@ -345,23 +345,23 @@ defmodule Postgrex.Notifications do
       {:query, query, mod_state} ->
         opts = [notify: &mod.handle_notification(&1, &2, mod_state)]
 
-        case Protocol.handle_simple(query, opts, state.protocol) do
-          {:ok, %Postgrex.Result{} = result, protocol} ->
-            state = %{state | protocol: protocol, state: {mod, mod_state}}
+        state = %{state | state: {mod, mod_state}}
 
-            handle(mod, :handle_result, [result, mod_state], state)
-
+        with {:ok, result, protocol} <- Protocol.handle_simple(query, opts, state.protocol),
+             {:ok, protocol} <- Protocol.checkin(protocol) do
+          handle(mod, :handle_result, [result, mod_state], %{state | protocol: protocol})
+        else
           {error, reason, protocol} ->
-            reconnect_or_stop(error, reason, protocol, %{state | state: {mod, mod_state}})
+            reconnect_or_stop(error, reason, protocol, %{state | protocol: protocol})
         end
     end
   end
 
-  defp reconnect_or_stop(error, reason, protocol, %{auto_reconnect: false} = state) do
+  defp reconnect_or_stop(_error, reason, protocol, %{auto_reconnect: false} = state) do
     {:stop, reason, %{state | protocol: protocol}}
   end
 
-  defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = state) do
+  defp reconnect_or_stop(_error, _reason, _protocol, %{auto_reconnect: true} = state) do
     {:connect, :reconnect, %{state | connected: false}}
   end
 
@@ -439,8 +439,12 @@ defmodule Postgrex.Notifications.Default do
   end
 
   @impl true
-  def handle_result(message, state) do
-    {:reply, {:ok, state.ref}, %{state | ref: nil}}
+  def handle_result(_message, %{ref: ref} = state) when is_reference(ref) do
+    {:reply, {:ok, ref}, %{state | ref: nil}}
+  end
+
+  def handle_result(_message, state) do
+    {:reply, :ok, state}
   end
 
   @impl true
