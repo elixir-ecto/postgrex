@@ -116,7 +116,7 @@ defmodule Postgrex.Replication do
 
       Postgrex.Replication.start_replication(
         pid,
-        "postgrex",
+        slot_name: "postgrex",
         plugin_opts: [proto_version: 1, publication_names: "postgrex_example"]
       )
 
@@ -213,7 +213,7 @@ defmodule Postgrex.Replication do
   Replies must be sent with `reply/2`.
   """
   @callback handle_call(term, GenServer.from(), state) ::
-              {:noreply, [copy], state} | {:query, String.t(), state}
+              {:noreply, [copy], state} | {:query, iodata, state}
 
   @doc """
   Handles result from a query command.
@@ -223,7 +223,7 @@ defmodule Postgrex.Replication do
   the result of the query.
   """
   @callback handle_result(%Postgrex.Result{}, state) ::
-              {:noreply, [copy], state} | {:query, String.t(), state}
+              {:noreply, [copy], state} | {:query, iodata, state}
 
   @optional_callbacks handle_info: 2, handle_call: 3, handle_copy: 2, handle_result: 2
 
