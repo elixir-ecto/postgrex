@@ -38,7 +38,9 @@ defmodule NotificationTest do
   end
 
   test "listening", context do
-    assert {:ok, _} = PN.listen(context.pid_ps, "channel")
+    assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
+
+    assert is_reference(ref)
   end
 
   test "notifying", context do
@@ -200,8 +202,8 @@ defmodule NotificationTest do
       end
 
       @impl true
-      def connect(state) do
-        {:ok, state}
+      def handle_connect(state) do
+        {:noreply, state}
       end
 
       @impl true

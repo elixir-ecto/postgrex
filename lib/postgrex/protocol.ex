@@ -553,6 +553,7 @@ defmodule Postgrex.Protocol do
 
   @spec handle_info(any, Keyword.t(), state) ::
           {:ok, state}
+          | {:unknown, state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_info(msg, opts \\ [], s) do
@@ -560,16 +561,8 @@ defmodule Postgrex.Protocol do
       {:data, data} ->
         handle_data(s, opts, data)
 
-      :unknown ->
-        Logger.info(fn ->
-          context = " received unexpected message: "
-          [inspect(__MODULE__), ?\s, inspect(self()), context | inspect(msg)]
-        end)
-
-        {:ok, s}
-
-      disconnect ->
-        disconnect
+      disconnect_or_unknown ->
+        disconnect_or_unknown
     end
   end
 
@@ -597,8 +590,8 @@ defmodule Postgrex.Protocol do
     disconnect(s, :ssl, "async recv", reason)
   end
 
-  defp handle_socket(_, _) do
-    :unknown
+  defp handle_socket(_, s) do
+    {:unknown, s}
   end
 
   ## connect
