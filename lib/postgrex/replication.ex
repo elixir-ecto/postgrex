@@ -440,7 +440,7 @@ defmodule Postgrex.Replication do
   end
 
   def handle_call(msg, from, %{state: {mod, mod_state}} = s) do
-    handle(mod, :handle_call, [msg, from, mod_state], s, from)
+    handle(mod, :handle_call, [msg, from, mod_state], from, s)
   end
 
   @doc false
@@ -461,20 +461,20 @@ defmodule Postgrex.Replication do
   defp handle_data([], s), do: {:noreply, s}
 
   defp handle_data([copy | copies], %{state: {mod, mod_state}} = s) do
-    with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], s, nil) do
+    with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], nil, s) do
       handle_data(copies, s)
     end
   end
 
   defp maybe_handle(mod, fun, args, s) do
     if function_exported?(mod, fun, length(args)) do
-      handle(mod, fun, args, s, nil)
+      handle(mod, fun, args, nil, s)
     else
       {:noreply, s}
     end
   end
 
-  defp handle(mod, fun, args, %{streaming: streaming} = s, from) do
+  defp handle(mod, fun, args, from, %{streaming: streaming} = s) do
     case apply(mod, fun, args) do
       {:noreply, [], mod_state} ->
         {:noreply, %{s | state: {mod, mod_state}}}
@@ -500,15 +500,15 @@ defmodule Postgrex.Replication do
         end
 
       {:stream, _query, _opts, mod_state} ->
-        stream_in_progress(:stream, mod, mod_state, s, from)
+        stream_in_progress(:stream, mod, mod_state, from, s)
 
       {:query, query, mod_state} when streaming == nil ->
         case Protocol.handle_simple(query, [], s.protocol) do
           {:ok, %Postgrex.Result{} = result, protocol} ->
-            handle(mod, :handle_result, [result, mod_state], %{s | protocol: protocol}, from)
+            handle(mod, :handle_result, [result, mod_state], from, %{s | protocol: protocol})
 
           {:error, %Postgrex.Error{} = error, protocol} ->
-            handle(mod, :handle_result, [error, mod_state], %{s | protocol: protocol}, from)
+            handle(mod, :handle_result, [error, mod_state], from, %{s | protocol: protocol})
 
           {:disconnect, reason, protocol} ->
             from && reply(from, {__MODULE__, reason})
@@ -516,11 +516,11 @@ defmodule Postgrex.Replication do
         end
 
       {:query, _query, mod_state} ->
-        stream_in_progress(:query, mod, mod_state, s, from)
+        stream_in_progress(:query, mod, mod_state, from, s)
     end
   end
 
-  defp stream_in_progress(command, mod, mod_state, s, from) do
+  defp stream_in_progress(command, mod, mod_state, from, s) do
     Logger.warn("received #{command} while stream is already in progress")
     from && reply(from, {__MODULE__, :stream_in_progress})
     {:noreply, %{s | state: {mod, mod_state}}}
