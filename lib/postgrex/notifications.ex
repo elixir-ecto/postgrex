@@ -129,7 +129,6 @@ defmodule Postgrex.Notifications do
 
   @optional_callbacks handle_info: 2,
                       handle_call: 3,
-                      handle_result: 2,
                       handle_connect: 1,
                       handle_disconnect: 1
 
@@ -351,13 +350,13 @@ defmodule Postgrex.Notifications do
 
   defp maybe_handle(mod, fun, args, state) do
     if function_exported?(mod, fun, length(args)) do
-      handle(mod, fun, args, state)
+      handle(mod, fun, args, nil, state)
     else
       {:noreply, state}
     end
   end
 
-  defp handle(mod, fun, args, state) do
+  defp handle(mod, fun, args, from, state) do
     case apply(mod, fun, args) do
       {:noreply, mod_state} ->
         {:noreply, %{state | state: {mod, mod_state}}, state.idle_interval}
@@ -369,10 +368,12 @@ defmodule Postgrex.Notifications do
 
         with {:ok, result, protocol} <- Protocol.handle_simple(query, opts, state.protocol),
              {:ok, protocol} <- Protocol.checkin(protocol) do
-          maybe_handle(mod, :handle_result, [result, mod_state], %{state | protocol: protocol})
+          state = %{state | protocol: protocol}
+
+          handle(mod, :handle_result, [result, mod_state], from, state)
         else
           {error, reason, protocol} ->
-            state = %{state | protocol: protocol}
+            from && reply(from, {__MODULE__, reason})
 
             {:noreply, state, _} = maybe_handle(mod, :handle_disconnect, [mod_state], state)
 
