@@ -194,6 +194,13 @@ defmodule Postgrex.Replication do
               | {:stream, query, stream_opts, state}
 
   @doc """
+  Invoked after disconnecting.
+
+  This is only invoked if `:auto_reconnect` is set to true.
+  """
+  @callback handle_disconnect(state) :: {:noreply, state}
+
+  @doc """
   Callback for `:stream` outputs.
 
   If any callback returns `{:stream, iodata, opts, state}`, then this
@@ -246,11 +253,12 @@ defmodule Postgrex.Replication do
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
 
-  @optional_callbacks handle_info: 2,
-                      handle_call: 3,
+  @optional_callbacks handle_call: 3,
+                      handle_connect: 1,
                       handle_data: 2,
-                      handle_result: 2,
-                      handle_connect: 1
+                      handle_disconnect: 1,
+                      handle_info: 2,
+                      handle_result: 2
 
   @doc """
   Replies to the given `call/3`.
@@ -544,6 +552,8 @@ defmodule Postgrex.Replication do
 
   defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = s)
        when error in [:error, :disconnect] do
+    %{state: {mod, mod_state}} = s
+    {:noreply, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
     {:connect, :reconnect, s}
   end
 

@@ -21,6 +21,18 @@ defmodule ReplicationTest do
     end
 
     @impl true
+    def handle_connect(pid) do
+      send(pid, {:connect, System.unique_integer()})
+      {:noreply, pid}
+    end
+
+    @impl true
+    def handle_disconnect({_, pid}) do
+      send(pid, {:disconnect, System.unique_integer()})
+      {:noreply, pid}
+    end
+
+    @impl true
     def handle_data(<<?k, wal_end::64, _clock::64, _reply>> = msg, pid) do
       send(pid, msg)
       reply = <<?r, wal_end + 1::64, wal_end + 1::64, wal_end + 1::64, current_time()::64, 0>>
@@ -107,18 +119,24 @@ defmodule ReplicationTest do
 
       ref = Process.monitor(context.repl)
       assert_receive {:DOWN, ^ref, _, _, _}
+      assert_received {:connect, _}
+      refute_received {:disconnect, _}
+      refute_received {:connect, _}
     end
   end
 
   describe "auto-reconnect" do
     @tag opts: [auto_reconnect: true]
     test "on disconnect", context do
+      assert_receive {:connect, i1}
       :sys.suspend(context.repl)
       {_pid, ref} = spawn_monitor(fn -> PR.call(context.repl, {:query, "SELECT 1"}) end)
       disconnect(context.repl)
       :sys.resume(context.repl)
       assert_receive {:DOWN, ^ref, _, _, {%DBConnection.ConnectionError{}, _}}
       assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
+      assert_receive {:disconnect, i2} when i1 < i2
+      assert_receive {:connect, i3} when i2 < i3
     end
   end
 
@@ -209,11 +227,8 @@ defmodule ReplicationTest do
       P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2), ($3, $4)", [42, "42", 1, "1"])
       send(context.repl, {:stream, "COPY repl_test TO STDOUT"})
       assert_receive {"42\t42\n", i1}, @timeout
-      assert_receive {"1\t1\n", i2}, @timeout
-      assert_receive {:done, i3}, @timeout
-
-      assert i1 < i2
-      assert i2 < i3
+      assert_receive {"1\t1\n", i2} when i1 < i2, @timeout
+      assert_receive {:done, i3} when i2 < i3, @timeout
 
       # Can query after copy is done
       {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
