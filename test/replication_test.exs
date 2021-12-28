@@ -28,7 +28,7 @@ defmodule ReplicationTest do
     end
 
     def handle_data(msg, pid) do
-      send(pid, msg)
+      send(pid, {msg, System.unique_integer()})
       {:noreply, [], pid}
     end
 
@@ -172,7 +172,7 @@ defmodule ReplicationTest do
     end
   end
 
-  describe "replication" do
+  describe "handle_data" do
     setup do
       pid = start_supervised!({P, @opts}, id: :repl_conn)
       P.query!(pid, "CREATE TABLE IF NOT EXISTS repl_test (id int, text text)", [])
@@ -185,23 +185,38 @@ defmodule ReplicationTest do
       {:ok, pid: pid}
     end
 
-    test "handle_data", context do
+    test "on replication", context do
       start_replication(context.repl)
       assert_receive <<?k, _::64, _::64, _>>, @timeout
     end
 
-    test "receives pgoutput with slot_name", context do
+    test "on replication with pgoutput", context do
       start_replication(context.repl)
       P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2)", [42, "fortytwo"])
 
-      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>,
+      assert_receive {<<?w, _ws::64, _we::64, _ts1::64, ?B, _ls::64, _ts2::64, _xid::32>>, _},
                      @timeout
 
-      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?I, _rid::32, ?N, _nc::16, _::binary>>,
+      assert_receive {<<?w, _ws::64, _we::64, _ts1::64, ?I, _rid::32, ?N, _nc::16, _::binary>>,
+                      _},
                      @timeout
 
-      assert_receive <<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>,
+      assert_receive {<<?w, _ws::64, _we::64, _ts1::64, ?C, _f, _ls::64, _le::64, _ts2::64>>, _},
                      @timeout
+    end
+
+    test "on copy", context do
+      P.query!(context.pid, "INSERT INTO repl_test VALUES ($1, $2), ($3, $4)", [42, "42", 1, "1"])
+      send(context.repl, {:stream, "COPY repl_test TO STDOUT"})
+      assert_receive {"42\t42\n", i1}, @timeout
+      assert_receive {"1\t1\n", i2}, @timeout
+      assert_receive {:done, i3}, @timeout
+
+      assert i1 < i2
+      assert i2 < i3
+
+      # Can query after copy is done
+      {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
     end
   end
 

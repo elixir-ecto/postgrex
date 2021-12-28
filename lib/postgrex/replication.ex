@@ -207,7 +207,7 @@ defmodule Postgrex.Replication do
   be done by returning a list of binaries according to the replication
   protocol.
   """
-  @callback handle_data(binary, state) ::
+  @callback handle_data(binary | :done, state) ::
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
@@ -464,6 +464,12 @@ defmodule Postgrex.Replication do
   end
 
   defp handle_data([], s), do: {:noreply, s}
+
+  defp handle_data([:copy_done | copies], %{state: {mod, mod_state}} = s) do
+    with {:noreply, s} <- handle(mod, :handle_data, [:done, mod_state], nil, s) do
+      handle_data(copies, %{s | streaming: nil})
+    end
+  end
 
   defp handle_data([copy | copies], %{state: {mod, mod_state}} = s) do
     with {:noreply, s} <- handle(mod, :handle_data, [copy, mod_state], nil, s) do
