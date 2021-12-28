@@ -119,8 +119,8 @@ defmodule ReplicationTest do
 
       ref = Process.monitor(context.repl)
       assert_receive {:DOWN, ^ref, _, _, _}
-      assert_received {:connect, _}
-      refute_received {:disconnect, _}
+      assert_received {:connect, i1}
+      assert_received {:disconnect, i2} when i2 > i1
       refute_received {:connect, _}
     end
   end

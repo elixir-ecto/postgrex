@@ -547,7 +547,9 @@ defmodule Postgrex.Replication do
 
   defp reconnect_or_stop(error, reason, protocol, %{auto_reconnect: false} = s)
        when error in [:error, :disconnect] do
-    {:stop, reason, %{s | protocol: protocol}}
+    %{state: {mod, mod_state}} = s
+    {:noreply, s} = maybe_handle(mod, :handle_disconnect, [mod_state], %{s | protocol: protocol})
+    {:stop, reason, s}
   end
 
   defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = s)
