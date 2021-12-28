@@ -240,7 +240,7 @@ defmodule Postgrex.Replication do
   then this callback will be immediatelly called with
   the result of the query.
   """
-  @callback handle_result(Postgrex.Result.t | Postgrex.Error.t, state) ::
+  @callback handle_result(Postgrex.Result.t() | Postgrex.Error.t(), state) ::
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}

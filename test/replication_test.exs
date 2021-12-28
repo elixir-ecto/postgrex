@@ -106,7 +106,7 @@ defmodule ReplicationTest do
       assert_receive {:DOWN, ^ref, _, _, {%DBConnection.ConnectionError{}, _}}
 
       ref = Process.monitor(context.repl)
-      assert_receive {:DOWN, ^ref, _, _, %DBConnection.ConnectionError{}}
+      assert_receive {:DOWN, ^ref, _, _, _}
     end
   end
 
