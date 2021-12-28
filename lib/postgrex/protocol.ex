@@ -1079,41 +1079,6 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_replication(String.t() | iolist(), state) ::
-          {:ok, state}
-          | {:error, Postgrex.Error.t(), state}
-          | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_replication(statement, %{buffer: buffer} = s) do
-    msgs = [msg_query(statement: statement)]
-
-    case msg_send(%{s | buffer: nil}, msgs, buffer) do
-      :ok ->
-        recv_replication(s, buffer)
-
-      {:disconnect, err, s} ->
-        {:disconnect, err, s}
-
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        status = new_status([], mode: :transaction)
-        error_ready(s, status, err, buffer)
-    end
-  end
-
-  defp recv_replication(s, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_copy_both_response(), buffer} ->
-        {:ok, %{s | buffer: buffer}}
-
-      {:ok, msg_error(fields: fields), buffer} ->
-        status = new_status([], mode: :transaction)
-        err = Postgrex.Error.exception(postgres: fields)
-        error_ready(s, status, err, buffer)
-
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
   @spec handle_copy_send([binary], state) ::
           :ok
           | {:error, Postgrex.Error.t(), state}
@@ -1173,16 +1138,16 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_copy_table(String.t() | iolist(), state) ::
+  @spec handle_streaming(String.t() | iolist(), state) ::
           {:ok, state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
-  def handle_copy_table(statement, %{buffer: buffer} = s) do
+  def handle_streaming(statement, %{buffer: buffer} = s) do
     msgs = [msg_query(statement: statement)]
 
     case msg_send(%{s | buffer: nil}, msgs, buffer) do
       :ok ->
-        recv_copy_table(s, buffer)
+        recv_streaming(s, buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -1193,8 +1158,11 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp recv_copy_table(s, buffer) do
+  defp recv_streaming(s, buffer) do
     case msg_recv(s, :infinity, buffer) do
+      {:ok, msg_copy_both_response(), buffer} ->
+        {:ok, %{s | buffer: buffer}}
+
       {:ok, msg_copy_out_response(), buffer} ->
         {:ok, %{s | buffer: buffer}}
 
