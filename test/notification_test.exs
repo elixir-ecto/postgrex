@@ -1,10 +1,12 @@
 defmodule NotificationTest do
   use ExUnit.Case, async: true
+
   import Postgrex.TestHelper
+
   alias Postgrex, as: P
   alias Postgrex.Notifications, as: PN
 
-  @opts [database: "postgrex_test", sync_connect: true]
+  @opts [database: "postgrex_test", sync_connect: true, reconnect_backoff: 250]
 
   setup do
     {:ok, pid} = P.start_link(@opts)
@@ -104,6 +106,7 @@ defmodule NotificationTest do
     end)
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
+
     Process.sleep(300)
   end
 
@@ -116,10 +119,10 @@ defmodule NotificationTest do
     test "basic reconnection", context do
       assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
 
-      {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
-      :gen_tcp.shutdown(sock, :read_write)
+      disconnect(context.pid_ps)
+
       # Give the notifier a chance to re-establish the connection and listeners
-      :timer.sleep(500)
+      Process.sleep(500)
 
       assert {:ok, %Postgrex.Result{command: :notify}} =
                P.query(context.pid, "NOTIFY channel", [])
@@ -139,8 +142,7 @@ defmodule NotificationTest do
           assert_receive {:notification, ^receiver_pid, ^ref3, "channel", ""}
         end)
 
-      {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
-      :gen_tcp.shutdown(sock, :read_write)
+      disconnect(context.pid_ps)
 
       # Also attempt to subscribe while it is down
       assert {ok_or_eventually, ref2} = PN.listen(context.pid_ps, "channel2")
@@ -190,55 +192,14 @@ defmodule NotificationTest do
     assert_received :configured
   end
 
-  describe "callback modules" do
-    defmodule MyCallback do
-      alias Postgrex.Notifications
-
-      @behaviour Notifications
-
-      @impl true
-      def init(_args) do
-        {:ok, %{from: nil}}
-      end
-
-      @impl true
-      def handle_connect(state) do
-        {:noreply, state}
-      end
-
-      @impl true
-      def handle_call({:select, val}, from, state) when is_integer(val) do
-        {:query, "SELECT #{val}", %{state | from: from}}
-      end
-
-      @impl true
-      def handle_info(_message, state) do
-        {:noreply, state}
-      end
-
-      @impl true
-      def handle_result(result, %{from: from} = state) do
-        Notifications.reply(from, {:ok, result})
-
-        {:noreply, %{state | from: nil}}
-      end
-
-      @impl true
-      def handle_notification(_channel, _payload, state) do
-        {:noreply, state}
-      end
-    end
-
-    test "running simple queries with a callback module" do
-      {:ok, pid} = start_supervised({PN, [MyCallback, [], @opts]})
-
-      {:ok, %{command: :select, rows: [["1"]]}} = GenServer.call(pid, {:select, 1})
-    end
-  end
-
   def configure(opts, parent, :bar, :baz) do
     assert :bar = Keyword.get(opts, :foo)
     send(parent, :configured)
     Keyword.merge(opts, @opts)
+  end
+
+  defp disconnect(conn) do
+    {:gen_tcp, sock} = :sys.get_state(conn).mod_state.protocol.sock
+    :gen_tcp.shutdown(sock, :read_write)
   end
 end

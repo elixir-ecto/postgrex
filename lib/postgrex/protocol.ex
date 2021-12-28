@@ -561,8 +561,14 @@ defmodule Postgrex.Protocol do
       {:data, data} ->
         handle_data(s, opts, data)
 
-      disconnect_or_unknown ->
-        disconnect_or_unknown
+      :ignore ->
+        {:ok, s}
+
+      :unknown ->
+        {:unknown, s}
+
+      disconnect ->
+        disconnect
     end
   end
 
@@ -590,8 +596,16 @@ defmodule Postgrex.Protocol do
     disconnect(s, :ssl, "async recv", reason)
   end
 
-  defp handle_socket(_, s) do
-    {:unknown, s}
+  defp handle_socket({closed, _sock}, _) when closed in [:tcp_closed, :ssl_closed] do
+    :ignore
+  end
+
+  defp handle_socket({error, _sock, _reason}, _) when error in [:tcp_error, :ssl_error] do
+    :ignore
+  end
+
+  defp handle_socket(_, _) do
+    :unknown
   end
 
   ## connect
