@@ -90,7 +90,7 @@ defmodule Postgrex.Replication do
         # https://www.postgresql.org/docs/14/protocol-replication.html
         def handle_data(<<?w, _wal_start::64, _wal_end::64, _clock::64, rest::binary>>, state) do
           IO.inspect(rest)
-          {:noreply, [], state}
+          {:noreply, state}
         end
 
         def handle_data(<<?k, wal_end::64, _clock::64, reply>>, state) do
@@ -188,7 +188,8 @@ defmodule Postgrex.Replication do
   This may be invoked multiple times if `:auto_reconnect` is set to true.
   """
   @callback handle_connect(state) ::
-              {:noreply, ack, state}
+              {:noreply, state}
+              | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
 
@@ -207,7 +208,8 @@ defmodule Postgrex.Replication do
   protocol.
   """
   @callback handle_data(binary, state) ::
-              {:noreply, ack, state}
+              {:noreply, state}
+              | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
 
@@ -215,7 +217,8 @@ defmodule Postgrex.Replication do
   Callback for `Kernel.send/2`.
   """
   @callback handle_info(term, state) ::
-              {:noreply, ack, state}
+              {:noreply, state}
+              | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
 
@@ -225,7 +228,8 @@ defmodule Postgrex.Replication do
   Replies must be sent with `reply/2`.
   """
   @callback handle_call(term, GenServer.from(), state) ::
-              {:noreply, ack, state}
+              {:noreply, state}
+              | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
 
@@ -236,8 +240,9 @@ defmodule Postgrex.Replication do
   then this callback will be immediatelly called with
   the result of the query.
   """
-  @callback handle_result(%Postgrex.Result{} | %Postgrex.Error{}, state) ::
-              {:noreply, ack, state}
+  @callback handle_result(Postgrex.Result.t | Postgrex.Error.t, state) ::
+              {:noreply, state}
+              | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
 
@@ -476,7 +481,7 @@ defmodule Postgrex.Replication do
 
   defp handle(mod, fun, args, from, %{streaming: streaming} = s) do
     case apply(mod, fun, args) do
-      {:noreply, [], mod_state} ->
+      {:noreply, mod_state} ->
         {:noreply, %{s | state: {mod, mod_state}}}
 
       {:noreply, replies, mod_state} ->

@@ -35,7 +35,7 @@ defmodule ReplicationTest do
     @impl true
     def handle_info(:ping, pid) do
       send(pid, :pong)
-      {:noreply, [], pid}
+      {:noreply, pid}
     end
 
     def handle_info({:stream, query}, pid) do
@@ -43,13 +43,13 @@ defmodule ReplicationTest do
     end
 
     def handle_info(_, pid) do
-      {:noreply, [], pid}
+      {:noreply, pid}
     end
 
     @impl true
     def handle_call(:ping, from, pid) do
       Postgrex.Replication.reply(from, :pong)
-      {:noreply, [], pid}
+      {:noreply, pid}
     end
 
     @impl true
@@ -60,7 +60,7 @@ defmodule ReplicationTest do
     @impl true
     def handle_result(result, {from, pid}) do
       Postgrex.Replication.reply(from, {:ok, result})
-      {:noreply, [], pid}
+      {:noreply, pid}
     end
 
     @epoch DateTime.to_unix(~U[2000-01-01 00:00:00Z], :microsecond)
