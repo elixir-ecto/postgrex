@@ -233,6 +233,13 @@ defmodule Postgrex.Replication do
   Callback for `call/3`.
 
   Replies must be sent with `reply/2`.
+
+  If `auto_reconnect: false` (the default) and there is a disconnection,
+  the process will terminate and the caller will exit even if no reply is
+  sent. However, if `auto_reconnect` is set to true, a disconnection will
+  keep the process alive, which means that any command that has not yet
+  been replied to should eventually do so. One simple approach is to
+  reply to any pending commands on `c:handle_disconnect/1`.
   """
   @callback handle_call(term, GenServer.from(), state) ::
               {:noreply, state}
