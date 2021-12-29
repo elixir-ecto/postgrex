@@ -69,13 +69,20 @@ defmodule Postgrex.Notifications do
 
   require Logger
 
-  defstruct [:from, :ref, connected: false, listeners: %{}, listener_channels: %{}]
+  defstruct [
+    :from,
+    :ref,
+    auto_reconnect: false,
+    connected: false,
+    listeners: %{},
+    listener_channels: %{}
+  ]
 
   @timeout 5000
 
   @doc false
   def child_spec(opts) do
-    %{id: __MODULE__, start: {SimpleConnection, :start_link, [__MODULE__, [], opts]}}
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
   @doc """
@@ -107,7 +114,9 @@ defmodule Postgrex.Notifications do
   """
   @spec start_link(Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(opts) do
-    SimpleConnection.start_link(__MODULE__, [], opts)
+    args = Keyword.take(opts, [:auto_reconnect])
+
+    SimpleConnection.start_link(__MODULE__, args, opts)
   end
 
   @doc """
@@ -201,7 +210,15 @@ defmodule Postgrex.Notifications do
 
   @impl true
   def handle_disconnect(state) do
-    {:noreply, %{state | connected: false}}
+    state = %{state | connected: false}
+
+    if state.auto_reconnect && state.from && state.ref do
+      SimpleConnection.reply(state.from, {:eventually, state.ref})
+
+      {:noreply, %{state | from: nil, ref: nil}}
+    else
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -232,11 +249,11 @@ defmodule Postgrex.Notifications do
       %{^ref => {channel, _pid}} ->
         Process.demonitor(ref, [:flush])
 
-        state = update_in(state.listeners, &Map.delete(&1, ref))
-        state = update_in(state.listener_channels[channel], &Map.delete(&1, ref))
+        {_, state} = pop_in(state.listeners[ref])
+        {_, state} = pop_in(state.listener_channels[channel][ref])
 
         if map_size(state.listener_channels[channel]) == 0 do
-          state = update_in(state.listener_channels, &Map.delete(&1, channel))
+          {_, state} = pop_in(state.listener_channels[channel])
 
           {:query, ~s(UNLISTEN "#{channel}"), %{state | from: from}}
         else

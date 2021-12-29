@@ -79,7 +79,11 @@ defmodule Postgrex.SimpleConnection do
 
   Wrapper for `GenServer.call/3`.
   """
-  defdelegate call(server, message, timeout \\ 5000), to: GenServer
+  def call(server, message, timeout \\ 5000) do
+    with {__MODULE__, reason} <- GenServer.call(server, message, timeout) do
+      exit({reason, {__MODULE__, :call, [server, message, timeout]}})
+    end
+  end
 
   @doc false
   def child_spec(opts) do
@@ -250,8 +254,6 @@ defmodule Postgrex.SimpleConnection do
             handle(mod, :handle_result, [error, mod_state], from, %{state | protocol: protocol})
 
           {:disconnect, reason, protocol} ->
-            from && reply(from, {__MODULE__, reason})
-
             reconnect_or_stop(:disconnect, reason, protocol, state)
         end
     end

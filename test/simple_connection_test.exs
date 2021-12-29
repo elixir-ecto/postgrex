@@ -20,6 +20,8 @@ defmodule SimpleConnectionTest do
 
     @impl true
     def handle_connect(state) do
+      state.from && GenServer.reply(state.from, :reconnecting)
+
       send(state.pid, {:connect, System.unique_integer()})
 
       {:noreply, state}
@@ -62,7 +64,7 @@ defmodule SimpleConnectionTest do
 
   setup context do
     opts = Keyword.merge(@opts, context[:opts] || [])
-    conn = start_supervised!({SC, [Conn, [self()], opts]})
+    conn = start_supervised!({SC, [Conn, self(), opts]})
 
     {:ok, conn: conn}
   end
@@ -106,12 +108,12 @@ defmodule SimpleConnectionTest do
       assert_receive {:connect, i1}
 
       :sys.suspend(context.conn)
-      {_pid, ref} = spawn_monitor(fn -> SC.call(context.conn, {:query, "SELECT 1"}) end)
+      task = Task.async(fn -> SC.call(context.conn, {:query, "SELECT 1"}) end)
       disconnect(context.conn)
       :sys.resume(context.conn)
 
-      assert_receive {:DOWN, ^ref, _, _, _}
       assert {:ok, %Postgrex.Result{}} = SC.call(context.conn, {:query, "SELECT 1"})
+      assert :reconnecting == Task.await(task)
       assert_receive {:disconnect, i2} when i1 < i2
       assert_receive {:connect, i3} when i2 < i3
     end
