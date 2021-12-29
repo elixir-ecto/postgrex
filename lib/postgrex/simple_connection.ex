@@ -1,5 +1,115 @@
 defmodule Postgrex.SimpleConnection do
-  @moduledoc false
+  @moduledoc ~S"""
+  A generic connection suitable for simple queries and pubsub functionality.
+
+  On its own, a SimpleConnection server only maintains a connection. To execute
+  queries, process results, or relay notices you must implement a callback module
+  with the SimpleConnection behaviour.
+
+  ## Example
+
+  The SimpleConnection behaviour abstracts common client/server interactions,
+  along with optional mechanisms for running queries or relaying notifications.
+
+  Let's start with a minimal callback module that executes a query and relays
+  the result back to the caller.
+
+      defmodule MyConnection do
+        @behaviour Postgrex.SimpleConnection
+
+        @impl true
+        def init(_args) do
+          {:ok, %{from: nil}}
+        end
+
+        @impl true
+        def handle_call({:query, query}, from, state) do
+          {:query, query, %{state | from: from}}
+        end
+
+        @impl true
+        def handle_result(%Postgrex.Result{} = result, state) do
+          SimpleConnection.reply(state.from, result)
+
+          {:noreply, state}
+        end
+      end
+
+      # Start the connection
+      {:ok, pid} = SimpleConnection.start_link(MyConnection, [], database: "demo")
+
+      # Execute a literal query
+      SimpleConnection.call(pid, {:query, "SELECT 1"})
+      # => %Postgrex.Result{rows: [["1"]]}
+
+  We start a connection by passing the callback module, callback options, and
+  server options to `SimpleConnection.start_link/3`. The `init/1` function
+  receives any callback options and returns the callback state.
+
+  Queries are sent through `SimpleConnection.call/2`, executed on the server,
+  and the result is handed off to `handle_result/2`. At that point the callback
+  can process the result before replying back to the caller with
+  `SimpleConnection.reply/2`.
+
+  ## Building a PubSub Connection
+
+  With the `notify/3` callback you can also build a pubsub server on top of
+  `LiSTEN/NOTIFY`. Here's a naive pubsub implementation:
+
+      defmodule MyPubSub do
+        @behaviour Postgrex.SimpleConnection
+
+        defstruct [:from, listeners: %{}]
+
+        @impl true
+        def init(args) do
+          {:ok, struct!(__MODULE__, args)}
+        end
+
+        @impl true
+        def notify(channel, payload, state) do
+          for pid <- state.listeners[channel] do
+            send(pid, {:notice, channel, payload})
+          end
+        end
+
+        @impl true
+        def handle_call({:listen, channel}, {pid, _} = from, state) do
+          listeners = Map.update(state.listeners, channel, [pid], &[pid | &1])
+
+          {:query, ~s(LISTEN "#{channel}"), %{state | from: from, listeners: listeners}}
+        end
+
+        def handle_call({:query, query}, from, state) do
+          {:query, query, %{state | from: from}}
+        end
+
+        @impl true
+        def handle_result(_result, state) do
+          SimpleConnection.reply(state.from, :ok)
+
+          {:noreply, %{state | from: nil}}
+        end
+      end
+
+      # Start the connection
+      {:ok, pid} = SimpleConnection.start_link(MyPubSub, [], database: "demo")
+
+      # Start listening to the "demo" channel
+      SimpleConnection.call(pid, {:listen, "demo"})
+      # => %Postgrex.Result{command: :listen}
+
+      # Notify all listeners
+      SimpleConnection.call(pid, {:query, ~s(NOTIFY "demo", 'hello')})
+      # => %Postgrex.Result{command: :notify}
+
+      # Check the inbox to see the notice message
+      flush()
+      # => {:notice, "demo", "hello"}
+
+  See `Postgrex.Notifications` for a more complex implementation that can unlisten, handle process
+  exits, and persist across reconnection.
+  """
 
   use Connection
 
@@ -32,21 +142,23 @@ defmodule Postgrex.SimpleConnection do
   @callback notify(binary, binary, state) :: :ok
 
   @doc """
-  Invoked after connecting.
+  Invoked after connecting or reconnecting.
 
   This may be called multiple times if `:auto_reconnect` is true.
   """
   @callback handle_connect(state) :: {:noreply, state} | {:query, query, state}
 
   @doc """
-  Invoked after disconnection, regardless of `:auto_reconnect`.
+  Invoked after disconnection.
+
+  This is invoked regardless of the `:auto_reconnect` option.
   """
   @callback handle_disconnect(state) :: {:noreply, state}
 
   @doc """
-  Callback for `call/3`.
+  Callback for `SimpleConnection.call/3`.
 
-  Replies must be sent with `reply/2`.
+  Replies must be sent with `SimpleConnection.reply/2`.
   """
   @callback handle_call(term, GenServer.from(), state) ::
               {:noreply, state} | {:query, query, state}
@@ -57,7 +169,7 @@ defmodule Postgrex.SimpleConnection do
   @callback handle_info(term, state) :: {:noreply, state} | {:query, query, state}
 
   @doc """
-  Callback for processing or relaying query results.
+  Callback for processing or relaying queries executed via `{:query, query, state}`.
   """
   @callback handle_result(Postgrex.Result.t() | Postgrex.Error.t(), state) :: {:noreply, state}
 
