@@ -21,15 +21,21 @@ defmodule ReplicationTest do
     end
 
     @impl true
+    def handle_connect({from, pid}) do
+      GenServer.reply(from, :reconnecting)
+      send(pid, {:connect, System.unique_integer()})
+      {:noreply, pid}
+    end
+
     def handle_connect(pid) do
       send(pid, {:connect, System.unique_integer()})
       {:noreply, pid}
     end
 
     @impl true
-    def handle_disconnect({_, pid}) do
+    def handle_disconnect({from, pid}) do
       send(pid, {:disconnect, System.unique_integer()})
-      {:noreply, pid}
+      {:noreply, {from, pid}}
     end
 
     @impl true
@@ -130,10 +136,10 @@ defmodule ReplicationTest do
     test "on disconnect", context do
       assert_receive {:connect, i1}
       :sys.suspend(context.repl)
-      {_pid, ref} = spawn_monitor(fn -> PR.call(context.repl, {:query, "SELECT 1"}) end)
+      task = Task.async(fn -> PR.call(context.repl, {:query, "SELECT 1"}) end)
       disconnect(context.repl)
       :sys.resume(context.repl)
-      assert_receive {:DOWN, ^ref, _, _, {%DBConnection.ConnectionError{}, _}}
+      assert Task.await(task) == :reconnecting
       assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
       assert_receive {:disconnect, i2} when i1 < i2
       assert_receive {:connect, i3} when i2 < i3

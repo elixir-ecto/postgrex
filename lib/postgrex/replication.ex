@@ -530,7 +530,6 @@ defmodule Postgrex.Replication do
             handle(mod, :handle_result, [error, mod_state], from, %{s | protocol: protocol})
 
           {:disconnect, reason, protocol} ->
-            from && reply(from, {__MODULE__, reason})
             reconnect_or_stop(:disconnect, reason, protocol, %{s | state: {mod, mod_state}})
         end
 
