@@ -558,17 +558,10 @@ defmodule Postgrex.Protocol do
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_info(msg, opts \\ [], s) do
     case handle_socket(msg, s) do
-      {:data, data} ->
-        handle_data(s, opts, data)
-
-      :ignore ->
-        {:ok, s}
-
-      :unknown ->
-        {:unknown, s}
-
-      disconnect ->
-        disconnect
+      {:data, data} -> handle_data(s, opts, data)
+      :ignore -> {:ok, s}
+      :unknown -> {:unknown, s}
+      disconnect -> disconnect
     end
   end
 
@@ -1137,6 +1130,7 @@ defmodule Postgrex.Protocol do
   def handle_copy_recv(msg, s) do
     case handle_socket(msg, s) do
       {:data, data} -> handle_copy_recv(s, [], data)
+      :ignore -> {:ok, [], s}
       :unknown -> :unknown
       disconnect -> disconnect
     end
