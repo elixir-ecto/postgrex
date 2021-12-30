@@ -140,9 +140,9 @@ defmodule ReplicationTest do
       disconnect(context.repl)
       :sys.resume(context.repl)
       assert Task.await(task) == :reconnecting
-      assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
       assert_receive {:disconnect, i2} when i1 < i2, @timeout
       assert_receive {:connect, i3} when i2 < i3, @timeout
+      assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
     end
   end
 
