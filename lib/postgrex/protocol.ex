@@ -553,23 +553,15 @@ defmodule Postgrex.Protocol do
 
   @spec handle_info(any, Keyword.t(), state) ::
           {:ok, state}
+          | {:unknown, state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_info(msg, opts \\ [], s) do
     case handle_socket(msg, s) do
-      {:data, data} ->
-        handle_data(s, opts, data)
-
-      :unknown ->
-        Logger.info(fn ->
-          context = " received unexpected message: "
-          [inspect(__MODULE__), ?\s, inspect(self()), context | inspect(msg)]
-        end)
-
-        {:ok, s}
-
-      disconnect ->
-        disconnect
+      {:data, data} -> handle_data(s, opts, data)
+      :ignore -> {:ok, s}
+      :unknown -> {:unknown, s}
+      disconnect -> disconnect
     end
   end
 
@@ -595,6 +587,14 @@ defmodule Postgrex.Protocol do
 
   defp handle_socket({:ssl_error, sock, reason}, %{sock: {:ssl, sock}} = s) do
     disconnect(s, :ssl, "async recv", reason)
+  end
+
+  defp handle_socket({closed, _sock}, _) when closed in [:tcp_closed, :ssl_closed] do
+    :ignore
+  end
+
+  defp handle_socket({error, _sock, _reason}, _) when error in [:tcp_error, :ssl_error] do
+    :ignore
   end
 
   defp handle_socket(_, _) do
@@ -1096,6 +1096,7 @@ defmodule Postgrex.Protocol do
   def handle_copy_recv(msg, max_copies, s) do
     case handle_socket(msg, s) do
       {:data, data} -> handle_copy_recv(s, max_copies, [], 0, data)
+      :ignore -> {:ok, [], s}
       :unknown -> :unknown
       disconnect -> disconnect
     end
@@ -2889,7 +2890,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp done(%{connection_id: connection_id}, %{messages: messages}, tags) do
-    {command, nil} = decode_tags(tags)
+    {command, _} = decode_tags(tags)
 
     %Postgrex.Result{
       command: command,

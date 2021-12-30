@@ -1,10 +1,12 @@
 defmodule NotificationTest do
   use ExUnit.Case, async: true
+
   import Postgrex.TestHelper
+
   alias Postgrex, as: P
   alias Postgrex.Notifications, as: PN
 
-  @opts [database: "postgrex_test", sync_connect: true]
+  @opts [database: "postgrex_test", sync_connect: true, reconnect_backoff: 250]
 
   setup do
     {:ok, pid} = P.start_link(@opts)
@@ -38,7 +40,9 @@ defmodule NotificationTest do
   end
 
   test "listening", context do
-    assert {:ok, _} = PN.listen(context.pid_ps, "channel")
+    assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
+
+    assert is_reference(ref)
   end
 
   test "notifying", context do
@@ -102,6 +106,7 @@ defmodule NotificationTest do
     end)
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(context.pid, "NOTIFY channel", [])
+
     Process.sleep(300)
   end
 
@@ -114,10 +119,10 @@ defmodule NotificationTest do
     test "basic reconnection", context do
       assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
 
-      {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
-      :gen_tcp.shutdown(sock, :read_write)
+      disconnect(context.pid_ps)
+
       # Give the notifier a chance to re-establish the connection and listeners
-      :timer.sleep(500)
+      Process.sleep(500)
 
       assert {:ok, %Postgrex.Result{command: :notify}} =
                P.query(context.pid, "NOTIFY channel", [])
@@ -137,12 +142,10 @@ defmodule NotificationTest do
           assert_receive {:notification, ^receiver_pid, ^ref3, "channel", ""}
         end)
 
-      {:gen_tcp, sock} = :sys.get_state(context.pid_ps).mod_state.protocol.sock
-      :gen_tcp.shutdown(sock, :read_write)
+      disconnect(context.pid_ps)
 
       # Also attempt to subscribe while it is down
-      assert {ok_or_eventually, ref2} = PN.listen(context.pid_ps, "channel2")
-      assert ok_or_eventually in [:ok, :eventually]
+      assert {:eventually, ref2} = PN.listen(context.pid_ps, "channel2")
 
       # Give the notifier a chance to re-establish the connection and listeners
       Process.sleep(500)
@@ -192,5 +195,10 @@ defmodule NotificationTest do
     assert :bar = Keyword.get(opts, :foo)
     send(parent, :configured)
     Keyword.merge(opts, @opts)
+  end
+
+  defp disconnect(conn) do
+    {:gen_tcp, sock} = :sys.get_state(conn).mod_state.protocol.sock
+    :gen_tcp.shutdown(sock, :read_write)
   end
 end
