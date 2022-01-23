@@ -134,7 +134,7 @@ defmodule Postgrex do
       See the pool documentation for more options. The default `:pool_size` for
       the default pool is 1. If you set a different pool, this option must be
       included with all requests contacting the pool;
-    * `:types` - The types module to use, see `Postgrex.TypeModule`, this
+    * `:types` - The types module to use, see `Postgrex.Types.define/3`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
 

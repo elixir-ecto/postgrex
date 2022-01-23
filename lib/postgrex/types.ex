@@ -297,6 +297,8 @@ defmodule Postgrex.Types do
       extensions so they point to the proper source. Enabling such option
       will increase the time to compile the type module (default: `false`);
 
+    * `:moduledoc` - The moduledoc to be used for the generated module.
+
   """
   def define(module, extensions, opts \\ []) do
     Postgrex.TypeModule.define(module, extensions, opts)

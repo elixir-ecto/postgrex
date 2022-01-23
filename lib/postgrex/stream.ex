@@ -1,5 +1,10 @@
 defmodule Postgrex.Stream do
-  @moduledoc false
+  @moduledoc """
+  Stream struct returned from stream commands.
+
+  All of its fields a private.
+  """
+  @derive {Inspect, only: []}
   defstruct [:conn, :query, :params, :options]
   @type t :: %Postgrex.Stream{}
 end

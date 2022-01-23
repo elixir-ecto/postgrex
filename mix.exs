@@ -2,7 +2,7 @@ defmodule Postgrex.Mixfile do
   use Mix.Project
 
   @source_url "https://github.com/elixir-ecto/postgrex"
-  @version "0.16.0-dev"
+  @version "0.16.0"
 
   def project do
     [
@@ -48,6 +48,9 @@ defmodule Postgrex.Mixfile do
         # Postgrex
         # Postgrex.Notifications
         # Postgrex.Query
+        # Postgrex.ReplicationConnection
+        # Postgrex.SimpleConnection
+        # Postgrex.Stream
         # Postgrex.Result
         "Data Types": [
           Postgrex.Box,
@@ -64,6 +67,7 @@ defmodule Postgrex.Mixfile do
           Postgrex.Range
         ],
         "Custom types and Extensions": [
+          Postgrex.DefaultTypes,
           Postgrex.Extension,
           Postgrex.TypeInfo,
           Postgrex.Types

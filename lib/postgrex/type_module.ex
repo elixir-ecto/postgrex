@@ -27,8 +27,10 @@ defmodule Postgrex.TypeModule do
 
     null = Keyword.get(opts, :null)
 
+    moduledoc = Keyword.get(opts, :moduledoc, false)
+
     quote do
-      @moduledoc false
+      @moduledoc unquote(moduledoc)
       import Postgrex.BinaryUtils
       require unquote(__MODULE__)
       unquote(requires)
@@ -55,6 +57,7 @@ defmodule Postgrex.TypeModule do
     clauses = clauses ++ quote do: (_ -> nil)
 
     quote @anno do
+      @doc false
       def find(type_info, formats) do
         case {type_info, formats} do
           unquote(clauses)
@@ -130,6 +133,7 @@ defmodule Postgrex.TypeModule do
     quote location: :keep do
       unquote(encodes)
 
+      @doc false
       def encode_params(params, types) do
         encode_params(params, types, [])
       end
@@ -141,6 +145,7 @@ defmodule Postgrex.TypeModule do
       defp encode_params([], [], encoded), do: Enum.reverse(encoded)
       defp encode_params(params, _, _) when is_list(params), do: :error
 
+      @doc false
       def encode_tuple(tuple, nil, _types) do
         raise DBConnection.EncodeError, """
         cannot encode anonymous tuple #{inspect(tuple)}. \
@@ -169,6 +174,7 @@ defmodule Postgrex.TypeModule do
               "expected a tuple of size #{n - 1}, got: #{inspect(tuple)}"
       end
 
+      @doc false
       def encode_list(list, type) do
         encode_list(list, type, [])
       end
@@ -270,6 +276,7 @@ defmodule Postgrex.TypeModule do
 
   defp encode_value(extension, :super_binary) do
     quote do
+      @doc false
       def encode_value(value, {unquote(extension), sub_oids, sub_types}) do
         unquote(extension)(value, sub_oids, sub_types)
       end
@@ -278,6 +285,7 @@ defmodule Postgrex.TypeModule do
 
   defp encode_value(extension, _) do
     quote do
+      @doc false
       def encode_value(value, unquote(extension)) do
         unquote(extension)(value)
       end
@@ -332,6 +340,7 @@ defmodule Postgrex.TypeModule do
 
   defp decode_rows(dispatch, rest, acc, rem, full, rows) do
     quote location: :keep, generated: true do
+      @doc false
       def decode_rows(binary, types, rows) do
         decode_rows(binary, byte_size(binary), types, rows)
       end
@@ -421,6 +430,7 @@ defmodule Postgrex.TypeModule do
     dispatch = decode_simple_dispatch(Postgrex.Extensions.Raw, rest, acc)
 
     quote do
+      @doc false
       def decode_simple(binary) do
         decode_simple(binary, [])
       end
@@ -445,6 +455,7 @@ defmodule Postgrex.TypeModule do
       end
 
     quote do
+      @doc false
       def decode_list(<<unquote(rest)::binary>>, type) do
         case type do
           unquote(dispatch)
@@ -485,6 +496,7 @@ defmodule Postgrex.TypeModule do
       end
 
     quote generated: true do
+      @doc false
       def decode_tuple(<<rest::binary>>, count, types) when is_integer(count) do
         decode_tuple(rest, count, types, 0, [])
       end
