@@ -107,8 +107,13 @@ defmodule Postgrex.SimpleConnection do
       flush()
       # => {:notice, "demo", "hello"}
 
-  See `Postgrex.Notifications` for a more complex implementation that can unlisten, handle process
-  exits, and persist across reconnection.
+  See `Postgrex.Notifications` for a more complex implementation that can
+  unlisten, handle process exits, and persist across reconnection.
+
+  ## Name registration
+
+  A `Postgrex.ReplicationConnection` is bound to the same name registration rules as a
+  `GenServer`. Read more about them in the `GenServer` docs.
   """
 
   use Connection

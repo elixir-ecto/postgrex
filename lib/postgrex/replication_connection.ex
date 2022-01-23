@@ -1,10 +1,9 @@
-defmodule Postgrex.Replication do
+defmodule Postgrex.ReplicationConnection do
   @moduledoc ~S"""
   A process that receives and sends PostgreSQL replication messages.
 
-  > Note: this module is experimental and provides limited functionality.
-  > We are glad to discuss and receive pull requests that extends the
-  > scope of the module.
+  > Note: this module is experimental and may be subject to changes
+  > in the future.
 
   ## Logical replication
 
@@ -58,7 +57,7 @@ defmodule Postgrex.Replication do
       Mix.install([:postgrex])
 
       defmodule Repl do
-        use Postgrex.Replication
+        use Postgrex.ReplicationConnection
 
         def start_link(opts) do
           # Automatically reconnect if we lose connection.
@@ -66,7 +65,7 @@ defmodule Postgrex.Replication do
             auto_reconnect: true
           ]
 
-          Postgrex.Replication.start_link(__MODULE__, :ok, extra_opts ++ opts)
+          Postgrex.ReplicationConnection.start_link(__MODULE__, :ok, extra_opts ++ opts)
         end
 
         @impl true
@@ -118,7 +117,7 @@ defmodule Postgrex.Replication do
 
   ## `use` options
 
-  `use Postgrex.Replication` accepts a list of options which configures the
+  `use Postgrex.ReplicationConnection` accepts a list of options which configures the
   child specification and therefore how it runs under a supervisor.
   The generated `child_spec/1` can be customized with the following options:
 
@@ -129,16 +128,16 @@ defmodule Postgrex.Replication do
 
   For example:
 
-      use Postgrex.Replication, restart: :transient, shutdown: 10_000
+      use Postgrex.ReplicationConnection, restart: :transient, shutdown: 10_000
 
   See the "Child specification" section in the `Supervisor` module for more
   detailed information. The `@doc` annotation immediately preceding
-  `use Postgrex.Replication` will be attached to the generated `child_spec/1`
+  `use Postgrex.ReplicationConnection` will be attached to the generated `child_spec/1`
   function.
 
   ## Name registration
 
-  A `Postgrex.Replication` is bound to the same name registration rules as a
+  A `Postgrex.ReplicationConnection` is bound to the same name registration rules as a
   `GenServer`. Read more about them in the `GenServer` docs.
   """
 
@@ -284,7 +283,7 @@ defmodule Postgrex.Replication do
   @doc false
   defmacro __using__(opts) do
     quote location: :keep, bind_quoted: [opts: opts] do
-      @behaviour Postgrex.Replication
+      @behaviour Postgrex.ReplicationConnection
 
       unless Module.has_attribute?(__MODULE__, :doc) do
         @doc """

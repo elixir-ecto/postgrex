@@ -1,13 +1,15 @@
 # Changelog
 
-## v0.16.0-dev
+## v0.16.0 (2022-01-23)
 
 Require Elixir v1.11+.
 
 * Enhancements
   * Support negative years for date, timestamp and timestampz types
+  * Add `Postgrex.SimpleConnection` and `Postgrex.ReplicationConnection`
 * Bug fixes
   * Cancel any pending requests before closing the socket
+  * Fix possible crash on getting default opts when PGPORT is invalid but a port is given
 
 ## v0.15.11 (2021-09-26)
 

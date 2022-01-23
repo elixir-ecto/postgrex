@@ -1,7 +1,7 @@
 defmodule ReplicationTest do
   use ExUnit.Case, async: true
   alias Postgrex, as: P
-  alias Postgrex.Replication, as: PR
+  alias Postgrex.ReplicationConnection, as: PR
 
   @timeout 2000
   @max_uint64 18_446_744_073_709_551_615
@@ -9,10 +9,10 @@ defmodule ReplicationTest do
   @moduletag min_pg_version: "10.0"
 
   defmodule Repl do
-    use Postgrex.Replication
+    use Postgrex.ReplicationConnection
 
     def start_link({pid, opts}) do
-      Postgrex.Replication.start_link(__MODULE__, pid, opts)
+      Postgrex.ReplicationConnection.start_link(__MODULE__, pid, opts)
     end
 
     @impl true
@@ -66,7 +66,7 @@ defmodule ReplicationTest do
 
     @impl true
     def handle_call(:ping, from, pid) do
-      Postgrex.Replication.reply(from, :pong)
+      Postgrex.ReplicationConnection.reply(from, :pong)
       {:noreply, pid}
     end
 
@@ -77,7 +77,7 @@ defmodule ReplicationTest do
 
     @impl true
     def handle_result(result, {from, pid}) do
-      Postgrex.Replication.reply(from, {:ok, result})
+      Postgrex.ReplicationConnection.reply(from, {:ok, result})
       {:noreply, pid}
     end
 
@@ -140,9 +140,9 @@ defmodule ReplicationTest do
       disconnect(context.repl)
       :sys.resume(context.repl)
       assert Task.await(task) == :reconnecting
+      assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
       assert_receive {:disconnect, i2} when i1 < i2, @timeout
       assert_receive {:connect, i3} when i2 < i3, @timeout
-      assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
     end
   end
 
