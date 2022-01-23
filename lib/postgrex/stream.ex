@@ -2,7 +2,7 @@ defmodule Postgrex.Stream do
   @moduledoc """
   Stream struct returned from stream commands.
 
-  All of its fields a private.
+  All of its fields are private.
   """
   @derive {Inspect, only: []}
   defstruct [:conn, :query, :params, :options]
