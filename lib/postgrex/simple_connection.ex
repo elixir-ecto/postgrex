@@ -54,7 +54,7 @@ defmodule Postgrex.SimpleConnection do
   ## Building a PubSub Connection
 
   With the `notify/3` callback you can also build a pubsub server on top of
-  `LiSTEN/NOTIFY`. Here's a naive pubsub implementation:
+  `LISTEN/NOTIFY`. Here's a naive pubsub implementation:
 
       defmodule MyPubSub do
         @behaviour Postgrex.SimpleConnection
