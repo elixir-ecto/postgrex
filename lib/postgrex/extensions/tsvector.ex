@@ -2,7 +2,6 @@ defmodule Postgrex.Extensions.TSVector do
   @moduledoc false
 
   import Postgrex.BinaryUtils, warn: false
-  use Bitwise
   use Postgrex.BinaryExtension, send: "tsvectorsend"
 
   def encode(_) do

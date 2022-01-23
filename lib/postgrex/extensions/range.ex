@@ -1,7 +1,7 @@
 defmodule Postgrex.Extensions.Range do
   @moduledoc false
   import Postgrex.BinaryUtils, warn: false
-  use Bitwise, only_operators: true
+  import Bitwise
   @behaviour Postgrex.SuperExtension
 
   @range_empty 0x01

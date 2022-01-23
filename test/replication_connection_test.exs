@@ -23,18 +23,18 @@ defmodule ReplicationTest do
     @impl true
     def handle_connect({from, pid}) do
       GenServer.reply(from, :reconnecting)
-      send(pid, {:connect, System.unique_integer()})
+      send(pid, {:connect, System.unique_integer([:monotonic])})
       {:noreply, pid}
     end
 
     def handle_connect(pid) do
-      send(pid, {:connect, System.unique_integer()})
+      send(pid, {:connect, System.unique_integer([:monotonic])})
       {:noreply, pid}
     end
 
     @impl true
     def handle_disconnect({from, pid}) do
-      send(pid, {:disconnect, System.unique_integer()})
+      send(pid, {:disconnect, System.unique_integer([:monotonic])})
       {:noreply, {from, pid}}
     end
 
@@ -46,7 +46,7 @@ defmodule ReplicationTest do
     end
 
     def handle_data(msg, pid) do
-      send(pid, {msg, System.unique_integer()})
+      send(pid, {msg, System.unique_integer([:monotonic])})
       {:noreply, [], pid}
     end
 
@@ -126,7 +126,7 @@ defmodule ReplicationTest do
       ref = Process.monitor(context.repl)
       assert_receive {:DOWN, ^ref, _, _, _}
       assert_received {:connect, i1}
-      assert_received {:disconnect, i2} when i2 > i1
+      assert_received {:disconnect, i2} when i1 < i2
       refute_received {:connect, _}
     end
   end

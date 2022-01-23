@@ -22,14 +22,14 @@ defmodule SimpleConnectionTest do
     def handle_connect(state) do
       state.from && GenServer.reply(state.from, :reconnecting)
 
-      send(state.pid, {:connect, System.unique_integer()})
+      send(state.pid, {:connect, System.unique_integer([:monotonic])})
 
       {:noreply, state}
     end
 
     @impl true
     def handle_disconnect(state) do
-      send(state.pid, {:disconnect, System.unique_integer()})
+      send(state.pid, {:disconnect, System.unique_integer([:monotonic])})
 
       {:noreply, state}
     end
