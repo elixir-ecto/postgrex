@@ -110,6 +110,16 @@ defmodule ReplicationTest do
       assert {:ok, [%Postgrex.Result{}]} = PR.call(context.repl, {:query, "SELECT 1"})
     end
 
+    test "on multiple results", context do
+      assert {:ok, [%Postgrex.Result{} = result1, %Postgrex.Result{} = result2]} =
+               PR.call(context.repl, {:query, "SELECT 1; SELECT 2;"})
+
+      assert result1.rows == [["1"]]
+      assert result1.num_rows == 1
+      assert result2.rows == [["2"]]
+      assert result2.num_rows == 1
+    end
+
     test "on error", context do
       assert {:ok, %Postgrex.Error{}} = PR.call(context.repl, {:query, "SELCT"})
     end
