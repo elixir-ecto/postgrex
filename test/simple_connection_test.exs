@@ -85,7 +85,7 @@ defmodule SimpleConnectionTest do
 
   describe "handle_result/2" do
     test "relaying query results", context do
-      assert {:ok, %Postgrex.Result{}} = SC.call(context.conn, {:query, "SELECT 1"})
+      assert {:ok, [%Postgrex.Result{}]} = SC.call(context.conn, {:query, "SELECT 1"})
     end
 
     test "relaying multi-statement query results", context do
@@ -122,7 +122,7 @@ defmodule SimpleConnectionTest do
       disconnect(context.conn)
       :sys.resume(context.conn)
 
-      assert {:ok, %Postgrex.Result{}} = SC.call(context.conn, {:query, "SELECT 1"})
+      assert {:ok, [%Postgrex.Result{}]} = SC.call(context.conn, {:query, "SELECT 1"})
       assert :reconnecting == Task.await(task)
       assert_receive {:disconnect, i2} when i1 < i2
       assert_receive {:connect, i3} when i2 < i3

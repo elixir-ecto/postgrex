@@ -107,7 +107,7 @@ defmodule ReplicationTest do
 
   describe "handle_result" do
     test "on result", context do
-      assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
+      assert {:ok, [%Postgrex.Result{}]} = PR.call(context.repl, {:query, "SELECT 1"})
     end
 
     test "on error", context do
@@ -140,7 +140,7 @@ defmodule ReplicationTest do
       disconnect(context.repl)
       :sys.resume(context.repl)
       assert Task.await(task) == :reconnecting
-      assert {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
+      assert {:ok, [%Postgrex.Result{}]} = PR.call(context.repl, {:query, "SELECT 1"})
       assert_receive {:disconnect, i2} when i1 < i2, @timeout
       assert_receive {:connect, i3} when i2 < i3, @timeout
     end
@@ -237,7 +237,7 @@ defmodule ReplicationTest do
       assert_receive {:done, i3} when i2 < i3, @timeout
 
       # Can query after copy is done
-      {:ok, %Postgrex.Result{}} = PR.call(context.repl, {:query, "SELECT 1"})
+      {:ok, [%Postgrex.Result{}]} = PR.call(context.repl, {:query, "SELECT 1"})
     end
   end
 

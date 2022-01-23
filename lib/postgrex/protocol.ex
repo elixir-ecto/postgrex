@@ -1030,7 +1030,7 @@ defmodule Postgrex.Protocol do
   ## replication/notifications
 
   @spec handle_simple(String.t() | iolist(), state) ::
-          {:ok, Postgrex.Result.t() | [Postgrex.Result.t()], state}
+          {:ok, [Postgrex.Result.t()], state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_simple(statement, opts \\ [], %{buffer: buffer} = s) do
@@ -1068,9 +1068,8 @@ defmodule Postgrex.Protocol do
         error_ready(s, status, err, buffer)
 
       {:ok, msg_ready(status: postgres), buffer} ->
-        results = format_simple_results(results)
         s = %{s | postgres: postgres, buffer: buffer}
-        {:ok, results, s}
+        {:ok, Enum.reverse(results), s}
 
       {:ok, msg, buffer} ->
         {s, status} = handle_msg(s, status, msg)
@@ -1080,10 +1079,6 @@ defmodule Postgrex.Protocol do
         dis
     end
   end
-
-  defp format_simple_results([result]), do: result
-  defp format_simple_results([_ | _] = results), do: Enum.reverse(results)
-  defp format_simple_results(results), do: results
 
   @spec handle_copy_send([binary], state) ::
           :ok

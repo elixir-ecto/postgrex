@@ -28,13 +28,6 @@ defmodule Postgrex.SimpleConnection do
         end
 
         @impl true
-        def handle_result(%Postgrex.Result{} = result, state) do
-          SimpleConnection.reply(state.from, result)
-
-          {:noreply, state}
-        end
-
-        @impl true
         def handle_result(results, state) when is_list(results) do
           SimpleConnection.reply(state.from, results)
 
@@ -99,7 +92,7 @@ defmodule Postgrex.SimpleConnection do
         end
 
         @impl true
-        def handle_result(_result, state) do
+        def handle_result(_results, state) do
           SimpleConnection.reply(state.from, :ok)
 
           {:noreply, %{state | from: nil}}
@@ -189,8 +182,10 @@ defmodule Postgrex.SimpleConnection do
 
   @doc """
   Callback for processing or relaying queries executed via `{:query, query, state}`.
+  If successful, this will always be a list because the simple protocol allows multiple
+  commands to be given in a single query.
   """
-  @callback handle_result(Postgrex.Result.t() | [Postgrex.Result.t()] | Postgrex.Error.t(), state) ::
+  @callback handle_result([Postgrex.Result.t()] | Postgrex.Error.t(), state) ::
               {:noreply, state}
 
   @optional_callbacks handle_call: 3,
@@ -376,11 +371,11 @@ defmodule Postgrex.SimpleConnection do
 
         state = %{state | state: {mod, mod_state}}
 
-        with {:ok, result, protocol} <- Protocol.handle_simple(query, opts, state.protocol),
+        with {:ok, results, protocol} <- Protocol.handle_simple(query, opts, state.protocol),
              {:ok, protocol} <- Protocol.checkin(protocol) do
           state = %{state | protocol: protocol}
 
-          handle(mod, :handle_result, [result, mod_state], from, state)
+          handle(mod, :handle_result, [results, mod_state], from, state)
         else
           {:error, %Postgrex.Error{} = error, protocol} ->
             handle(mod, :handle_result, [error, mod_state], from, %{state | protocol: protocol})
