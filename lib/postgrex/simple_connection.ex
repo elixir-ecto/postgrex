@@ -33,6 +33,20 @@ defmodule Postgrex.SimpleConnection do
 
           {:noreply, state}
         end
+
+        @impl true
+        def handle_result(results, state) when is_list(results) do
+          SimpleConnection.reply(state.from, results)
+
+          {:noreply, state}
+        end
+
+        @impl true
+        def handle_result(%Postgrex.Error{} = error, state) do
+          SimpleConnection.reply(state.from, error)
+
+          {:noreply, state}
+        end
       end
 
       # Start the connection
@@ -176,7 +190,8 @@ defmodule Postgrex.SimpleConnection do
   @doc """
   Callback for processing or relaying queries executed via `{:query, query, state}`.
   """
-  @callback handle_result(Postgrex.Result.t() | Postgrex.Error.t(), state) :: {:noreply, state}
+  @callback handle_result(Postgrex.Result.t() | [Postgrex.Result.t()] | Postgrex.Error.t(), state) ::
+              {:noreply, state}
 
   @optional_callbacks handle_call: 3,
                       handle_connect: 1,

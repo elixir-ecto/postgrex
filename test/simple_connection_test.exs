@@ -88,6 +88,16 @@ defmodule SimpleConnectionTest do
       assert {:ok, %Postgrex.Result{}} = SC.call(context.conn, {:query, "SELECT 1"})
     end
 
+    test "relaying multi-statement query results", context do
+      assert {:ok, [%Postgrex.Result{} = result1, %Postgrex.Result{} = result2]} =
+               SC.call(context.conn, {:query, "SELECT 1; SELECT 2;"})
+
+      assert result1.rows == [["1"]]
+      assert result1.num_rows == 1
+      assert result2.rows == [["2"]]
+      assert result2.num_rows == 1
+    end
+
     test "relaying query errors", context do
       assert {:ok, %Postgrex.Error{}} = SC.call(context.conn, {:query, "SELCT"})
     end
