@@ -182,7 +182,8 @@ defmodule Postgrex.SimpleConnection do
 
   @doc """
   Callback for processing or relaying queries executed via `{:query, query, state}`.
-  Either a list of sucessful query results or an error will be passed to this callback.
+
+  Either a list of successful query results or an error will be passed to this callback.
   A list is passed because the simple query protocol allows multiple commands to be
   issued in a single query.
   """
