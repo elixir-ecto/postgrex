@@ -80,7 +80,7 @@ defmodule Postgrex.ReplicationConnection do
         end
 
         @impl true
-        def handle_result(_results, %{step: :create_slot} = state) when is_list(results) do
+        def handle_result(results, %{step: :create_slot} = state) when is_list(results) do
           query = "START_REPLICATION SLOT postgrex LOGICAL 0/0 (proto_version '1', publication_names 'postgrex_example')"
           {:stream, query, [], %{state | step: :streaming}}
         end
