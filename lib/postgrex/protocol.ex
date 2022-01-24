@@ -1039,7 +1039,7 @@ defmodule Postgrex.Protocol do
 
     case msg_send(%{s | buffer: nil}, msgs, buffer) do
       :ok ->
-        recv_simple(s, status, [], [], [], [], buffer)
+        recv_simple(s, status, [], [], [], buffer)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
@@ -1049,19 +1049,19 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp recv_simple(s, status, results, columns, rows, tags, buffer) do
+  defp recv_simple(s, status, results, columns, rows, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
         columns = column_names(fields)
-        recv_simple(s, status, results, columns, rows, tags, buffer)
+        recv_simple(s, status, results, columns, rows, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
         row = Types.decode_simple(values, s.types)
-        recv_simple(s, status, results, columns, [row | rows], tags, buffer)
+        recv_simple(s, status, results, columns, [row | rows], buffer)
 
       {:ok, msg_command_complete(tag: tag), buffer} ->
-        result = done(s, status, columns, Enum.reverse(rows), Enum.reverse([tag | tags]))
-        recv_simple(s, status, [result | results], [], [], [], buffer)
+        result = done(s, status, columns, Enum.reverse(rows), [tag])
+        recv_simple(s, status, [result | results], [], [], buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
@@ -1073,7 +1073,7 @@ defmodule Postgrex.Protocol do
 
       {:ok, msg, buffer} ->
         {s, status} = handle_msg(s, status, msg)
-        recv_simple(s, status, results, columns, rows, tags, buffer)
+        recv_simple(s, status, results, columns, rows, buffer)
 
       {:disconnect, _, _} = dis ->
         dis
