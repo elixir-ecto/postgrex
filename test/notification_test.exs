@@ -145,7 +145,8 @@ defmodule NotificationTest do
       disconnect(context.pid_ps)
 
       # Also attempt to subscribe while it is down
-      assert {:eventually, ref2} = PN.listen(context.pid_ps, "channel2")
+      assert {ok_or_eventually, ref2} = PN.listen(context.pid_ps, "channel2")
+      assert ok_or_eventually in [:ok, :eventually]
 
       # Give the notifier a chance to re-establish the connection and listeners
       Process.sleep(500)

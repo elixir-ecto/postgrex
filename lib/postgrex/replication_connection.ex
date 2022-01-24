@@ -80,7 +80,7 @@ defmodule Postgrex.ReplicationConnection do
         end
 
         @impl true
-        def handle_result(%Postgrex.Result{}, %{step: :create_slot} = state) do
+        def handle_result(results, %{step: :create_slot} = state) when is_list(results) do
           query = "START_REPLICATION SLOT postgrex LOGICAL 0/0 (proto_version '1', publication_names 'postgrex_example')"
           {:stream, query, [], %{state | step: :streaming}}
         end
@@ -251,9 +251,14 @@ defmodule Postgrex.ReplicationConnection do
 
   If any callback returns `{:query, iodata, state}`,
   then this callback will be immediatelly called with
-  the result of the query.
+  the result of the query. Please note that even though
+  replicaton connections use the simple query protocol,
+  Postgres currently limits them to single command queries.
+  Due to this constraint, this callback will be passed
+  either a list with a single successful query result or
+  an error.
   """
-  @callback handle_result(Postgrex.Result.t() | Postgrex.Error.t(), state) ::
+  @callback handle_result([Postgrex.Result.t()] | Postgrex.Error.t(), state) ::
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
@@ -529,8 +534,8 @@ defmodule Postgrex.ReplicationConnection do
 
       {:query, query, mod_state} when streaming == nil ->
         case Protocol.handle_simple(query, [], s.protocol) do
-          {:ok, %Postgrex.Result{} = result, protocol} ->
-            handle(mod, :handle_result, [result, mod_state], from, %{s | protocol: protocol})
+          {:ok, results, protocol} when is_list(results) ->
+            handle(mod, :handle_result, [results, mod_state], from, %{s | protocol: protocol})
 
           {:error, %Postgrex.Error{} = error, protocol} ->
             handle(mod, :handle_result, [error, mod_state], from, %{s | protocol: protocol})
