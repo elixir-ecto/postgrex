@@ -182,7 +182,7 @@ defmodule Postgrex.SimpleConnection do
 
   @doc """
   Callback for processing or relaying queries executed via `{:query, query, state}`.
-  If successful, this will always be a list because the simple protocol allows multiple
+  The results will always be passed as a list because the simple protocol allows multiple
   commands to be given in a single query.
   """
   @callback handle_result([Postgrex.Result.t()] | Postgrex.Error.t(), state) ::
