@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.1 (2022-01-24)
+
+* Bug fixes
+  * Fix inconsistent return type for multiple queries in `Postgrex.SimpleConnection` and `Postgrex.ReplicationConnection`. Instead always wrap `Postgrex.Result` in a list.
+
 ## v0.16.0 (2022-01-23)
 
 Require Elixir v1.11+.
