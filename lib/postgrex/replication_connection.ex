@@ -251,9 +251,11 @@ defmodule Postgrex.ReplicationConnection do
 
   If any callback returns `{:query, iodata, state}`,
   then this callback will be immediatelly called with
-  the result of the query. If successful, this will
-  always be a list because the simple protocol allows
-  multiple commands to be given in a single query.
+  the result of the query. Please note that Postgres
+  currently limits replication connections to single
+  command queries. This means every result passed into
+  this callback will be a list with a single entry.
+  Multiple command queries will return an error.
   """
   @callback handle_result([Postgrex.Result.t()] | Postgrex.Error.t(), state) ::
               {:noreply, state}

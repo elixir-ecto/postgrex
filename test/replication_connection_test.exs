@@ -76,8 +76,14 @@ defmodule ReplicationTest do
     end
 
     @impl true
-    def handle_result(result, {from, pid}) do
-      Postgrex.ReplicationConnection.reply(from, {:ok, result})
+    def handle_result(results, {from, pid}) when is_list(results) do
+      Postgrex.ReplicationConnection.reply(from, {:ok, results})
+      {:noreply, pid}
+    end
+
+    @impl true
+    def handle_result(%Postgrex.Error{} = error, {from, pid}) do
+      Postgrex.ReplicationConnection.reply(from, {:error, error})
       {:noreply, pid}
     end
 
@@ -111,17 +117,11 @@ defmodule ReplicationTest do
     end
 
     test "on multiple results", context do
-      assert {:ok, [%Postgrex.Result{} = result1, %Postgrex.Result{} = result2]} =
-               PR.call(context.repl, {:query, "SELECT 1; SELECT 2;"})
-
-      assert result1.rows == [["1"]]
-      assert result1.num_rows == 1
-      assert result2.rows == [["2"]]
-      assert result2.num_rows == 1
+      assert {:error, %Postgrex.Error{}} = PR.call(context.repl, {:query, "SELECT 1; SELECT 2;"})
     end
 
     test "on error", context do
-      assert {:ok, %Postgrex.Error{}} = PR.call(context.repl, {:query, "SELCT"})
+      assert {:error, %Postgrex.Error{}} = PR.call(context.repl, {:query, "SELCT"})
     end
 
     @tag :capture_log
