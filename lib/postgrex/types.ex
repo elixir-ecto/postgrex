@@ -8,7 +8,7 @@ defmodule Postgrex.Types do
 
   @typedoc """
   PostgreSQL internal identifier that maps to a type. See
-  http://www.postgresql.org/docs/9.4/static/datatype-oid.html.
+  [http://www.postgresql.org/docs/9.4/static/datatype-oid.html](http://www.postgresql.org/docs/9.4/static/datatype-oid.html).
   """
   @type oid :: pos_integer
 
