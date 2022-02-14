@@ -20,6 +20,7 @@ defmodule Postgrex.Protocol do
             types: nil,
             null: nil,
             timeout: nil,
+            ping_timeout: nil,
             parameters: %{},
             queries: nil,
             postgres: :idle,
@@ -35,6 +36,7 @@ defmodule Postgrex.Protocol do
           types: nil | module,
           null: atom,
           timeout: timeout,
+          ping_timeout: timeout,
           parameters: %{binary => binary} | reference,
           queries: nil | :ets.tid(),
           postgres: DBConnection.status() | {DBConnection.status(), reference},
@@ -59,6 +61,7 @@ defmodule Postgrex.Protocol do
     {:%{}, [], Keyword.merge(defaults, fields)}
   end
 
+  @impl true
   @spec connect(Keyword.t()) ::
           {:ok, state}
           | {:error, Postgrex.Error.t() | %DBConnection.ConnectionError{}}
@@ -66,6 +69,7 @@ defmodule Postgrex.Protocol do
     endpoints = endpoints(opts)
 
     timeout = opts[:timeout] || @timeout
+    ping_timeout = Keyword.get(opts, :ping_timeout, timeout)
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
     ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
@@ -86,6 +90,7 @@ defmodule Postgrex.Protocol do
 
     s = %__MODULE__{
       timeout: timeout,
+      ping_timeout: ping_timeout,
       postgres: :idle,
       transactions: transactions,
       disconnect_on_error_codes: disconnect_on_error_codes
@@ -197,6 +202,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @impl true
   @spec disconnect(Exception.t(), state) :: :ok
   def disconnect(_, s) do
     # cancel the request first otherwise PostgreSQL will log
@@ -210,6 +216,7 @@ defmodule Postgrex.Protocol do
     :ok
   end
 
+  @impl true
   @spec ping(state) ::
           {:ok, state}
           | {:disconnect, Postgrex.Error.t() | %DBConnection.ConnectionError{}, state}
@@ -233,6 +240,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @impl true
   @spec checkout(state) ::
           {:ok, state}
           | {:disconnect, Postgrex.Error.t() | %DBConnection.ConnectionError{}, state}
@@ -258,6 +266,7 @@ defmodule Postgrex.Protocol do
     activate(s, buffer)
   end
 
+  @impl true
   @spec handle_prepare(Postgrex.Query.t(), Keyword.t(), state) ::
           {:ok, Postgrex.Query.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
@@ -304,6 +313,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @impl true
   @spec handle_execute(Postgrex.Parameters.t(), nil, Keyword.t(), state) ::
           {:ok, Postgrex.Parameters.t(), %{binary => binary}, state}
           | {:error, Postgrex.Error.t(), state}
@@ -400,6 +410,7 @@ defmodule Postgrex.Protocol do
     handle_bind(query, params, copy, opts, s)
   end
 
+  @impl true
   @spec handle_close(Postgrex.Query.t(), Keyword.t(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
@@ -417,6 +428,7 @@ defmodule Postgrex.Protocol do
     close(s, new_status(opts), query)
   end
 
+  @impl true
   @spec handle_declare(Postgrex.Query.t(), list, Keyword.t(), state) ::
           {:ok, Postgrex.Query.t(), Postgrex.Cursor.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
@@ -435,6 +447,7 @@ defmodule Postgrex.Protocol do
     handle_bind(query, params, cursor, opts, s)
   end
 
+  @impl true
   @spec handle_fetch(Postgrex.Query.t(), Postgrex.Cursor.t(), Keyword.t(), state) ::
           {:cont | :halt, Postgrex.Result.t(), state}
           | {:error, Postgrex.Error.t(), state}
@@ -457,6 +470,7 @@ defmodule Postgrex.Protocol do
     execute(s, new_status(opts), query, cursor, max_rows)
   end
 
+  @impl true
   @spec handle_deallocate(Postgrex.Query.t(), Postgrex.Cursor.t(), Keyword.t(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {:error, Postgrex.Error.t(), state}
@@ -475,6 +489,7 @@ defmodule Postgrex.Protocol do
     close(s, status, cursor)
   end
 
+  @impl true
   @spec handle_begin(Keyword.t(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
@@ -499,6 +514,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @impl true
   @spec handle_commit(Keyword.t(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
@@ -523,6 +539,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @impl true
   @spec handle_rollback(Keyword.t(), state) ::
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
@@ -547,6 +564,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  @impl true
   @spec handle_status(Keyword.t(), state) :: {DBConnection.status(), state}
   def handle_status(_, %{postgres: {postgres, _}} = s), do: {postgres, s}
   def handle_status(_, %{postgres: postgres} = s), do: {postgres, s}
@@ -2735,7 +2753,7 @@ defmodule Postgrex.Protocol do
   ## ping
 
   defp ping_recv(s, status, old_buffer, buffer) do
-    %{timeout: timeout, postgres: postgres, transactions: transactions} = s
+    %{ping_timeout: timeout, postgres: postgres, transactions: transactions} = s
 
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_ready(status: :idle), buffer}
@@ -3098,7 +3116,14 @@ defmodule Postgrex.Protocol do
         msg_recv(s, timeout, IO.iodata_to_binary([buffer | data]))
 
       {:error, reason} ->
-        disconnect(s, tag(mod), "recv", reason, IO.iodata_to_binary(buffer))
+        action =
+          if s.postgres == :idle do
+            "recv (idle)"
+          else
+            "recv"
+          end
+
+        disconnect(s, tag(mod), action, reason, IO.iodata_to_binary(buffer))
     end
   end
 

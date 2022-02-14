@@ -46,6 +46,7 @@ defmodule Postgrex do
           | {:timeout, timeout}
           | {:connect_timeout, timeout}
           | {:handshake_timeout, timeout}
+          | {:ping_timeout, timeout}
           | {:ssl, boolean}
           | {:ssl_opts, [:ssl.tls_client_option()]}
           | {:socket_options, [:gen_tcp.connect_option()]}
@@ -94,31 +95,47 @@ defmodule Postgrex do
   Once a server is specified, you can configure the connection with the following:
 
     * `:database` - Database (default: PGDATABASE env variable; otherwise required);
+
     * `:username` - Username (default: PGUSER env variable, then USER env var);
+
     * `:password` - User password (default: PGPASSWORD env variable);
+
     * `:parameters` - Keyword list of connection parameters;
+
     * `:timeout` - Socket receive timeout when idle in milliseconds (default:
     `#{@timeout}`);
+
     * `:connect_timeout` - Socket connect timeout in milliseconds (defaults to
       `:timeout` value);
+
     * `:handshake_timeout` - Connection handshake timeout in milliseconds
       (defaults to `:timeout` value);
+
+    * `:ping_timeout` - Socket receive timeout when idle in milliseconds (defaults to
+      `:timeout` value);
+
+    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
+      Defaults to 1000ms;
+
     * `:ssl` - Set to `true` if ssl should be used (default: `false`);
+
     * `:ssl_opts` - A list of ssl options, see the
       [`tls_client_option`](http://erlang.org/doc/man/ssl.html#type-tls_client_option)
       from the ssl docs;
+
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
-    * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
-      Defaults to 1000ms;
+
     * `:target_server_type` - Allows opening connections to a server in the given
       replica mode. The allowed values are `:any`, `:primary` and `:secondary`
       (default: `:any`). If this option is used together with `endpoints`, we will
       traverse all endpoints until we find an endpoint matching the server type;
+
     * `:disconnect_on_error_codes` - List of error code atoms that when encountered
       will disconnect the connection. This is useful when using Postgrex against systems that
       support failover, which when it occurs will emit certain error codes
       e.g. `:read_only_sql_transaction` (default: `[]`);
+
     * `:show_sensitive_data_on_connection_error` - By default, `Postgrex`
       hides all information during connection errors to avoid leaking credentials
       or other sensitive information. You can set this option if you wish to
@@ -128,12 +145,15 @@ defmodule Postgrex do
 
     * `:prepare` - How to prepare queries, either `:named` to use named queries
     or `:unnamed` to force unnamed queries (default: `:named`);
+
     * `:transactions` - Set to `:strict` to error on unexpected transaction
       state, otherwise set to `:naive` (default: `:strict`);
+
     * `:pool` - The pool module to use, defaults to `DBConnection.ConnectionPool`.
       See the pool documentation for more options. The default `:pool_size` for
       the default pool is 1. If you set a different pool, this option must be
       included with all requests contacting the pool;
+
     * `:types` - The types module to use, see `Postgrex.Types.define/3`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
