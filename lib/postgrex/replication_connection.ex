@@ -75,7 +75,7 @@ defmodule Postgrex.ReplicationConnection do
 
         @impl true
         def handle_connect(state) do
-          query = "CREATE_REPLICATION_SLOT postgrex TEMPORARY LOGICAL pg_output NOEXPORT_SNAPSHOT"
+          query = "CREATE_REPLICATION_SLOT postgrex TEMPORARY LOGICAL pgoutput NOEXPORT_SNAPSHOT"
           {:query, query, %{state | step: :create_slot}}
         end
 
@@ -566,7 +566,7 @@ defmodule Postgrex.ReplicationConnection do
        when error in [:error, :disconnect] do
     %{state: {mod, mod_state}} = s
     {:noreply, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
-    {:connect, :reconnect, s}
+    {:connect, :reconnect, %{s | streaming: nil}}
   end
 
   defp opts(), do: Process.get(__MODULE__)

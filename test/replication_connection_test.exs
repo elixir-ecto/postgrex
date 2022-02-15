@@ -38,6 +38,11 @@ defmodule ReplicationTest do
       {:noreply, {from, pid}}
     end
 
+    def handle_disconnect(pid) do
+      send(pid, {:disconnect, System.unique_integer([:monotonic])})
+      {:noreply, pid}
+    end
+
     @impl true
     def handle_data(<<?k, wal_end::64, _clock::64, _reply>> = msg, pid) do
       send(pid, msg)
@@ -138,7 +143,8 @@ defmodule ReplicationTest do
   end
 
   describe "auto-reconnect" do
-    @tag opts: [auto_reconnect: true]
+    @describetag opts: [auto_reconnect: true]
+
     test "on disconnect", context do
       assert_receive {:connect, i1}
       :sys.suspend(context.repl)
@@ -149,6 +155,22 @@ defmodule ReplicationTest do
       assert {:ok, [%Postgrex.Result{}]} = PR.call(context.repl, {:query, "SELECT 1"})
       assert_receive {:disconnect, i2} when i1 < i2, @timeout
       assert_receive {:connect, i3} when i2 < i3, @timeout
+    end
+
+    test "resumes streaming after reconnect", context do
+      assert_receive {:connect, i1}
+      start_replication(context.repl)
+      assert_receive <<?k, _wal_end::64, _clock::64, _reply>>, @timeout
+
+      :sys.suspend(context.repl)
+
+      disconnect(context.repl)
+      :sys.resume(context.repl)
+
+      assert_receive {:disconnect, i2} when i1 < i2, @timeout
+      assert_receive {:connect, i3} when i2 < i3, @timeout
+      start_replication(context.repl)
+      assert_receive <<?k, _wal_end::64, _clock::64, _reply>>, @timeout
     end
   end
 
