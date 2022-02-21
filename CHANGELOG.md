@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.16.2 (2022-02-21)
+
+* Enhancements
+  * Add `:ping_timeout` start option
+
+* Bug fixes
+  * Replication streaming can be resumed after reconnect
+
 ## v0.16.1 (2022-01-24)
 
 * Bug fixes
