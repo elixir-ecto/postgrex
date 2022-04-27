@@ -27,7 +27,7 @@ end
 
 if Code.ensure_loaded?(Table.Reader) do
   defimpl Table.Reader, for: Postgrex.Result do
-    def init(%{columns: columns} = result) when columns in [nil, []] do
+    def init(%{columns: columns}) when columns in [nil, []] do
       {:rows, %{columns: []}, []}
     end
 
