@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.3 (2022-04-27)
+
+* Enhancements
+  * Implement the Table.Reader protocol for query result
+
 ## v0.16.2 (2022-02-21)
 
 * Enhancements
