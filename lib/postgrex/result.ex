@@ -24,3 +24,15 @@ defmodule Postgrex.Result do
 
   defstruct [:command, :columns, :rows, :num_rows, :connection_id, messages: nil]
 end
+
+if Code.ensure_loaded?(Table.Reader) do
+  defimpl Table.Reader, for: Postgrex.Result do
+    def init(%{columns: columns}) when columns in [nil, []] do
+      {:rows, %{columns: []}, []}
+    end
+
+    def init(result) do
+      {:rows, %{columns: result.columns}, result.rows}
+    end
+  end
+end

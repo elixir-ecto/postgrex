@@ -1532,4 +1532,23 @@ defmodule QueryTest do
       assert_receive {:EXIT, ^pid, :killed}, 5000
     end)
   end
+
+  test "table reader integration", context do
+    assert {:ok, res} =
+             P.query(
+               context[:pid],
+               "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS tab (x, y)",
+               []
+             )
+
+    assert res |> Table.to_rows() |> Enum.to_list() == [
+             %{"x" => 1, "y" => "a"},
+             %{"x" => 2, "y" => "b"},
+             %{"x" => 3, "y" => "c"}
+           ]
+
+    columns = Table.to_columns(res)
+    assert Enum.to_list(columns["x"]) == [1, 2, 3]
+    assert Enum.to_list(columns["y"]) == ["a", "b", "c"]
+  end
 end
