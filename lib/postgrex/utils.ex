@@ -83,16 +83,23 @@ defmodule Postgrex.Utils do
   """
   @spec default_opts(Keyword.t()) :: Keyword.t()
   def default_opts(opts) do
+    {field, value} = extract_host(System.get_env("PGHOST"))
+
     opts
     |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
     |> Keyword.put_new(:database, System.get_env("PGDATABASE"))
-    |> Keyword.put_new(:hostname, System.get_env("PGHOST") || "localhost")
+    |> Keyword.put_new(field, value)
     |> Keyword.put_new(:port, System.get_env("PGPORT"))
     |> Keyword.update!(:port, &normalize_port/1)
     |> Keyword.put_new(:types, Postgrex.DefaultTypes)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
   end
+
+  defp extract_host("/" <> _ = dir), do: {:socket_dir, dir}
+  defp extract_host(<<d, ?:>> <> _ = dir) when d in ?a..?z or d in ?A..?Z, do: {:socket_dir, dir}
+  defp extract_host("@" <> abstract_socket), do: {:socket, <<0>> <> abstract_socket}
+  defp extract_host(host), do: {:hostname, host || "localhost"}
 
   defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
   defp normalize_port(port), do: port
