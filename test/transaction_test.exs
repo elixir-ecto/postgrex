@@ -273,11 +273,11 @@ defmodule TransactionTest do
   @tag mode: :transaction
   test "transaction works after encode failure in savepoint query", context do
     assert transaction(fn conn ->
-             assert_raise ArgumentError, fn ->
-               P.query(conn, "SELECT $1::numeric", [Decimal.new("Inf")], mode: :savepoint)
+             assert_raise DBConnection.EncodeError, fn ->
+               P.query(conn, "SELECT $1::boolean", [:someatom], mode: :savepoint)
              end
 
-             assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+             assert {:ok, %Postgrex.Result{rows: [[true]]}} = P.query(conn, "SELECT true", [])
              :hi
            end) == {:ok, :hi}
 
@@ -288,21 +288,21 @@ defmodule TransactionTest do
   test "transaction works after encode failure in savepoint query with cache_statement",
        context do
     assert transaction(fn conn ->
-             stmt = "SELECT $1::numeric"
-             opts = [mode: :savepoint, cache_statement: "select_numeric"]
-             {:ok, _} = P.query(conn, stmt, [1.0], opts)
+             stmt = "SELECT $1::boolean"
+             opts = [mode: :savepoint, cache_statement: "select_boolean"]
+             {:ok, _} = P.query(conn, stmt, [true], opts)
 
-             assert_raise ArgumentError, fn ->
-               P.query(conn, stmt, [Decimal.new("Inf")], opts)
+             assert_raise DBConnection.EncodeError, fn ->
+               P.query(conn, stmt, [:someatom], opts)
              end
 
-             {:ok, _} = P.query(conn, "SELECT 42", [], [])
+             {:ok, _} = P.query(conn, "SELECT true", [], [])
 
-             assert_raise ArgumentError, fn ->
-               P.query(conn, stmt, [Decimal.new("Inf")], opts)
+             assert_raise DBConnection.EncodeError, fn ->
+               P.query(conn, stmt, [:someatom], opts)
              end
 
-             {:ok, _} = P.query(conn, "SELECT 42", [], [])
+             {:ok, _} = P.query(conn, "SELECT true", [], [])
              :hi
            end) == {:ok, :hi}
   end

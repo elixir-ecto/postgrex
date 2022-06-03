@@ -33,8 +33,12 @@ defmodule Postgrex.Extensions.Numeric do
     <<0::int16, 0::int16, 0xC000::uint16, 0::int16>>
   end
 
-  def encode_numeric(%Decimal{coef: :inf} = decimal) do
-    raise ArgumentError, "cannot represent #{inspect(decimal)} as numeric type"
+  def encode_numeric(%Decimal{sign: 1, coef: :inf}) do
+    <<0::int16, 0::int16, 0xD000::uint16, 0::int16>>
+  end
+
+  def encode_numeric(%Decimal{sign: -1, coef: :inf}) do
+    <<0::int16, 0::int16, 0xF000::uint16, 0::int16>>
   end
 
   def encode_numeric(%Decimal{sign: sign, coef: coef, exp: exp}) do
@@ -92,9 +96,19 @@ defmodule Postgrex.Extensions.Numeric do
   end
 
   @nan Decimal.new("NaN")
+  @positive_inf Decimal.new("Inf")
+  @negative_inf Decimal.new("-Inf")
 
   defp decode_numeric(0, _weight, 0xC000, _scale, "") do
     @nan
+  end
+
+  defp decode_numeric(0, _weight, 0xD000, _scale, "") do
+    @positive_inf
+  end
+
+  defp decode_numeric(0, _weight, 0xF000, _scale, "") do
+    @negative_inf
   end
 
   defp decode_numeric(_num_digits, weight, sign, scale, bin) do
