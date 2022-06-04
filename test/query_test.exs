@@ -56,6 +56,12 @@ defmodule QueryTest do
     assert [[Decimal.new("NaN")]] == query("SELECT 'NaN'::numeric", [])
   end
 
+  @tag min_pg_version: "14.0"
+  test "decode numeric infinity", context do
+    assert [[Decimal.new("Inf")]] == query("SELECT NUMERIC 'Infinity'", [])
+    assert [[Decimal.new("-Inf")]] == query("SELECT NUMERIC '-Infinity'", [])
+  end
+
   @tag min_pg_version: "9.5"
   test "decode json/jsonb", context do
     assert [[%{"foo" => 42}]] == query("SELECT '{\"foo\": 42}'::json", [])
@@ -655,22 +661,20 @@ defmodule QueryTest do
     end)
   end
 
-  test "encode numeric rises for infinite values", context do
-    assert_raise ArgumentError, "cannot represent #Decimal<Infinity> as numeric type", fn ->
-      query("SELECT $1::numeric", [Decimal.new("Infinity")])
-    end
-
-    assert_raise ArgumentError, "cannot represent #Decimal<-Infinity> as numeric type", fn ->
-      query("SELECT $1::numeric", [Decimal.new("-Infinity")])
-    end
-  end
-
   test "encode integers and floats as numeric", context do
     dec = Decimal.new(1)
     assert [[dec]] == query("SELECT $1::numeric", [1])
 
     dec = Decimal.from_float(1.0)
     assert [[dec]] == query("SELECT $1::numeric", [1.0])
+  end
+
+  @tag min_pg_version: "14.0"
+  test "encode infinite values as numeric", context do
+    pos_inf = Decimal.new("Infinity")
+    neg_inf = Decimal.new("Infinity")
+    assert [[pos_inf]] == query("SELECT $1::numeric", [pos_inf])
+    assert [[neg_inf]] == query("SELECT $1::numeric", [neg_inf])
   end
 
   @tag min_pg_version: "9.5"
