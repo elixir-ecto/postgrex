@@ -71,17 +71,12 @@ replication_exclude =
     [logical_replication: true]
   end
 
-min_version_exclude =
+version_exclude =
   [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}, {13, 0}, {14, 0}]
   |> Enum.filter(fn x -> x > pg_version end)
   |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
 
-max_version_exclude =
-  [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}, {13, 0}, {14, 0}]
-  |> Enum.filter(fn x -> x < pg_version end)
-  |> Enum.map(fn {major, minor} -> {:max_pg_version, "#{major}.#{minor}"} end)
-
-excludes = min_version_exclude ++ max_version_exclude ++ replication_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
+excludes = version_exclude ++ replication_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
 ExUnit.start(exclude: excludes, assert_receive_timeout: 1000)
 
 sql_test = """
