@@ -684,6 +684,55 @@ defmodule QueryTest do
     assert [[json]] == query("SELECT $1::jsonb", [json])
   end
 
+  @tag max_pg_version: "14.0"
+  test "infinite values returns postgres error on select", context do
+    pos_inf = Decimal.new("Infinity")
+    neg_inf = Decimal.new("Infinity")
+
+    :ok = query("CREATE TABLE test (num numeric)", [])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT $1::numeric", [pos_inf])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT $1::numeric", [neg_inf])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT * FROM test where num < $1", [pos_inf])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT * FROM test where num > $1", [neg_inf])
+  end
+
+  @tag max_pg_version: "14.0"
+  test "infinite values returns postgres error on insert", context do
+    pos_inf = Decimal.new("Infinity")
+    neg_inf = Decimal.new("Infinity")
+
+    :ok = query("CREATE TABLE test (num numeric)", [])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("INSERT INTO test VALUES ($1)", [pos_inf], [])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("INSERT INTO test VALUES ($1)", [neg_inf], [])
+  end
+
+  @tag max_pg_version: "14.0"
+  test "infinite values returns postgres error on update", context do
+    pos_inf = Decimal.new("Infinity")
+    neg_inf = Decimal.new("Infinity")
+
+    :ok = query("CREATE TABLE test (num numeric)", [])
+    :ok = query("INSERT INTO test VALUES ($1)", [1], [])
+
+   assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("UPDATE test SET num = $1 WHERE num = $2", [pos_inf, 1], [])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("UPDATE test SET num = $1 WHERE num = $2", [neg_inf, 1], [])
+  end
+
   test "encode custom numerics", context do
     assert [[%Decimal{sign: 1, coef: 1500, exp: 0}]] ==
              query("SELECT $1::numeric", [Decimal.from_float(1500.0)])
