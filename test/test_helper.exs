@@ -81,7 +81,10 @@ max_version_exclude =
   |> Enum.filter(fn x -> x <= pg_version end)
   |> Enum.map(fn {major, minor} -> {:max_pg_version, "#{major}.#{minor}"} end)
 
-excludes = min_version_exclude ++ max_version_exclude ++ replication_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
+excludes =
+  min_version_exclude ++
+    max_version_exclude ++ replication_exclude ++ notify_exclude ++ unix_exclude ++ ssl_exclude
+
 ExUnit.start(exclude: excludes, assert_receive_timeout: 1000)
 
 sql_test = """

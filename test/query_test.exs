@@ -719,7 +719,7 @@ defmodule QueryTest do
     :ok = query("CREATE TABLE IF NOT EXISTS test_infinity (num numeric)", [])
     :ok = query("INSERT INTO test_infinity VALUES ($1)", [1], [])
 
-   assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
              query("UPDATE test_infinity SET num = $1 WHERE num = $2", [pos_inf, 1], [])
 
     assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
