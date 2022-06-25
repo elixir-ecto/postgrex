@@ -677,6 +677,26 @@ defmodule QueryTest do
     assert [[neg_inf]] == query("SELECT $1::numeric", [neg_inf])
   end
 
+  @tag max_pg_version: "14.0"
+  test "infinite values returns postgres error", context do
+    pos_inf = Decimal.new("Infinity")
+    neg_inf = Decimal.new("Infinity")
+
+    :ok = query("CREATE TABLE test (num numeric)", [])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT $1::numeric", [pos_inf])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT $1::numeric", [neg_inf])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT * FROM test where num < $1", [pos_inf])
+
+    assert %Postgrex.Error{postgres: %{code: :invalid_binary_representation}} =
+             query("SELECT * FROM test where num > $1", [neg_inf])
+  end
+
   @tag min_pg_version: "9.5"
   test "encode json/jsonb", context do
     json = %{"foo" => 42}
