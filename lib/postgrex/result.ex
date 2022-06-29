@@ -28,11 +28,11 @@ end
 if Code.ensure_loaded?(Table.Reader) do
   defimpl Table.Reader, for: Postgrex.Result do
     def init(%{columns: columns}) when columns in [nil, []] do
-      {:rows, %{columns: []}, []}
+      {:rows, %{columns: [], count: 0}, []}
     end
 
     def init(result) do
-      {:rows, %{columns: result.columns}, result.rows}
+      {:rows, %{columns: result.columns, count: result.num_rows}, result.rows}
     end
   end
 end
