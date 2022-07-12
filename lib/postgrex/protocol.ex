@@ -203,7 +203,7 @@ defmodule Postgrex.Protocol do
   end
 
   @impl true
-  @spec disconnect(Exception.t(), state) :: :ok
+  @spec disconnect(Exception.t() | nil, state) :: :ok
   def disconnect(_, s) do
     # cancel the request first otherwise PostgreSQL will log
     # every time the connection is explicitly disconnected
