@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.Name do
   def encode(_) do
     quote location: :keep, generated: true do
       name when is_binary(name) and byte_size(name) < 64 ->
-        [<<byte_size(name)::int32>> | name]
+        [<<byte_size(name)::int32()>> | name]
 
       other ->
         msg = "a binary string of less than 64 bytes"
@@ -18,13 +18,13 @@ defmodule Postgrex.Extensions.Name do
 
   def decode(:reference) do
     quote location: :keep do
-      <<len::int32, name::binary-size(len)>> -> name
+      <<len::int32(), name::binary-size(len)>> -> name
     end
   end
 
   def decode(:copy) do
     quote location: :keep do
-      <<len::int32, name::binary-size(len)>> -> :binary.copy(name)
+      <<len::int32(), name::binary-size(len)>> -> :binary.copy(name)
     end
   end
 end

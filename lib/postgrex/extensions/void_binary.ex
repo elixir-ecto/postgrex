@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.VoidBinary do
   def encode(_) do
     quote location: :keep do
       :void ->
-        <<0::int32>>
+        <<0::int32()>>
 
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "the atom :void")
@@ -15,7 +15,7 @@ defmodule Postgrex.Extensions.VoidBinary do
 
   def decode(_) do
     quote location: :keep do
-      <<0::int32>> -> :void
+      <<0::int32()>> -> :void
     end
   end
 end

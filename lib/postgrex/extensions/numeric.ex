@@ -7,21 +7,21 @@ defmodule Postgrex.Extensions.Numeric do
     quote location: :keep, generated: true do
       %Decimal{} = decimal ->
         data = unquote(__MODULE__).encode_numeric(decimal)
-        [<<IO.iodata_length(data)::int32>> | data]
+        [<<IO.iodata_length(data)::int32()>> | data]
 
       n when is_float(n) ->
         data = unquote(__MODULE__).encode_numeric(Decimal.from_float(n))
-        [<<IO.iodata_length(data)::int32>> | data]
+        [<<IO.iodata_length(data)::int32()>> | data]
 
       n when is_integer(n) ->
         data = unquote(__MODULE__).encode_numeric(Decimal.new(n))
-        [<<IO.iodata_length(data)::int32>> | data]
+        [<<IO.iodata_length(data)::int32()>> | data]
     end
   end
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32, data::binary-size(len)>> ->
+      <<len::int32(), data::binary-size(len)>> ->
         unquote(__MODULE__).decode_numeric(data)
     end
   end
@@ -30,15 +30,15 @@ defmodule Postgrex.Extensions.Numeric do
 
   # TODO: remove qNaN and sNaN when we depend on Decimal 2.0
   def encode_numeric(%Decimal{coef: coef}) when coef in [:NaN, :qNaN, :sNaN] do
-    <<0::int16, 0::int16, 0xC000::uint16, 0::int16>>
+    <<0::int16(), 0::int16(), 0xC000::uint16(), 0::int16()>>
   end
 
   def encode_numeric(%Decimal{sign: 1, coef: :inf}) do
-    <<0::int16, 0::int16, 0xD000::uint16, 0::int16>>
+    <<0::int16(), 0::int16(), 0xD000::uint16(), 0::int16()>>
   end
 
   def encode_numeric(%Decimal{sign: -1, coef: :inf}) do
-    <<0::int16, 0::int16, 0xF000::uint16, 0::int16>>
+    <<0::int16(), 0::int16(), 0xF000::uint16(), 0::int16()>>
   end
 
   def encode_numeric(%Decimal{sign: sign, coef: coef, exp: exp}) do
@@ -53,8 +53,8 @@ defmodule Postgrex.Extensions.Numeric do
     num_digits = length(digits)
     weight = max(length(integer_digits) - 1, 0)
 
-    bin = for digit <- digits, into: "", do: <<digit::uint16>>
-    [<<num_digits::int16, weight::int16, sign::uint16, scale::int16>> | bin]
+    bin = for digit <- digits, into: "", do: <<digit::uint16()>>
+    [<<num_digits::int16(), weight::int16(), sign::uint16(), scale::int16()>> | bin]
   end
 
   defp encode_sign(1), do: 0x0000
@@ -91,7 +91,9 @@ defmodule Postgrex.Extensions.Numeric do
     encode_digits(coef, [digit | digits])
   end
 
-  def decode_numeric(<<ndigits::int16, weight::int16, sign::uint16, scale::int16, tail::binary>>) do
+  def decode_numeric(
+        <<ndigits::int16(), weight::int16(), sign::uint16(), scale::int16(), tail::binary>>
+      ) do
     decode_numeric(ndigits, weight, sign, scale, tail)
   end
 
@@ -134,7 +136,7 @@ defmodule Postgrex.Extensions.Numeric do
 
   defp decode_numeric_int("", weight, acc), do: {acc, weight}
 
-  defp decode_numeric_int(<<digit::int16, tail::binary>>, weight, acc) do
+  defp decode_numeric_int(<<digit::int16(), tail::binary>>, weight, acc) do
     acc = acc * 10_000 + digit
     decode_numeric_int(tail, weight - 1, acc)
   end

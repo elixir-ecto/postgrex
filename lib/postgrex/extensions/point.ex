@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.Point do
   def encode(_) do
     quote location: :keep do
       %Postgrex.Point{x: x, y: y} ->
-        <<16::int32, x::float64, y::float64>>
+        <<16::int32(), x::float64(), y::float64()>>
 
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Point)
@@ -15,13 +15,13 @@ defmodule Postgrex.Extensions.Point do
 
   def decode(_) do
     quote location: :keep do
-      <<16::int32, x::float64, y::float64>> -> %Postgrex.Point{x: x, y: y}
+      <<16::int32(), x::float64(), y::float64()>> -> %Postgrex.Point{x: x, y: y}
     end
   end
 
   # used by other extensions
   def encode_point(%Postgrex.Point{x: x, y: y}, _) do
-    <<x::float64, y::float64>>
+    <<x::float64(), y::float64()>>
   end
 
   def encode_point(other, wanted) do

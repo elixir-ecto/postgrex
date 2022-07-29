@@ -26,7 +26,7 @@ defmodule Postgrex.Extensions.Date do
 
   def decode(_) do
     quote location: :keep do
-      <<4::int32, days::int32>> ->
+      <<4::int32(), days::int32()>> ->
         unquote(__MODULE__).day_to_elixir(days)
     end
   end
@@ -34,7 +34,7 @@ defmodule Postgrex.Extensions.Date do
   ## Helpers
 
   def encode_elixir(%Date{year: year} = date) when year <= @max_year do
-    <<4::int32, Date.to_gregorian_days(date) - @gd_epoch::int32>>
+    <<4::int32(), Date.to_gregorian_days(date) - @gd_epoch::int32()>>
   end
 
   def encode_elixir(%Date{} = date) do

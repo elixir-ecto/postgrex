@@ -22,13 +22,13 @@ defmodule CustomExtensionsTest do
     def encode([]) do
       quote do
         int ->
-          <<4::int32, int + 1::int32>>
+          <<4::int32(), int + 1::int32()>>
       end
     end
 
     def decode([]) do
       quote do
-        <<4::int32, int::int32>> -> int + 1
+        <<4::int32(), int::int32()>> -> int + 1
       end
     end
   end
@@ -48,13 +48,13 @@ defmodule CustomExtensionsTest do
     def encode({}) do
       quote do
         value ->
-          [<<byte_size(value)::int32>> | value]
+          [<<byte_size(value)::int32()>> | value]
       end
     end
 
     def decode({}) do
       quote do
-        <<len::int32, binary::binary-size(len)>> ->
+        <<len::int32(), binary::binary-size(len)>> ->
           binary
       end
     end
@@ -88,7 +88,7 @@ defmodule CustomExtensionsTest do
 
     def decode([]) do
       quote do
-        <<1::int32, _>> ->
+        <<1::int32(), _>> ->
           raise @decode_msg
       end
     end

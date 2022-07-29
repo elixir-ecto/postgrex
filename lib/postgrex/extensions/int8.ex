@@ -10,7 +10,7 @@ defmodule Postgrex.Extensions.Int8 do
 
     quote location: :keep do
       int when is_integer(int) and int in unquote(range) ->
-        <<8::int32, int::int64>>
+        <<8::int32(), int::int64()>>
 
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, unquote(range))
@@ -19,7 +19,7 @@ defmodule Postgrex.Extensions.Int8 do
 
   def decode(_) do
     quote location: :keep do
-      <<8::int32, int::int64>> -> int
+      <<8::int32(), int::int64()>> -> int
     end
   end
 end

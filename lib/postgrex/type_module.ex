@@ -161,7 +161,7 @@ defmodule Postgrex.TypeModule do
 
       defp encode_tuple(tuple, n, [oid | oids], [type | types], acc) do
         param = :erlang.element(n, tuple)
-        acc = [acc, <<oid::uint32>> | encode_value(param, type)]
+        acc = [acc, <<oid::uint32()>> | encode_value(param, type)]
         encode_tuple(tuple, n + 1, oids, types, acc)
       end
 
@@ -264,13 +264,13 @@ defmodule Postgrex.TypeModule do
 
   defp encode_null(extension, :super_binary) do
     quote do
-      defp unquote(extension)(@null, _sub_oids, _sub_types), do: <<-1::int32>>
+      defp unquote(extension)(@null, _sub_oids, _sub_types), do: <<-1::int32()>>
     end
   end
 
   defp encode_null(extension, _) do
     quote do
-      defp unquote(extension)(@null), do: <<-1::int32>>
+      defp unquote(extension)(@null), do: <<-1::int32()>>
     end
   end
 
@@ -346,7 +346,7 @@ defmodule Postgrex.TypeModule do
       end
 
       defp decode_rows(
-             <<?D, size::int32, _::int16, unquote(rest)::binary>>,
+             <<?D, size::int32(), _::int16(), unquote(rest)::binary>>,
              rem,
              unquote(full),
              unquote(rows)
@@ -360,9 +360,9 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp decode_rows(<<?D, size::int32, rest::binary>>, rem, _, rows) do
+      defp decode_rows(<<?D, size::int32(), rest::binary>>, rem, _, rows) do
         more = size + 1 - rem
-        {:more, [?D, <<size::int32>> | rest], rows, more}
+        {:more, [?D, <<size::int32()>> | rest], rows, more}
       end
 
       defp decode_rows(<<?D, rest::binary>>, _, _, rows) do
@@ -506,7 +506,7 @@ defmodule Postgrex.TypeModule do
       end
 
       defp decode_tuple(
-             <<oid::int32, unquote(rest)::binary>>,
+             <<oid::int32(), unquote(rest)::binary>>,
              [oid | unquote(oids)],
              types,
              unquote(n),
@@ -522,7 +522,7 @@ defmodule Postgrex.TypeModule do
       end
 
       defp decode_tuple(
-             <<oid::int32, unquote(rest)::binary>>,
+             <<oid::int32(), unquote(rest)::binary>>,
              rem,
              types,
              unquote(n),
@@ -685,7 +685,7 @@ defmodule Postgrex.TypeModule do
   defp decode_extension_null(extension, dispatch, rest, acc, rem, full, rows) do
     quote do
       defp unquote(extension)(
-             <<-1::int32, unquote(rest)::binary>>,
+             <<-1::int32(), unquote(rest)::binary>>,
              types,
              acc,
              unquote(rem),
@@ -699,7 +699,7 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<-1::int32, rest::binary>>, acc) do
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, acc) do
         unquote(extension)(rest, [@null | acc])
       end
 
@@ -707,7 +707,7 @@ defmodule Postgrex.TypeModule do
         acc
       end
 
-      defp unquote(extension)(<<-1::int32, rest::binary>>, acc, callback) do
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, acc, callback) do
         unquote(extension)(rest, [@null | acc], callback)
       end
 
@@ -715,7 +715,7 @@ defmodule Postgrex.TypeModule do
         callback.(rest, acc)
       end
 
-      defp unquote(extension)(<<-1::int32, rest::binary>>, oids, types, n, acc) do
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, oids, types, n, acc) do
         decode_tuple(rest, oids, types, n, acc)
       end
     end
@@ -872,7 +872,7 @@ defmodule Postgrex.TypeModule do
   defp decode_super_null(extension, dispatch, rest, acc, rem, full, rows) do
     quote do
       defp unquote(extension)(
-             <<-1::int32, unquote(rest)::binary>>,
+             <<-1::int32(), unquote(rest)::binary>>,
              _sub_oids,
              _sub_types,
              types,
@@ -888,7 +888,7 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<-1::int32, rest::binary>>, sub_oids, sub_types, acc) do
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, sub_oids, sub_types, acc) do
         unquote(extension)(rest, sub_oids, sub_types, [@null | acc])
       end
 
@@ -897,7 +897,7 @@ defmodule Postgrex.TypeModule do
       end
 
       defp unquote(extension)(
-             <<-1::int32, rest::binary>>,
+             <<-1::int32(), rest::binary>>,
              _sub_oids,
              _sub_types,
              oids,

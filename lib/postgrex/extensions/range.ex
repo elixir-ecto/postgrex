@@ -35,7 +35,7 @@ defmodule Postgrex.Extensions.Range do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32, binary::binary-size(len)>>, [oid], [type] ->
+      <<len::int32(), binary::binary-size(len)>>, [oid], [type] ->
         <<flags, data::binary>> = binary
         # decode_list/2 defined by TypeModule
         case decode_list(data, type) do
@@ -51,7 +51,7 @@ defmodule Postgrex.Extensions.Range do
   ## Helpers
 
   def encode(_range, _oid, :empty, :empty) do
-    [<<1::int32, @range_empty>>]
+    [<<1::int32(), @range_empty>>]
   end
 
   def encode(%{lower_inclusive: lower_inc, upper_inclusive: upper_inc}, _oid, lower, upper) do
@@ -83,7 +83,7 @@ defmodule Postgrex.Extensions.Range do
         false -> flags
       end
 
-    [<<IO.iodata_length(data) + 1::int32>>, flags | data]
+    [<<IO.iodata_length(data) + 1::int32()>>, flags | data]
   end
 
   def decode(flags, _oid, []) when (flags &&& @range_empty) != 0 do

@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.BitString do
   def encode(_) do
     quote location: :keep, generated: true do
       val when is_binary(val) ->
-        [<<byte_size(val) + 4::int32, bit_size(val)::uint32>> | val]
+        [<<byte_size(val) + 4::int32(), bit_size(val)::uint32()>> | val]
 
       val when is_bitstring(val) ->
         bin_size = byte_size(val)
@@ -18,7 +18,7 @@ defmodule Postgrex.Extensions.BitString do
         bit_count = bit_size(val)
 
         [
-          <<bin_size + 4::int32, bit_count::uint32>>,
+          <<bin_size + 4::int32(), bit_count::uint32()>>,
           binary
           | <<last::bits, 0::size(pad)>>
         ]
@@ -30,7 +30,7 @@ defmodule Postgrex.Extensions.BitString do
 
   def decode(:copy) do
     quote location: :keep do
-      <<len::int32, value::binary-size(len)>> ->
+      <<len::int32(), value::binary-size(len)>> ->
         copy = :binary.copy(value)
         <<len::unsigned-32, bits::bits-size(len), _::bits>> = copy
         bits
@@ -39,8 +39,8 @@ defmodule Postgrex.Extensions.BitString do
 
   def decode(:reference) do
     quote location: :keep do
-      <<len::int32, value::binary-size(len)>> ->
-        <<len::int32, bits::bits-size(len), _::bits>> = value
+      <<len::int32(), value::binary-size(len)>> ->
+        <<len::int32(), bits::bits-size(len), _::bits>> = value
         bits
     end
   end

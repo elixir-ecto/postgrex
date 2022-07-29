@@ -550,7 +550,7 @@ defmodule Postgrex.ReplicationConnection do
   end
 
   defp stream_in_progress(command, mod, mod_state, from, s) do
-    Logger.warn("received #{command} while stream is already in progress")
+    Logger.warning("received #{command} while stream is already in progress")
     from && reply(from, {__MODULE__, :stream_in_progress})
     {:noreply, %{s | state: {mod, mod_state}}}
   end
