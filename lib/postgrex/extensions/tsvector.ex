@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.TSVector do
     quote location: :keep do
       values when is_list(values) ->
         encoded_tsvectors = unquote(__MODULE__).encode_tsvector(values)
-        <<byte_size(encoded_tsvectors)::int32, encoded_tsvectors::binary>>
+        <<byte_size(encoded_tsvectors)::int32(), encoded_tsvectors::binary>>
 
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a list of tsvectors")
@@ -17,8 +17,8 @@ defmodule Postgrex.Extensions.TSVector do
 
   def decode(_) do
     quote do
-      <<len::int32, value::binary-size(len)>> ->
-        <<nb_lexemes::int32, words::binary>> = value
+      <<len::int32(), value::binary-size(len)>> ->
+        <<nb_lexemes::int32(), words::binary>> = value
         unquote(__MODULE__).decode_tsvector_values(words)
     end
   end
@@ -26,7 +26,7 @@ defmodule Postgrex.Extensions.TSVector do
   ## Helpers
 
   def encode_tsvector(values) do
-    <<length(values)::int32, encode_lexemes(values)::binary>>
+    <<length(values)::int32(), encode_lexemes(values)::binary>>
   end
 
   defp encode_lexemes(values) do

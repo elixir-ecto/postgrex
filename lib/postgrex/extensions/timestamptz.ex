@@ -32,7 +32,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
 
   def decode(infinity?) do
     quote location: :keep do
-      <<8::int32, microsecs::int64>> ->
+      <<8::int32(), microsecs::int64()>> ->
         unquote(__MODULE__).microsecond_to_elixir(microsecs, unquote(infinity?))
     end
   end
@@ -42,7 +42,7 @@ defmodule Postgrex.Extensions.TimestampTZ do
   def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
     case DateTime.to_unix(datetime, :microsecond) do
       microsecs when microsecs in @us_min..@us_max ->
-        <<8::int32, microsecs - @us_epoch::int64>>
+        <<8::int32(), microsecs - @us_epoch::int64()>>
 
       _ ->
         raise ArgumentError, "#{inspect(datetime)} is not in the year range -4713..9999"

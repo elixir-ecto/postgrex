@@ -263,7 +263,7 @@ defmodule Postgrex.SimpleConnection do
         idle_timeout = opts[:idle_timeout]
 
         if idle_timeout do
-          Logger.warn(
+          Logger.warning(
             ":idle_timeout in Postgrex.SimpleConnection is deprecated, " <>
               "please use :idle_interval instead"
           )

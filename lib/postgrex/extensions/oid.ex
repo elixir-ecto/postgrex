@@ -13,7 +13,7 @@ defmodule Postgrex.Extensions.OID do
 
     quote location: :keep do
       oid when is_integer(oid) and oid in unquote(range) ->
-        <<4::int32, oid::uint32>>
+        <<4::int32(), oid::uint32()>>
 
       binary when is_binary(binary) ->
         msg =
@@ -30,7 +30,7 @@ defmodule Postgrex.Extensions.OID do
 
   def decode(_) do
     quote location: :keep do
-      <<4::int32, oid::uint32>> -> oid
+      <<4::int32(), oid::uint32()>> -> oid
     end
   end
 end

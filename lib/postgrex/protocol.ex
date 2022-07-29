@@ -875,7 +875,7 @@ defmodule Postgrex.Protocol do
         check_target_server_type_recv(s, status, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
-        <<len::uint32, read_only_value::binary(len)>> = values
+        <<len::uint32(), read_only_value::binary(len)>> = values
 
         actual_server_type =
           case read_only_value do
@@ -3131,7 +3131,7 @@ defmodule Postgrex.Protocol do
     {:more, 0}
   end
 
-  defp msg_decode(<<type::int8, size::int32, rest::binary>>) do
+  defp msg_decode(<<type::int8(), size::int32(), rest::binary>>) do
     size = size - 4
 
     case rest do

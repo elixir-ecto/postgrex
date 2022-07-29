@@ -17,7 +17,7 @@ defmodule Postgrex.Extensions.Raw do
   def encode(_) do
     quote location: :keep, generated: true do
       bin when is_binary(bin) ->
-        [<<byte_size(bin)::int32>> | bin]
+        [<<byte_size(bin)::int32()>> | bin]
 
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a binary")
@@ -26,13 +26,13 @@ defmodule Postgrex.Extensions.Raw do
 
   def decode(:copy) do
     quote location: :keep do
-      <<len::int32, value::binary-size(len)>> -> :binary.copy(value)
+      <<len::int32(), value::binary-size(len)>> -> :binary.copy(value)
     end
   end
 
   def decode(:reference) do
     quote location: :keep do
-      <<len::int32, value::binary-size(len)>> -> value
+      <<len::int32(), value::binary-size(len)>> -> value
     end
   end
 end

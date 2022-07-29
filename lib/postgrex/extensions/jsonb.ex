@@ -24,13 +24,13 @@ defmodule Postgrex.Extensions.JSONB do
     quote location: :keep do
       map ->
         data = unquote(library).encode_to_iodata!(map)
-        [<<IO.iodata_length(data) + 1::int32, 1>> | data]
+        [<<IO.iodata_length(data) + 1::int32(), 1>> | data]
     end
   end
 
   def decode({library, :copy}) do
     quote location: :keep do
-      <<len::int32, data::binary-size(len)>> ->
+      <<len::int32(), data::binary-size(len)>> ->
         <<1, json::binary>> = data
 
         json
@@ -41,7 +41,7 @@ defmodule Postgrex.Extensions.JSONB do
 
   def decode({library, :reference}) do
     quote location: :keep do
-      <<len::int32, data::binary-size(len)>> ->
+      <<len::int32(), data::binary-size(len)>> ->
         <<1, json::binary>> = data
         unquote(library).decode!(json)
     end

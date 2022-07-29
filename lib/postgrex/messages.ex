@@ -84,7 +84,7 @@ defmodule Postgrex.Messages do
   ### decoders ###
 
   # auth
-  def parse(<<type::int32, rest::binary>>, ?R, size) do
+  def parse(<<type::int32(), rest::binary>>, ?R, size) do
     type = decode_auth_type(type)
 
     data =
@@ -115,12 +115,12 @@ defmodule Postgrex.Messages do
   end
 
   # backend_key
-  def parse(<<pid::int32, key::int32>>, ?K, _size) do
+  def parse(<<pid::int32(), key::int32()>>, ?K, _size) do
     msg_backend_key(pid: pid, key: key)
   end
 
   # ready
-  def parse(<<status::int8>>, ?Z, _size) do
+  def parse(<<status::int8()>>, ?Z, _size) do
     status =
       case status do
         ?I -> :idle
@@ -132,16 +132,16 @@ defmodule Postgrex.Messages do
   end
 
   # parameter_desc
-  def parse(<<len::uint16, rest::binary(len, 32)>>, ?t, _size) do
+  def parse(<<len::uint16(), rest::binary(len, 32)>>, ?t, _size) do
     oids = for <<oid::size(32) <- rest>>, do: oid
     msg_parameter_desc(type_oids: oids)
   end
 
-  def parse(<<overflow_len::uint16, _::binary>>, ?t, size) do
+  def parse(<<overflow_len::uint16(), _::binary>>, ?t, size) do
     len = div(size - 2, 4)
 
-    case <<len::uint16>> do
-      <<^overflow_len::uint16>> ->
+    case <<len::uint16()>> do
+      <<^overflow_len::uint16()>> ->
         msg_too_many_parameters(len: len, max_len: 0xFFFF)
 
       _ ->
@@ -150,18 +150,18 @@ defmodule Postgrex.Messages do
   end
 
   # row_desc
-  def parse(<<len::uint16, rest::binary>>, ?T, _size) do
+  def parse(<<len::uint16(), rest::binary>>, ?T, _size) do
     fields = decode_row_fields(rest, len)
     msg_row_desc(fields: fields)
   end
 
   # data_row
-  def parse(<<_::uint16, rest::binary>>, ?D, _size) do
+  def parse(<<_::uint16(), rest::binary>>, ?D, _size) do
     msg_data_row(values: rest)
   end
 
   # notify
-  def parse(<<pg_pid::int32, rest::binary>>, ?A, _size) do
+  def parse(<<pg_pid::int32(), rest::binary>>, ?A, _size) do
     {channel, rest} = decode_string(rest)
     {payload, ""} = decode_string(rest)
     msg_notify(pg_pid: pg_pid, channel: channel, payload: payload)
@@ -262,9 +262,9 @@ defmodule Postgrex.Messages do
     size = IO.iodata_length(data) + 4
 
     if first do
-      [first, <<size::int32>>, data]
+      [first, <<size::int32()>>, data]
     else
-      [<<size::int32>>, data]
+      [<<size::int32()>>, data]
     end
   end
 
@@ -275,7 +275,7 @@ defmodule Postgrex.Messages do
         [acc, to_string(key), 0, value, 0]
       end)
 
-    vsn = <<@protocol_vsn_major::int16, @protocol_vsn_minor::int16>>
+    vsn = <<@protocol_vsn_major::int16(), @protocol_vsn_minor::int16()>>
     {nil, [vsn, params, 0]}
   end
 
@@ -291,8 +291,8 @@ defmodule Postgrex.Messages do
 
   # parse
   defp encode(msg_parse(name: name, statement: statement, type_oids: oids)) do
-    oids = for oid <- oids, into: "", do: <<oid::uint32>>
-    len = <<div(byte_size(oids), 4)::int16>>
+    oids = for oid <- oids, into: "", do: <<oid::uint32()>>
+    len = <<div(byte_size(oids), 4)::int16()>>
     {?P, [name, 0, statement, 0, len, oids]}
   end
 
@@ -333,19 +333,19 @@ defmodule Postgrex.Messages do
            result_formats: result_formats
          )
        ) do
-    pfs = for format <- param_formats, into: "", do: <<format(format)::int16>>
-    rfs = for format <- result_formats, into: "", do: <<format(format)::int16>>
+    pfs = for format <- param_formats, into: "", do: <<format(format)::int16()>>
+    rfs = for format <- result_formats, into: "", do: <<format(format)::int16()>>
 
-    len_pfs = <<div(byte_size(pfs), 2)::int16>>
-    len_rfs = <<div(byte_size(rfs), 2)::int16>>
-    len_params = <<length(params)::int16>>
+    len_pfs = <<div(byte_size(pfs), 2)::int16()>>
+    len_rfs = <<div(byte_size(rfs), 2)::int16()>>
+    len_params = <<length(params)::int16()>>
 
     {?B, [port, 0, stat, 0, len_pfs, pfs, len_params, params, len_rfs, rfs]}
   end
 
   # execute
   defp encode(msg_execute(name_port: port, max_rows: rows)) do
-    {?E, [port, 0, <<rows::int32>>]}
+    {?E, [port, 0, <<rows::int32()>>]}
   end
 
   # sync
@@ -360,12 +360,12 @@ defmodule Postgrex.Messages do
 
   # ssl_request
   defp encode(msg_ssl_request()) do
-    {nil, <<1234::int16, 5679::int16>>}
+    {nil, <<1234::int16(), 5679::int16()>>}
   end
 
   # cancel_request
   defp encode(msg_cancel_request(pid: pid, key: key)) do
-    {nil, <<1234::int16, 5678::int16, pid::int32, key::int32>>}
+    {nil, <<1234::int16(), 5678::int16(), pid::int32(), key::int32()>>}
   end
 
   # copy_data
@@ -392,7 +392,7 @@ defmodule Postgrex.Messages do
 
   defp decode_fields(<<0>>), do: []
 
-  defp decode_fields(<<field::int8, rest::binary>>) do
+  defp decode_fields(<<field::int8(), rest::binary>>) do
     type = decode_field_type(field)
     {string, rest} = decode_string(rest)
     [{type, string} | decode_fields(rest)]
@@ -414,8 +414,8 @@ defmodule Postgrex.Messages do
   defp decode_row_field(rest) do
     {name, rest} = decode_string(rest)
 
-    <<table_oid::uint32, column::int16, type_oid::uint32, type_size::int16, type_mod::int32,
-      format::int16, rest::binary>> = rest
+    <<table_oid::uint32(), column::int16(), type_oid::uint32(), type_size::int16(),
+      type_mod::int32(), format::int16(), rest::binary>> = rest
 
     field =
       row_field(
@@ -444,9 +444,9 @@ defmodule Postgrex.Messages do
   defp decode_format(0), do: :text
   defp decode_format(1), do: :binary
 
-  defp decode_copy(<<format::int8, len::uint16, rest::binary(len, 16)>>) do
+  defp decode_copy(<<format::int8(), len::uint16(), rest::binary(len, 16)>>) do
     format = decode_format(format)
-    columns = for <<column::uint16 <- rest>>, do: decode_format(column)
+    columns = for <<column::uint16() <- rest>>, do: decode_format(column)
     {format, columns}
   end
 end

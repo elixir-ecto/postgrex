@@ -27,7 +27,7 @@ defmodule Postgrex.Extensions.Timestamp do
 
   def decode(infinity?) do
     quote location: :keep do
-      <<8::int32, microsecs::int64>> ->
+      <<8::int32(), microsecs::int64()>> ->
         unquote(__MODULE__).microsecond_to_elixir(microsecs, unquote(infinity?))
     end
   end
@@ -48,7 +48,7 @@ defmodule Postgrex.Extensions.Timestamp do
              usec in 0..999_999 do
     {gregorian_seconds, usec} = NaiveDateTime.to_gregorian_seconds(date_time)
     secs = gregorian_seconds - @gs_epoch
-    <<8::int32, secs * 1_000_000 + usec::int64>>
+    <<8::int32(), secs * 1_000_000 + usec::int64()>>
   end
 
   def microsecond_to_elixir(@plus_infinity, infinity?) do

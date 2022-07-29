@@ -28,8 +28,8 @@ defmodule Postgrex.Extensions.Array do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32, binary::binary-size(len)>>, [oid], [type] ->
-        <<ndims::int32, _has_null::int32, ^oid::uint32, dims::size(ndims)-binary-unit(64),
+      <<len::int32(), binary::binary-size(len)>>, [oid], [type] ->
+        <<ndims::int32(), _has_null::int32(), ^oid::uint32(), dims::size(ndims)-binary-unit(64),
           data::binary>> = binary
 
         # decode_list/2 defined by TypeModule
@@ -45,14 +45,14 @@ defmodule Postgrex.Extensions.Array do
   # While libpq will decode an payload encoded for a 0-dim array, CockroachDB will not.
   # Also, this is how libpq actually encodes 0-dim arrays.
   def encode([], elem_oid, _encoder) do
-    <<20::int32, 1::int32, 0::int32, elem_oid::uint32, 0::int32, 1::int32>>
+    <<20::int32(), 1::int32(), 0::int32(), elem_oid::uint32(), 0::int32(), 1::int32()>>
   end
 
   def encode(list, elem_oid, encoder) do
     {data, ndims, lengths} = encode(list, 0, [], encoder)
-    lengths = for len <- Enum.reverse(lengths), do: <<len::int32, 1::int32>>
-    iodata = [<<ndims::int32, 0::int32, elem_oid::uint32>>, lengths, data]
-    [<<IO.iodata_length(iodata)::int32>> | iodata]
+    lengths = for len <- Enum.reverse(lengths), do: <<len::int32(), 1::int32()>>
+    iodata = [<<ndims::int32(), 0::int32(), elem_oid::uint32()>>, lengths, data]
+    [<<IO.iodata_length(iodata)::int32()>> | iodata]
   end
 
   defp encode([], ndims, lengths, _encoder) do
@@ -96,7 +96,7 @@ defmodule Postgrex.Extensions.Array do
     end
   end
 
-  defp decode_dims(<<len::int32, _lbound::int32, rest::binary>>, acc) do
+  defp decode_dims(<<len::int32(), _lbound::int32(), rest::binary>>, acc) do
     decode_dims(rest, [len | acc])
   end
 

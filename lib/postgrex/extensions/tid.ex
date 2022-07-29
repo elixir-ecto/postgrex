@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.TID do
   def encode(_) do
     quote location: :keep do
       {block, tuple} ->
-        <<6::int32, block::uint32, tuple::uint16>>
+        <<6::int32(), block::uint32(), tuple::uint16()>>
 
       other ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a tuple of 2 integers")
@@ -15,7 +15,7 @@ defmodule Postgrex.Extensions.TID do
 
   def decode(_) do
     quote location: :keep do
-      <<6::int32, block::uint32, tuple::uint16>> ->
+      <<6::int32(), block::uint32(), tuple::uint16()>> ->
         {block, tuple}
     end
   end
