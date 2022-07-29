@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.16.4 (2022-07-29)
+
+* Enhancements
+  * Support Unix sockets in hostname and PGHOST
+  * Support infinity value on numerics/decimals (PG14+)
+  * Add count to Table.Reader metadata
+  * Fix warnings on Elixir v1.15
+
 ## v0.16.3 (2022-04-27)
 
 * Enhancements
