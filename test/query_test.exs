@@ -1565,7 +1565,7 @@ defmodule QueryTest do
 
     # search path does not contain the appropriate schema
     %Postgrex.Error{postgres: error} = query("SELECT * from test_table", [])
-    assert error.message =~  "\"test_table\" does not exist"
+    assert error.message =~ "\"test_table\" does not exist"
 
     # search path does contain the appropriate schema
     {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
