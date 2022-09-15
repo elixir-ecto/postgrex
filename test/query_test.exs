@@ -1557,4 +1557,18 @@ defmodule QueryTest do
 
     assert {_, %{count: 3}, _} = Table.Reader.init(res)
   end
+
+  test "search_path", context do
+    :ok = query("CREATE SCHEMA test_schema", [])
+    :ok = query("CREATE TABLE test_schema.test_table (id int, text text)", [])
+    :ok = query("INSERT INTO test_schema.test_table VALUES (1, 'foo')", [])
+
+    # search path does not contain the appropriate schema
+    %Postgrex.Error{postgres: error} = query("SELECT * from test_table", [])
+    assert error.message =~  "\"test_table\" does not exist"
+
+    # search path does contain the appropriate schema
+    {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
+    %{rows: [[1, "foo"]]} = P.query!(pid, "SELECT * from test_table", [])
+  end
 end
