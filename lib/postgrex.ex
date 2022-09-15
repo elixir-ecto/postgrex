@@ -164,7 +164,7 @@ defmodule Postgrex do
       separate schema. If that schema is not in the connection's search path, Postgrex
       might not be able to recognize the extension's data type. When this option is `nil`,
       the search path is not modified. (default: `nil`).
-      See (https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
+      See the [PostgreSQL docs](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
       for more details.
 
 
