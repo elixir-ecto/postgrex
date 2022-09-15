@@ -160,11 +160,12 @@ defmodule Postgrex do
       `Postgrex.DefaultTypes`);
 
     * `:search_path` - A list of strings used to set the search path for the connection.
+      This is useful when, for instance, an extension like `citext` is installed in a
+      separate schema. If that schema is not in the connection's search path, Postgrex
+      might not be able to recognize the extension's data type. When this option is `nil`,
+      the search path is not modified. (default: `nil`).
       See (https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
-      for more details. This is useful when, for instance, extensions like `citext`
-      are installed in a seprate schema. If that schema is not in the connection's
-      search path, Postgrex might not be able to recognize the extension's data type. When
-      this option is `nil`, the search path is not modified. (default: `nil`)
+      for more details.
 
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
