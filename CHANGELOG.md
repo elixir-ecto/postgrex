@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.5 (2022-09-20)
+
+* Enhancements
+  * Allow the `:search_path` to be set for new connections
+
 ## v0.16.4 (2022-07-29)
 
 * Enhancements
