@@ -9,8 +9,7 @@ defmodule PostGrex.SCRAM.LockedCacheTest do
   end
 
   test "locks cache keys", config do
-    %Task{pid: first_pid, ref: first_ref} =
-      task_run(config.test, fn -> :this_is_cached end)
+    %Task{pid: first_pid, ref: first_ref} = task_run(config.test, fn -> :this_is_cached end)
 
     assert_receive {:running, ^first_pid}
 
