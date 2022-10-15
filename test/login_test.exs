@@ -39,8 +39,13 @@ defmodule LoginTest do
   @tag min_pg_version: "10.0"
   test "login scram password", context do
     opts = [username: "postgrex_scram_pw", password: "postgrex_scram_pw"]
-    assert {:ok, pid} = P.start_link(opts ++ context[:options])
-    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+
+    # Test multiple connections to ensure cache can be used to authenticate
+    assert {:ok, pid1} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid1, "SELECT 123", [])
+
+    assert {:ok, pid2} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid2, "SELECT 123", [])
   end
 
   @tag min_pg_version: "10.0"
