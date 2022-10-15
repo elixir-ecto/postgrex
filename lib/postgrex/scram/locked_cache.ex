@@ -1,7 +1,8 @@
 defmodule Postgrex.SCRAM.LockedCache do
   @moduledoc false
 
-  # SCRAM is expensive
+  # SCRAM authentication requires expensive calculations
+  # that may be repeated across multiple connections.
   # This module provides a cache functionality so that
   # those are done only once, even if concurrently.
   #
