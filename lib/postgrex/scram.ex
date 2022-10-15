@@ -1,6 +1,8 @@
 defmodule Postgrex.SCRAM do
   @moduledoc false
 
+  alias Postgrex.SCRAM
+
   @hash_length 32
   @nonce_length 24
   @nonce_rand_bytes div(@nonce_length * 6, 8)
@@ -23,9 +25,11 @@ defmodule Postgrex.SCRAM do
     server_i = String.to_integer(server[?i])
 
     pass = Keyword.fetch!(opts, :password)
-    salted_pass = hash_password(pass, server_s, server_i)
+    cache_key = {:crypto.hash(:sha256, pass), server_s, server_i}
 
-    client_key = hmac(:sha256, salted_pass, "Client Key")
+    client_key =
+      SCRAM.LockedCache.run(cache_key, fn -> calculate_client_key(pass, server_s, server_i) end)
+
     client_nonce = binary_part(server[?r], 0, @nonce_length)
 
     message = ["n=,r=", client_nonce, ",r=", server[?r], ",s=", server[?s], ",i=", server[?i], ?,]
@@ -35,6 +39,11 @@ defmodule Postgrex.SCRAM do
     client_sig = hmac(:sha256, :crypto.hash(:sha256, client_key), auth_message)
     proof = Base.encode64(:crypto.exor(client_key, client_sig))
     [message_without_proof, ",p=", proof]
+  end
+
+  defp calculate_client_key(pass, salt, iterations) do
+    salted_pass = hash_password(pass, salt, iterations)
+    hmac(:sha256, salted_pass, "Client Key")
   end
 
   defp hash_password(secret, salt, iterations) do

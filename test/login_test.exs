@@ -38,6 +38,12 @@ defmodule LoginTest do
 
   @tag min_pg_version: "10.0"
   test "login scram password", context do
+    # Multiple connections trying to write to empty cache concurrently
+    opts = [username: "postgrex_scram_pw", password: "postgrex_scram_pw", pool_size: 10]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+
+    # Using cache after it has been set
     opts = [username: "postgrex_scram_pw", password: "postgrex_scram_pw"]
     assert {:ok, pid} = P.start_link(opts ++ context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])

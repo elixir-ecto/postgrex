@@ -7,7 +7,8 @@ defmodule Postgrex.App do
 
     children = [
       {Postgrex.TypeSupervisor, :manager},
-      Postgrex.Parameters
+      Postgrex.Parameters,
+      Postgrex.SCRAM.LockedCache
     ]
 
     Supervisor.start_link(children, opts)
