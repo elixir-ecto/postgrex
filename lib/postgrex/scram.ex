@@ -48,7 +48,7 @@ defmodule Postgrex.SCRAM do
   end
 
   defp do_verify_server(%{?e => server_e}, _scram_state, _opts) do
-    msg = "error received in SCRAM-SHA-256 server final message: #{inspect(server_e)}"
+    msg = "error received in SCRAM server final message: #{inspect(server_e)}"
     {:error, %Postgrex.Error{message: msg}}
   end
 
@@ -64,13 +64,13 @@ defmodule Postgrex.SCRAM do
     if expected_server_sig == server_sig do
       :ok
     else
-      msg = "cannot verify SCRAM-SHA-256 server signature"
+      msg = "cannot verify SCRAM server signature"
       {:error, %Postgrex.Error{message: msg}}
     end
   end
 
   defp do_verify_server(server, _scram_state, _opts) do
-    msg = "unsupported SCRAM-SHA-256 server final message: #{inspect(server)}"
+    msg = "unsupported SCRAM server final message: #{inspect(server)}"
     {:error, %Postgrex.Error{message: msg}}
   end
 
