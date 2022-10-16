@@ -42,8 +42,9 @@ defmodule Postgrex.SCRAM do
   end
 
   def verify_server(data, scram_state, opts) do
-    server = parse_server_data(data)
-    do_verify_server(server, scram_state, opts)
+    data
+    |> parse_server_data()
+    |> do_verify_server(scram_state, opts)
   end
 
   defp do_verify_server(%{?e => server_e}, _scram_state, _opts) do
