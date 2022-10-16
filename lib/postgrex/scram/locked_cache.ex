@@ -15,6 +15,13 @@ defmodule Postgrex.SCRAM.LockedCache do
   @timeout :infinity
 
   @doc """
+  Reads the cache key.
+  """
+  def get(key) do
+    soft_read(key)
+  end
+
+  @doc """
   Reads cache key or executes the given function if not
   cached yet.
   """
@@ -47,6 +54,14 @@ defmodule Postgrex.SCRAM.LockedCache do
   defp init(), do: :ets.new(@name, [:public, :set, :named_table, read_concurrency: true])
   defp write(key, value), do: :ets.insert(@name, {key, value})
   defp hard_read(key), do: :ets.lookup_element(@name, key, 2)
+
+  defp soft_read(key) do
+    try do
+      :ets.lookup_element(@name, key, 2)
+    catch
+      :error, :badarg -> nil
+    end
+  end
 
   ## Callbacks
 
