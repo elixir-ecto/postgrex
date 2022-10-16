@@ -9,12 +9,12 @@ defmodule Postgrex.SCRAM do
   @nonce_prefix "n,,n=,r="
   @nonce_encoded_size <<byte_size(@nonce_prefix) + @nonce_length::signed-size(32)>>
 
-  def challenge do
+  def client_first do
     nonce = @nonce_rand_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()
     ["SCRAM-SHA-256", 0, @nonce_encoded_size, @nonce_prefix, nonce]
   end
 
-  def client_proof(data, opts) do
+  def client_final(data, opts) do
     server = parse_server_data(data)
     {:ok, server_s} = Base.decode64(server[?s])
     server_i = String.to_integer(server[?i])
