@@ -53,15 +53,15 @@ defmodule Postgrex.SCRAM do
   end
 
   defp do_verify_server(%{?v => server_v}, scram_state, opts) do
-    {:ok, server_signature} = Base.decode64(server_v)
+    {:ok, server_sig} = Base.decode64(server_v)
 
     pass = Keyword.fetch!(opts, :password)
     cache_key = {:crypto.hash(:sha256, pass), scram_state.salt, scram_state.iterations}
     {_client_key, server_key} = SCRAM.LockedCache.get(cache_key)
 
-    expected_server_signature = hmac(:sha256, server_key, scram_state.auth_message)
+    expected_server_sig = hmac(:sha256, server_key, scram_state.auth_message)
 
-    if expected_server_signature == server_signature do
+    if expected_server_sig == server_sig do
       :ok
     else
       msg = "cannot verify SCRAM-SHA-256 server signature"
