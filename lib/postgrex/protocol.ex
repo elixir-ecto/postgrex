@@ -26,7 +26,8 @@ defmodule Postgrex.Protocol do
             postgres: :idle,
             transactions: :strict,
             buffer: nil,
-            disconnect_on_error_codes: []
+            disconnect_on_error_codes: [],
+            scram: nil
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -42,7 +43,8 @@ defmodule Postgrex.Protocol do
           postgres: DBConnection.status() | {DBConnection.status(), reference},
           transactions: :strict | :naive,
           buffer: nil | binary | :active_once,
-          disconnect_on_error_codes: [atom()]
+          disconnect_on_error_codes: [atom()],
+          scram: %{atom => binary}
         }
 
   @type notify :: (binary, binary -> any)
@@ -783,8 +785,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg_auth(type: :sasl_cont, data: data), buffer} ->
         auth_cont(s, status, data, buffer)
 
-      {:ok, msg_auth(type: :sasl_fin, data: _), buffer} ->
-        auth_recv(s, status, buffer)
+      {:ok, msg_auth(type: :sasl_fin, data: data), buffer} ->
+        auth_fin(s, status, data, buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
@@ -813,7 +815,16 @@ defmodule Postgrex.Protocol do
   end
 
   defp auth_cont(s, %{opts: opts} = status, data, buffer) do
-    auth_send(s, msg_password(pass: Postgrex.SCRAM.verify(data, opts)), status, buffer)
+    {verify_msg, scram_state} = Postgrex.SCRAM.verify_client(data, opts)
+    s = %{s | scram: scram_state}
+    auth_send(s, msg_password(pass: verify_msg), status, buffer)
+  end
+
+  defp auth_fin(s, %{opts: opts} = status, data, buffer) do
+    case Postgrex.SCRAM.verify_server(data, s.scram, opts) do
+      :ok -> auth_recv(s, status, buffer)
+      {:error, e} -> {:disconnect, e, s}
+    end
   end
 
   defp auth_send(s, msg, status, buffer) do
