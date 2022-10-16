@@ -14,7 +14,7 @@ defmodule Postgrex.SCRAM do
     ["SCRAM-SHA-256", 0, @nonce_encoded_size, @nonce_prefix, nonce]
   end
 
-  def verify_client(data, opts) do
+  def client_proof(data, opts) do
     server = parse_server_data(data)
     {:ok, server_s} = Base.decode64(server[?s])
     server_i = String.to_integer(server[?i])

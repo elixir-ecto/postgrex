@@ -815,9 +815,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp auth_cont(s, %{opts: opts} = status, data, buffer) do
-    {verify_msg, scram_state} = Postgrex.SCRAM.verify_client(data, opts)
+    {proof_msg, scram_state} = Postgrex.SCRAM.client_proof(data, opts)
     s = %{s | scram: scram_state}
-    auth_send(s, msg_password(pass: verify_msg), status, buffer)
+    auth_send(s, msg_password(pass: proof_msg), status, buffer)
   end
 
   defp auth_fin(s, %{opts: opts} = status, data, buffer) do
