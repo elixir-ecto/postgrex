@@ -48,7 +48,7 @@ defmodule Postgrex.SCRAM do
   end
 
   defp do_verify_server(%{?e => server_e}, _scram_state, _opts) do
-    msg = "error received from server in SCRAM-SHA-256 server final message: #{inspect(server_e)}"
+    msg = "error received in SCRAM-SHA-256 server final message: #{inspect(server_e)}"
     {:error, %Postgrex.Error{message: msg}}
   end
 
