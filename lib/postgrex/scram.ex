@@ -15,18 +15,21 @@ defmodule Postgrex.SCRAM do
   end
 
   def client_final(data, opts) do
+    # Extract data from server-first message
     server = parse_server_data(data)
     {:ok, server_s} = Base.decode64(server[?s])
     server_i = String.to_integer(server[?i])
 
+    # Create and cache client and server keys if they don't already exist
     pass = Keyword.fetch!(opts, :password)
-    cache_key = {:crypto.hash(:sha256, pass), server_s, server_i}
+    cache_key = create_cache_key(pass, server_s, server_i)
 
     {client_key, _server_key} =
       SCRAM.LockedCache.run(cache_key, fn ->
         calculate_client_server_keys(pass, server_s, server_i)
       end)
 
+    # Construct client signature and proof
     message_without_proof = ["c=biws,r=", server[?r]]
     client_nonce = binary_part(server[?r], 0, @nonce_length)
     message = ["n=,r=", client_nonce, ",r=", server[?r], ",s=", server[?s], ",i=", server[?i], ?,]
@@ -53,14 +56,16 @@ defmodule Postgrex.SCRAM do
   end
 
   defp do_verify_server(%{?v => server_v}, scram_state, opts) do
+    # Decode server signature from the server-final message
     {:ok, server_sig} = Base.decode64(server_v)
 
+    # Construct expected server signature
     pass = Keyword.fetch!(opts, :password)
-    cache_key = {:crypto.hash(:sha256, pass), scram_state.salt, scram_state.iterations}
+    cache_key = create_cache_key(pass, scram_state.salt, scram_state.iterations)
     {_client_key, server_key} = SCRAM.LockedCache.get(cache_key)
-
     expected_server_sig = hmac(:sha256, server_key, scram_state.auth_message)
 
+    # Verify the server signature sent to us is correct
     if expected_server_sig == server_sig do
       :ok
     else
@@ -79,6 +84,10 @@ defmodule Postgrex.SCRAM do
       <<k, "=", v::binary>> = kv
       {k, v}
     end
+  end
+
+  defp create_cache_key(pass, salt, iterations) do
+    {:crypto.hash(:sha256, pass), salt, iterations}
   end
 
   defp calculate_client_server_keys(pass, salt, iterations) do
