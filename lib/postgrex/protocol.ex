@@ -212,6 +212,7 @@ defmodule Postgrex.Protocol do
     # every time the connection is explicitly disconnected
     # because the associated PID will no longer exist.
     cancel_request(s)
+    terminate(s)
     sock_close(s)
     _ = recv_buffer(s)
     delete_parameters(s)
@@ -3434,6 +3435,12 @@ defmodule Postgrex.Protocol do
 
   defp setopts(:gen_tcp, sock, opts), do: :inet.setopts(sock, opts)
   defp setopts(:ssl, sock, opts), do: :ssl.setopts(sock, opts)
+
+  defp terminate(%{sock: {:gen_tcp, sock}}) do
+    msg = msg_terminate()
+
+    :gen_tcp.send(sock, encode_msg(msg))
+  end
 
   defp cancel_request(%{connection_key: nil}), do: :ok
 
