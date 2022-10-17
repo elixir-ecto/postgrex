@@ -3436,10 +3436,9 @@ defmodule Postgrex.Protocol do
   defp setopts(:gen_tcp, sock, opts), do: :inet.setopts(sock, opts)
   defp setopts(:ssl, sock, opts), do: :ssl.setopts(sock, opts)
 
-  defp terminate(%{sock: {:gen_tcp, sock}}) do
+  defp terminate(%{sock: {mod, sock}}) do
     msg = msg_terminate()
-
-    :gen_tcp.send(sock, encode_msg(msg))
+    mod.send(sock, encode_msg(msg))
   end
 
   defp cancel_request(%{connection_key: nil}), do: :ok
