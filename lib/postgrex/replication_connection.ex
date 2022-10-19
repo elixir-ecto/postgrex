@@ -38,16 +38,16 @@ defmodule Postgrex.ReplicationConnection do
   Then you must create a publication to be replicated.
   This can be done in any session:
 
-      CREATE PUBLICATION example FOR ALL TABLES;
+      CREATE PUBLICATION postgrex_example FOR ALL TABLES;
 
   You can also filter if you want to publish insert, update,
   delete or a subset of them:
 
       # Skips updates (keeps inserts, deletes, begins, commits, etc)
-      create PUBLICATION example FOR ALL TABLES WITH (publish = 'insert,delete');
+      create PUBLICATION postgrex_example FOR ALL TABLES WITH (publish = 'insert,delete');
 
       # Skips inserts, updates, and deletes (keeps begins, commits, etc)
-      create PUBLICATION example FOR ALL TABLES WITH (publish = '');
+      create PUBLICATION postgrex_example FOR ALL TABLES WITH (publish = '');
 
   Now we are ready to create module that starts a replication slot
   and listens to our publication. Our example will use the pgoutput
