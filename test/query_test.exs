@@ -488,6 +488,7 @@ defmodule QueryTest do
     assert [["||/"]] = query("select 'pg_catalog.||/'::regoper::text;", [])
     assert [["+(integer,integer)"]] = query("select '+(integer,integer)'::regoperator::text;", [])
     assert [["pg_type"]] = query("select 'pg_type'::regclass::text;", [])
+    assert [["english"]] = query("select 'english'::regconfig::text;", [])
     assert [["integer"]] = query("select 'int4'::regtype::text;", [])
 
     assert [[0]] = query("select '-'::regproc;", [])
@@ -496,6 +497,7 @@ defmodule QueryTest do
     assert [[597]] = query("select 'pg_catalog.||/'::regoper;", [])
     assert [[551]] = query("select '+(integer,integer)'::regoperator;", [])
     assert [[1247]] = query("select 'pg_type'::regclass;", [])
+    assert [[13390]] = query("select 'english'::regconfig;", [])
     assert [[23]] = query("select 'int4'::regtype;", [])
 
     # xid type

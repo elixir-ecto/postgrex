@@ -1,7 +1,7 @@
 defmodule Postgrex.Extensions.OID do
   @moduledoc false
   @oid_senders ~w(oidsend regprocsend regproceduresend regopersend
-                  regoperatorsend regclasssend regtypesend xidsend cidsend)
+                  regoperatorsend regclasssend regtypesend regconfigsend xidsend cidsend)
 
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, Enum.map(@oid_senders, &{:send, &1})
