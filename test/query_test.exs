@@ -497,7 +497,6 @@ defmodule QueryTest do
     assert [[597]] = query("select 'pg_catalog.||/'::regoper;", [])
     assert [[551]] = query("select '+(integer,integer)'::regoperator;", [])
     assert [[1247]] = query("select 'pg_type'::regclass;", [])
-    assert [[13390]] = query("select 'english'::regconfig;", [])
     assert [[23]] = query("select 'int4'::regtype;", [])
 
     # xid type
