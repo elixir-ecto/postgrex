@@ -252,7 +252,7 @@ defmodule Postgrex.ReplicationConnection do
   If any callback returns `{:query, iodata, state}`,
   then this callback will be immediatelly called with
   the result of the query. Please note that even though
-  replicaton connections use the simple query protocol,
+  replication connections use the simple query protocol,
   Postgres currently limits them to single command queries.
   Due to this constraint, this callback will be passed
   either a list with a single successful query result or
