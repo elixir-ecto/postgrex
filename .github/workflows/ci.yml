@@ -41,6 +41,7 @@ jobs:
           - version: 11
           - version: 12
           - version: 13
+          - version: 14
 
         pair:
           - elixir: 1.11.4
