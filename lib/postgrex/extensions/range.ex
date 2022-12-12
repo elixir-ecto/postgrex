@@ -22,11 +22,11 @@ defmodule Postgrex.Extensions.Range do
 
   def encode(_) do
     quote location: :keep do
-      %Postgrex.Range{lower: lower, upper: upper} = range, [oid], [type] ->
+      %Postgrex.Range{lower: lower, upper: upper} = range, [_oid], [type] ->
         # encode_value/2 defined by TypeModule
         lower = if is_atom(lower), do: lower, else: encode_value(lower, type)
         upper = if is_atom(upper), do: upper, else: encode_value(upper, type)
-        unquote(__MODULE__).encode(range, oid, lower, upper)
+        unquote(__MODULE__).encode(range, lower, upper)
 
       other, _, _ ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Range)
@@ -35,26 +35,26 @@ defmodule Postgrex.Extensions.Range do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32(), binary::binary-size(len)>>, [oid], [type] ->
+      <<len::int32(), binary::binary-size(len)>>, [_oid], [type] ->
         <<flags, data::binary>> = binary
         # decode_list/2 defined by TypeModule
         case decode_list(data, type) do
           [upper, lower] ->
-            unquote(__MODULE__).decode(flags, oid, [lower, upper])
+            unquote(__MODULE__).decode(flags, [lower, upper])
 
           empty_or_one ->
-            unquote(__MODULE__).decode(flags, oid, empty_or_one)
+            unquote(__MODULE__).decode(flags, empty_or_one)
         end
     end
   end
 
   ## Helpers
 
-  def encode(_range, _oid, :empty, :empty) do
+  def encode(_range, :empty, :empty) do
     [<<1::int32(), @range_empty>>]
   end
 
-  def encode(%{lower_inclusive: lower_inc, upper_inclusive: upper_inc}, _oid, lower, upper) do
+  def encode(%{lower_inclusive: lower_inc, upper_inclusive: upper_inc}, lower, upper) do
     flags = 0
 
     {flags, data} =
@@ -86,7 +86,7 @@ defmodule Postgrex.Extensions.Range do
     [<<IO.iodata_length(data) + 1::int32()>>, flags | data]
   end
 
-  def decode(flags, _oid, []) when (flags &&& @range_empty) != 0 do
+  def decode(flags, []) when (flags &&& @range_empty) != 0 do
     %Postgrex.Range{
       lower: :empty,
       upper: :empty,
@@ -95,7 +95,7 @@ defmodule Postgrex.Extensions.Range do
     }
   end
 
-  def decode(flags, _oid, elems) do
+  def decode(flags, elems) do
     {lower, elems} =
       if (flags &&& @range_lb_inf) != 0 do
         {:unbound, elems}
