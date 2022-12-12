@@ -21,7 +21,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.Line,
     Postgrex.Extensions.LineSegment,
     Postgrex.Extensions.MACADDR,
-    Postgrex.Extensions.MultiRange,
+    Postgrex.Extensions.Multirange,
     Postgrex.Extensions.Name,
     Postgrex.Extensions.Numeric,
     Postgrex.Extensions.OID,

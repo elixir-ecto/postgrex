@@ -71,6 +71,21 @@ defmodule Postgrex.Range do
   defstruct lower: nil, upper: nil, lower_inclusive: true, upper_inclusive: true
 end
 
+defmodule Postgrex.Multirange do
+  @moduledoc """
+  Struct for PostgreSQL `multirange`.
+
+  ## Fields
+
+    * `ranges`
+
+  """
+
+  @type t :: %__MODULE__{ranges: [Postgrex.Range.t()]}
+
+  defstruct ranges: nil
+end
+
 defmodule Postgrex.INET do
   @moduledoc """
   Struct for PostgreSQL `inet` / `cidr`.

@@ -1,4 +1,4 @@
-defmodule Postgrex.Extensions.MultiRange do
+defmodule Postgrex.Extensions.Multirange do
   import Postgrex.BinaryUtils, warn: false
 
   @behaviour Postgrex.SuperExtension
@@ -15,13 +15,13 @@ defmodule Postgrex.Extensions.MultiRange do
 
   def encode(_) do
     quote location: :keep do
-      list, [_oid], [type] when is_list(list) ->
+      %Postgrex.Multirange{ranges: ranges}, [_oid], [type] when is_list(ranges) ->
         # encode_value/2 defined by TypeModule
         encoder = &encode_value(&1, type)
-        unquote(__MODULE__).encode(list, encoder)
+        unquote(__MODULE__).encode(ranges, encoder)
 
       other, _, _ ->
-        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a list")
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Multirange)
     end
   end
 
@@ -51,7 +51,7 @@ defmodule Postgrex.Extensions.MultiRange do
     [<<IO.iodata_length(iodata)::int32()>> | iodata]
   end
 
-  def decode(<<>>, _decoder, acc), do: Enum.reverse(acc)
+  def decode(<<>>, _decoder, acc), do: %Postgrex.Multirange{ranges: Enum.reverse(acc)}
 
   def decode(<<len::int32(), encoded_range::binary-size(len), rest::binary>>, decoder, acc) do
     <<flags, data::binary>> = encoded_range
