@@ -17,8 +17,8 @@ defmodule Postgrex.Extensions.Multirange do
     quote location: :keep do
       %Postgrex.Multirange{ranges: ranges}, [_oid], [type] when is_list(ranges) ->
         # encode_value/2 defined by TypeModule
-        encoder = &encode_value(&1, type)
-        unquote(__MODULE__).encode(ranges, encoder)
+        bound_encoder = &encode_value(&1, type)
+        unquote(__MODULE__).encode(ranges, bound_encoder)
 
       other, _, _ ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Multirange)
@@ -30,19 +30,19 @@ defmodule Postgrex.Extensions.Multirange do
       <<len::int32(), data::binary-size(len)>>, [_oid], [type] ->
         <<_num_ranges::int32(), ranges::binary>> = data
         # decode_list/2 defined by TypeModule
-        decoder = &decode_list(&1, type)
-        unquote(__MODULE__).decode(ranges, decoder, [])
+        bound_decoder = &decode_list(&1, type)
+        unquote(__MODULE__).decode(ranges, bound_decoder, [])
     end
   end
 
   ## Helpers
 
-  def encode(ranges, encoder) do
+  def encode(ranges, bound_encoder) do
     encoded_ranges =
       Enum.map(ranges, fn range ->
         %{lower: lower, upper: upper} = range
-        lower = if is_atom(lower), do: lower, else: encoder.(lower)
-        upper = if is_atom(upper), do: upper, else: encoder.(upper)
+        lower = if is_atom(lower), do: lower, else: bound_encoder.(lower)
+        upper = if is_atom(upper), do: upper, else: bound_encoder.(upper)
         Postgrex.Extensions.Range.encode(range, lower, upper)
       end)
 
@@ -51,13 +51,13 @@ defmodule Postgrex.Extensions.Multirange do
     [<<IO.iodata_length(iodata)::int32()>> | iodata]
   end
 
-  def decode(<<>>, _decoder, acc), do: %Postgrex.Multirange{ranges: Enum.reverse(acc)}
+  def decode(<<>>, _bound_decoder, acc), do: %Postgrex.Multirange{ranges: Enum.reverse(acc)}
 
-  def decode(<<len::int32(), encoded_range::binary-size(len), rest::binary>>, decoder, acc) do
+  def decode(<<len::int32(), encoded_range::binary-size(len), rest::binary>>, bound_decoder, acc) do
     <<flags, data::binary>> = encoded_range
 
     decoded_range =
-      case decoder.(data) do
+      case bound_decoder.(data) do
         [upper, lower] ->
           Postgrex.Extensions.Range.decode(flags, [lower, upper])
 
@@ -65,6 +65,6 @@ defmodule Postgrex.Extensions.Multirange do
           Postgrex.Extensions.Range.decode(flags, empty_or_one)
       end
 
-    decode(rest, decoder, [decoded_range | acc])
+    decode(rest, bound_decoder, [decoded_range | acc])
   end
 end
