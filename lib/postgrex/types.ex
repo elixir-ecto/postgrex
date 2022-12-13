@@ -72,11 +72,17 @@ defmodule Postgrex.Types do
       end
 
     {rngsubtype, join_range} =
-      if version >= {9, 2, 0} do
-        {"coalesce(r.rngsubtype, 0)",
-         "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype)"}
-      else
-        {"0", ""}
+      cond do
+        version >= {14, 0, 0} ->
+          {"coalesce(r.rngsubtype, 0)",
+           "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR r.rngmultitypid = t.oid OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype)"}
+
+        version >= {9, 2, 0} ->
+          {"coalesce(r.rngsubtype, 0)",
+           "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype)"}
+
+        true ->
+          {"0", ""}
       end
 
     """

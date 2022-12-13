@@ -417,6 +417,68 @@ defmodule QueryTest do
            ] = query("SELECT '[,]'::daterange", [])
   end
 
+  @tag min_pg_version: "14.0"
+  test "decode multirange", context do
+    # empty ranges
+    empty_multirange = %Postgrex.Multirange{ranges: []}
+    assert [[empty_multirange]] == query("SELECT '{}'::int4multirange", [])
+
+    # Postgres will normalize discrete ranges so they are lower inclusive and upper exclusive
+    expected_int_multirange = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{lower: 3, upper: 5, lower_inclusive: true, upper_inclusive: false},
+        %Postgrex.Range{lower: 14, upper: 28, lower_inclusive: true, upper_inclusive: false}
+      ]
+    }
+
+    assert [[expected_int_multirange]] ==
+             query("SELECT '{(2,5), [14, 27]}'::int4multirange", [])
+
+    expected_date_multirange = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{
+          lower: %Date{year: 2014, month: 1, day: 2},
+          upper: %Date{year: 2014, month: 1, day: 12},
+          lower_inclusive: true,
+          upper_inclusive: false
+        },
+        %Postgrex.Range{
+          lower: %Date{year: 2015, month: 1, day: 1},
+          upper: %Date{year: 2015, month: 1, day: 10},
+          lower_inclusive: true,
+          upper_inclusive: false
+        }
+      ]
+    }
+
+    assert [[expected_date_multirange]] ==
+             query(
+               "SELECT '{(2014-01-01, 2014-01-11], [2015-01-01, 2015-01-10)}'::datemultirange",
+               []
+             )
+
+    # Contiuous ranges can't be normalized
+    expected_num_multirange = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{
+          lower: Decimal.new("1.1"),
+          upper: Decimal.new("3.3"),
+          lower_inclusive: false,
+          upper_inclusive: false
+        },
+        %Postgrex.Range{
+          lower: Decimal.new("4.4"),
+          upper: Decimal.new("6.6"),
+          lower_inclusive: true,
+          upper_inclusive: true
+        }
+      ]
+    }
+
+    assert [[expected_num_multirange]] ==
+             query("SELECT '{(1.1, 3.3), [4.4, 6.6]}'::nummultirange", [])
+  end
+
   @tag min_pg_version: "9.0"
   test "decode network types", context do
     assert [[%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]] =
@@ -1046,6 +1108,88 @@ defmodule QueryTest do
              catch_error(
                query("SELECT $1::int8range", [%Postgrex.Range{upper: 9_223_372_036_854_775_808}])
              )
+  end
+
+  @tag min_pg_version: "14.0"
+  test "encode multirange", context do
+    # empty ranges
+    empty_multirange = %Postgrex.Multirange{ranges: []}
+    assert [[empty_multirange]] == query("SELECT $1::int4multirange", [empty_multirange])
+
+    # Postgres will normalize discrete ranges so that they are lower inclusive and upper exclusive
+    int_multirange_param = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{lower: 1, upper: 3, lower_inclusive: false, upper_inclusive: false},
+        %Postgrex.Range{lower: 14, upper: 26, lower_inclusive: true, upper_inclusive: true}
+      ]
+    }
+
+    expected_int_multirange = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{lower: 2, upper: 3, lower_inclusive: true, upper_inclusive: false},
+        %Postgrex.Range{lower: 14, upper: 27, lower_inclusive: true, upper_inclusive: false}
+      ]
+    }
+
+    assert [[expected_int_multirange]] ==
+             query("SELECT $1::int4multirange", [int_multirange_param])
+
+    date_multirange_param = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{
+          lower: %Date{year: 2014, month: 1, day: 1},
+          upper: %Date{year: 2014, month: 1, day: 10},
+          lower_inclusive: false,
+          upper_inclusive: true
+        },
+        %Postgrex.Range{
+          lower: %Date{year: 2015, month: 1, day: 1},
+          upper: %Date{year: 2015, month: 1, day: 10},
+          lower_inclusive: true,
+          upper_inclusive: false
+        }
+      ]
+    }
+
+    expected_date_multirange = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{
+          lower: %Date{year: 2014, month: 1, day: 2},
+          upper: %Date{year: 2014, month: 1, day: 11},
+          lower_inclusive: true,
+          upper_inclusive: false
+        },
+        %Postgrex.Range{
+          lower: %Date{year: 2015, month: 1, day: 1},
+          upper: %Date{year: 2015, month: 1, day: 10},
+          lower_inclusive: true,
+          upper_inclusive: false
+        }
+      ]
+    }
+
+    assert [[expected_date_multirange]] ==
+             query("SELECT $1::datemultirange", [date_multirange_param])
+
+    # Continuous ranges can't be normalized
+    num_multirange = %Postgrex.Multirange{
+      ranges: [
+        %Postgrex.Range{
+          lower: Decimal.new("1.1"),
+          upper: Decimal.new("3.3"),
+          lower_inclusive: true,
+          upper_inclusive: false
+        },
+        %Postgrex.Range{
+          lower: Decimal.new("4.4"),
+          upper: Decimal.new("6.6"),
+          lower_inclusive: false,
+          upper_inclusive: true
+        }
+      ]
+    }
+
+    assert [[num_multirange]] == query("SELECT $1::nummultirange", [num_multirange])
   end
 
   @tag min_pg_version: "9.0"

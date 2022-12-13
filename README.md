@@ -46,6 +46,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
     array           [1, 2, 3]
     composite type  {42, "title", "content"}
     range           %Postgrex.Range{lower: 1, upper: 5}
+    multirange      %Postgrex.Multirange{ranges: [%Postgrex.Range{lower: 1, upper: 5}, %Postgrex.Range{lower: 20, upper: 23}]}
     uuid            <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
     hstore          %{"foo" => "bar"}
     oid types       42
