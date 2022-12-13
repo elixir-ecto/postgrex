@@ -419,6 +419,10 @@ defmodule QueryTest do
 
   @tag min_pg_version: "14.0"
   test "decode multirange", context do
+    # empty ranges
+    empty_multirange = %Postgrex.Multirange{ranges: []}
+    assert [[empty_multirange]] == query("SELECT '{}'::int4multirange", [])
+
     # Postgres will normalize discrete ranges so they are lower inclusive and upper exclusive
     expected_int_multirange = %Postgrex.Multirange{
       ranges: [
@@ -1108,6 +1112,10 @@ defmodule QueryTest do
 
   @tag min_pg_version: "14.0"
   test "encode multirange", context do
+    # empty ranges
+    empty_multirange = %Postgrex.Multirange{ranges: []}
+    assert [[empty_multirange]] == query("SELECT $1::int4multirange", [empty_multirange])
+
     # Postgres will normalize discrete ranges so that they are lower inclusive and upper exclusive
     int_multirange_param = %Postgrex.Multirange{
       ranges: [
