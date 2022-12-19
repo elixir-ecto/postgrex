@@ -20,6 +20,8 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.JSONB,
     Postgrex.Extensions.Line,
     Postgrex.Extensions.LineSegment,
+    Postgrex.Extensions.Lquery,
+    Postgrex.Extensions.Ltree,
     Postgrex.Extensions.MACADDR,
     Postgrex.Extensions.Multirange,
     Postgrex.Extensions.Name,

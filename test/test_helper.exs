@@ -168,6 +168,8 @@ cond do
     :ok
 end
 
+PSQL.cmd(["-d", "postgrex_test", "-c", "CREATE EXTENSION IF NOT EXISTS ltree;"])
+
 defmodule Postgrex.TestHelper do
   defmacro query(stat, params, opts \\ []) do
     quote do
