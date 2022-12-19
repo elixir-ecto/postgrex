@@ -620,6 +620,18 @@ defmodule QueryTest do
              query("SELECT bit '1000000110000000101'", [])
   end
 
+  @tag min_pg_version: "13.0"
+  test "decode lquery", context do
+    lquery = "*.path1.*"
+    assert [[lquery]] == query("SELECT '#{lquery}'::lquery", [])
+  end
+
+  @tag min_pg_version: "13.0"
+  test "decode ltree", context do
+    ltree = "this.is.a.path"
+    assert [[ltree]] == query("SELECT '#{ltree}'::ltree", [])
+  end
+
   test "encode oid and its aliases", context do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])
@@ -1336,6 +1348,18 @@ defmodule QueryTest do
                    0::1, 0::1, 0::1, 1::1, 0::1, 1::1>>
                ]
              )
+  end
+
+  @tag min_pg_version: "13.0"
+  test "encode lquery", context do
+    lquery = "*.path1.*"
+    assert [[lquery]] == query("SELECT $1::lquery", [lquery])
+  end
+
+  @tag min_pg_version: "13.0"
+  test "encode ltree", context do
+    ltree = "this.is.a.path"
+    assert [[ltree]] == query("SELECT $1::ltree", [ltree])
   end
 
   test "fail on encode arrays", context do
