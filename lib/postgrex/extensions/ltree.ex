@@ -8,7 +8,7 @@ defmodule Postgrex.Extensions.Ltree do
   def encode(_state) do
     quote do
       bin when is_binary(bin) ->
-        # lquery binary formats are versioned
+        # ltree binary formats are versioned
         # see: https://github.com/postgres/postgres/blob/master/contrib/ltree/ltree_io.c
         version = 1
         size = byte_size(bin) + 1

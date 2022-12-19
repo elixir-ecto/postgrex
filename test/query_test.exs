@@ -620,11 +620,13 @@ defmodule QueryTest do
              query("SELECT bit '1000000110000000101'", [])
   end
 
+  @tag min_pg_version: "13.0"
   test "decode lquery", context do
     lquery = "*.path1.*"
     assert [[lquery]] == query("SELECT '#{lquery}'::lquery", [])
   end
 
+  @tag min_pg_version: "13.0"
   test "decode ltree", context do
     ltree = "this.is.a.path"
     assert [[ltree]] == query("SELECT '#{ltree}'::ltree", [])
@@ -1348,11 +1350,13 @@ defmodule QueryTest do
              )
   end
 
+  @tag min_pg_version: "13.0"
   test "encode lquery", context do
     lquery = "*.path1.*"
     assert [[lquery]] == query("SELECT $1::lquery", [lquery])
   end
 
+  @tag min_pg_version: "13.0"
   test "encode ltree", context do
     ltree = "this.is.a.path"
     assert [[ltree]] == query("SELECT $1::ltree", [ltree])
