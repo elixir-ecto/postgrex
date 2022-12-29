@@ -20,7 +20,7 @@ defmodule Postgrex.Notifications do
 
       {:notification, notification_pid, listen_ref, channel, message}
 
-  ## Async connect and auto-reconnects
+  ## Async connect, auto-reconnects and missed notifications
 
   By default, the notification system establishes a connection to the
   database on initialization, you can configure the connection to happen
@@ -31,6 +31,18 @@ defmodule Postgrex.Notifications do
   any notifications that occur during the disconnection period are not queued
   and cannot be recovered. Similarly, any listen command will be queued until
   the connection is up.
+  
+  There is a race condition between starting to listen and notifications being
+  issued "at the same time", as explained (in the PostgreSQL documentation)[https://www.postgresql.org/docs/current/sql-listen.html].
+  If your application needs to keep a consistent representation of data, follow
+  the three-step approach of first subscribing, then obtaining the current
+  state of data, then handling the incoming notifications.
+  
+  Beware that the same
+  race condition applies to auto-reconnects. A simple way of dealing with this
+  issue is not using the auto-reconnect feature directly, but monitoring and
+  re-starting the Notifications process, then subscribing to channel messages
+  over again, using the same three-step approach.
 
   ## A note on casing
 
