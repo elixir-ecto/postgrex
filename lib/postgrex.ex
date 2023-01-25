@@ -390,7 +390,8 @@ defmodule Postgrex do
 
   For unnamed prepared statements, pass an empty string for `name`. This can be useful
   when trying to avoid the generic query plan Postgres creates for named prepared
-  statements.
+  statements. You may also set `prepare: :unnamed` at the connection level so that
+  every prepared statement using that connection will be unnamed.
 
   ## Options
 
@@ -430,7 +431,8 @@ defmodule Postgrex do
 
   For unnamed prepared statements, pass an empty string for `name`. This can be useful
   when trying to avoid the generic query plan Postgres creates for named prepared
-  statements.
+  statements. You may also set `prepare: :unnamed` at the connection level so that
+  every prepared statement using that connection will be unnamed.
 
   See the README for information on how Postgrex encodes and decodes Elixir
   values by default. See `Postgrex.Query` for the query data and
