@@ -377,15 +377,21 @@ defmodule Postgrex do
   end
 
   @doc """
-  Prepares an (extended) query and returns the result as
-  `{:ok, %Postgrex.Query{}}` or `{:error, %Postgrex.Error{}}` if there was an
-  error. Parameters can be set in the query as `$1` embedded in the query
-  string. To execute the query call `execute/4`. To close the prepared query
+  Prepares an (extended) query.
+
+  It returns the result as `{:ok, %Postgrex.Query{}}` or `{:error, %Postgrex.Error{}}`
+  if there was an error. Parameters can be set in the query as `$1` embedded in the
+  query string. To execute execute the query call `execute/4`. To close the prepared query
   call `close/3`. See `Postgrex.Query` for the query data.
 
   This function may still raise an exception if there is an issue with types
   (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
   (`DBConnection.OwnershipError`) or other error (`RuntimeError`).
+
+  For unnamed prepared statements, pass an empty string for `name`. This can be useful
+  when trying to avoid the generic query plan Postgres creates for named prepared
+  statements. You may also set `prepare: :unnamed` at the connection level so that
+  every prepared statement using that connection will be unnamed.
 
   ## Options
 
@@ -422,6 +428,11 @@ defmodule Postgrex do
   It returns the result as `{:ok, %Postgrex.Query{}, %Postgrex.Result{}}` or
   `{:error, %Postgrex.Error{}}` if there was an error. Parameters are given as
   part of the prepared query, `%Postgrex.Query{}`.
+
+  For unnamed prepared statements, pass an empty string for `name`. This can be useful
+  when trying to avoid the generic query plan Postgres creates for named prepared
+  statements. You may also set `prepare: :unnamed` at the connection level so that
+  every prepared statement using that connection will be unnamed.
 
   See the README for information on how Postgrex encodes and decodes Elixir
   values by default. See `Postgrex.Query` for the query data and
