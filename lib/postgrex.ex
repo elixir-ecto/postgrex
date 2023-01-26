@@ -381,7 +381,7 @@ defmodule Postgrex do
 
   It returns the result as `{:ok, %Postgrex.Query{}}` or `{:error, %Postgrex.Error{}}`
   if there was an error. Parameters can be set in the query as `$1` embedded in the
-  query string. To execute execute the query call `execute/4`. To close the prepared query
+  query string. To execute the query call `execute/4`. To close the prepared query
   call `close/3`. See `Postgrex.Query` for the query data.
 
   This function may still raise an exception if there is an issue with types
