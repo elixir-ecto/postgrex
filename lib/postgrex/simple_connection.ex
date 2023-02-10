@@ -123,7 +123,7 @@ defmodule Postgrex.SimpleConnection do
   `GenServer`. Read more about them in the `GenServer` docs.
   """
 
-  use Connection
+  @behaviour :gen_statem
 
   require Logger
 
@@ -199,17 +199,17 @@ defmodule Postgrex.SimpleConnection do
   @doc """
   Replies to the given client.
 
-  Wrapper for `GenServer.reply/2`.
+  Wrapper for `:gen_statem.reply/2`.
   """
-  defdelegate reply(client, reply), to: GenServer
+  defdelegate reply(client, reply), to: :gen_statem
 
   @doc """
   Calls the given server.
 
-  Wrapper for `GenServer.call/3`.
+  Wrapper for `:gen_statem.call/3`.
   """
   def call(server, message, timeout \\ 5000) do
-    with {__MODULE__, reason} <- GenServer.call(server, message, timeout) do
+    with {__MODULE__, reason} <- :gen_statem.call(server, message, timeout) do
       exit({reason, {__MODULE__, :call, [server, message, timeout]}})
     end
   end
@@ -248,15 +248,49 @@ defmodule Postgrex.SimpleConnection do
   """
   @spec start_link(module, term, Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(module, args, opts) do
-    {server_opts, opts} = Keyword.split(opts, [:name])
+    {name, opts} = Keyword.pop(opts, :name)
+
     opts = Keyword.put_new(opts, :sync_connect, true)
     connection_opts = Postgrex.Utils.default_opts(opts)
-    Connection.start_link(__MODULE__, {module, args, connection_opts}, server_opts)
+    start_args = {module, args, connection_opts}
+
+    case name do
+      nil ->
+        :gen_statem.start_link(__MODULE__, start_args, [])
+
+      atom when is_atom(atom) ->
+        :gen_statem.start_link({:local, atom}, __MODULE__, start_args, [])
+
+      {:global, _term} = tuple ->
+        :gen_statem.start_link(tuple, __MODULE__, start_args, [])
+
+      {:via, via_module, _term} = tuple when is_atom(via_module) ->
+        :gen_statem.start_link(tuple, __MODULE__, start_args, [])
+
+      other ->
+        raise ArgumentError, """
+        expected :name option to be one of the following:
+
+          * nil
+          * atom
+          * {:global, term}
+          * {:via, module, term}
+
+        Got: #{inspect(other)}
+        """
+    end
   end
 
   ## CALLBACKS ##
 
+  @state :no_state
+
   @doc false
+  @impl :gen_statem
+  def callback_mode, do: :handle_event_function
+
+  @doc false
+  @impl :gen_statem
   def init({mod, args, opts}) do
     case mod.init(args) do
       {:ok, mod_state} ->
@@ -283,19 +317,22 @@ defmodule Postgrex.SimpleConnection do
         put_opts(mod, opts)
 
         if opts[:sync_connect] do
-          case connect(:init, state) do
-            {:ok, _} = ok -> ok
-            {:backoff, _, _} = backoff -> backoff
-            {:stop, reason, _} -> {:stop, reason}
+          case handle_event(:internal, {:connect, :init}, @state, state) do
+            {:keep_state, state} -> {:ok, @state, state}
+            {:keep_state, state, actions} -> {:ok, @state, state, actions}
+            {:stop, _reason, _state} = stop -> stop
           end
         else
-          {:connect, :init, state}
+          {:ok, @state, state, {:next_event, :internal, {:connect, :init}}}
         end
     end
   end
 
   @doc false
-  def connect(_, %{state: {mod, mod_state}} = state) do
+  @impl :gen_statem
+  def handle_event(type, content, statem_state, state)
+
+  def handle_event(:internal, {:connect, _}, @state, %{state: {mod, mod_state}} = state) do
     opts =
       case Keyword.get(opts(mod), :configure) do
         {module, fun, args} -> apply(module, fun, [opts(mod) | args])
@@ -307,41 +344,43 @@ defmodule Postgrex.SimpleConnection do
       {:ok, protocol} ->
         state = %{state | protocol: protocol}
 
-        with {:noreply, state, _} <- maybe_handle(mod, :handle_connect, [mod_state], state) do
-          {:ok, state}
+        with {:keep_state, state, _} <- maybe_handle(mod, :handle_connect, [mod_state], state) do
+          {:keep_state, state}
         end
 
       {:error, reason} ->
         if state.auto_reconnect do
-          {:backoff, state.reconnect_backoff, state}
+          {:keep_state, state, {{:timeout, :backoff}, state.reconnect_backoff, nil}}
         else
           {:stop, reason, state}
         end
     end
   end
 
-  @doc false
-  def handle_call(msg, from, %{state: {mod, mod_state}} = state) do
+  def handle_event({:timeout, :backoff}, nil, @state, state) do
+    {:keep_state, state, {:next_event, :internal, {:connect, :reconnect}}}
+  end
+
+  def handle_event({:call, from}, msg, @state, %{state: {mod, mod_state}} = state) do
     handle(mod, :handle_call, [msg, from, mod_state], from, state)
   end
 
-  @doc false
-  def handle_info(:timeout, %{protocol: protocol} = state) do
+  def handle_event(:info, :timeout, @state, %{protocol: protocol} = state) do
     case Protocol.ping(protocol) do
       {:ok, protocol} ->
-        {:noreply, %{state | protocol: protocol}, state.idle_interval}
+        {:keep_state, %{state | protocol: protocol}, {:timeout, state.idle_interval, nil}}
 
       {error, reason, protocol} ->
         reconnect_or_stop(error, reason, protocol, state)
     end
   end
 
-  def handle_info(msg, %{protocol: protocol, state: {mod, mod_state}} = state) do
+  def handle_event(:info, msg, @state, %{protocol: protocol, state: {mod, mod_state}} = state) do
     opts = [notify: &mod.notify(&1, &2, mod_state)]
 
     case Protocol.handle_info(msg, opts, protocol) do
       {:ok, protocol} ->
-        {:noreply, %{state | protocol: protocol}, state.idle_interval}
+        {:keep_state, %{state | protocol: protocol}, {:timeout, state.idle_interval, nil}}
 
       {:unknown, protocol} ->
         maybe_handle(mod, :handle_info, [msg, mod_state], %{state | protocol: protocol})
@@ -351,22 +390,30 @@ defmodule Postgrex.SimpleConnection do
     end
   end
 
-  def handle_info(msg, %{state: {mod, mod_state}} = state) do
+  def handle_event(:info, msg, @state, %{state: {mod, mod_state}} = state) do
     maybe_handle(mod, :handle_info, [msg, mod_state], state)
   end
+
+  @doc false
+  @impl :gen_statem
+  def format_status(_opts, [_pdict, @state, state]) do
+    state
+  end
+
+  ## Helpers
 
   defp maybe_handle(mod, fun, args, state) do
     if function_exported?(mod, fun, length(args)) do
       handle(mod, fun, args, nil, state)
     else
-      {:noreply, state, state.idle_interval}
+      {:keep_state, state, {:timeout, state.idle_interval, nil}}
     end
   end
 
   defp handle(mod, fun, args, from, state) do
     case apply(mod, fun, args) do
       {:noreply, mod_state} ->
-        {:noreply, %{state | state: {mod, mod_state}}, state.idle_interval}
+        {:keep_state, %{state | state: {mod, mod_state}}, {:timeout, state.idle_interval, nil}}
 
       {:query, query, mod_state} ->
         opts = [notify: &mod.notify(&1, &2, mod_state)]
@@ -390,10 +437,10 @@ defmodule Postgrex.SimpleConnection do
 
   defp reconnect_or_stop(error, reason, protocol, %{state: {mod, mod_state}} = state)
        when error in [:error, :disconnect] do
-    {:noreply, state, _} = maybe_handle(mod, :handle_disconnect, [mod_state], state)
+    {:keep_state, state, _actions} = maybe_handle(mod, :handle_disconnect, [mod_state], state)
 
     if state.auto_reconnect do
-      {:connect, :reconnect, state}
+      {:keep_state, state, {:next_event, :internal, {:connect, :reconnect}}}
     else
       {:stop, reason, %{state | protocol: protocol}}
     end
