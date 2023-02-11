@@ -146,7 +146,7 @@ defmodule Postgrex.Notifications do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec listen(GenServer.server(), String.t(), Keyword.t()) ::
+  @spec listen(:gen_statem.server_ref(), String.t(), Keyword.t()) ::
           {:ok, reference} | {:eventually, reference}
   def listen(pid, channel, opts \\ []) do
     SimpleConnection.call(pid, {:listen, channel}, Keyword.get(opts, :timeout, @timeout))
@@ -155,7 +155,7 @@ defmodule Postgrex.Notifications do
   @doc """
   Listens to an asynchronous notification channel `channel`. See `listen/2`.
   """
-  @spec listen!(GenServer.server(), String.t(), Keyword.t()) :: reference
+  @spec listen!(:gen_statem.server_ref(), String.t(), Keyword.t()) :: reference
   def listen!(pid, channel, opts \\ []) do
     {:ok, ref} = listen(pid, channel, opts)
     ref
@@ -169,7 +169,7 @@ defmodule Postgrex.Notifications do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec unlisten(GenServer.server(), reference, Keyword.t()) :: :ok | :error
+  @spec unlisten(:gen_statem.server_ref(), reference, Keyword.t()) :: :ok | :error
   def unlisten(pid, ref, opts \\ []) do
     SimpleConnection.call(pid, {:unlisten, ref}, Keyword.get(opts, :timeout, @timeout))
   end
@@ -178,7 +178,7 @@ defmodule Postgrex.Notifications do
   Stops listening on the given channel by passing the reference returned from
   `listen/2`.
   """
-  @spec unlisten!(GenServer.server(), reference, Keyword.t()) :: :ok
+  @spec unlisten!(:gen_statem.server_ref(), reference, Keyword.t()) :: :ok
   def unlisten!(pid, ref, opts \\ []) do
     case unlisten(pid, ref, opts) do
       :ok -> :ok

@@ -141,6 +141,9 @@ defmodule Postgrex.SimpleConnection do
   @type query :: iodata
   @type state :: term
 
+  @typedoc since: "0.17.0"
+  @type from :: {pid, term}
+
   @doc """
   Callback for process initialization.
 
@@ -172,7 +175,7 @@ defmodule Postgrex.SimpleConnection do
 
   Replies must be sent with `SimpleConnection.reply/2`.
   """
-  @callback handle_call(term, GenServer.from(), state) ::
+  @callback handle_call(term, from, state) ::
               {:noreply, state} | {:query, query, state}
 
   @doc """
@@ -201,7 +204,7 @@ defmodule Postgrex.SimpleConnection do
 
   Wrapper for `:gen_statem.reply/2`.
   """
-  def reply({from_pid, {from_ref, caller_pid}}, reply) when is_pid(caller_pid) do
+  def reply({from_pid, {from_ref, caller_pid}} = _from, reply) when is_pid(caller_pid) do
     :gen_statem.reply({from_pid, from_ref}, reply)
   end
 

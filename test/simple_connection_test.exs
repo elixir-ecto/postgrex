@@ -20,7 +20,7 @@ defmodule SimpleConnectionTest do
 
     @impl true
     def handle_connect(state) do
-      state.from && GenServer.reply(state.from, :reconnecting)
+      state.from && Postgrex.SimpleConnection.reply(state.from, :reconnecting)
 
       send(state.pid, {:connect, System.unique_integer([:monotonic])})
 
@@ -114,6 +114,7 @@ defmodule SimpleConnectionTest do
 
   describe "auto-reconnect" do
     @tag opts: [auto_reconnect: true]
+    @tag :focus
     test "disconnect and connect handlers are invoked on reconnection", context do
       assert_receive {:connect, i1}
 
