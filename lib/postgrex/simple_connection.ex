@@ -204,8 +204,8 @@ defmodule Postgrex.SimpleConnection do
 
   Wrapper for `:gen_statem.reply/2`.
   """
-  def reply({from_pid, {from_ref, caller_pid}} = _from, reply) when is_pid(caller_pid) do
-    :gen_statem.reply({from_pid, from_ref}, reply)
+  def reply({caller_pid, from} = _from, reply) when is_pid(caller_pid) do
+    :gen_statem.reply(from, reply)
   end
 
   @doc """
@@ -373,8 +373,7 @@ defmodule Postgrex.SimpleConnection do
     # so things like Postgrex.Notifications cannot use that "from"'s PID to register
     # notification handlers. This approach is paired with reconstructing the proper
     # "from" tuple in the reply/2 function in this module.
-    {from_pid, from_ref} = from
-    callback_from = {from_pid, {from_ref, caller_pid}}
+    callback_from = {caller_pid, from}
     handle(mod, :handle_call, [msg, callback_from, mod_state], from, state)
   end
 
