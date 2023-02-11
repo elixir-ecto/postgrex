@@ -241,7 +241,7 @@ defmodule Postgrex.ReplicationConnection do
   been replied to should eventually do so. One simple approach is to
   reply to any pending commands on `c:handle_disconnect/1`.
   """
-  @callback handle_call(term, GenServer.from(), state) ::
+  @callback handle_call(term, :gen_statem.from(), state) ::
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
@@ -251,7 +251,7 @@ defmodule Postgrex.ReplicationConnection do
   Callback for `:query` outputs.
 
   If any callback returns `{:query, iodata, state}`,
-  then this callback will be immediatelly called with
+  then this callback will be immediately called with
   the result of the query. Please note that even though
   replication connections use the simple query protocol,
   Postgres currently limits them to single command queries.
