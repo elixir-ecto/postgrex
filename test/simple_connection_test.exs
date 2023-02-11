@@ -118,14 +118,34 @@ defmodule SimpleConnectionTest do
       assert_receive {:connect, i1}
 
       :sys.suspend(context.conn)
-      task = Task.async(fn -> SC.call(context.conn, {:query, "SELECT 1"}) end)
+
+      :erlang.trace(:all, true, [:call])
+      match_spec = [{:_, [], [{:return_trace}]}]
+      :erlang.trace_pattern({SC, :_, :_}, match_spec, [:local])
+
+      task =
+        Task.async(fn ->
+          # Simulate a small delay, because it used to cause flaky test failures
+          # in the past.
+          # https://github.com/elixir-ecto/postgrex/actions/runs/4151824827/jobs/7182370012
+          Process.sleep(10)
+          SC.call(context.conn, {:query, "SELECT 1"})
+        end)
+
+      # Make sure that the task "launched" the call before disconnecting and resuming
+      # the process.
+      assert_receive {:trace, _pid, :call, {SC, :call, [_, {:query, "SELECT 1"}]}}
+
       disconnect(context.conn)
       :sys.resume(context.conn)
 
-      assert {:ok, [%Postgrex.Result{}]} = SC.call(context.conn, {:query, "SELECT 1"})
+      assert {:ok, [%Postgrex.Result{}]} = SC.call(context.conn, {:query, "SELECT 2"})
       assert :reconnecting == Task.await(task)
       assert_receive {:disconnect, i2} when i1 < i2
       assert_receive {:connect, i3} when i2 < i3
+    after
+      :erlang.trace_pattern({SC, :_, :_}, false, [])
+      :erlang.trace(:all, false, [:call])
     end
 
     @tag capture_log: true
