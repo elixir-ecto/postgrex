@@ -114,7 +114,6 @@ defmodule SimpleConnectionTest do
 
   describe "auto-reconnect" do
     @tag opts: [auto_reconnect: true]
-    @tag :focus
     test "disconnect and connect handlers are invoked on reconnection", context do
       assert_receive {:connect, i1}
 
