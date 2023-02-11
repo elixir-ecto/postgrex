@@ -201,7 +201,9 @@ defmodule Postgrex.SimpleConnection do
 
   Wrapper for `:gen_statem.reply/2`.
   """
-  defdelegate reply(client, reply), to: :gen_statem
+  def reply({from_pid, {from_ref, caller_pid}}, reply) when is_pid(caller_pid) do
+    :gen_statem.reply({from_pid, from_ref}, reply)
+  end
 
   @doc """
   Calls the given server.
@@ -209,7 +211,7 @@ defmodule Postgrex.SimpleConnection do
   Wrapper for `:gen_statem.call/3`.
   """
   def call(server, message, timeout \\ 5000) do
-    with {__MODULE__, reason} <- :gen_statem.call(server, message, timeout) do
+    with {__MODULE__, reason} <- :gen_statem.call(server, {message, self()}, timeout) do
       exit({reason, {__MODULE__, :call, [server, message, timeout]}})
     end
   end
@@ -361,8 +363,16 @@ defmodule Postgrex.SimpleConnection do
     {:keep_state, state, {:next_event, :internal, {:connect, :reconnect}}}
   end
 
-  def handle_event({:call, from}, msg, @state, %{state: {mod, mod_state}} = state) do
-    handle(mod, :handle_call, [msg, from, mod_state], from, state)
+  def handle_event({:call, from}, {msg, caller_pid}, @state, %{state: {mod, mod_state}} = state) do
+    # We have to do a hack here to carry the actual caller PID over to the handle_call/3
+    # callback, because gen_statem uses a proxy process to do calls with timeout != :infinity.
+    # This results in the caller PID not being the same as the PID in the "from" tuple,
+    # so things like Postgrex.Notifications cannot use that "from"'s PID to register
+    # notification handlers. This approach is paired with reconstructing the proper
+    # "from" tuple in the reply/2 function in this module.
+    {from_pid, from_ref} = from
+    callback_from = {from_pid, {from_ref, caller_pid}}
+    handle(mod, :handle_call, [msg, callback_from, mod_state], from, state)
   end
 
   def handle_event(:info, :timeout, @state, %{protocol: protocol} = state) do

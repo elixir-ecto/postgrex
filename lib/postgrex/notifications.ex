@@ -234,7 +234,7 @@ defmodule Postgrex.Notifications do
   end
 
   @impl true
-  def handle_call({:listen, channel}, {pid, _} = from, state) do
+  def handle_call({:listen, channel}, {_, {_, pid}} = from, state) do
     ref = Process.monitor(pid)
 
     state = put_in(state.listeners[ref], {channel, pid})

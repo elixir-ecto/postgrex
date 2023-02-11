@@ -68,9 +68,10 @@ defmodule NotificationTest do
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
   end
 
+  @tag :focus
   test "listening, notify, then receive (using registered names)", _context do
     {:ok, _} = P.start_link(Keyword.put(@opts, :name, :client))
-    {:ok, _} = PN.start_link(Keyword.put(@opts, :name, :notifications))
+    {:ok, _pn} = PN.start_link(Keyword.put(@opts, :name, :notifications))
     assert {:ok, ref} = PN.listen(:notifications, "channel")
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(:client, "NOTIFY channel", [])
