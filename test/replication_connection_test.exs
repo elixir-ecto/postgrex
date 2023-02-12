@@ -288,7 +288,8 @@ defmodule ReplicationTest do
   end
 
   defp disconnect(repl) do
-    {:gen_tcp, sock} = :sys.get_state(repl).mod_state.protocol.sock
+    {_, state} = :sys.get_state(repl)
+    {:gen_tcp, sock} = state.protocol.sock
     :gen_tcp.shutdown(sock, :read_write)
   end
 end
