@@ -47,7 +47,7 @@ defmodule Postgrex.Notifications do
   ## A note on casing
 
   While PostgreSQL seems to behave as case-insensitive, it actually has a very
-  perculiar behaviour on casing. When you write:
+  peculiar behaviour on casing. When you write:
 
       SELECT * FROM POSTS
 
@@ -74,6 +74,9 @@ defmodule Postgrex.Notifications do
     2. If you cannot wrap the channel name in quotes when sending a notification,
        then make sure to give the lowercased channel name when listening
   """
+
+  @typedoc since: "0.17.0"
+  @type server :: :gen_statem.from()
 
   alias Postgrex.SimpleConnection
 
@@ -146,7 +149,7 @@ defmodule Postgrex.Notifications do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec listen(GenServer.server(), String.t(), Keyword.t()) ::
+  @spec listen(server, String.t(), Keyword.t()) ::
           {:ok, reference} | {:eventually, reference}
   def listen(pid, channel, opts \\ []) do
     SimpleConnection.call(pid, {:listen, channel}, Keyword.get(opts, :timeout, @timeout))
@@ -155,7 +158,7 @@ defmodule Postgrex.Notifications do
   @doc """
   Listens to an asynchronous notification channel `channel`. See `listen/2`.
   """
-  @spec listen!(GenServer.server(), String.t(), Keyword.t()) :: reference
+  @spec listen!(server, String.t(), Keyword.t()) :: reference
   def listen!(pid, channel, opts \\ []) do
     {:ok, ref} = listen(pid, channel, opts)
     ref
@@ -169,7 +172,7 @@ defmodule Postgrex.Notifications do
 
     * `:timeout` - Call timeout (default: `#{@timeout}`)
   """
-  @spec unlisten(GenServer.server(), reference, Keyword.t()) :: :ok | :error
+  @spec unlisten(server, reference, Keyword.t()) :: :ok | :error
   def unlisten(pid, ref, opts \\ []) do
     SimpleConnection.call(pid, {:unlisten, ref}, Keyword.get(opts, :timeout, @timeout))
   end
@@ -178,7 +181,7 @@ defmodule Postgrex.Notifications do
   Stops listening on the given channel by passing the reference returned from
   `listen/2`.
   """
-  @spec unlisten!(GenServer.server(), reference, Keyword.t()) :: :ok
+  @spec unlisten!(server, reference, Keyword.t()) :: :ok
   def unlisten!(pid, ref, opts \\ []) do
     case unlisten(pid, ref, opts) do
       :ok -> :ok

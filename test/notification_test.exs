@@ -70,7 +70,7 @@ defmodule NotificationTest do
 
   test "listening, notify, then receive (using registered names)", _context do
     {:ok, _} = P.start_link(Keyword.put(@opts, :name, :client))
-    {:ok, _} = PN.start_link(Keyword.put(@opts, :name, :notifications))
+    {:ok, _pn} = PN.start_link(Keyword.put(@opts, :name, :notifications))
     assert {:ok, ref} = PN.listen(:notifications, "channel")
 
     assert {:ok, %Postgrex.Result{command: :notify}} = P.query(:client, "NOTIFY channel", [])
@@ -199,7 +199,8 @@ defmodule NotificationTest do
   end
 
   defp disconnect(conn) do
-    {:gen_tcp, sock} = :sys.get_state(conn).mod_state.protocol.sock
+    {_, state} = :sys.get_state(conn)
+    {:gen_tcp, sock} = state.protocol.sock
     :gen_tcp.shutdown(sock, :read_write)
   end
 end
