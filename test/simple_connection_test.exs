@@ -125,11 +125,6 @@ defmodule SimpleConnectionTest do
 
       task =
         Task.async(fn ->
-          # Simulate a small delay, because it used to cause flaky test failures
-          # in the past. We keep the delay even if we have tracing, to avoid
-          # regressions in this test.
-          # https://github.com/elixir-ecto/postgrex/actions/runs/4151824827/jobs/7182370012
-          Process.sleep(10)
           SC.call(context.conn, {:query, "SELECT 1"})
         end)
 
