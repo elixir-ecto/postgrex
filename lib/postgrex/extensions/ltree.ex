@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.Ltree do
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 
   def encode(_state) do
-    quote do
+    quote location: :keep, generated: true do
       bin when is_binary(bin) ->
         # ltree binary formats are versioned
         # see: https://github.com/postgres/postgres/blob/master/contrib/ltree/ltree_io.c
@@ -17,7 +17,7 @@ defmodule Postgrex.Extensions.Ltree do
   end
 
   def decode(:reference) do
-    quote do
+    quote location: :keep do
       <<len::int32(), bin::binary-size(len)>> ->
         <<_version::int8(), ltree::binary>> = bin
         ltree
@@ -25,7 +25,7 @@ defmodule Postgrex.Extensions.Ltree do
   end
 
   def decode(:copy) do
-    quote do
+    quote location: :keep do
       <<len::int32(), bin::binary-size(len)>> ->
         <<_version::int8(), ltree::binary>> = bin
         :binary.copy(ltree)
