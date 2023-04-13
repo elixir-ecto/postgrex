@@ -377,7 +377,7 @@ defmodule Postgrex.SimpleConnection do
     handle(mod, :handle_call, [msg, callback_from, mod_state], from, state)
   end
 
-  def handle_event(:info, :timeout, @state, %{protocol: protocol} = state) do
+  def handle_event(:timeout, nil, @state, %{protocol: protocol} = state) do
     case Protocol.ping(protocol) do
       {:ok, protocol} ->
         {:keep_state, %{state | protocol: protocol}, {:timeout, state.idle_interval, nil}}
