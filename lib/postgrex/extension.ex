@@ -38,7 +38,7 @@ defmodule Postgrex.Extension do
         def encode(_state) do
           quote do
             bin when is_binary(bin) ->
-              [<<byte_size(bin) :: signed-size(32)>> | bin]
+              [<<byte_size(bin)::signed-size(32)>> | bin]
           end
         end
 
@@ -111,7 +111,7 @@ defmodule Postgrex.Extension do
       def encode(_) do
         quote do
           integer ->
-            <<8 :: signed-32, integer :: signed-64>>
+            <<8::signed-32, integer::signed-64>>
         end
       end
 
@@ -127,7 +127,7 @@ defmodule Postgrex.Extension do
       def decode(_) do
         quote do
           # length header is in bytes
-          <<len :: signed-32, integer :: signed-size(len)-unit(8)>> ->
+          <<len::signed-32, integer::signed-size(len)-unit(8)>> ->
             integer
         end
       end
