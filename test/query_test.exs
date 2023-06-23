@@ -300,6 +300,9 @@ defmodule QueryTest do
 
   @tag min_pg_version: "9.2"
   test "decode range", context do
+    # These do not appear to match what is selected, but that's because
+    # PostgreSQL itself returns range values this way.
+    # `SELECT '(1,5)'::int4range` returns `[2,5)`.
     assert [[%Postgrex.Range{lower: 2, upper: 5, lower_inclusive: true, upper_inclusive: false}]] =
              query("SELECT '(1,5)'::int4range", [])
 
