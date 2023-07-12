@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.17.2 (2023-07-12)
+
+* Bug fix
+  * Suppress improper list warnings
+
 ## v0.17.1 (2023-04-13)
 
 * Bug fix
