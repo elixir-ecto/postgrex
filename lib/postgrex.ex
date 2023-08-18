@@ -279,13 +279,13 @@ defmodule Postgrex do
         {
           "test-instance-1.xyz.eu-west-1.rds.amazonaws.com",
           5432,
-          [ssl: [server_name_indication: String.to_charlist("test-instance-1.xyz.eu-west-1.rds.amazonaws.com")]]
+          [ssl_opts: [server_name_indication: String.to_charlist("test-instance-1.xyz.eu-west-1.rds.amazonaws.com")]]
         },
         (...),
         {
           "test-instance-2.xyz.eu-west-1.rds.amazonaws.com",
           5432,
-          [ssl: [server_name_indication: String.to_charlist("test-instance-2.xyz.eu-west-1.rds.amazonaws.com")]]
+          [ssl_opts: [server_name_indication: String.to_charlist("test-instance-2.xyz.eu-west-1.rds.amazonaws.com")]]
         }
       ]
 
