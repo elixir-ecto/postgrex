@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.17.3 (2023-08-29)
+
+* Enhancements
+  * Automatically start :ssl application
+
+* Bug fix
+  * Fix SSL configuration docs for failover case
+
 ## v0.17.2 (2023-07-12)
 
 * Bug fix
