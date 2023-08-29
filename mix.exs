@@ -14,14 +14,14 @@ defmodule Postgrex.Mixfile do
       description: "PostgreSQL driver for Elixir",
       docs: docs(),
       package: package(),
-      xref: [exclude: [Jason, :ssl]]
+      xref: [exclude: [Jason]]
     ]
   end
 
   # Configuration for the OTP application
   def application do
     [
-      extra_applications: [:logger, :crypto],
+      extra_applications: [:logger, :crypto, :ssl],
       mod: {Postgrex.App, []},
       env: [type_server_reap_after: 3 * 60_000, json_library: Jason]
     ]
