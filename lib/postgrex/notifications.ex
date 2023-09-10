@@ -33,7 +33,7 @@ defmodule Postgrex.Notifications do
   the connection is up.
 
   There is a race condition between starting to listen and notifications being
-  issued "at the same time", as explained (in the PostgreSQL documentation)[https://www.postgresql.org/docs/current/sql-listen.html].
+  issued "at the same time", as explained [in the PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-listen.html).
   If your application needs to keep a consistent representation of data, follow
   the three-step approach of first subscribing, then obtaining the current
   state of data, then handling the incoming notifications.
