@@ -63,6 +63,8 @@ defmodule Postgrex do
 
   @type execute_option ::
           {:decode_mapper, (list -> term)}
+          | {:prefix_comment, String.t()}
+          | {:suffix_comment, String.t()}
           | option
 
   @max_rows 500
@@ -317,6 +319,8 @@ defmodule Postgrex do
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
     * `:cache_statement` - Caches the query with the given name
+    * `:prefix_comment` - Comment string to put before the statement
+    * `:suffix_comment` - Comment string to put after the statement
 
   ## Examples
 
@@ -329,12 +333,20 @@ defmodule Postgrex do
       Postgrex.query(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
+
+      Postgrex.query(conn, "SELECT 1", [], prefix_comment: "my comment")
   """
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
     if name = Keyword.get(opts, :cache_statement) do
-      query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
+      query = %Query{
+        name: name,
+        cache: :statement,
+        statement: IO.iodata_to_binary(statement),
+        prefix_comment: Keyword.get(opts, :prefix_comment),
+        suffix_comment: Keyword.get(opts, :suffix_comment)
+      }
 
       case DBConnection.prepare_execute(conn, query, params, opts) do
         {:ok, _, result} ->
@@ -352,7 +364,14 @@ defmodule Postgrex do
           error
       end
     else
-      query_prepare_execute(conn, %Query{name: "", statement: statement}, params, opts)
+      query = %Query{
+        name: "",
+        statement: statement,
+        prefix_comment: Keyword.get(opts, :prefix_comment),
+        suffix_comment: Keyword.get(opts, :suffix_comment)
+      }
+
+      query_prepare_execute(conn, query, params, opts)
     end
   end
 

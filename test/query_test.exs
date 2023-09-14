@@ -1745,4 +1745,10 @@ defmodule QueryTest do
     {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
     %{rows: [[1, "foo"]]} = P.query!(pid, "SELECT * from test_table", [])
   end
+
+  test "prefixes query comments" do
+    assert [[42]] = query("SELECT 42", [], prefix_comment: "this is a prefix comment")
+    assert [[16]] = query("SELECT 16", [], suffix_comment: "this is a suffix comment")
+    assert [[13]] = query("SELECT 13", [], prefix_comment: "prefix", suffix_comment: "suffix")
+  end
 end

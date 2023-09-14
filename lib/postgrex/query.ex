@@ -25,6 +25,8 @@ defmodule Postgrex.Query do
           ref: reference | nil,
           name: iodata,
           statement: iodata,
+          prefix_comment: iodata | nil,
+          suffix_comment: iodata | nil,
           param_oids: [Postgrex.Types.oid()] | nil,
           param_formats: [:binary | :text] | nil,
           param_types: [Postgrex.Types.type()] | nil,
@@ -39,6 +41,8 @@ defmodule Postgrex.Query do
     :ref,
     :name,
     :statement,
+    :prefix_comment,
+    :suffix_comment,
     :param_oids,
     :param_formats,
     :param_types,
@@ -113,7 +117,13 @@ defimpl DBConnection.Query, for: Postgrex.Query do
 end
 
 defimpl String.Chars, for: Postgrex.Query do
-  def to_string(%Postgrex.Query{statement: statement}) do
+  def to_string(%Postgrex.Query{statement: statement, prefix_comment: nil, suffix_comment: nil}) do
     IO.iodata_to_binary(statement)
+  end
+
+  def to_string(%Postgrex.Query{statement: statement, prefix_comment: prefix, suffix_comment: suffix}) do
+    prefix_iodata = if is_nil(prefix), do: [], else: ["/*", prefix, "*/"]
+    suffix_iodata = if is_nil(suffix), do: [], else: ["/*", suffix, "*/"]
+    IO.iodata_to_binary([prefix_iodata, statement, suffix_iodata])
   end
 end
