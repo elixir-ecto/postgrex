@@ -68,6 +68,9 @@ defmodule Postgrex.Protocol do
           {:ok, state}
           | {:error, Postgrex.Error.t() | %DBConnection.ConnectionError{}}
   def connect(opts) do
+    # Trap exits so that DBConnection calls `disconnect` on unexpected shutdowns
+    Process.flag(:trap_exit, true)
+
     endpoints = endpoints(opts)
 
     timeout = opts[:timeout] || @timeout
