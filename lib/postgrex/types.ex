@@ -87,12 +87,7 @@ defmodule Postgrex.Types do
 
     """
     SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
-           #{typelem}, #{rngsubtype}, ARRAY (
-      SELECT a.atttypid
-      FROM pg_attribute AS a
-      WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
-      ORDER BY a.attnum
-    )
+           #{typelem}, #{rngsubtype}, null
     FROM pg_type AS t
     #{join_domain}
     #{join_range}
