@@ -85,9 +85,25 @@ defmodule Postgrex.Types do
           {"0", ""}
       end
 
+    skip_comp_oids = Application.get_env(:postgrex, :skip_comp_oids, false)
+
+    comp_oids =
+      if skip_comp_oids do
+        "null"
+      else
+        """
+        ARRAY (
+          SELECT a.atttypid
+          FROM pg_attribute AS a
+          WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
+          ORDER BY a.attnum
+        )
+        """
+      end
+
     """
     SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
-           #{typelem}, #{rngsubtype}, null
+           #{typelem}, #{rngsubtype}, #{comp_oids}
     FROM pg_type AS t
     #{join_domain}
     #{join_range}
