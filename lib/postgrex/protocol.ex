@@ -27,7 +27,8 @@ defmodule Postgrex.Protocol do
             transactions: :strict,
             buffer: nil,
             disconnect_on_error_codes: [],
-            scram: nil
+            scram: nil,
+            skip_comp_oids: false
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -80,6 +81,7 @@ defmodule Postgrex.Protocol do
     types_mod = Keyword.fetch!(opts, :types)
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
     target_server_type = opts[:target_server_type] || :any
+    skip_comp_oids = opts[:skip_comp_oids] || false
 
     transactions =
       case opts[:transactions] || :naive do
@@ -98,7 +100,8 @@ defmodule Postgrex.Protocol do
       ping_timeout: ping_timeout,
       postgres: :idle,
       transactions: transactions,
-      disconnect_on_error_codes: disconnect_on_error_codes
+      disconnect_on_error_codes: disconnect_on_error_codes,
+      skip_comp_oids: skip_comp_oids
     }
 
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
@@ -1029,10 +1032,10 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp bootstrap_send(%{types: types} = s, status, buffer) do
+  defp bootstrap_send(s, status, buffer) do
     %{parameters: parameters} = s
     version = Postgrex.Utils.parse_version(parameters["server_version"])
-    statement = Types.bootstrap_query(version, types)
+    statement = Types.bootstrap_query(version, s)
 
     if statement do
       bootstrap_send(s, status, statement, buffer)
@@ -1867,12 +1870,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp reload(%{types: types} = s, status, oids, acc, buffer) do
+  defp reload(s, status, oids, acc, buffer) do
     %{parameters: parameters} = s
 
     with {:ok, parameters} <- Postgrex.Parameters.fetch(parameters) do
       version = Postgrex.Utils.parse_version(parameters["server_version"])
-      statement = Types.reload_query(version, Enum.to_list(oids), types)
+      statement = Types.reload_query(version, Enum.to_list(oids), s)
 
       if statement do
         reload_send(s, status, statement, acc, buffer)

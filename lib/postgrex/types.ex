@@ -44,7 +44,7 @@ defmodule Postgrex.Types do
 
   @doc false
   @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, state) :: binary | nil
-  def bootstrap_query(version, {_, table}) do
+  def bootstrap_query(version, %{types: {_, table}} = s) do
     case :ets.info(table, :size) do
       0 ->
         # avoid loading information about table-types
@@ -56,14 +56,14 @@ defmodule Postgrex.Types do
         AND (t.typelem = 0 OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type s WHERE s.typrelid != 0 AND s.oid = t.typelem))
         """
 
-        build_bootstrap_query(version, filter_oids)
+        build_bootstrap_query(version, filter_oids, s)
 
       _ ->
         nil
     end
   end
 
-  defp build_bootstrap_query(version, filter_oids) do
+  defp build_bootstrap_query(version, filter_oids, s) do
     {typelem, join_domain} =
       if version >= {9, 0, 0} do
         {"coalesce(d.typelem, t.typelem)", "LEFT JOIN pg_type AS d ON t.typbasetype = d.oid"}
@@ -85,10 +85,8 @@ defmodule Postgrex.Types do
           {"0", ""}
       end
 
-    skip_comp_oids = Application.get_env(:postgrex, :skip_comp_oids, false)
-
     comp_oids =
-      if skip_comp_oids do
+      if s.skip_comp_oids do
         "null"
       else
         """
@@ -114,13 +112,13 @@ defmodule Postgrex.Types do
   @doc false
   @spec reload_query({pos_integer, non_neg_integer, non_neg_integer}, [oid, ...], state) ::
           binary | nil
-  def reload_query(version, oids, {_, table}) do
+  def reload_query(version, oids, %{types: {_, table}} = s) do
     case Enum.reject(oids, &:ets.member(table, &1)) do
       [] ->
         nil
 
       oids ->
-        build_bootstrap_query(version, "WHERE t.oid IN (#{Enum.join(oids, ", ")})")
+        build_bootstrap_query(version, "WHERE t.oid IN (#{Enum.join(oids, ", ")})", s)
     end
   end
 
