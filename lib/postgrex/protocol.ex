@@ -28,7 +28,7 @@ defmodule Postgrex.Protocol do
             buffer: nil,
             disconnect_on_error_codes: [],
             scram: nil,
-            skip_comp_oids: false
+            disable_composite_types: false
 
   @type state :: %__MODULE__{
           sock: {module, any},
@@ -81,7 +81,7 @@ defmodule Postgrex.Protocol do
     types_mod = Keyword.fetch!(opts, :types)
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
     target_server_type = opts[:target_server_type] || :any
-    skip_comp_oids = opts[:skip_comp_oids] || false
+    disable_composite_types = opts[:disable_composite_types] || false
 
     transactions =
       case opts[:transactions] || :naive do
@@ -101,7 +101,7 @@ defmodule Postgrex.Protocol do
       postgres: :idle,
       transactions: transactions,
       disconnect_on_error_codes: disconnect_on_error_codes,
-      skip_comp_oids: skip_comp_oids
+      disable_composite_types: disable_composite_types
     }
 
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)

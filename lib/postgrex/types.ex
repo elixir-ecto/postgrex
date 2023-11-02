@@ -86,7 +86,7 @@ defmodule Postgrex.Types do
       end
 
     comp_oids =
-      if s.skip_comp_oids do
+      if s.disable_composite_types do
         "null"
       else
         """

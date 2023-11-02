@@ -167,6 +167,10 @@ defmodule Postgrex do
       See the [PostgreSQL docs](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
       for more details.
 
+    * `:disable_composite_types` - Set to `true` to disable composite types support.
+      This is useful when using Postgrex against systems that do not support composite types
+      (default: `false`).
+
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
