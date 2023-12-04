@@ -32,7 +32,17 @@ if Code.ensure_loaded?(Table.Reader) do
     end
 
     def init(result) do
-      {:rows, %{columns: result.columns, count: result.num_rows}, result.rows}
+      {columns, _} =
+        Enum.map_reduce(result.columns, %{}, fn column, counts ->
+          counts = Map.update(counts, column, 1, &(&1 + 1))
+
+          case counts[column] do
+            1 -> {column, counts}
+            n -> {"#{column}_#{n}", counts}
+          end
+        end)
+
+      {:rows, %{columns: columns, count: result.num_rows}, result.rows}
     end
   end
 end

@@ -1715,19 +1715,20 @@ defmodule QueryTest do
     assert {:ok, res} =
              P.query(
                context[:pid],
-               "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS tab (x, y)",
+               "SELECT *, 1 AS x FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS tab (x, y)",
                []
              )
 
     assert res |> Table.to_rows() |> Enum.to_list() == [
-             %{"x" => 1, "y" => "a"},
-             %{"x" => 2, "y" => "b"},
-             %{"x" => 3, "y" => "c"}
+             %{"x" => 1, "y" => "a", "x_2" => 1},
+             %{"x" => 2, "y" => "b", "x_2" => 1},
+             %{"x" => 3, "y" => "c", "x_2" => 1}
            ]
 
     columns = Table.to_columns(res)
     assert Enum.to_list(columns["x"]) == [1, 2, 3]
     assert Enum.to_list(columns["y"]) == ["a", "b", "c"]
+    assert Enum.to_list(columns["x_2"]) == [1, 1, 1]
 
     assert {_, %{count: 3}, _} = Table.Reader.init(res)
   end
