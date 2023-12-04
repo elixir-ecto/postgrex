@@ -157,7 +157,7 @@ defmodule Postgrex.ReplicationConnection do
 
   ## PUBLIC API ##
 
-  @type server :: :gen_statem.server()
+  @type server :: :gen_statem.server_ref()
   @type state :: term
   @type ack :: iodata
   @type query :: iodata
