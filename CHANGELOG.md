@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.17.4 (2023-12-04)
+
+* Enhancements
+  * Trap exits from connect callback
+  * Add configuration to skip querying of `comp_oids`
+  * Handle duplicate column names in Table.Reader implementation
+
 ## v0.17.3 (2023-08-29)
 
 * Enhancements
