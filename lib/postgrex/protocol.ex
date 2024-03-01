@@ -217,7 +217,10 @@ defmodule Postgrex.Protocol do
     # cancel the request first otherwise PostgreSQL will log
     # every time the connection is explicitly disconnected
     # because the associated PID will no longer exist.
-    cancel_request(s)
+    #
+    # Note we don't log when failing to cancel requests,
+    # in case the socket is not available or terminated.
+    _ = cancel_request(s)
     terminate(s)
     sock_close(s)
     _ = recv_buffer(s)
@@ -3453,28 +3456,10 @@ defmodule Postgrex.Protocol do
   end
 
   defp cancel_request(%{connection_key: nil}), do: :ok
+  defp cancel_request(%{peer: {:local, _} = peer} = s), do: cancel_request(peer, 0, s)
+  defp cancel_request(%{peer: {ip, port}} = s), do: cancel_request(ip, port, s)
 
-  defp cancel_request(s) do
-    case do_cancel_request(s) do
-      :ok ->
-        :ok
-
-      {:error, action, reason} ->
-        err = conn_error(:tcp, action, reason)
-
-        Logger.error(fn ->
-          [
-            "#{inspect(__MODULE__)} #{inspect(self())} could not cancel backend: "
-            | Exception.message(err)
-          ]
-        end)
-    end
-  end
-
-  defp do_cancel_request(%{peer: {:local, _} = peer} = s), do: do_cancel_request(peer, 0, s)
-  defp do_cancel_request(%{peer: {ip, port}} = s), do: do_cancel_request(ip, port, s)
-
-  defp do_cancel_request(ip, port, %{timeout: timeout} = s) do
+  defp cancel_request(ip, port, %{timeout: timeout} = s) do
     case :gen_tcp.connect(ip, port, [mode: :binary, active: false], timeout) do
       {:ok, sock} -> cancel_send_recv(s, sock)
       {:error, reason} -> {:error, :connect, reason}
