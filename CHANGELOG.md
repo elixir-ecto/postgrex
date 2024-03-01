@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.17.5 (2024-03-01)
+
+* Enhancements
+  * Do not log if request cannot be cancelled on disconnect
+
 ## v0.17.4 (2023-12-04)
 
 * Enhancements
