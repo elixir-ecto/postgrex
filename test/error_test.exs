@@ -43,10 +43,25 @@ defmodule ErrorTest do
   end
 
   @tag min_pg_version: "9.1"
-  test "notices", config do
+  test "notices during execute", config do
     {:ok, _} = P.query(config.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
     {:ok, result} = P.query(config.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
     assert [%{message: "relation \"notices\" already exists, skipping"}] = result.messages
+  end
+
+  @tag min_pg_version: "9.1"
+  test "notices during prepare", config do
+    {:ok, _} = P.query(config.pid, "CREATE TABLE IF NOT EXISTS notices (id int)", [])
+
+    {:ok, result} =
+      P.query(
+        config.pid,
+        "ALTER TABLE notices ADD CONSTRAINT " <>
+          "my_very_very_very_very_long_and_very_explicit_and_even_longer_fkey CHECK (id < 5)",
+        []
+      )
+
+    assert [%{message: _, code: "42622"}] = result.messages
   end
 
   test "notices raised by functions do not reset rows", config do
