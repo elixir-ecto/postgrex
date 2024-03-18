@@ -545,7 +545,12 @@ defmodule Postgrex.Protocol do
   def handle_commit(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when postgres == :transaction ->
-        statement = "COMMIT"
+        statement =
+          case Keyword.get(opts, :commit_comment) do
+            comment when is_binary(comment) -> "-- #{comment}\nCOMMIT"
+            _ -> "COMMIT"
+          end
+
         handle_transaction(statement, opts, s)
 
       :savepoint when postgres == :transaction ->
