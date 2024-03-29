@@ -3390,6 +3390,10 @@ defmodule Postgrex.Protocol do
     {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
   end
 
+  defp disconnect(s, %Postgrex.QueryError{} = err, buffer) do
+    {:disconnect, err, %{s | buffer: buffer}}
+  end
+
   defp disconnect(s, %RuntimeError{} = err, buffer) do
     {:disconnect, err, %{s | buffer: buffer}}
   end
