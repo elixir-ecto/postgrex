@@ -12,6 +12,9 @@ defmodule Postgrex.Protocol do
   @nonposix_errors [:closed, :timeout]
   @max_rows 500
   @text_type_oid 25
+  @commit_comment_validation_error Postgrex.QueryError.exception(
+                                     "`:comment_comment` option cannot contain sequence \"*/\""
+                                   )
 
   defstruct sock: nil,
             connection_id: nil,
@@ -537,7 +540,9 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
+          | {:disconnect,
+             %DBConnection.ConnectionError{} | Postgrex.Error.t() | Postgrex.QueryError.t(),
+             state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
@@ -545,13 +550,9 @@ defmodule Postgrex.Protocol do
   def handle_commit(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when postgres == :transaction ->
-        statement =
-          case Keyword.get(opts, :commit_comment) do
-            comment when is_binary(comment) -> "-- #{comment}\nCOMMIT"
-            _ -> "COMMIT"
-          end
-
-        handle_transaction(statement, opts, s)
+        with {:ok, statement} <- build_commit_statement(opts, s) do
+          handle_transaction(statement, opts, s)
+        end
 
       :savepoint when postgres == :transaction ->
         statement = "RELEASE SAVEPOINT postgrex_savepoint"
@@ -2891,6 +2892,22 @@ defmodule Postgrex.Protocol do
   end
 
   ## transaction
+
+  defp build_commit_statement(opts, %{buffer: buffer} = s) do
+    case Keyword.get(opts, :commit_comment) do
+      comment when is_binary(comment) ->
+        if String.contains?(comment, "*/") do
+          disconnect(s, @commit_comment_validation_error, buffer)
+        else
+          statement = "/* #{comment} */\nCOMMIT"
+          {:ok, statement}
+        end
+
+      _ ->
+        statement = "COMMIT"
+        {:ok, statement}
+    end
+  end
 
   defp handle_transaction(statement, opts, %{buffer: buffer} = s) do
     status = new_status(opts, mode: :transaction)
