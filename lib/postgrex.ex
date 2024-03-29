@@ -578,11 +578,14 @@ defmodule Postgrex do
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
+    * `:commit_comment` - When a binary string is provided, prepends the text as
+    a comment attached to the `COMMIT` statement issued to close the transaction (default: `nil`);
 
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
   transactions and requests. The `:mode` will be used for all requests inside
-  the transaction function.
+  the transaction function. The `:commit_comment` can be helpful in distinguishing
+  between transactions in query performance monitoring tools.
 
   ## Example
 
