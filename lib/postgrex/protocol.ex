@@ -13,7 +13,7 @@ defmodule Postgrex.Protocol do
   @max_rows 500
   @text_type_oid 25
   @commit_comment_validation_error Postgrex.QueryError.exception(
-                                     "`:comment_comment` option cannot contain sequence \"*/\""
+                                     "`:commit_comment` option cannot contain sequence \"*/\""
                                    )
 
   defstruct sock: nil,
