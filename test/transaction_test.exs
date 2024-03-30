@@ -89,8 +89,8 @@ defmodule TransactionTest do
   @tag mode: :transaction
   test "commit comment with possible SQL injection returns error and disconnects", context do
     assert_raise(
-      Postgrex.QueryError,
-      "`:comment_comment` option cannot contain sequence \"*/\"",
+      Postgrex.Error,
+      "`:commit_comment` option cannot contain sequence \"*/\"",
       fn ->
         transaction(
           fn conn ->

@@ -12,8 +12,8 @@ defmodule Postgrex.Protocol do
   @nonposix_errors [:closed, :timeout]
   @max_rows 500
   @text_type_oid 25
-  @commit_comment_validation_error Postgrex.QueryError.exception(
-                                     "`:commit_comment` option cannot contain sequence \"*/\""
+  @commit_comment_validation_error Postgrex.Error.exception(
+                                     message: "`:commit_comment` option cannot contain sequence \"*/\""
                                    )
 
   defstruct sock: nil,
@@ -540,9 +540,7 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect,
-             %DBConnection.ConnectionError{} | Postgrex.Error.t() | Postgrex.QueryError.t(),
-             state}
+          | {:disconnect, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
   def handle_commit(_, %{postgres: {_, _}} = s) do
     lock_error(s, :commit)
   end
@@ -3388,10 +3386,6 @@ defmodule Postgrex.Protocol do
 
   defp disconnect(%{connection_id: connection_id} = s, %Postgrex.Error{} = err, buffer) do
     {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
-  end
-
-  defp disconnect(s, %Postgrex.QueryError{} = err, buffer) do
-    {:disconnect, err, %{s | buffer: buffer}}
   end
 
   defp disconnect(s, %RuntimeError{} = err, buffer) do
