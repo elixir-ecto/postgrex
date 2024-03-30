@@ -87,6 +87,22 @@ defmodule TransactionTest do
   end
 
   @tag mode: :transaction
+  test "commit comment with possible SQL injection returns error and disconnects", context do
+    assert_raise(
+      Postgrex.Error,
+      "`:commit_comment` option cannot contain sequence \"*/\"",
+      fn ->
+        transaction(
+          fn conn ->
+            assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
+          end,
+          commit_comment: "invalid */ comment"
+        )
+      end
+    )
+  end
+
+  @tag mode: :transaction
   @tag prepare: :unnamed
   test "transaction commits with unnamed queries", context do
     assert transaction(fn conn ->
