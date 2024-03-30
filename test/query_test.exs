@@ -17,7 +17,7 @@ defmodule QueryTest do
   end
 
   test "iodata", context do
-    assert [[123]] = query(["S", ?E, ["LEC" | "T"], " ", '123'], [])
+    assert [[123]] = query(["S", ?E, ["LEC" | "T"], " ", ~c"123"], [])
   end
 
   test "decode basic types", context do

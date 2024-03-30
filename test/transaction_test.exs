@@ -553,7 +553,9 @@ defmodule TransactionTest do
     assert transaction(
              fn conn ->
                assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
-                        P.query(conn, "insert into uniques values (1), (1);", [], mode: :savepoint)
+                        P.query(conn, "insert into uniques values (1), (1);", [],
+                          mode: :savepoint
+                        )
 
                assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
                :hi
@@ -593,7 +595,9 @@ defmodule TransactionTest do
     assert transaction(
              fn conn ->
                assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
-                        P.query(conn, "insert into uniques values (1), (1);", [], mode: :savepoint)
+                        P.query(conn, "insert into uniques values (1), (1);", [],
+                          mode: :savepoint
+                        )
 
                assert {:ok, %Postgrex.Result{rows: [[42]]}} = P.query(conn, "SELECT 42", [])
                :hi
