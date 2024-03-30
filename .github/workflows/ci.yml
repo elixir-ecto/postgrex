@@ -50,13 +50,8 @@ jobs:
           - pg:
               version: 14
             pair:
-              elixir: 1.11.4
-              otp: 21.3
-          - pg:
-              version: 14
-            pair:
-              elixir: 1.11.4
-              otp: 23.3.3
+              elixir: 1.16.2
+              otp: 25.3
             lint: lint
     env:
       MIX_ENV: test
