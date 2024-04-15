@@ -205,7 +205,7 @@ defmodule Postgrex.Protocol do
   defp fetch_database(opts) do
     case Keyword.fetch(opts, :database) do
       {:ok, value} ->
-        value
+        {:ok, value}
 
       :error ->
         message = "missing the :database key in options for #{inspect(opts[:repo])}"
