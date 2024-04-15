@@ -208,10 +208,8 @@ defmodule Postgrex.Protocol do
         value
 
       :error ->
-        {:error,
-         %ArgumentError{
-           message: "missing the :database key in options for #{inspect(opts[:repo])}"
-         }}
+        message = "missing the :database key in options for #{inspect(opts[:repo])}"
+        {:error, %ArgumentError{message: message}}
     end
   end
 
