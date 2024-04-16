@@ -170,15 +170,12 @@ defmodule Postgrex.Protocol do
          %{opts: opts, types_mod: types_mod} = status,
          previous_errors
        ) do
-    types_key = if types_mod, do: {host, port, Keyword.fetch!(opts, :database)}
-    opts = Config.Reader.merge(opts, extra_opts)
-
-    status = %{status | types_key: types_key, opts: opts}
-
-    case connect_and_handshake(host, port, sock_opts, timeout, s, status) do
-      {:ok, _} = ret ->
-        ret
-
+    with {:ok, database} <- fetch_database(opts),
+         opts = Config.Reader.merge(opts, extra_opts),
+         status = %{status | types_key: if(types_mod, do: {host, port, database}), opts: opts},
+         {:ok, ret} <- connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+      {:ok, ret}
+    else
       {:error, err} ->
         connect_endpoints(
           remaining_endpoints,
@@ -203,6 +200,17 @@ defmodule Postgrex.Protocol do
 
     message = "failed to establish connection to multiple endpoints:\n\n#{concat_messages}"
     {:error, %Postgrex.Error{message: message}}
+  end
+
+  defp fetch_database(opts) do
+    case Keyword.fetch(opts, :database) do
+      {:ok, value} ->
+        {:ok, value}
+
+      :error ->
+        message = "missing the :database key in options for #{inspect(opts[:repo])}"
+        {:error, %ArgumentError{message: message}}
+    end
   end
 
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
