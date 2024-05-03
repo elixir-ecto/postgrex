@@ -81,6 +81,11 @@ defmodule ReplicationTest do
     end
 
     @impl true
+    def handle_call({:disconnect, reason}, _, _) do
+      {:disconnect, reason}
+    end
+
+    @impl true
     def handle_result(results, {from, pid}) when is_list(results) do
       Postgrex.ReplicationConnection.reply(from, {:ok, results})
       {:noreply, pid}
@@ -137,6 +142,22 @@ defmodule ReplicationTest do
       ref = Process.monitor(context.repl)
       assert_receive {:DOWN, ^ref, _, _, _}
       assert_received {:connect, i1}
+      assert_received {:disconnect, i2} when i1 < i2
+      refute_received {:connect, _}
+    end
+
+    test "trigger disconnect from callback", context do
+      assert_received {:connect, i1}
+
+      Process.flag(:trap_exit, true)
+
+      {_pid, ref} =
+        spawn_monitor(fn -> PR.call(context.repl, {:disconnect, "manual disconnect"}) end)
+
+      assert_receive {:DOWN, ^ref, _, _, {"manual disconnect", _}}
+
+      ref = Process.monitor(context.repl)
+      assert_receive {:DOWN, ^ref, _, _, _}
       assert_received {:disconnect, i2} when i1 < i2
       refute_received {:connect, _}
     end

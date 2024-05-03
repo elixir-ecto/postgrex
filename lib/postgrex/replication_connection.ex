@@ -161,6 +161,7 @@ defmodule Postgrex.ReplicationConnection do
   @type state :: term
   @type ack :: iodata
   @type query :: iodata
+  @type reason :: String.t()
 
   @typedoc """
   The following options configure streaming:
@@ -192,6 +193,7 @@ defmodule Postgrex.ReplicationConnection do
               | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
+              | {:disconnect, reason}
 
   @doc """
   Invoked after disconnecting.
@@ -219,6 +221,7 @@ defmodule Postgrex.ReplicationConnection do
               | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
+              | {:disconnect, reason}
 
   @doc """
   Callback for `Kernel.send/2`.
@@ -228,6 +231,7 @@ defmodule Postgrex.ReplicationConnection do
               | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
+              | {:disconnect, reason}
 
   @doc """
   Callback for `call/3`.
@@ -246,6 +250,7 @@ defmodule Postgrex.ReplicationConnection do
               | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
+              | {:disconnect, reason}
 
   @doc """
   Callback for `:query` outputs.
@@ -264,6 +269,7 @@ defmodule Postgrex.ReplicationConnection do
               | {:noreply, ack, state}
               | {:query, query, state}
               | {:stream, query, stream_opts, state}
+              | {:disconnect, reason}
 
   @optional_callbacks handle_call: 3,
                       handle_connect: 1,
@@ -582,6 +588,9 @@ defmodule Postgrex.ReplicationConnection do
 
       {:query, _query, mod_state} ->
         stream_in_progress(:query, mod, mod_state, from, s)
+
+      {:disconnect, reason} ->
+        reconnect_or_stop(:disconnect, reason, s.protocol, s)
     end
   end
 
