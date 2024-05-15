@@ -30,10 +30,15 @@ defmodule Postgrex.Extensions.Time do
 
   def microsecond_to_elixir(microsec) do
     sec = div(microsec, 1_000_000)
-    microsec = rem(microsec, 1_000_000)
+
+    microsec_precision =
+      case rem(microsec, 1_000_000) do
+        0 -> {0, 0}
+        m -> {m, 6}
+      end
 
     sec
     |> :calendar.seconds_to_time()
-    |> Time.from_erl!({microsec, 6})
+    |> Time.from_erl!(microsec_precision)
   end
 end

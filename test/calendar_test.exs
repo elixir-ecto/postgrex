@@ -12,12 +12,12 @@ defmodule CalendarTest do
   end
 
   test "decode time", context do
-    assert [[~T[00:00:00.000000]]] = query("SELECT time '00:00:00'", [])
-    assert [[~T[01:02:03.000000]]] = query("SELECT time '01:02:03'", [])
-    assert [[~T[23:59:59.000000]]] = query("SELECT time '23:59:59'", [])
-    assert [[~T[04:05:06.000000]]] = query("SELECT time '04:05:06 PST'", [])
-    assert [[~T[04:05:06.000000]]] = query("SELECT time '04:05:06-8'", [])
-    assert [[~T[04:05:06.000000]]] = query("SELECT time '04:05:06-8'", [])
+    assert [[~T[00:00:00]]] = query("SELECT time '00:00:00'", [])
+    assert [[~T[01:02:03]]] = query("SELECT time '01:02:03'", [])
+    assert [[~T[23:59:59]]] = query("SELECT time '23:59:59'", [])
+    assert [[~T[04:05:06]]] = query("SELECT time '04:05:06 PST'", [])
+    assert [[~T[04:05:06]]] = query("SELECT time '04:05:06-8'", [])
+    assert [[~T[04:05:06]]] = query("SELECT time '04:05:06-8'", [])
 
     assert [[~T[00:00:00.123000]]] = query("SELECT time '00:00:00.123'", [])
     assert [[~T[00:00:00.123456]]] = query("SELECT time '00:00:00.123456'", [])
@@ -253,6 +253,7 @@ defmodule CalendarTest do
   end
 
   test "encode time", context do
+    assert [[~T[01:02:03]]] = query("SELECT $1::time", [~T[01:02:03]])
     assert [["00:00:00"]] = query("SELECT $1::time::text", [~T[00:00:00.0000]])
     assert [["01:02:03"]] = query("SELECT $1::time::text", [~T[01:02:03]])
     assert [["23:59:59"]] = query("SELECT $1::time::text", [~T[23:59:59]])
