@@ -205,7 +205,7 @@ defmodule Postgrex.Protocol do
          previous_errors
        ) do
     with {:ok, database} <- fetch_database(opts),
-         status = %{status | types_key: if(types_mod, do: {host, port, database}), opts: opts},
+         status = %{status | types_key: if(types_mod, do: {host, port, database})},
          {:ok, ret} <- connect_and_handshake(host, port, sock_opts, timeout, s, status) do
       {:ok, ret}
     else
@@ -769,7 +769,12 @@ defmodule Postgrex.Protocol do
   defp do_handshake(_host, s, %{ssl: nil} = status), do: startup(s, status)
 
   defp do_handshake(host, s, %{ssl: ssl_opts} = status) do
-    ssl(s, status, Keyword.put_new(ssl_opts, :server_name_indicator, host))
+    ssl_opts =
+      if is_list(host),
+        do: Keyword.put_new(ssl_opts, :server_name_indication, host),
+        else: ssl_opts
+
+    ssl(s, status, ssl_opts)
   end
 
   ## ssl
