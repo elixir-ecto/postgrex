@@ -118,7 +118,10 @@ defmodule Postgrex do
     * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
       Defaults to 1000ms;
 
-    * `:ssl` - Set to `true` if ssl should be used (default: `false`);
+    * `:ssl` - Set to `true` if ssl should be used (default: `false`). You may also
+      set it to `:verify_full`, which enables peer and hostname validation. You must
+      specify either `:cacerts` or `:cacertfile` in `:ssl_opts` if `:verify_full`
+      is enabled;
 
     * `:ssl_opts` - A list of ssl options, see the
       [`tls_client_option`](http://erlang.org/doc/man/ssl.html#type-tls_client_option)
