@@ -92,7 +92,7 @@ defmodule Postgrex.Protocol do
           {nil, opts}
 
         {true, opts} ->
-          IO.warn(
+          Logger.warning(
             "setting ssl: true on your database connection offers only limited protection, " <>
               "as the hostname is not verified. Set \"ssl: [cacertfile: path/to/file]\" instead"
           )
