@@ -101,7 +101,7 @@ defmodule Postgrex.Protocol do
           Keyword.pop(opts, :ssl_opts, [])
 
         {ssl_opts, opts} when is_list(ssl_opts) ->
-          {Keyword.merge(default_ssl_opts(opts), ssl_opts), opts}
+          {Keyword.merge(default_ssl_opts(), ssl_opts), opts}
       end
 
     transactions =
@@ -142,7 +142,7 @@ defmodule Postgrex.Protocol do
     connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status, [])
   end
 
-  defp default_ssl_opts(opts) do
+  defp default_ssl_opts do
     [
       verify: :verify_peer,
       customize_hostname_check: [
@@ -171,7 +171,7 @@ defmodule Postgrex.Protocol do
                     {to_charlist(hostname), port}
 
                   {hostname, port, _extra_opts} ->
-                    Logger.warn(
+                    Logger.warning(
                       "Returning a triplet from :endpoints is deprecated, " <>
                         "the server name indicator is automatically set based on the hostname if SSL is enabled"
                     )
