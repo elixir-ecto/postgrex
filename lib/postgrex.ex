@@ -191,37 +191,13 @@ defmodule Postgrex do
   ## SSL client authentication
 
   When connecting to Postgres or CockroachDB instances over SSL it is idiomatic to use
-  certificate authentication. Config files do not allowing passing functions,
-  so use the `init` callback of the Ecto supervisor.
+  certificate authentication:
 
-  In your Repository configuration:
+      [ssl: [cacertfile: System.get_env("DB_CA_CERT_FILE")]]
 
-      config :app, App.Repo,
-        ssl: String.to_existing_atom(System.get_env("DB_SSL_ENABLED", "true")),
-        verify_ssl: true
-
-  And in App.Repo, set your `:ssl_opts`:
-
-      def init(_type, config) do
-        config =
-          if config[:verify_ssl] do
-            Keyword.put(config, :ssl_opts, my_ssl_opts(config[:hostname]))
-          else
-            config
-          end
-
-        {:ok, config}
-      end
-
-      def my_ssl_opts(server) do
-        [
-          verify: :verify_peer,
-          cacertfile: System.get_env("DB_CA_CERT_FILE"),
-          server_name_indication: String.to_charlist(server),
-          customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)],
-          depth: 3
-        ]
-      end
+  The server name indication (SNI) will be automatically set based on the `:hostname`
+  configuration, if one was provided. Other options, such as `depth: 3`, may be necessary
+  depending on the server.
 
   ## PgBouncer
 
@@ -267,27 +243,6 @@ defmodule Postgrex do
         {"test-instance-2.xyz.eu-west-1.rds.amazonaws.com", 5432},
         (...),
         {"test-instance-N.xyz.eu-west-1.rds.amazonaws.com", 5432}
-      ]
-
-  ### Failover with SSL support
-
-  As specified in Erlang [:ssl.connect](https://erlang.org/doc/man/ssl.html#connect-3),
-  host verification using `:public_key.pkix_verify_hostname_match_fun(:https)`
-  requires that the ssl_opt `server_name_indication` is set, and for this reason,
-  the aforementioned `endpoints` list can become a three element tuple as:
-
-      endpoints: [
-        {
-          "test-instance-1.xyz.eu-west-1.rds.amazonaws.com",
-          5432,
-          [ssl_opts: [server_name_indication: String.to_charlist("test-instance-1.xyz.eu-west-1.rds.amazonaws.com")]]
-        },
-        (...),
-        {
-          "test-instance-2.xyz.eu-west-1.rds.amazonaws.com",
-          5432,
-          [ssl_opts: [server_name_indication: String.to_charlist("test-instance-2.xyz.eu-west-1.rds.amazonaws.com")]]
-        }
       ]
 
   """

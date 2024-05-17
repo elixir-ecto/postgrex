@@ -143,16 +143,12 @@ defmodule Postgrex.Protocol do
   end
 
   defp default_ssl_opts(opts) do
-    case Keyword.fetch(opts, :hostname) do
-      {:ok, hostname} -> [server_name_indication: String.to_charlist(hostname)]
-      :error -> []
-    end ++
-      [
-        verify: :verify_peer,
-        customize_hostname_check: [
-          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-        ]
+    [
+      verify: :verify_peer,
+      customize_hostname_check: [
+        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
       ]
+    ]
   end
 
   defp endpoints(opts) do
@@ -160,19 +156,27 @@ defmodule Postgrex.Protocol do
 
     case Keyword.fetch(opts, :socket) do
       {:ok, file} ->
-        [{{:local, file}, 0, []}]
+        [{{:local, file}, 0}]
 
       :error ->
         case Keyword.fetch(opts, :socket_dir) do
           {:ok, dir} ->
-            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0, []}]
+            [{{:local, "#{dir}/.s.PGSQL.#{port}"}, 0}]
 
           :error ->
             case Keyword.fetch(opts, :endpoints) do
               {:ok, endpoints} when is_list(endpoints) ->
                 Enum.map(endpoints, fn
-                  {hostname, port} -> {to_charlist(hostname), port, []}
-                  {hostname, port, extra_opts} -> {to_charlist(hostname), port, extra_opts}
+                  {hostname, port} ->
+                    {to_charlist(hostname), port}
+
+                  {hostname, port, _extra_opts} ->
+                    Logger.warn(
+                      "Returning a triplet from :endpoints is deprecated, " <>
+                        "the server name indicator is automatically set based on the hostname if SSL is enabled"
+                    )
+
+                    {to_charlist(hostname), port}
                 end)
 
               {:ok, _} ->
@@ -181,7 +185,7 @@ defmodule Postgrex.Protocol do
               :error ->
                 case Keyword.fetch(opts, :hostname) do
                   {:ok, hostname} ->
-                    [{to_charlist(hostname), port, []}]
+                    [{to_charlist(hostname), port}]
 
                   :error ->
                     raise ArgumentError,
@@ -193,7 +197,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp connect_endpoints(
-         [{host, port, extra_opts} | remaining_endpoints],
+         [{host, port} | remaining_endpoints],
          sock_opts,
          timeout,
          s,
@@ -201,7 +205,6 @@ defmodule Postgrex.Protocol do
          previous_errors
        ) do
     with {:ok, database} <- fetch_database(opts),
-         opts = Config.Reader.merge(opts, extra_opts),
          status = %{status | types_key: if(types_mod, do: {host, port, database}), opts: opts},
          {:ok, ret} <- connect_and_handshake(host, port, sock_opts, timeout, s, status) do
       {:ok, ret}
@@ -246,7 +249,7 @@ defmodule Postgrex.Protocol do
   defp connect_and_handshake(host, port, sock_opts, timeout, s, status) do
     case connect(host, port, sock_opts, timeout, s) do
       {:ok, s} ->
-        handshake(s, status)
+        handshake(host, s, status)
 
       {:error, _} = error ->
         error
@@ -712,13 +715,13 @@ defmodule Postgrex.Protocol do
 
   ## handshake
 
-  defp handshake(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status) do
+  defp handshake(host, %{sock: {:gen_tcp, sock}, timeout: timeout} = s, status) do
     {:ok, peer} = :inet.peername(sock)
     %{opts: opts} = status
     handshake_timeout = Keyword.get(opts, :handshake_timeout, timeout)
     timer = start_handshake_timer(handshake_timeout, sock)
 
-    case do_handshake(%{s | peer: peer}, status) do
+    case do_handshake(host, %{s | peer: peer}, status) do
       {:ok, %{parameters: parameters} = s} ->
         cancel_handshake_timer(timer)
         ref = Postgrex.Parameters.insert(parameters)
@@ -763,8 +766,11 @@ defmodule Postgrex.Protocol do
     :ok
   end
 
-  defp do_handshake(s, %{ssl: nil} = status), do: startup(s, status)
-  defp do_handshake(s, %{ssl: ssl_opts} = status), do: ssl(s, status, ssl_opts)
+  defp do_handshake(_host, s, %{ssl: nil} = status), do: startup(s, status)
+
+  defp do_handshake(host, s, %{ssl: ssl_opts} = status) do
+    ssl(s, status, Keyword.put_new(ssl_opts, :server_name_indicator, host))
+  end
 
   ## ssl
 
