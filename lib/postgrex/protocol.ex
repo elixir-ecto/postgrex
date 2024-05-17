@@ -137,7 +137,7 @@ defmodule Postgrex.Protocol do
     case Keyword.fetch(opts, :hostname) do
       {:ok, hostname} ->
         [
-          server_name_indication: hostname,
+          server_name_indication: String.to_charlist(hostname),
           customize_hostname_check: [
             match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
           ]
