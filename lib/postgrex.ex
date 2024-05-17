@@ -47,8 +47,7 @@ defmodule Postgrex do
           | {:connect_timeout, timeout}
           | {:handshake_timeout, timeout}
           | {:ping_timeout, timeout}
-          | {:ssl, boolean | :verify_full}
-          | {:ssl_opts, [:ssl.tls_client_option()]}
+          | {:ssl, boolean | [:ssl.tls_client_option()]}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
@@ -118,14 +117,10 @@ defmodule Postgrex do
     * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
       Defaults to 1000ms;
 
-    * `:ssl` - Set to `:verify_full` to enable full SSL verification, including peer
-      and hostname. You must also specify either `:cacerts` or `:cacertfile` in
-      `:ssl_opts`. Alternatively, you may set it to `true` for enabling SSL, but
-      use `:ssl_opts` to opt-in and control verification. Defaults to `false`;
-
-    * `:ssl_opts` - A list of ssl options, see the
-      [`tls_client_option`](http://erlang.org/doc/man/ssl.html#type-tls_client_option)
-      from the ssl docs. Only applies if `:ssl` is also enabled;
+    * `:ssl` - Enables SSL. Setting it to `true` enables SSL without host verification,
+      which emits a warning. Instead, prefer to set it to a keyword list, with either
+      `:cacerts` or `:cacertfile` pointing to the server certificate, to enable hostname
+      verification. Defaults to `false`;
 
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);

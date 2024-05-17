@@ -85,14 +85,23 @@ defmodule Postgrex.Protocol do
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
     target_server_type = opts[:target_server_type] || :any
     disable_composite_types = opts[:disable_composite_types] || false
-    {ssl, opts} = Keyword.pop(opts, :ssl, false)
 
     {ssl_opts, opts} =
-      if defaults = default_ssl_opts(ssl, opts) do
-        {ssl_opts, opts} = Keyword.pop(opts, :ssl_opts, [])
-        {Config.Reader.merge(defaults, ssl_opts), opts}
-      else
-        {nil, opts}
+      case Keyword.pop(opts, :ssl, false) do
+        {false, opts} ->
+          {nil, opts}
+
+        {true, opts} ->
+          IO.warn(
+            "setting ssl: true on your database connection offers only limited protection, " <>
+              "as the hostname is not verified. Set \"ssl: [cacertfile: path/to/file]\" instead"
+          )
+
+          # Read ssl_opts for backwards compatibility
+          Keyword.pop(opts, :ssl_opts, [])
+
+        {ssl_opts, opts} when is_list(ssl_opts) ->
+          {Keyword.merge(default_ssl_opts(opts), ssl_opts), opts}
       end
 
     transactions =
@@ -133,27 +142,17 @@ defmodule Postgrex.Protocol do
     connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status, [])
   end
 
-  defp default_ssl_opts(:verify_full, opts) do
+  defp default_ssl_opts(opts) do
     case Keyword.fetch(opts, :hostname) do
-      {:ok, hostname} ->
-        [
-          server_name_indication: String.to_charlist(hostname),
-          customize_hostname_check: [
-            match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-          ]
+      {:ok, hostname} -> [server_name_indication: String.to_charlist(hostname)]
+      :error -> []
+    end ++
+      [
+        verify: :verify_peer,
+        customize_hostname_check: [
+          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
         ]
-
-      :error ->
-        raise ArgumentError, "expected :hostname on ssl: :verify_full"
-    end
-  end
-
-  defp default_ssl_opts(true, _opts), do: []
-  defp default_ssl_opts(false, _opts), do: nil
-
-  defp default_ssl_opts(unknown, _opts) do
-    raise ArgumentError,
-          "invalid :ssl option, expected a boolean or :verify_full, got: #{inspect(unknown)}"
+      ]
   end
 
   defp endpoints(opts) do
