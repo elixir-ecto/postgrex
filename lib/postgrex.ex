@@ -121,11 +121,11 @@ defmodule Postgrex do
     * `:ssl` - Set to `:verify_full` to enable full SSL verification, including peer
       and hostname. You must also specify either `:cacerts` or `:cacertfile` in
       `:ssl_opts`. Alternatively, you may set it to `true` for enabling SSL, but
-      use `:ssl_opts` to opt-in and control verification. Defaults to `false`.
+      use `:ssl_opts` to opt-in and control verification. Defaults to `false`;
 
     * `:ssl_opts` - A list of ssl options, see the
       [`tls_client_option`](http://erlang.org/doc/man/ssl.html#type-tls_client_option)
-      from the ssl docs;
+      from the ssl docs. Only applies if `:ssl` is also enabled;
 
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
