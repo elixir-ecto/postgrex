@@ -47,7 +47,7 @@ defmodule Postgrex do
           | {:connect_timeout, timeout}
           | {:handshake_timeout, timeout}
           | {:ping_timeout, timeout}
-          | {:ssl, boolean}
+          | {:ssl, boolean | :verify_full}
           | {:ssl_opts, [:ssl.tls_client_option()]}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}

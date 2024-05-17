@@ -81,11 +81,19 @@ defmodule Postgrex.Protocol do
     timeout = opts[:timeout] || @timeout
     ping_timeout = Keyword.get(opts, :ping_timeout, timeout)
     sock_opts = [send_timeout: timeout] ++ (opts[:socket_options] || [])
-    ssl? = opts[:ssl] || false
     types_mod = Keyword.fetch!(opts, :types)
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
     target_server_type = opts[:target_server_type] || :any
     disable_composite_types = opts[:disable_composite_types] || false
+    {ssl, opts} = Keyword.pop(opts, :ssl, false)
+
+    {ssl_opts, opts} =
+      if defaults = default_ssl_opts(ssl, opts) do
+        {ssl_opts, opts} = Keyword.pop(opts, :ssl_opts, [])
+        {Config.Reader.merge(defaults, ssl_opts), opts}
+      else
+        {nil, opts}
+      end
 
     transactions =
       case opts[:transactions] || :naive do
@@ -117,12 +125,35 @@ defmodule Postgrex.Protocol do
       types_lock: nil,
       prepare: prepare,
       messages: [],
-      ssl: ssl?,
+      ssl: ssl_opts,
       target_server_type: target_server_type,
       search_path: opts[:search_path]
     }
 
     connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status, [])
+  end
+
+  defp default_ssl_opts(:verify_full, opts) do
+    case Keyword.fetch(opts, :hostname) do
+      {:ok, hostname} ->
+        [
+          server_name_indication: hostname,
+          customize_hostname_check: [
+            match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+          ]
+        ]
+
+      :error ->
+        raise ArgumentError, "expected :hostname on ssl: :verify_full"
+    end
+  end
+
+  defp default_ssl_opts(true, _opts), do: []
+  defp default_ssl_opts(false, _opts), do: nil
+
+  defp default_ssl_opts(unknown, _opts) do
+    raise ArgumentError,
+          "invalid :ssl option, expected a boolean or :verify_full, got: #{inspect(unknown)}"
   end
 
   defp endpoints(opts) do
@@ -733,22 +764,22 @@ defmodule Postgrex.Protocol do
     :ok
   end
 
-  defp do_handshake(s, %{ssl: true} = status), do: ssl(s, status)
-  defp do_handshake(s, %{ssl: false} = status), do: startup(s, status)
+  defp do_handshake(s, %{ssl: nil} = status), do: startup(s, status)
+  defp do_handshake(s, %{ssl: ssl_opts} = status), do: ssl(s, status, ssl_opts)
 
   ## ssl
 
-  defp ssl(s, status) do
+  defp ssl(s, status, ssl_opts) do
     case msg_send(s, msg_ssl_request(), "") do
-      :ok -> ssl_recv(s, status)
+      :ok -> ssl_recv(s, status, ssl_opts)
       {:disconnect, _, _} = dis -> dis
     end
   end
 
-  defp ssl_recv(%{sock: {:gen_tcp, sock}} = s, status) do
+  defp ssl_recv(%{sock: {:gen_tcp, sock}} = s, status, ssl_opts) do
     case :gen_tcp.recv(sock, 1, :infinity) do
       {:ok, <<?S>>} ->
-        ssl_connect(s, status)
+        ssl_connect(s, status, ssl_opts)
 
       {:ok, <<?N>>} ->
         disconnect(s, %Postgrex.Error{message: "ssl not available"}, "")
@@ -770,8 +801,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp ssl_connect(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status) do
-    case :ssl.connect(sock, status.opts[:ssl_opts] || [], timeout) do
+  defp ssl_connect(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status, ssl_opts) do
+    case :ssl.connect(sock, ssl_opts, timeout) do
       {:ok, ssl_sock} ->
         startup(%{s | sock: {:ssl, ssl_sock}}, status)
 
