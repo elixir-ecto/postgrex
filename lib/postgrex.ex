@@ -117,9 +117,9 @@ defmodule Postgrex do
     * `:idle_interval` - Ping connections after a period of inactivity in milliseconds.
       Defaults to 1000ms;
 
-    * `:ssl` - Enables SSL. Setting it to `true` enables SSL without host verification,
+    * `:ssl` - Enables SSL. Setting it to `true` enables SSL without server certificate verification,
       which emits a warning. Instead, prefer to set it to a keyword list, with either
-      `:cacerts` or `:cacertfile` pointing to the server certificate, to enable hostname
+      `:cacerts` or `:cacertfile` set to a CA trust store, to enable server certificate
       verification. Defaults to `false`;
 
     * `:socket_options` - Options to be given to the underlying socket
