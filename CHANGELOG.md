@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.18.0 (2024-05-18)
+
+* Deprecations
+  * `:ssl_opts` is deprecated in favor of `ssl: options`
+  * `ssl: true` now emits a warning, as it does not execute server certificate verification
+
+* Enhancements
+  * Allow ReplicationConnection callbacks to trigger disconnect
+  * Add `:commit_comment` option on transactions for prepending a SQL comment to commit statements
+  * Return database messages from `handle_prepare_execute`
+
 ## v0.17.5 (2024-03-01)
 
 * Enhancements
