@@ -42,7 +42,7 @@ defmodule Postgrex.Extensions.Array do
   ## Helpers
 
   # Special case for empty lists. This treats an empty list as an empty 1-dim array.
-  # While libpq will decode an payload encoded for a 0-dim array, CockroachDB will not.
+  # While libpq will decode a payload encoded for a 0-dim array, CockroachDB will not.
   # Also, this is how libpq actually encodes 0-dim arrays.
   def encode([], elem_oid, _encoder) do
     <<20::int32(), 1::int32(), 0::int32(), elem_oid::uint32(), 0::int32(), 1::int32()>>

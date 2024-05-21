@@ -17,7 +17,7 @@ defmodule Postgrex.ErrorCode do
   {errcodes, duplicates} = Enum.split_with(errcodes, &match?({_, _}, &1))
 
   # The errcodes.txt file does contain some codes twice, but the duplicates
-  # don't have a name. Make sure every every code without a name has another
+  # don't have a name. Make sure every code without a name has another
   # entry with a name.
   for {duplicate} <- duplicates do
     unless Enum.find(errcodes, fn {code, _} -> code == duplicate end) do
