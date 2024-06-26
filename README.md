@@ -28,40 +28,40 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 
 ## Data representation
 
-    PostgreSQL      Elixir
-    ----------      ------
-    NULL            nil
-    bool            true | false
-    char            "é"
-    int             42
-    float           42.0
-    text            "eric"
-    bytea           <<42>>
-    numeric         #Decimal<42.0> *
-    date            %Date{year: 2013, month: 10, day: 12}
-    time(tz)        %Time{hour: 0, minute: 37, second: 14} **
-    timestamp       %NaiveDateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14}
-    timestamptz     %DateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14, time_zone: "Etc/UTC"} **
-    interval        %Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 315}
-    array           [1, 2, 3]
-    composite type  {42, "title", "content"}
-    range           %Postgrex.Range{lower: 1, upper: 5}
-    multirange      %Postgrex.Multirange{ranges: [%Postgrex.Range{lower: 1, upper: 5}, %Postgrex.Range{lower: 20, upper: 23}]}
-    uuid            <<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>
-    hstore          %{"foo" => "bar"}
-    oid types       42
-    enum            "ok" ***
-    bit             << 1::1, 0::1 >>
-    varbit          << 1::1, 0::1 >>
-    tsvector        [%Postgrex.Lexeme{positions: [{1, :A}], word: "a"}]
+| PostgreSQL         | Elixir                                                                                                                                      |
+|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `NULL`             | `nil`                                                                                                                                       |
+| `bool`             | `true`, `false`                                                                                                                             |
+| `char`             | `"é"`                                                                                                                                       |
+| `int`              | `42`                                                                                                                                        |
+| `float`            | `42.0`                                                                                                                                      |
+| `text`             | `"eric"`                                                                                                                                    |
+| `bytea`            | `<<42>>`                                                                                                                                    |
+| `numeric`          | `#Decimal<42.0>` (1)                                                                                                                        |
+| `date`             | `%Date{year: 2013, month: 10, day: 12}`                                                                                                     |
+| `time(tz)`         | `%Time{hour: 0, minute: 37, second: 14}` (2)                                                                                                |
+| `timestamp`        | `%NaiveDateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14}`                                                           |
+| `timestamptz`      | `%DateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14, time_zone: "Etc/UTC"}` (2)                                      |
+| `interval`         | `%Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 315}`                                                                     |
+| `array`            | `[1, 2, 3]`                                                                                                                                 |
+| `composite type`   | `{42, "title", "content"}`                                                                                                                  |
+| `range`            | `%Postgrex.Range{lower: 1, upper: 5}`                                                                                                       |
+| `multirange`       | `%Postgrex.Multirange{ranges: [%Postgrex.Range{lower: 1, upper: 5}, %Postgrex.Range{lower: 20, upper: 23}]}`                                |
+| `uuid`             | `<<160,238,188,153,156,11,78,248,187,109,107,185,189,56,10,17>>`                                                                            |
+| `hstore`           | `%{"foo" => "bar"}`                                                                                                                         |
+| `oid types`        | `42`                                                                                                                                        |
+| `enum`             | `"ok"` (3)                                                                                                                                  |
+| `bit`              | `<< 1::1, 0::1 >>`                                                                                                                          |
+| `varbit`           | `<< 1::1, 0::1 >>`                                                                                                                          |
+| `tsvector`         | `[%Postgrex.Lexeme{positions: [{1, :A}], word: "a"}]`                                                                                       |
 
-\* [Decimal](http://github.com/ericmj/decimal)
+(1) [Decimal](http://github.com/ericmj/decimal)
 
-\*\* Timezones will always be normalized to UTC or assumed to be UTC when no information is available, either by PostgreSQL or Postgrex
+(2) Timezones will always be normalized to UTC or assumed to be UTC when no information is available, either by PostgreSQL or Postgrex
 
-\*\*\* Enumerated types (enum) are custom named database types with strings as values.
+(3) Enumerated types (enum) are custom named database types with strings as values.
 
-\*\*\*\* Anonymous composite types are decoded (read) as tuples but they cannot be encoded (written) to the database
+(4) Anonymous composite types are decoded (read) as tuples but they cannot be encoded (written) to the database
 
 Postgrex does not automatically cast between types. For example, you can't pass a string where a date is expected. To add type casting, support new types, or change how any of the types above are encoded/decoded, you can use extensions.
 
