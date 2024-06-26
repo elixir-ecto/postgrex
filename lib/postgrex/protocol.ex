@@ -101,7 +101,7 @@ defmodule Postgrex.Protocol do
           Keyword.pop(opts, :ssl_opts, [])
 
         {ssl_opts, opts} when is_list(ssl_opts) ->
-          {Keyword.merge(default_ssl_opts(), ssl_opts), opts}
+          {ssl_opts(ssl_opts), opts}
       end
 
     transactions =
@@ -142,18 +142,26 @@ defmodule Postgrex.Protocol do
     connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status, [])
   end
 
-  defp default_ssl_opts do
-    opts = [
-      verify: :verify_peer,
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ]
+  defp ssl_opts(user_opts) do
+    opts =
+      Keyword.merge(
+        [
+          verify: :verify_peer,
+          customize_hostname_check: [
+            match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+          ]
+        ],
+        user_opts
+      )
 
-    try do
-      Keyword.put(opts, :cacerts, :public_key.cacerts_get())
-    rescue
-      _ -> opts
+    if Keyword.has_key?(opts, :cacertfile) or Keyword.has_key?(opts, :cacerts) do
+      opts
+    else
+      try do
+        Keyword.put(opts, :cacerts, :public_key.cacerts_get())
+      rescue
+        _ -> opts
+      end
     end
   end
 
