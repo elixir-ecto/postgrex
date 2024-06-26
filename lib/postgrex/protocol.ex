@@ -143,12 +143,18 @@ defmodule Postgrex.Protocol do
   end
 
   defp default_ssl_opts do
-    [
+    opts = [
       verify: :verify_peer,
       customize_hostname_check: [
         match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
       ]
     ]
+
+    try do
+      Keyword.put(opts, :cacerts, :public_key.cacerts_get())
+    rescue
+      _ -> opts
+    end
   end
 
   defp endpoints(opts) do
