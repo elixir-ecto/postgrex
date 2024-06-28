@@ -10,8 +10,9 @@ defmodule CustomExtensionsTest do
   defmodule BinaryExtension do
     @behaviour Postgrex.Extension
 
-    def init([]),
-      do: []
+    def init(_opts) do
+      []
+    end
 
     def matching([]),
       do: [send: "int4send"]
@@ -36,7 +37,7 @@ defmodule CustomExtensionsTest do
   defmodule TextExtension do
     @behaviour Postgrex.Extension
 
-    def init([]),
+    def init(_opts),
       do: {}
 
     def matching({}),
@@ -63,7 +64,7 @@ defmodule CustomExtensionsTest do
   defmodule BadExtension do
     @behaviour Postgrex.Extension
 
-    def init([]),
+    def init(_opts),
       do: []
 
     def matching([]),
