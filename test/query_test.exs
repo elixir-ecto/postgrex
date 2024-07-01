@@ -1746,4 +1746,32 @@ defmodule QueryTest do
     {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
     %{rows: [[1, "foo"]]} = P.query!(pid, "SELECT * from test_table", [])
   end
+
+  test "timestamp precision", context do
+    :ok =
+      query(
+        """
+        INSERT INTO timestamps (micro, milli, sec, sec_arr)
+        VALUES ('2000-01-01', '2000-01-01', '2000-01-01', '{2000-01-01, 2000-01-02}'),
+        ('3000-01-01', '3000-01-01', '3000-01-01', '{3000-01-01, 3000-01-02}')
+        """,
+        []
+      )
+
+    assert [row1, row2] = query("SELECT * FROM timestamps", [])
+
+    assert [
+             %{microsecond: {_, 6}},
+             %{microsecond: {_, 3}},
+             %{microsecond: {_, 0}},
+             [%{microsecond: {_, 0}}, %{microsecond: {_, 0}}]
+           ] = row1
+
+    assert [
+             %{microsecond: {_, 6}},
+             %{microsecond: {_, 3}},
+             %{microsecond: {_, 0}},
+             [%{microsecond: {_, 0}}, %{microsecond: {_, 0}}]
+           ] = row2
+  end
 end

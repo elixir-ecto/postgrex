@@ -28,12 +28,12 @@ defmodule Postgrex.Extensions.Array do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32(), binary::binary-size(len)>>, [oid], [type] ->
+      <<len::int32(), binary::binary-size(len)>>, [oid], [type], mod ->
         <<ndims::int32(), _has_null::int32(), ^oid::uint32(), dims::size(ndims)-binary-unit(64),
           data::binary>> = binary
 
         # decode_list/2 defined by TypeModule
-        flat = decode_list(data, type)
+        flat = decode_list(data, type, mod)
 
         unquote(__MODULE__).decode(dims, flat)
     end
