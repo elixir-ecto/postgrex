@@ -57,7 +57,7 @@ defmodule Postgrex.Utils do
   @doc """
   List all default extensions.
   """
-  @spec default_extensions(Keyword.t()) :: [module()]
+  @spec default_extensions(Keyword.t()) :: [{module(), Keyword.t()}]
   def default_extensions(opts \\ []) do
     Enum.map(@extensions, &{&1, opts})
   end
