@@ -1769,8 +1769,8 @@ defmodule Postgrex.Protocol do
         result_types
         |> Enum.zip(result_mods)
         |> Enum.map(fn
-            {{extension, sub_oids, sub_types}, mod} -> {extension, sub_oids, sub_types, mod}
-            {extension, mod} -> {extension, mod}
+          {{extension, sub_oids, sub_types}, mod} -> {extension, sub_oids, sub_types, mod}
+          {extension, mod} -> {extension, mod}
         end)
 
       query = %Query{
