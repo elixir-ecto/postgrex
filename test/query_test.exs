@@ -418,6 +418,29 @@ defmodule QueryTest do
                }
              ]
            ] = query("SELECT '[,]'::daterange", [])
+
+    assert [
+             [
+               %Postgrex.Range{
+                 lower: %NaiveDateTime{
+                   year: 2014,
+                   month: 1,
+                   day: 1,
+                   hour: 0,
+                   minute: 0,
+                   second: 0
+                 },
+                 upper: %NaiveDateTime{
+                   year: 2014,
+                   month: 12,
+                   day: 31,
+                   hour: 0,
+                   minute: 0,
+                   second: 0
+                 }
+               }
+             ]
+           ] = query("SELECT '[2014-1-1,2014-12-31)'::tsrange", [])
   end
 
   @tag min_pg_version: "14.0"

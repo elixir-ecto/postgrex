@@ -97,6 +97,7 @@ CREATE TYPE enum1 AS ENUM ('elixir', 'erlang');
 
 CREATE TABLE uniques (a int UNIQUE);
 CREATE TABLE timestamps (micro timestamp, milli timestamp(3), sec timestamp(0), sec_arr timestamp(0)[]);
+CREATE TABLE timestamps_stream (micro timestamp, milli timestamp(3), sec timestamp(0), sec_arr timestamp(0)[]);
 
 DROP TABLE IF EXISTS missing_oid;
 DROP TYPE IF EXISTS missing_enum;
