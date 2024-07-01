@@ -28,8 +28,8 @@ defmodule Postgrex.Extensions.Timestamp do
 
   def decode(infinity?) do
     quote location: :keep do
-      <<8::int32(), microsecs::int64()>>, precision ->
-        unquote(__MODULE__).microsecond_to_elixir(microsecs, precision, unquote(infinity?))
+      <<8::int32(), microsecs::int64()>> ->
+        unquote(__MODULE__).microsecond_to_elixir(microsecs, var!(mod), unquote(infinity?))
     end
   end
 

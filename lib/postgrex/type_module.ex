@@ -198,7 +198,7 @@ defmodule Postgrex.TypeModule do
   end
 
   defp encode_extension(extension, clause) do
-    case split_extension_encode(clause) do
+    case split_extension(clause) do
       {pattern, guard, body} ->
         encode_extension(extension, pattern, guard, body)
 
@@ -224,7 +224,7 @@ defmodule Postgrex.TypeModule do
   end
 
   defp encode_super(extension, clause) do
-    case split_super_encode(clause) do
+    case split_super(clause) do
       {pattern, sub_oids, sub_types, guard, body} ->
         encode_super(extension, pattern, sub_oids, sub_types, guard, body)
 
@@ -615,12 +615,11 @@ defmodule Postgrex.TypeModule do
   end
 
   defp decode_extension(extension, clause, dispatch, rest, acc, rem, full, rows) do
-    case split_extension_decode(clause) do
-      {pattern, mod, guard, body} ->
+    case split_extension(clause) do
+      {pattern, guard, body} ->
         decode_extension(
           extension,
           pattern,
-          mod,
           guard,
           body,
           dispatch,
@@ -631,15 +630,14 @@ defmodule Postgrex.TypeModule do
           rows
         )
 
-      {pattern, mod, body} ->
-        decode_extension(extension, pattern, mod, body, dispatch, rest, acc, rem, full, rows)
+      {pattern, body} ->
+        decode_extension(extension, pattern, body, dispatch, rest, acc, rem, full, rows)
     end
   end
 
   defp decode_extension(
          extension,
          pattern,
-         mod,
          guard,
          body,
          dispatch,
@@ -652,7 +650,7 @@ defmodule Postgrex.TypeModule do
     quote do
       defp unquote(extension)(
              <<unquote(pattern), unquote(rest)::binary>>,
-             unquote(mod),
+             var!(mod),
              types,
              acc,
              unquote(rem),
@@ -667,24 +665,24 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<unquote(pattern), rest::binary>>, mod = unquote(mod), acc)
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, var!(mod) = mod, acc)
            when unquote(guard) do
         unquote(extension)(rest, mod, [unquote(body) | acc])
       end
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
-             nil = unquote(mod),
+             var!(mod) = mod,
              acc,
              callback
            )
            when unquote(guard) do
-        unquote(extension)(rest, nil, [unquote(body) | acc], callback)
+        unquote(extension)(rest, mod, [unquote(body) | acc], callback)
       end
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
-             nil = unquote(mod),
+             var!(mod),
              oids,
              types,
              n,
@@ -696,11 +694,11 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp decode_extension(extension, pattern, mod, body, dispatch, rest, acc, rem, full, rows) do
+  defp decode_extension(extension, pattern, body, dispatch, rest, acc, rem, full, rows) do
     quote do
       defp unquote(extension)(
              <<unquote(pattern), unquote(rest)::binary>>,
-             unquote(mod),
+             var!(mod),
              types,
              acc,
              unquote(rem),
@@ -714,24 +712,24 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<unquote(pattern), rest::binary>>, mod = unquote(mod), acc) do
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, var!(mod), acc) do
         decoded = unquote(body)
-        unquote(extension)(rest, mod, [decoded | acc])
+        unquote(extension)(rest, var!(mod), [decoded | acc])
       end
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
-             nil = unquote(mod),
+             var!(mod),
              acc,
              callback
            ) do
         decoded = unquote(body)
-        unquote(extension)(rest, nil, [decoded | acc], callback)
+        unquote(extension)(rest, var!(mod), [decoded | acc], callback)
       end
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
-             nil = unquote(mod),
+             var!(mod),
              oids,
              types,
              n,
@@ -760,29 +758,29 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<-1::int32(), rest::binary>>, mod, acc) do
-        unquote(extension)(rest, mod, [@null | acc])
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, var!(mod), acc) do
+        unquote(extension)(rest, var!(mod), [@null | acc])
       end
 
       defp unquote(extension)(<<>>, _, acc) do
         acc
       end
 
-      defp unquote(extension)(<<-1::int32(), rest::binary>>, nil, acc, callback) do
-        unquote(extension)(rest, nil, [@null | acc], callback)
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, var!(mod), acc, callback) do
+        unquote(extension)(rest, var!(mod), [@null | acc], callback)
       end
 
       defp unquote(extension)(<<rest::binary-size(0)>>, _, acc, callback) do
         callback.(rest, acc)
       end
 
-      defp unquote(extension)(<<-1::int32(), rest::binary>>, nil, oids, types, n, acc) do
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, _mod, oids, types, n, acc) do
         decode_tuple(rest, oids, types, n, acc)
       end
     end
   end
 
-  defp split_extension_encode({:->, _, [head, body]}) do
+  defp split_extension({:->, _, [head, body]}) do
     case head do
       [{:when, _, [pattern, guard]}] ->
         {pattern, guard, body}
@@ -792,31 +790,14 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp split_extension_decode({:->, _, [head, body]}) do
-    case head do
-      [{:when, _, [pattern, guard]}] ->
-        {pattern, quote(do: _), guard, body}
-
-      [pattern] ->
-        {pattern, quote(do: _), body}
-
-      [{:when, _, [pattern, modifier, guard]}] ->
-        {pattern, modifier, guard, body}
-
-      [pattern, modifier] ->
-        {pattern, modifier, body}
-    end
-  end
-
   defp decode_super(extension, clause, dispatch, rest, acc, rem, full, rows) do
-    case split_super_decode(clause) do
-      {pattern, oids, types, mod, guard, body} ->
+    case split_super(clause) do
+      {pattern, oids, types, guard, body} ->
         decode_super(
           extension,
           pattern,
           oids,
           types,
-          mod,
           guard,
           body,
           dispatch,
@@ -827,13 +808,12 @@ defmodule Postgrex.TypeModule do
           rows
         )
 
-      {pattern, oids, types, mod, body} ->
+      {pattern, oids, types, body} ->
         decode_super(
           extension,
           pattern,
           oids,
           types,
-          mod,
           body,
           dispatch,
           rest,
@@ -850,7 +830,6 @@ defmodule Postgrex.TypeModule do
          pattern,
          sub_oids,
          sub_types,
-         mod,
          guard,
          body,
          dispatch,
@@ -865,7 +844,7 @@ defmodule Postgrex.TypeModule do
              <<unquote(pattern), unquote(rest)::binary>>,
              unquote(sub_oids),
              unquote(sub_types),
-             unquote(mod),
+             var!(mod),
              types,
              acc,
              unquote(rem),
@@ -884,19 +863,19 @@ defmodule Postgrex.TypeModule do
              <<unquote(pattern), rest::binary>>,
              unquote(sub_oids),
              unquote(sub_types),
-             mod = unquote(mod),
+             var!(mod),
              acc
            )
            when unquote(guard) do
         acc = [unquote(body) | acc]
-        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), mod, acc)
+        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), var!(mod), acc)
       end
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
              unquote(sub_oids),
              unquote(sub_types),
-             nil = unquote(mod),
+             var!(mod),
              oids,
              types,
              n,
@@ -913,7 +892,6 @@ defmodule Postgrex.TypeModule do
          pattern,
          sub_oids,
          sub_types,
-         mod,
          body,
          dispatch,
          rest,
@@ -927,7 +905,7 @@ defmodule Postgrex.TypeModule do
              <<unquote(pattern), unquote(rest)::binary>>,
              unquote(sub_oids),
              unquote(sub_types),
-             unquote(mod),
+             var!(mod),
              types,
              acc,
              unquote(rem),
@@ -945,18 +923,18 @@ defmodule Postgrex.TypeModule do
              <<unquote(pattern), rest::binary>>,
              unquote(sub_oids),
              unquote(sub_types),
-             mod = unquote(mod),
+             var!(mod),
              acc
            ) do
         acc = [unquote(body) | acc]
-        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), mod, acc)
+        unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), var!(mod), acc)
       end
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
              unquote(sub_oids),
              unquote(sub_types),
-             nil = unquote(mod),
+             var!(mod),
              oids,
              types,
              n,
@@ -988,8 +966,8 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<-1::int32(), rest::binary>>, sub_oids, sub_types, mod, acc) do
-        unquote(extension)(rest, sub_oids, sub_types, mod, [@null | acc])
+      defp unquote(extension)(<<-1::int32(), rest::binary>>, sub_oids, sub_types, var!(mod), acc) do
+        unquote(extension)(rest, sub_oids, sub_types, var!(mod), [@null | acc])
       end
 
       defp unquote(extension)(<<>>, _sub_oid, _sub_types, _mod, acc) do
@@ -1000,7 +978,7 @@ defmodule Postgrex.TypeModule do
              <<-1::int32(), rest::binary>>,
              _sub_oids,
              _sub_types,
-             nil,
+             _mod,
              oids,
              types,
              n,
@@ -1011,23 +989,13 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp split_super_encode({:->, _, [head, body]}) do
+  defp split_super({:->, _, [head, body]}) do
     case head do
       [{:when, _, [pattern, sub_oids, sub_types, guard]}] ->
         {pattern, sub_oids, sub_types, guard, body}
 
       [pattern, sub_oids, sub_types] ->
         {pattern, sub_oids, sub_types, body}
-    end
-  end
-
-  defp split_super_decode({:->, _, [head, body]}) do
-    case head do
-      [{:when, _, [pattern, sub_oids, sub_types, modifier, guard]}] ->
-        {pattern, sub_oids, sub_types, modifier, guard, body}
-
-      [pattern, sub_oids, sub_types, modifier] ->
-        {pattern, sub_oids, sub_types, modifier, body}
     end
   end
 

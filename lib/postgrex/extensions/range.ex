@@ -35,7 +35,7 @@ defmodule Postgrex.Extensions.Range do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32(), binary::binary-size(len)>>, [_oid], [type], _ ->
+      <<len::int32(), binary::binary-size(len)>>, [_oid], [type] ->
         <<flags, data::binary>> = binary
 
         # decode_list/2 defined by TypeModule

@@ -27,7 +27,7 @@ defmodule Postgrex.Extensions.Multirange do
 
   def decode(_) do
     quote location: :keep do
-      <<len::int32(), data::binary-size(len)>>, [_oid], [type], _ ->
+      <<len::int32(), data::binary-size(len)>>, [_oid], [type] ->
         <<_num_ranges::int32(), ranges::binary>> = data
 
         # decode_list/2 defined by TypeModule
