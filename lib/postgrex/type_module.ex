@@ -1037,12 +1037,9 @@ defmodule Postgrex.TypeModule do
     end
   end
 
-  defp configure(customs, opts) do
-    defaults = Postgrex.Utils.default_extensions()
-
-    Enum.map(customs ++ defaults, fn extension ->
-      configure({extension, opts})
-    end)
+  defp configure(extensions, opts) do
+    defaults = Postgrex.Utils.default_extensions(opts)
+    Enum.map(extensions ++ defaults, &configure/1)
   end
 
   defp configure({extension, opts}) do
@@ -1050,6 +1047,10 @@ defmodule Postgrex.TypeModule do
     matching = extension.matching(state)
     format = extension.format(state)
     {extension, {state, matching, format}}
+  end
+
+  defp configure(extension) do
+    configure({extension, []})
   end
 
   defp define_inline(module, config, opts) do
