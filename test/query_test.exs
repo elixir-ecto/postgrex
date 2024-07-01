@@ -1760,18 +1760,10 @@ defmodule QueryTest do
 
     assert [row1, row2] = query("SELECT * FROM timestamps", [])
 
-    assert [
-             %{microsecond: {_, 6}},
-             %{microsecond: {_, 3}},
-             %{microsecond: {_, 0}},
-             [%{microsecond: {_, 0}}, %{microsecond: {_, 0}}]
-           ] = row1
-
-    assert [
-             %{microsecond: {_, 6}},
-             %{microsecond: {_, 3}},
-             %{microsecond: {_, 0}},
-             [%{microsecond: {_, 0}}, %{microsecond: {_, 0}}]
-           ] = row2
+    assert [6, 3, 0, [0, 0]] = precision(row1)
+    assert [6, 3, 0, [0, 0]] = precision(row2)
   end
+
+  defp precision([_ | _] = dts), do: Enum.map(dts, &precision(&1))
+  defp precision(%NaiveDateTime{microsecond: {_, p}}), do: p
 end
