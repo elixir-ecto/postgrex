@@ -10,9 +10,8 @@ defmodule CustomExtensionsTest do
   defmodule BinaryExtension do
     @behaviour Postgrex.Extension
 
-    def init([]) do
-      []
-    end
+    def init([]),
+      do: []
 
     def matching([]),
       do: [send: "int4send"]
