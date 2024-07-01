@@ -33,7 +33,13 @@ defmodule Postgrex.Extensions.Array do
           data::binary>> = binary
 
         # decode_list/2 defined by TypeModule
-        flat = decode_list(data, type, mod)
+        type =
+          case type do
+            {extension, sub_oids, sub_types} -> {extension, sub_oids, sub_types, mod}
+            extension -> {extension, mod}
+          end
+
+        flat = decode_list(data, type)
 
         unquote(__MODULE__).decode(dims, flat)
     end

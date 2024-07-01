@@ -382,7 +382,7 @@ defmodule Postgrex.TypeModule do
   defp decode_row_dispatch(extension, :super_binary, rest, acc, rem, full, rows) do
     [clause] =
       quote do
-        [{{unquote(extension), sub_oids, sub_types}, mod} | types] ->
+        [{unquote(extension), sub_oids, sub_types, mod} | types] ->
           unquote(extension)(
             unquote(rest),
             sub_oids,
@@ -458,8 +458,8 @@ defmodule Postgrex.TypeModule do
 
     quote do
       @doc false
-      def decode_list(<<unquote(rest)::binary>>, type, mod \\ nil) do
-        case {type, mod} do
+      def decode_list(<<unquote(rest)::binary>>, type) do
+        case type do
           unquote(dispatch)
         end
       end
@@ -469,7 +469,7 @@ defmodule Postgrex.TypeModule do
   defp decode_list_dispatch(extension, :super_binary, rest) do
     [clause] =
       quote do
-        {{unquote(extension), sub_oids, sub_types}, mod} ->
+        {unquote(extension), sub_oids, sub_types, mod} ->
           unquote(extension)(unquote(rest), sub_oids, sub_types, mod, [])
       end
 
@@ -1023,12 +1023,6 @@ defmodule Postgrex.TypeModule do
 
   defp split_super_decode({:->, _, [head, body]}) do
     case head do
-      [{:when, _, [pattern, sub_oids, sub_types, guard]}] ->
-        {pattern, sub_oids, sub_types, quote(do: _), guard, body}
-
-      [pattern, sub_oids, sub_types] ->
-        {pattern, sub_oids, sub_types, quote(do: _), body}
-
       [{:when, _, [pattern, sub_oids, sub_types, modifier, guard]}] ->
         {pattern, sub_oids, sub_types, modifier, guard, body}
 

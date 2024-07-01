@@ -1716,8 +1716,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_params(%{types: types}, query, param_oids) do
-    with {:ok, param_info} <- fetch_type_info(param_oids, types),
-         {param_formats, param_types} = Enum.unzip(param_info) do
+    with {:ok, param_info} <- fetch_type_info(param_oids, types) do
+      {param_formats, param_types} = Enum.unzip(param_info)
+
       query = %Query{
         query
         | param_oids: param_oids,
@@ -1761,9 +1762,17 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_result(%{types: types}, query, result_oids, result_mods, columns) do
-    with {:ok, result_info} <- fetch_type_info(result_oids, types),
-         {result_formats, result_types} = Enum.unzip(result_info),
-         result_types = Enum.zip(result_types, result_mods) do
+    with {:ok, result_info} <- fetch_type_info(result_oids, types) do
+      {result_formats, result_types} = Enum.unzip(result_info)
+
+      result_types =
+        result_types
+        |> Enum.zip(result_mods)
+        |> Enum.map(fn
+            {{extension, sub_oids, sub_types}, mod} -> {extension, sub_oids, sub_types, mod}
+            {extension, mod} -> {extension, mod}
+        end)
+
       query = %Query{
         query
         | ref: make_ref(),
@@ -3187,13 +3196,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp columns(fields) do
-    {oids_mods, names} =
-      fields
-      |> Enum.map(fn row_field(type_oid: oid, type_mod: mod, name: name) -> {{oid, mod}, name} end)
-      |> :lists.unzip()
-
-    {oids, mods} = :lists.unzip(oids_mods)
-    {oids, names, mods}
+    fields
+    |> Enum.map(fn row_field(type_oid: oid, type_mod: mod, name: name) -> {oid, name, mod} end)
+    |> :lists.unzip3()
   end
 
   defp column_names(fields) do
