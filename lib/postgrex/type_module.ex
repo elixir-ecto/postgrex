@@ -658,6 +658,7 @@ defmodule Postgrex.TypeModule do
              unquote(rows)
            )
            when unquote(guard) do
+        _ = var!(mod)
         unquote(acc) = [unquote(body) | acc]
 
         case types do
@@ -665,9 +666,10 @@ defmodule Postgrex.TypeModule do
         end
       end
 
-      defp unquote(extension)(<<unquote(pattern), rest::binary>>, var!(mod) = mod, acc)
+      defp unquote(extension)(<<unquote(pattern), rest::binary>>, var!(mod), acc)
            when unquote(guard) do
-        unquote(extension)(rest, mod, [unquote(body) | acc])
+        _ = var!(mod)
+        unquote(extension)(rest, var!(mod), [unquote(body) | acc])
       end
 
       defp unquote(extension)(
@@ -677,6 +679,7 @@ defmodule Postgrex.TypeModule do
              callback
            )
            when unquote(guard) do
+        _ = var!(mod)
         unquote(extension)(rest, mod, [unquote(body) | acc], callback)
       end
 
@@ -689,6 +692,7 @@ defmodule Postgrex.TypeModule do
              acc
            )
            when unquote(guard) do
+        _ = var!(mod)
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
       end
     end
@@ -705,6 +709,7 @@ defmodule Postgrex.TypeModule do
              unquote(full),
              unquote(rows)
            ) do
+        _ = var!(mod)
         unquote(acc) = [unquote(body) | acc]
 
         case types do
@@ -713,6 +718,7 @@ defmodule Postgrex.TypeModule do
       end
 
       defp unquote(extension)(<<unquote(pattern), rest::binary>>, var!(mod), acc) do
+        _ = var!(mod)
         decoded = unquote(body)
         unquote(extension)(rest, var!(mod), [decoded | acc])
       end
@@ -723,6 +729,7 @@ defmodule Postgrex.TypeModule do
              acc,
              callback
            ) do
+        _ = var!(mod)
         decoded = unquote(body)
         unquote(extension)(rest, var!(mod), [decoded | acc], callback)
       end
@@ -735,6 +742,7 @@ defmodule Postgrex.TypeModule do
              n,
              acc
            ) do
+        _ = var!(mod)
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
       end
     end
@@ -852,6 +860,7 @@ defmodule Postgrex.TypeModule do
              unquote(rows)
            )
            when unquote(guard) do
+        _ = var!(mod)
         unquote(acc) = [unquote(body) | acc]
 
         case types do
@@ -867,6 +876,7 @@ defmodule Postgrex.TypeModule do
              acc
            )
            when unquote(guard) do
+        _ = var!(mod)
         acc = [unquote(body) | acc]
         unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), var!(mod), acc)
       end
@@ -882,6 +892,7 @@ defmodule Postgrex.TypeModule do
              acc
            )
            when unquote(guard) do
+        _ = var!(mod)
         decode_tuple(rest, oids, types, n, [{n, unquote(body)} | acc])
       end
     end
@@ -912,6 +923,7 @@ defmodule Postgrex.TypeModule do
              unquote(full),
              unquote(rows)
            ) do
+        _ = var!(mod)
         unquote(acc) = [unquote(body) | acc]
 
         case types do
@@ -926,6 +938,7 @@ defmodule Postgrex.TypeModule do
              var!(mod),
              acc
            ) do
+        _ = var!(mod)
         acc = [unquote(body) | acc]
         unquote(extension)(rest, unquote(sub_oids), unquote(sub_types), var!(mod), acc)
       end
@@ -940,6 +953,7 @@ defmodule Postgrex.TypeModule do
              n,
              acc
            ) do
+        _ = var!(mod)
         acc = [{n, unquote(body)} | acc]
         decode_tuple(rest, oids, types, n, acc)
       end
