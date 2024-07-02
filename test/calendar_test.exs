@@ -24,6 +24,11 @@ defmodule CalendarTest do
     assert [[~T[01:02:03.123456]]] = query("SELECT time '01:02:03.123456'", [])
   end
 
+  test "decode time with precision", context do
+    assert [[~T[00:00:00.000]]] = query("SELECT time(3) '00:00:00'", [])
+    assert [[[~T[00:00:00.000]]]] = query("SELECT ARRAY[time(3) '00:00:00']", [])
+  end
+
   test "decode timetz", context do
     assert [[~T[00:00:00.000000]]] = query("SELECT time with time zone '00:00:00 UTC'", [])
     assert [[~T[01:02:03.000000]]] = query("SELECT time with time zone '01:02:03 UTC'", [])
@@ -51,6 +56,11 @@ defmodule CalendarTest do
     assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06 PST'", [])
     assert [[~T[12:05:06.000000]]] = query("SELECT time with time zone '04:05:06-8'", [])
     assert [[~T[01:02:03.123456]]] = query("SELECT time with time zone '01:02:03.123456 UTC'", [])
+  end
+
+  test "decode timetz with precision", context do
+    assert [[~T[00:00:00]]] = query("SELECT time(0) with time zone '00:00:00 UTC'", [])
+    assert [[[~T[00:00:00]]]] = query("SELECT ARRAY[time(0) with time zone '00:00:00 UTC']", [])
   end
 
   test "decode date", context do
