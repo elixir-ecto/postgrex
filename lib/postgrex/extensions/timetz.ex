@@ -4,6 +4,7 @@ defmodule Postgrex.Extensions.TimeTZ do
   use Postgrex.BinaryExtension, send: "timetz_send"
 
   @day (:calendar.time_to_seconds({23, 59, 59}) + 1) * 1_000_000
+  @default_precision 6
 
   def encode(_) do
     quote location: :keep do
@@ -18,7 +19,7 @@ defmodule Postgrex.Extensions.TimeTZ do
   def decode(_) do
     quote location: :keep do
       <<12::int32(), microsecs::int64(), tz::int32()>> ->
-        unquote(__MODULE__).microsecond_to_elixir(microsecs, tz)
+        unquote(__MODULE__).microsecond_to_elixir(microsecs, var!(mod), tz)
     end
   end
 
@@ -43,18 +44,22 @@ defmodule Postgrex.Extensions.TimeTZ do
     <<12::int32(), :calendar.time_to_seconds(time) * 1_000_000 + usec::int64(), 0::int32()>>
   end
 
-  def microsecond_to_elixir(microsec, tz) do
+  def microsecond_to_elixir(microsec, precision, tz) do
     microsec
     |> adjust_microsecond(tz)
-    |> microsecond_to_elixir()
+    |> microsecond_to_elixir(precision)
   end
 
-  defp microsecond_to_elixir(microsec) do
+  defp microsecond_to_elixir(microsec, precision) do
+    # use the default precision if the precision modifier from postgres is -1 (this means no precision specified)
+    # or if the precision is missing because we are in a super type which does not give us the sub-type's modifier
+    precision = if precision in [-1, nil], do: @default_precision, else: precision
+
     sec = div(microsec, 1_000_000)
     microsec = rem(microsec, 1_000_000)
 
     sec
     |> :calendar.seconds_to_time()
-    |> Time.from_erl!({microsec, 6})
+    |> Time.from_erl!({microsec, precision})
   end
 end

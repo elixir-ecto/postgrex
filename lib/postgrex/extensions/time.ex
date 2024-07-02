@@ -3,6 +3,8 @@ defmodule Postgrex.Extensions.Time do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "time_send"
 
+  @default_precision 6
+
   def encode(_) do
     quote location: :keep do
       %Time{calendar: Calendar.ISO} = time ->
@@ -16,7 +18,7 @@ defmodule Postgrex.Extensions.Time do
   def decode(_) do
     quote location: :keep do
       <<8::int32(), microsecs::int64()>> ->
-        unquote(__MODULE__).microsecond_to_elixir(microsecs)
+        unquote(__MODULE__).microsecond_to_elixir(microsecs, var!(mod))
     end
   end
 
@@ -28,12 +30,16 @@ defmodule Postgrex.Extensions.Time do
     <<8::int32(), :calendar.time_to_seconds(time) * 1_000_000 + usec::int64()>>
   end
 
-  def microsecond_to_elixir(microsec) do
+  def microsecond_to_elixir(microsec, precision) do
+    # use the default precision if the precision modifier from postgres is -1 (this means no precision specified)
+    # or if the precision is missing because we are in a super type which does not give us the sub-type's modifier
+    precision = if precision in [-1, nil], do: @default_precision, else: precision
+
     sec = div(microsec, 1_000_000)
     microsec = rem(microsec, 1_000_000)
 
     sec
     |> :calendar.seconds_to_time()
-    |> Time.from_erl!({microsec, 6})
+    |> Time.from_erl!({microsec, precision})
   end
 end
