@@ -674,13 +674,13 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
-             var!(mod) = mod,
+             var!(mod),
              acc,
              callback
            )
            when unquote(guard) do
         _ = var!(mod)
-        unquote(extension)(rest, mod, [unquote(body) | acc], callback)
+        unquote(extension)(rest, var!(mod), [unquote(body) | acc], callback)
       end
 
       defp unquote(extension)(
