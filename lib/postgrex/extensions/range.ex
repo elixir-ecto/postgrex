@@ -37,7 +37,14 @@ defmodule Postgrex.Extensions.Range do
     quote location: :keep do
       <<len::int32(), binary::binary-size(len)>>, [_oid], [type] ->
         <<flags, data::binary>> = binary
+
         # decode_list/2 defined by TypeModule
+        type =
+          case type do
+            {extension, sub_oids, sub_types} -> {extension, sub_oids, sub_types, nil}
+            extension -> {extension, nil}
+          end
+
         case decode_list(data, type) do
           [upper, lower] ->
             unquote(__MODULE__).decode(flags, [lower, upper])

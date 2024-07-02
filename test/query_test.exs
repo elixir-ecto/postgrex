@@ -418,6 +418,29 @@ defmodule QueryTest do
                }
              ]
            ] = query("SELECT '[,]'::daterange", [])
+
+    assert [
+             [
+               %Postgrex.Range{
+                 lower: %NaiveDateTime{
+                   year: 2014,
+                   month: 1,
+                   day: 1,
+                   hour: 0,
+                   minute: 0,
+                   second: 0
+                 },
+                 upper: %NaiveDateTime{
+                   year: 2014,
+                   month: 12,
+                   day: 31,
+                   hour: 0,
+                   minute: 0,
+                   second: 0
+                 }
+               }
+             ]
+           ] = query("SELECT '[2014-1-1,2014-12-31)'::tsrange", [])
   end
 
   @tag min_pg_version: "14.0"
@@ -1746,4 +1769,24 @@ defmodule QueryTest do
     {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
     %{rows: [[1, "foo"]]} = P.query!(pid, "SELECT * from test_table", [])
   end
+
+  test "timestamp precision", context do
+    :ok =
+      query(
+        """
+        INSERT INTO timestamps (micro, milli, sec, sec_arr)
+        VALUES ('2000-01-01', '2000-01-01', '2000-01-01', '{2000-01-01, 2000-01-02}'),
+        ('3000-01-01', '3000-01-01', '3000-01-01', '{3000-01-01, 3000-01-02}')
+        """,
+        []
+      )
+
+    assert [row1, row2] = query("SELECT * FROM timestamps", [])
+
+    assert [6, 3, 0, [0, 0]] = precision(row1)
+    assert [6, 3, 0, [0, 0]] = precision(row2)
+  end
+
+  defp precision([_ | _] = dts), do: Enum.map(dts, &precision(&1))
+  defp precision(%NaiveDateTime{microsecond: {_, p}}), do: p
 end

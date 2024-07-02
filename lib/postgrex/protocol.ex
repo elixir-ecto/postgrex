@@ -955,7 +955,7 @@ defmodule Postgrex.Protocol do
   defp set_search_path_recv(s, status, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {[@text_type_oid], ["search_path"]} = columns(fields)
+        {[@text_type_oid], ["search_path"], _} = columns(fields)
         set_search_path_recv(s, status, buffer)
 
       {:ok, msg_data_row(), buffer} ->
@@ -1014,7 +1014,7 @@ defmodule Postgrex.Protocol do
        ) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {[@text_type_oid], ["transaction_read_only"]} = columns(fields)
+        {[@text_type_oid], ["transaction_read_only"], _} = columns(fields)
         check_target_server_type_recv(s, status, buffer)
 
       {:ok, msg_data_row(values: values), buffer} ->
@@ -1611,8 +1611,9 @@ defmodule Postgrex.Protocol do
        )
        when ref == nil or protocol_types != query_types do
     with {:ok, s, buffer} <- recv_parse(s, status, buffer),
-         {:ok, param_oids, result_oids, columns, s, buffer} <- recv_describe(s, status, buffer) do
-      describe(s, query, param_oids, result_oids, columns, buffer)
+         {:ok, param_oids, result_oids, result_mods, columns, s, buffer} <-
+           recv_describe(s, status, buffer) do
+      describe(s, query, param_oids, result_oids, result_mods, columns, buffer)
     else
       {:error, %Postgrex.Error{} = error, s, buffer} ->
         {:error, %{error | query: query.statement}, s, buffer}
@@ -1626,13 +1627,13 @@ defmodule Postgrex.Protocol do
     %Query{param_oids: param_oids, result_oids: result_oids, columns: columns} = query
 
     with {:ok, s, buffer} <- recv_parse(s, status, buffer),
-         {:ok, ^param_oids, ^result_oids, ^columns, s, buffer} <-
+         {:ok, ^param_oids, ^result_oids, _, ^columns, s, buffer} <-
            recv_describe(s, status, param_oids, buffer) do
       query_put(s, query)
       {:ok, query, s, buffer}
     else
-      {:ok, ^param_oids, new_result_oids, new_columns, s, buffer} ->
-        redescribe(s, query, new_result_oids, new_columns, buffer)
+      {:ok, ^param_oids, new_result_oids, new_result_mods, new_columns, s, buffer} ->
+        redescribe(s, query, new_result_oids, new_result_mods, new_columns, buffer)
 
       {:error, %Postgrex.Error{}, _, _} = error ->
         error
@@ -1662,14 +1663,14 @@ defmodule Postgrex.Protocol do
   defp recv_describe(s, status, param_oids \\ [], buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_no_data(), buffer} ->
-        {:ok, param_oids, nil, nil, s, buffer}
+        {:ok, param_oids, nil, nil, nil, s, buffer}
 
       {:ok, msg_parameter_desc(type_oids: param_oids), buffer} ->
         recv_describe(s, status, param_oids, buffer)
 
       {:ok, msg_row_desc(fields: fields), buffer} ->
-        {result_oids, columns} = columns(fields)
-        {:ok, param_oids, result_oids, columns, s, buffer}
+        {result_oids, columns, result_mods} = columns(fields)
+        {:ok, param_oids, result_oids, result_mods, columns, s, buffer}
 
       {:ok, msg_too_many_parameters(len: len, max_len: max), buffer} ->
         msg = "postgresql protocol can not handle #{len} parameters, the maximum is #{max}"
@@ -1688,10 +1689,10 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp describe(s, query, param_oids, result_oids, columns, buffer) do
+  defp describe(s, query, param_oids, result_oids, result_mods, columns, buffer) do
     case describe_params(s, query, param_oids) do
       {:ok, query} ->
-        redescribe(s, query, result_oids, columns, buffer)
+        redescribe(s, query, result_oids, result_mods, columns, buffer)
 
       {:reload, oids} ->
         reload_describe_result(s, oids, result_oids, buffer)
@@ -1701,8 +1702,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp redescribe(s, query, result_oids, columns, buffer) do
-    with {:ok, query} <- describe_result(s, query, result_oids, columns) do
+  defp redescribe(s, query, result_oids, result_mods, columns, buffer) do
+    with {:ok, query} <- describe_result(s, query, result_oids, result_mods, columns) do
       query_put(s, query)
       {:ok, query, s, buffer}
     else
@@ -1715,8 +1716,9 @@ defmodule Postgrex.Protocol do
   end
 
   defp describe_params(%{types: types}, query, param_oids) do
-    with {:ok, param_info} <- fetch_type_info(param_oids, types),
-         {param_formats, param_types} = Enum.unzip(param_info) do
+    with {:ok, param_info} <- fetch_type_info(param_oids, types) do
+      {param_formats, param_types} = Enum.unzip(param_info)
+
       query = %Query{
         query
         | param_oids: param_oids,
@@ -1745,7 +1747,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp describe_result(%{types: types}, query, nil, nil) do
+  defp describe_result(%{types: types}, query, nil, nil, nil) do
     query = %Query{
       query
       | ref: make_ref(),
@@ -1759,9 +1761,18 @@ defmodule Postgrex.Protocol do
     {:ok, query}
   end
 
-  defp describe_result(%{types: types}, query, result_oids, columns) do
-    with {:ok, result_info} <- fetch_type_info(result_oids, types),
-         {result_formats, result_types} = Enum.unzip(result_info) do
+  defp describe_result(%{types: types}, query, result_oids, result_mods, columns) do
+    with {:ok, result_info} <- fetch_type_info(result_oids, types) do
+      {result_formats, result_types} = Enum.unzip(result_info)
+
+      result_types =
+        result_types
+        |> Enum.zip(result_mods)
+        |> Enum.map(fn
+          {{extension, sub_oids, sub_types}, mod} -> {extension, sub_oids, sub_types, mod}
+          {extension, mod} -> {extension, mod}
+        end)
+
       query = %Query{
         query
         | ref: make_ref(),
@@ -3186,8 +3197,8 @@ defmodule Postgrex.Protocol do
 
   defp columns(fields) do
     fields
-    |> Enum.map(fn row_field(type_oid: oid, name: name) -> {oid, name} end)
-    |> :lists.unzip()
+    |> Enum.map(fn row_field(type_oid: oid, type_mod: mod, name: name) -> {oid, name, mod} end)
+    |> :lists.unzip3()
   end
 
   defp column_names(fields) do

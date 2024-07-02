@@ -775,4 +775,29 @@ defmodule StreamTest do
 
     assert [[42]] = query("SELECT 42", [])
   end
+
+  test "stream with type modifier", context do
+    :ok =
+      query(
+        """
+        INSERT INTO timestamps_stream (micro, milli, sec, sec_arr)
+        VALUES ('2000-01-01', '2000-01-01', '2000-01-01', '{2000-01-01, 2000-01-02}'),
+        ('3000-01-01', '3000-01-01', '3000-01-01', '{3000-01-01, 3000-01-02}')
+        """,
+        []
+      )
+
+    query = prepare("", "SELECT * FROM timestamps_stream")
+
+    transaction(fn conn ->
+      [[row1], [row2], []] =
+        stream(query, [], max_rows: 1) |> Enum.map(fn %Result{rows: rows} -> rows end)
+
+      assert [6, 3, 0, [0, 0]] = precision(row1)
+      assert [6, 3, 0, [0, 0]] = precision(row2)
+    end)
+  end
+
+  defp precision([_ | _] = dts), do: Enum.map(dts, &precision(&1))
+  defp precision(%NaiveDateTime{microsecond: {_, p}}), do: p
 end
