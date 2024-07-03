@@ -36,8 +36,8 @@ defmodule Postgrex.TypeModule do
   are created by iterating over each extension, taking the pattern returned by the `decode/1`
   callback and creating a function that either:
 
-      - Accepts the pattern for regular extensions
-      - Accepts the pattern, sub-oids and sub-tupes for super extensions
+    - Accepts the pattern for regular extensions
+    - Accepts the pattern, sub-oids and sub-tupes for super extensions
 
   Each function also accepts several variables that help accumulate the results and a special
   variable `mod` that allows the extensions to access the type modifier of the column. This
