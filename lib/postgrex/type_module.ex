@@ -8,17 +8,17 @@ defmodule Postgrex.TypeModule do
 
   The resulting module has three main purposes:
 
-      1. Associate the type information from the bootstrap query to extensions
-      2. Encode Elixir data types into binaries to send to the Postgres server
-      3. Decode binaries sent from the Postgres server into Elixir data types
+    1. Associate the type information from the bootstrap query to extensions
+    2. Encode Elixir data types into binaries to send to the Postgres server
+    3. Decode binaries sent from the Postgres server into Elixir data types
 
   The first point is handled by creating a `find/2` function that accepts a `%Postgrex.TypeInfo{}`
   struct and a format such as `:binary`, `:text`, `:any`. It returns either a 2-tuple for
   regular extensions containing the format and the extension name or a 3-tuple for super
   extensions containing the format, the extension name and the sub-oids. Some important points:
 
-      - The type infos are associated to extensions using the `matching/1` callback
-      - The sub-oids for super extensions are created using the `oids/2` callback
+    - The type infos are associated to extensions using the `matching/1` callback
+    - The sub-oids for super extensions are created using the `oids/2` callback
 
   The second point is handled by creating encoding functions for each extension. These functions
   are created by iterating over each extension, taking the pattern returned by the `encode/1`
