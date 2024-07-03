@@ -24,8 +24,8 @@ defmodule Postgrex.TypeModule do
   are created by iterating over each extension, taking the pattern returned by the `encode/1`
   callback and creating a function that either:
 
-      - Accepts the pattern for regular extensions
-      - Accepts the pattern, sub-oids and sub-tupes for super extensions
+    - Accepts the pattern for regular extensions
+    - Accepts the pattern, sub-oids and sub-tupes for super extensions
 
   Each function is given the same name as the extension module and simply returns the body of the
   `encode/1` callback. Several helper functions that help encode parameters, lists, tuples and
