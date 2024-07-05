@@ -74,12 +74,6 @@ defmodule CalendarTest do
     assert [[~D[-0001-01-01]]] = query("SELECT date 'January 1, 2 BC'", [])
   end
 
-  test "decode date upper bound error", context do
-    assert_raise ArgumentError, fn ->
-      query("SELECT date '10000-01-01'", [])
-    end
-  end
-
   test "decode timestamp", context do
     assert [[~N[2001-01-01 00:00:00.000000]]] =
              query("SELECT timestamp '2001-01-01 00:00:00'", [])

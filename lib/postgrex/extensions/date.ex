@@ -4,11 +4,6 @@ defmodule Postgrex.Extensions.Date do
   use Postgrex.BinaryExtension, send: "date_send"
 
   @gd_epoch Date.to_gregorian_days(~D[2000-01-01])
-  @max_year 9999
-
-  # Latest date supported by Elixir. Postgresql
-  # supports later dates.
-  @max_days Date.to_gregorian_days(~D[9999-12-31])
 
   # Elixir supports earlier dates but this is the
   # earliest supported in Postgresql.
@@ -33,23 +28,18 @@ defmodule Postgrex.Extensions.Date do
 
   ## Helpers
 
-  def encode_elixir(%Date{year: year} = date) when year <= @max_year do
+  def encode_elixir(date) do
     <<4::int32(), Date.to_gregorian_days(date) - @gd_epoch::int32()>>
-  end
-
-  def encode_elixir(%Date{} = date) do
-    raise ArgumentError, "#{inspect(date)} is beyond the maximum year #{@max_year}"
   end
 
   def day_to_elixir(days) do
     days = days + @gd_epoch
 
-    if days in @min_days..@max_days do
+    if days > @min_days do
       Date.from_gregorian_days(days)
     else
       raise ArgumentError,
-            "Postgrex can only decode dates with days between #{@min_days} and #{@max_days}, " <>
-              "got: #{inspect(days)}"
+            "Postgrex can only decode dates with days after #{@min_days}, got: #{inspect(days)}"
     end
   end
 end
