@@ -242,6 +242,13 @@ defmodule CalendarTest do
            ] = query("SELECT timestamp with time zone '1981-01-01BC 00:00:00.123456'", [])
   end
 
+  test "decode timestamptz out of bounds", context do
+    %Postgrex.Error{postgres: %{message: message}} =
+      query("SELECT timestamp with time zone '4714-01-01BC 00:00:00.123456'", [])
+
+    assert message =~ "timestamp out of range"
+  end
+
   @tag :capture_log
   test "decode infinity", context do
     assert_raise ArgumentError, fn -> query("SELECT 'infinity'::timestamp", []) end
