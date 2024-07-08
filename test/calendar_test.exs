@@ -244,7 +244,7 @@ defmodule CalendarTest do
 
   test "decode timestamptz out of bounds", context do
     %Postgrex.Error{postgres: %{message: message}} =
-      query("SELECT timestamp with time zone '4714-01-01BC 00:00:00.123456'", [])
+      query("SELECT $1::timestamptz", [~U[-4713-01-01 00:00:00Z]])
 
     assert message =~ "timestamp out of range"
   end
