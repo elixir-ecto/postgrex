@@ -104,6 +104,14 @@ defmodule CalendarTest do
              query("SELECT timestamp '4713-01-01BC 00:00:00.123456'", [])
   end
 
+  test "decode timestamp with precision", context do
+    assert [[~N[2001-01-01 00:00:00.00]]] =
+             query("SELECT timestamp(2) '2001-01-01 00:00:00'", [])
+
+    assert [[[~N[2001-01-01 00:00:00.00]]]] =
+             query("SELECT ARRAY[timestamp(2) '2001-01-01 00:00:00']", [])
+  end
+
   test "decode timestamptz", context do
     assert [
              [
@@ -220,6 +228,42 @@ defmodule CalendarTest do
                }
              ]
            ] = query("SELECT timestamp with time zone '1980-01-01 01:00:00.123456'", [])
+  end
+
+  test "decode timestamptz with precision", context do
+    assert [
+             [
+               %DateTime{
+                 year: 2001,
+                 month: 1,
+                 day: 1,
+                 hour: 0,
+                 minute: 0,
+                 second: 0,
+                 microsecond: {0, 1},
+                 time_zone: "Etc/UTC",
+                 utc_offset: 0
+               }
+             ]
+           ] = query("SELECT timestamp(1) with time zone '2001-01-01 00:00:00 UTC'", [])
+
+    assert [
+             [
+               [
+                 %DateTime{
+                   year: 2001,
+                   month: 1,
+                   day: 1,
+                   hour: 0,
+                   minute: 0,
+                   second: 0,
+                   microsecond: {0, 1},
+                   time_zone: "Etc/UTC",
+                   utc_offset: 0
+                 }
+               ]
+             ]
+           ] = query("SELECT ARRAY[timestamp(1) with time zone '2001-01-01 00:00:00 UTC']", [])
   end
 
   test "decode negative timestampz", context do
