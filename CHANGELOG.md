@@ -11,6 +11,9 @@
   * Add `:commit_comment` option on transactions for prepending a SQL comment to commit statements
   * Return database messages from `handle_prepare_execute`
 
+* Backwards incompatible changes
+  * Postgrex now sets the SNI headers for SSL authentication by default. If this causes connection issues, you may set `server_name_indication: :disable` in your `:ssl_opts`
+
 ## v0.17.5 (2024-03-01)
 
 * Enhancements
