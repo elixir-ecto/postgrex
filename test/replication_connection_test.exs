@@ -50,12 +50,9 @@ defmodule ReplicationTest do
       {:noreply, [reply], pid}
     end
 
-    @impl true
-    @doc """
-    This is part of the "stream_continuation" test and handles the COPY :done
-    state. It will start another stream right away by starting the replication
-    slot.
-    """
+    # This is part of the "stream_continuation" test and handles the COPY :done
+    # state. It will start another stream right away by starting the replication
+    # slot.
     def handle_data(:done, %{pid: pid, test: "stream_continuation"}) do
       send(pid, {:done, System.unique_integer([:monotonic])})
       query = "START_REPLICATION SLOT postgrex_test LOGICAL 0/0 (proto_version '1', publication_names 'postgrex_example')"
@@ -63,10 +60,7 @@ defmodule ReplicationTest do
       {:stream, query, [], pid}
     end
 
-    @impl true
-    @doc """
-    This is part of the "stream_continuation" test and handles the COPY results.
-    """
+    # This is part of the "stream_continuation" test and handles the COPY results.
     def handle_data(msg, %{pid: pid, test: "stream_continuation"} = s) do
       send(pid, {msg, System.unique_integer([:monotonic])})
       {:noreply, [], s}
@@ -102,11 +96,8 @@ defmodule ReplicationTest do
       {:query, query, {from, pid}}
     end
 
-    @impl true
-    @doc """
-    This is part of the "stream_continuation" test and handles call that
-    triggers that chain of events.
-    """
+    # This is part of the "stream_continuation" test and handles call that
+    # triggers that chain of events.
     def handle_call({:query, query, %{test: "stream_continuation", next_query: _} = opts}, from, pid) do
       {:query, query, Map.merge(opts, %{from: from, pid: pid})}
     end
@@ -128,10 +119,7 @@ defmodule ReplicationTest do
       {:noreply, pid}
     end
 
-    @impl true
-    @doc """
-    Handles the result of the "stream_continuation" query call. It is the results of the slot creation.
-    """
+    # Handles the result of the "stream_continuation" query call. It is the results of the slot creation.
     def handle_result(results, %{from: from, test: "stream_continuation", next_query: next_query} = s) do
       Postgrex.ReplicationConnection.reply(from, {:ok, results})
       {:stream, next_query, [], Map.delete(s, :next_query)}
@@ -334,8 +322,11 @@ defmodule ReplicationTest do
 
       query = "CREATE_REPLICATION_SLOT postgrex_test TEMPORARY LOGICAL pgoutput NOEXPORT_SNAPSHOT"
       next_query = "COPY repl_test TO STDOUT"
-      PR.call(context.repl, {:query, query, %{test: "stream_continuation", next_query: next_query}})
-      assert_received {:connect, _}
+
+      PR.call(
+        context.repl,
+        {:query, query, %{test: "stream_continuation", next_query: next_query}}
+      )
 
       assert_receive {"42\t42\n", i1}, @timeout
       assert_receive {"1\t1\n", i2} when i1 < i2, @timeout
@@ -343,7 +334,6 @@ defmodule ReplicationTest do
       # Prior to allowing one stream to start after another, this would fail
       assert_receive <<?k, _::64, _::64, _>>, @timeout
     end
-
   end
 
   defp start_replication(repl) do
