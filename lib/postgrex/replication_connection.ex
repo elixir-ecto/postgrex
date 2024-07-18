@@ -527,7 +527,8 @@ defmodule Postgrex.ReplicationConnection do
   defp handle_data([], s), do: {:keep_state, s}
 
   defp handle_data([:copy_done | copies], %{state: {mod, mod_state}} = s) do
-    with {:keep_state, s} <- handle(mod, :handle_data, [:done, mod_state], nil, %{s | streaming: nil}) do
+    with {:keep_state, s} <-
+           handle(mod, :handle_data, [:done, mod_state], nil, %{s | streaming: nil}) do
       handle_data(copies, s)
     end
   end

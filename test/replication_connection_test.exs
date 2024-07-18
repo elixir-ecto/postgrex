@@ -55,7 +55,9 @@ defmodule ReplicationTest do
     # slot.
     def handle_data(:done, %{pid: pid, test: "stream_continuation"}) do
       send(pid, {:done, System.unique_integer([:monotonic])})
-      query = "START_REPLICATION SLOT postgrex_test LOGICAL 0/0 (proto_version '1', publication_names 'postgrex_example')"
+
+      query =
+        "START_REPLICATION SLOT postgrex_test LOGICAL 0/0 (proto_version '1', publication_names 'postgrex_example')"
 
       {:stream, query, [], pid}
     end
@@ -98,7 +100,11 @@ defmodule ReplicationTest do
 
     # This is part of the "stream_continuation" test and handles call that
     # triggers that chain of events.
-    def handle_call({:query, query, %{test: "stream_continuation", next_query: _} = opts}, from, pid) do
+    def handle_call(
+          {:query, query, %{test: "stream_continuation", next_query: _} = opts},
+          from,
+          pid
+        ) do
       {:query, query, Map.merge(opts, %{from: from, pid: pid})}
     end
 
@@ -120,7 +126,10 @@ defmodule ReplicationTest do
     end
 
     # Handles the result of the "stream_continuation" query call. It is the results of the slot creation.
-    def handle_result(results, %{from: from, test: "stream_continuation", next_query: next_query} = s) do
+    def handle_result(
+          results,
+          %{from: from, test: "stream_continuation", next_query: next_query} = s
+        ) do
       Postgrex.ReplicationConnection.reply(from, {:ok, results})
       {:stream, next_query, [], Map.delete(s, :next_query)}
     end
