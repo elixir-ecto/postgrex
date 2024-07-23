@@ -254,7 +254,7 @@ defmodule Postgrex.Types do
 
   Type modules are given to Postgrex on `start_link` via the `:types`
   option and are used to control how Postgrex encodes and decodes data
-  coming from Postgrex.
+  coming from PostgreSQL.
 
   For example, to define a new type module with a custom extension
   called `MyExtension` while also changing `Postgrex`'s default
