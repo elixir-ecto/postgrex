@@ -10,7 +10,7 @@ defmodule Postgrex.Result do
     * `num_rows` - The number of fetched or affected rows;
     * `connection_id` - The OS pid of the PostgreSQL backend that executed the query;
     * `messages` - A list of maps of messages, such as hints and notices, sent by the
-      the driver during the execution of the query
+      driver during the execution of the query.
   """
 
   @type t :: %__MODULE__{
