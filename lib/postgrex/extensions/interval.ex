@@ -75,7 +75,7 @@ defmodule Postgrex.Extensions.Interval do
     def encode(_) do
       quote location: :keep do
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
-          microseconds = 1_000_000 * secs + microseconds
+          microseconds = 1_000_000 * seconds + microseconds
           <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
 
         other ->
