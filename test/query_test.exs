@@ -4,6 +4,8 @@ defmodule QueryTest do
   import ExUnit.CaptureLog
   alias Postgrex, as: P
 
+  Postgrex.Types.define(Postgrex.ElixirDurationTypes, [], interval_decode_type: Duration)
+
   setup context do
     opts = [
       database: "postgrex_test",
@@ -131,6 +133,66 @@ defmodule QueryTest do
 
     assert [[%Postgrex.Interval{months: 0, days: 0, secs: 10, microsecs: 240_000}]] =
              query("SELECT interval '10240000 microseconds'", [])
+  end
+
+  if Version.match?(System.version(), ">= 1.17.0") do
+    test "decode interval with Elixir Duration" do
+      opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
+      {:ok, pid} = P.start_link(opts)
+
+      assert [[%Duration{microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '0'", []).rows
+
+      assert [[%Duration{year: 100, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '100 years'", []).rows
+
+      assert [[%Duration{month: 10, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '10 months'", []).rows
+
+      assert [[%Duration{week: 100, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '100 weeks'", []).rows
+
+      assert [[%Duration{day: 5, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '5 days'", []).rows
+
+      assert [[%Duration{hour: 100, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '100 hours'", []).rows
+
+      assert [[%Duration{minute: 10, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '10 minutes'", []).rows
+
+      assert [[%Duration{second: 10, microsecond: {0, 6}}]] =
+               P.query!(pid, "SELECT interval '10 secs'", []).rows
+
+      assert [
+               [
+                 %Duration{
+                   year: 1,
+                   month: 2,
+                   week: 5,
+                   day: 5,
+                   hour: 3,
+                   minute: 2,
+                   second: 1,
+                   microsecond: {0, 6}
+                 }
+               ]
+             ] =
+               P.query!(
+                 pid,
+                 "SELECT interval '1 year 2 months 40 days 3 hours 2 minutes 1 seconds'",
+                 []
+               ).rows
+
+      assert [[%Duration{second: 53, microsecond: {204_800, 6}}]] =
+               P.query!(pid, "SELECT interval '53 secs 204800 microseconds'", []).rows
+
+      assert [[%Duration{second: 10, microsecond: {240_000, 6}}]] =
+               P.query!(pid, "SELECT interval '10240000 microseconds'", []).rows
+
+      assert [[[%Duration{second: 10, microsecond: {240_000, 6}}]]] =
+               P.query!(pid, "SELECT ARRAY[interval '10240000 microseconds']", []).rows
+    end
   end
 
   test "decode point", context do
@@ -894,6 +956,44 @@ defmodule QueryTest do
              query("SELECT $1::interval", [
                %Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 1_024_000}
              ])
+  end
+
+  if Version.match?(System.version(), ">= 1.17.0") do
+    test "encode interval with Elixir duration", context do
+      assert [[%Postgrex.Interval{months: 0, days: 0, secs: 0, microsecs: 0}]] =
+               query("SELECT $1::interval", [Duration.new!([])])
+
+      assert [[%Postgrex.Interval{months: 100, days: 0, secs: 0, microsecs: 0}]] =
+               query("SELECT $1::interval", [Duration.new!(month: 100)])
+
+      assert [[%Postgrex.Interval{months: 0, days: 100, secs: 0, microsecs: 0}]] =
+               query("SELECT $1::interval", [Duration.new!(day: 100)])
+
+      assert [[%Postgrex.Interval{months: 0, days: 0, secs: 100, microsecs: 0}]] =
+               query("SELECT $1::interval", [Duration.new!(second: 100)])
+
+      assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 0}]] =
+               query("SELECT $1::interval", [Duration.new!(month: 14, day: 40, second: 10920)])
+
+      assert [[%Postgrex.Interval{months: 14, days: 40, secs: 10921, microsecs: 24000}]] =
+               query("SELECT $1::interval", [
+                 Duration.new!(month: 14, day: 40, second: 10920, microsecond: {1_024_000, 0})
+               ])
+
+      assert [[%Postgrex.Interval{months: 74, days: 54, secs: 46921, microsecs: 24000}]] =
+               query("SELECT $1::interval", [
+                 Duration.new!(
+                   year: 5,
+                   month: 14,
+                   week: 2,
+                   day: 40,
+                   hour: 9,
+                   minute: 60,
+                   second: 10920,
+                   microsecond: {1_024_000, 0}
+                 )
+               ])
+    end
   end
 
   test "encode arrays", context do
