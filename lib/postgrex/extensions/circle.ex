@@ -10,7 +10,7 @@ defmodule Postgrex.Extensions.Circle do
         <<24::int32(), x::float64(), y::float64(), r::float64()>>
 
       other ->
-        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Path)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Circle)
     end
   end
 

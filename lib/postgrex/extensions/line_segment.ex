@@ -13,7 +13,7 @@ defmodule Postgrex.Extensions.LineSegment do
         [<<32::int32()>>, encoded_p1 | encoded_p2]
 
       other ->
-        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Line)
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.LineSegment)
     end
   end
 
