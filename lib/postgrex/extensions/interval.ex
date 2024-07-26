@@ -5,7 +5,7 @@ defmodule Postgrex.Extensions.Interval do
 
   def init(opts), do: Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
-  if Version.match?(System.version(), ">= 1.17.0") do
+  if Code.ensure_loaded?(Duration) do
     def encode(_) do
       quote location: :keep do
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
