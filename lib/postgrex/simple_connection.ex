@@ -325,7 +325,7 @@ defmodule Postgrex.SimpleConnection do
           case handle_event(:internal, {:connect, :init}, @state, state) do
             {:keep_state, state} -> {:ok, @state, state}
             {:keep_state, state, actions} -> {:ok, @state, state, actions}
-            {:stop, _reason, _state} = stop -> stop
+            {:stop, reason, _state} -> {:stop, reason}
           end
         else
           {:ok, @state, state, {:next_event, :internal, {:connect, :init}}}
