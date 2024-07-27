@@ -4,6 +4,9 @@ defmodule Postgrex.Extensions.Time do
   use Postgrex.BinaryExtension, send: "time_send"
 
   @default_precision 6
+  # -1: user did not specify precision
+  # nil: coming from a super type that does not pass modifier for sub-type
+  @unspecified_precision [-1, nil]
 
   def encode(_) do
     quote location: :keep do
@@ -31,10 +34,7 @@ defmodule Postgrex.Extensions.Time do
   end
 
   def microsecond_to_elixir(microsec, precision) do
-    # use the default precision if the precision modifier from postgres is -1 (this means no precision specified)
-    # or if the precision is missing because we are in a super type which does not give us the sub-type's modifier
-    precision = if precision in [-1, nil], do: @default_precision, else: precision
-
+    precision = if precision in @unspecified_precision, do: @default_precision, else: precision
     sec = div(microsec, 1_000_000)
     microsec = rem(microsec, 1_000_000)
 

@@ -6,6 +6,13 @@ defmodule Postgrex.Extensions.Interval do
   def init(opts), do: Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
   if Code.ensure_loaded?(Duration) do
+    import Bitwise, warn: false
+    @default_precision 6
+    @precision_mask 0xFFFF
+    # 0xFFFF: user did not specify precision (2's complement version of -1)
+    # nil: coming from a super type that does not pass modifier for sub-type
+    @unspecified_precision [0xFFFF, nil]
+
     def encode(_) do
       quote location: :keep do
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
@@ -57,6 +64,13 @@ defmodule Postgrex.Extensions.Interval do
               seconds = rem(seconds, 60)
               hours = div(minutes, 60)
               minutes = rem(minutes, 60)
+              type_mod = var!(mod)
+              precision = if type_mod, do: type_mod &&& unquote(@precision_mask)
+
+              precision =
+                if precision in unquote(@unspecified_precision),
+                  do: unquote(@default_precision),
+                  else: precision
 
               Duration.new!(
                 year: years,
@@ -66,7 +80,7 @@ defmodule Postgrex.Extensions.Interval do
                 hour: hours,
                 minute: minutes,
                 second: seconds,
-                microsecond: {microseconds, 6}
+                microsecond: {microseconds, precision}
               )
           end
       end
