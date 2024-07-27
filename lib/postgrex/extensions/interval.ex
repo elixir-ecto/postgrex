@@ -6,7 +6,7 @@ defmodule Postgrex.Extensions.Interval do
   def init(opts), do: Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
   if Code.ensure_loaded?(Duration) do
-    import Bitwise
+    import Bitwise, warn: false
     @default_precision 6
     @precision_mask 0xFFFF
 
