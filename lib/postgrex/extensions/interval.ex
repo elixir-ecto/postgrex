@@ -1,15 +1,15 @@
 defmodule Postgrex.Extensions.Interval do
   @moduledoc false
   import Postgrex.BinaryUtils, warn: false
-  import Bitwise
   use Postgrex.BinaryExtension, send: "interval_send"
-
-  @default_precision 6
-  @precision_mask 0xFFFF
 
   def init(opts), do: Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
   if Code.ensure_loaded?(Duration) do
+    import Bitwise
+    @default_precision 6
+    @precision_mask 0xFFFF
+
     def encode(_) do
       quote location: :keep do
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
