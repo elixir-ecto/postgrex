@@ -193,6 +193,17 @@ defmodule QueryTest do
       assert [[[%Duration{second: 10, microsecond: {240_000, 6}}]]] =
                P.query!(pid, "SELECT ARRAY[interval '10240000 microseconds']", []).rows
     end
+
+    test "decode interval with Elixir Duration and precision" do
+      opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
+      {:ok, pid} = P.start_link(opts)
+
+      assert [[%Duration{second: 10, microsecond: {240_000, 2}}]] =
+               P.query!(pid, "SELECT interval(2) '10240000 microseconds'", []).rows
+
+      assert [[[%Duration{second: 10, microsecond: {0, 0}}]]] =
+               P.query!(pid, "SELECT ARRAY[interval(0) '10240000 microseconds']", []).rows
+    end
   end
 
   test "decode point", context do

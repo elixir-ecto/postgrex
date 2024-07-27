@@ -1,7 +1,11 @@
 defmodule Postgrex.Extensions.Interval do
   @moduledoc false
   import Postgrex.BinaryUtils, warn: false
+  import Bitwise
   use Postgrex.BinaryExtension, send: "interval_send"
+
+  @default_precision 6
+  @precision_mask 0xFFFF
 
   def init(opts), do: Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
@@ -58,6 +62,12 @@ defmodule Postgrex.Extensions.Interval do
               hours = div(minutes, 60)
               minutes = rem(minutes, 60)
 
+              precision =
+                case var!(mod) do
+                  unspecified when unspecified in [-1, nil] -> unquote(@default_precision)
+                  modifier -> modifier &&& unquote(@precision_mask)
+                end
+
               Duration.new!(
                 year: years,
                 month: months,
@@ -66,7 +76,7 @@ defmodule Postgrex.Extensions.Interval do
                 hour: hours,
                 minute: minutes,
                 second: seconds,
-                microsecond: {microseconds, 6}
+                microsecond: {microseconds, precision}
               )
           end
       end
