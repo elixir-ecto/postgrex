@@ -60,7 +60,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 
 (2) Timezones will always be normalized to UTC or assumed to be UTC when no information is available, either by PostgreSQL or Postgrex
 
-(3) `%Duration{}` may only be used with Elixir 1.17.0+. Intervals will only be decoded into a `%Duration{}` struct if the option `interval_decode_type: Duration` is passed to `Postgrex.Types.define/3`.
+(3) `%Duration{}` may only be used with Elixir 1.17+. Intervals will only be decoded into a `%Duration{}` struct if the option `interval_decode_type: Duration` is passed to `Postgrex.Types.define/3`.
 
 (4) Enumerated types (enum) are custom named database types with strings as values.
 

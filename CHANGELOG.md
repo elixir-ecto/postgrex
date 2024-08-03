@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.19.0 (2024-08-03)
+
+* Enhancements
+  * Respect precision for interval, time, timestamp, and timestamptz
+  * Remove restriction on year 9999 on datetime columns
+  * Support decoding and encoding Elixir's v1.17 Duration as interval
+  * Allow starting one stream after the other in replication
+
+* Bug fixes
+  * Return `{:stop, state}` from `gen_statem` connection callback
+
 ## v0.18.0 (2024-05-18)
 
 * Deprecations
