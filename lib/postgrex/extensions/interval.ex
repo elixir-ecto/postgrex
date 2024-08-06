@@ -52,7 +52,8 @@ defmodule Postgrex.Extensions.Interval do
     def decode(type) do
       quote location: :keep do
         <<16::int32(), microseconds::int64(), days::int32(), months::int32()>> ->
-          precision = if var!(mod), do: var!(mod) &&& unquote(@precision_mask)
+          type_mod = var!(mod)
+          precision = if type_mod, do: type_mod &&& unquote(@precision_mask)
 
           unquote(__MODULE__).decode_interval(
             microseconds,
