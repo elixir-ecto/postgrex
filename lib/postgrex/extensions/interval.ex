@@ -117,7 +117,7 @@ defmodule Postgrex.Extensions.Interval do
     )
   end
 
-  def decode_interval(_, _, _, type) do
+  def decode_interval(_, _, _, _, type) do
     raise ArgumentError,
           "#{inspect(type)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
   end
