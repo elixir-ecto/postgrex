@@ -63,6 +63,49 @@ defmodule Postgrex.Extensions.Interval do
           )
       end
     end
+
+    ## Helpers
+
+    def decode_interval(microseconds, days, months, _precision, Postgrex.Interval) do
+      seconds = div(microseconds, 1_000_000)
+      microseconds = rem(microseconds, 1_000_000)
+
+      %Postgrex.Interval{
+        months: months,
+        days: days,
+        secs: seconds,
+        microsecs: microseconds
+      }
+    end
+
+    def decode_interval(microseconds, days, months, precision, Duration) do
+      years = div(months, 12)
+      months = rem(months, 12)
+      weeks = div(days, 7)
+      days = rem(days, 7)
+      seconds = div(microseconds, 1_000_000)
+      microseconds = rem(microseconds, 1_000_000)
+      minutes = div(seconds, 60)
+      seconds = rem(seconds, 60)
+      hours = div(minutes, 60)
+      minutes = rem(minutes, 60)
+
+      precision =
+        if precision in unquote(@unspecified_precision),
+          do: unquote(@default_precision),
+          else: precision
+
+      Duration.new!(
+        year: years,
+        month: months,
+        week: weeks,
+        day: days,
+        hour: hours,
+        minute: minutes,
+        second: seconds,
+        microsecond: {microseconds, precision}
+      )
+    end
   else
     def encode(_) do
       quote location: :keep do
@@ -81,48 +124,19 @@ defmodule Postgrex.Extensions.Interval do
           unquote(__MODULE__).decode_interval(microseconds, days, months, nil, Postgrex.Interval)
       end
     end
-  end
 
-  ## Helpers
+    ## Helpers
 
-  def decode_interval(microseconds, days, months, _precision, Postgrex.Interval) do
-    seconds = div(microseconds, 1_000_000)
-    microseconds = rem(microseconds, 1_000_000)
+    def decode_interval(microseconds, days, months, _precision, Postgrex.Interval) do
+      seconds = div(microseconds, 1_000_000)
+      microseconds = rem(microseconds, 1_000_000)
 
-    %Postgrex.Interval{
-      months: months,
-      days: days,
-      secs: seconds,
-      microsecs: microseconds
-    }
-  end
-
-  def decode_interval(microseconds, days, months, precision, Duration) do
-    years = div(months, 12)
-    months = rem(months, 12)
-    weeks = div(days, 7)
-    days = rem(days, 7)
-    seconds = div(microseconds, 1_000_000)
-    microseconds = rem(microseconds, 1_000_000)
-    minutes = div(seconds, 60)
-    seconds = rem(seconds, 60)
-    hours = div(minutes, 60)
-    minutes = rem(minutes, 60)
-
-    precision =
-      if precision in unquote(@unspecified_precision),
-        do: unquote(@default_precision),
-        else: precision
-
-    Duration.new!(
-      year: years,
-      month: months,
-      week: weeks,
-      day: days,
-      hour: hours,
-      minute: minutes,
-      second: seconds,
-      microsecond: {microseconds, precision}
-    )
+      %Postgrex.Interval{
+        months: months,
+        days: days,
+        secs: seconds,
+        microsecs: microseconds
+      }
+    end
   end
 end
