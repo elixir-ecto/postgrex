@@ -3,7 +3,16 @@ defmodule Postgrex.Extensions.Interval do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "interval_send"
 
-  def init(opts), do: Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
+  def init(opts) do
+    case Keyword.get(opts, :interval_decode_type, Postgrex.Interval) do
+      type when type in [Postgrex.Interval, Duration] ->
+        type
+
+      other ->
+        raise ArgumentError,
+              "#{inspect(other)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
+    end
+  end
 
   if Code.ensure_loaded?(Duration) do
     import Bitwise, warn: false
@@ -115,10 +124,5 @@ defmodule Postgrex.Extensions.Interval do
       second: seconds,
       microsecond: {microseconds, precision}
     )
-  end
-
-  def decode_interval(_, _, _, _, type) do
-    raise ArgumentError,
-          "#{inspect(type)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
   end
 end
