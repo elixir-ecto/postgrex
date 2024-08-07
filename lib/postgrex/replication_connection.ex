@@ -611,11 +611,23 @@ defmodule Postgrex.ReplicationConnection do
     {:stop, reason, s}
   end
 
-  defp reconnect_or_stop(error, _reason, _protocol, %{auto_reconnect: true} = s)
+  defp reconnect_or_stop(error, reason, _protocol, %{auto_reconnect: true} = s)
        when error in [:error, :disconnect] do
     %{state: {mod, mod_state}} = s
+
+    Logger.error(
+      "#{inspect(pid_or_name())} (#{inspect(mod)}) is reconnecting due to reason: #{Exception.format(:error, reason)}"
+    )
+
     {:keep_state, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
     {:keep_state, %{s | streaming: nil}, {:next_event, :internal, {:connect, :reconnect}}}
+  end
+
+  defp pid_or_name do
+    case Process.info(self(), :registered_name) do
+      {:registered_name, atom} when is_atom(atom) -> atom
+      _ -> self()
+    end
   end
 
   defp opts(), do: Process.get(__MODULE__)
