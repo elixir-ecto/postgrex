@@ -427,7 +427,7 @@ defmodule Postgrex.ReplicationConnection do
   """
   @spec decode_lsn(String.t()) :: {:ok, integer} | :error
   def decode_lsn(lsn) when is_binary(lsn) do
-    with [file_id, offset] <- String.split(lsn, "/", trim: true),
+    with [file_id, offset] <- :binary.split(lsn, "/"),
          true <- byte_size(file_id) <= @max_lsn_component_size,
          true <- byte_size(offset) <= @max_lsn_component_size,
          {file_id, ""} when file_id >= 0 <- Integer.parse(file_id, 16),
