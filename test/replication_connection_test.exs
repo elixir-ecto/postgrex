@@ -203,6 +203,7 @@ defmodule ReplicationTest do
   describe "auto-reconnect" do
     @describetag opts: [auto_reconnect: true]
 
+    @tag :capture_log
     test "on disconnect", context do
       assert_receive {:connect, i1}
       :sys.suspend(context.repl)
@@ -215,6 +216,7 @@ defmodule ReplicationTest do
       assert_receive {:connect, i3} when i2 < i3, @timeout
     end
 
+    @tag :capture_log
     test "resumes streaming after reconnect", context do
       assert_receive {:connect, i1}
       start_replication(context.repl)
