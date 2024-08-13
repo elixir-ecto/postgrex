@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.19.1 (2024-08-13)
+
+* Enhancements
+  * Allow encoding/decoding of LSN
+
+* Bug fixes
+  * Fix Dialyzer warnings on interval extension
+  * Log error message if Postgrex.ReplicationConnection is reconnecting
+
 ## v0.19.0 (2024-08-03)
 
 * Enhancements
