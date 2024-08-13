@@ -58,6 +58,12 @@ defmodule QueryTest do
     assert [[Decimal.new("NaN")]] == query("SELECT 'NaN'::numeric", [])
   end
 
+  @tag min_pg_version: "10.0"
+  test "decode lsn", context do
+    assert [[int, text]] = query("SELECT pg_current_wal_lsn(), pg_current_wal_lsn()::text", [])
+    assert Postgrex.ReplicationConnection.decode_lsn(text) == {:ok, int}
+  end
+
   @tag min_pg_version: "14.0"
   test "decode numeric infinity", context do
     assert [[Decimal.new("Inf")]] == query("SELECT NUMERIC 'Infinity'", [])
