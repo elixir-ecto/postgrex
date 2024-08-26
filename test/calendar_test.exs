@@ -27,6 +27,12 @@ defmodule CalendarTest do
   test "decode time with precision", context do
     assert [[~T[00:00:00.000]]] = query("SELECT time(3) '00:00:00'", [])
     assert [[[~T[00:00:00.000]]]] = query("SELECT ARRAY[time(3) '00:00:00']", [])
+
+    assert [[[[~T[00:00:00.000], ~T[00:00:00.000]], [~T[01:00:00.000], ~T[01:00:00.000]]]]] =
+             query(
+               "SELECT ARRAY[ARRAY[time(3) '00:00:00', time(3) '00:00:00'], ARRAY[time(3) '01:00:00', time(3) '01:00:00']]",
+               []
+             )
   end
 
   test "decode timetz", context do

@@ -42,6 +42,7 @@ defmodule Postgrex.Extensions.Range do
         type =
           case type do
             {extension, sub_oids, sub_types} -> {extension, sub_oids, sub_types, nil}
+            {extension, _} -> {extension, nil}
             extension -> {extension, nil}
           end
 
