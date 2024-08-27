@@ -31,14 +31,13 @@ defmodule Postgrex.Extensions.Multirange do
         <<_num_ranges::int32(), ranges::binary>> = data
 
         # decode_list/2 defined by TypeModule
-        type =
+        sub_type_with_mod =
           case type do
             {extension, sub_oids, sub_types} -> {extension, sub_oids, sub_types, nil}
-            {extension, _} -> {extension, nil}
             extension -> {extension, nil}
           end
 
-        bound_decoder = &decode_list(&1, type)
+        bound_decoder = &decode_list(&1, sub_type_with_mod)
         unquote(__MODULE__).decode(ranges, bound_decoder, [])
     end
   end
