@@ -39,13 +39,13 @@ defmodule Postgrex.Extensions.Range do
         <<flags, data::binary>> = binary
 
         # decode_list/2 defined by TypeModule
-        type =
+        sub_type_with_mod =
           case type do
             {extension, sub_oids, sub_types} -> {extension, sub_oids, sub_types, nil}
             extension -> {extension, nil}
           end
 
-        case decode_list(data, type) do
+        case decode_list(data, sub_type_with_mod) do
           [upper, lower] ->
             unquote(__MODULE__).decode(flags, [lower, upper])
 

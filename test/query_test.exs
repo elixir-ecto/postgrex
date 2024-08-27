@@ -531,6 +531,27 @@ defmodule QueryTest do
                }
              ]
            ] = query("SELECT '[2014-1-1,2014-12-31)'::tsrange", [])
+
+    assert [
+      [
+        [
+          %Postgrex.Range{
+            lower: ~N[2014-01-01 00:00:00.000000],
+            upper: ~N[2014-12-31 00:00:00.000000],
+            lower_inclusive: true,
+            upper_inclusive: false
+          },
+          %Postgrex.Range{
+            lower: ~N[2014-01-01 00:00:00.000000],
+            upper: ~N[2014-12-31 00:00:00.000000],
+            lower_inclusive: true,
+            upper_inclusive: false
+          }
+        ]
+      ]
+    ]
+
+    query("SELECT ARRAY['[2014-1-1,2014-12-31)'::tsrange, '[2014-1-1,2014-12-31)'::tsrange]", [])
   end
 
   @tag min_pg_version: "14.0"
