@@ -1605,7 +1605,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp parse_describe_comment_msgs(query, comment, tail) when is_binary(comment) do
-    statement = "/* #{comment} */\n" <> query.statement
+    statement = query.statement <> "/* #{comment} */"
     query = %{query | statement: statement}
     parse_describe_msgs(query, tail)
   end
