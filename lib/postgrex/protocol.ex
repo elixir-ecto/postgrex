@@ -16,6 +16,9 @@ defmodule Postgrex.Protocol do
                                      message:
                                        "`:commit_comment` option cannot contain sequence \"*/\""
                                    )
+  @comment_validation_error Postgrex.Error.exception(
+                              message: "`:comment` option cannot contain sequence \"*/\""
+                            )
 
   defstruct sock: nil,
             connection_id: nil,
@@ -343,12 +346,19 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{name: ""} = query, opts, s) do
-    prepare = Keyword.get(opts, :postgrex_prepare, false)
-    status = new_status(opts, prepare: prepare)
+    prepare? = Keyword.get(opts, :postgrex_prepare, false)
+    status = new_status(opts, prepare: prepare?)
 
-    case prepare do
-      true -> parse_describe_close(s, status, query)
-      false -> parse_describe_flush(s, status, query)
+    if prepare? do
+      parse_describe_close(s, status, query)
+    else
+      comment = Keyword.get(opts, :comment)
+
+      if is_binary(comment) && String.contains?(comment, "*/") do
+        raise @comment_validation_error
+      else
+        parse_describe_flush(s, status, query, comment)
+      end
     end
   end
 
@@ -1418,9 +1428,9 @@ defmodule Postgrex.Protocol do
     parse_describe(s, status, query)
   end
 
-  defp parse_describe_flush(s, %{mode: :transaction} = status, query) do
+  defp parse_describe_flush(s, %{mode: :transaction} = status, query, comment) do
     %{buffer: buffer} = s
-    msgs = parse_describe_msgs(query, [msg_flush()])
+    msgs = parse_describe_comment_msgs(query, comment, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, %Query{ref: ref} = query, %{postgres: postgres} = s, buffer} <-
@@ -1442,11 +1452,12 @@ defmodule Postgrex.Protocol do
   defp parse_describe_flush(
          %{postgres: :transaction, buffer: buffer} = s,
          %{mode: :savepoint} = status,
-         query
+         query,
+         comment
        ) do
     msgs =
       [msg_query(statement: "SAVEPOINT postgrex_query")] ++
-        parse_describe_msgs(query, [msg_flush()])
+        parse_describe_comment_msgs(query, comment, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
@@ -1466,7 +1477,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp parse_describe_flush(%{postgres: postgres} = s, %{mode: :savepoint}, _)
+  defp parse_describe_flush(%{postgres: postgres} = s, %{mode: :savepoint}, _, _)
        when postgres in [:idle, :error] do
     transaction_error(s, postgres)
   end
@@ -1591,6 +1602,16 @@ defmodule Postgrex.Protocol do
   defp close_parse_describe_flush(%{postgres: postgres} = s, %{mode: :savepoint}, _)
        when postgres in [:idle, :error] do
     transaction_error(s, postgres)
+  end
+
+  defp parse_describe_comment_msgs(query, comment, tail) when is_binary(comment) do
+    statement = "/* #{comment} */\n" <> query.statement
+    query = %{query | statement: statement}
+    parse_describe_msgs(query, tail)
+  end
+
+  defp parse_describe_comment_msgs(query, _comment, tail) do
+    parse_describe_msgs(query, tail)
   end
 
   defp parse_describe_msgs(query, tail) do
@@ -2079,7 +2100,7 @@ defmodule Postgrex.Protocol do
 
       _ ->
         # flush awaiting execute or declare
-        parse_describe_flush(s, status, query)
+        parse_describe_flush(s, status, query, nil)
     end
   end
 
@@ -2105,7 +2126,7 @@ defmodule Postgrex.Protocol do
   defp handle_prepare_execute(%Query{name: ""} = query, params, opts, s) do
     status = new_status(opts)
 
-    case parse_describe_flush(s, status, query) do
+    case parse_describe_flush(s, status, query, nil) do
       {:ok, query, s} ->
         bind_execute_close(s, status, query, params)
 
@@ -2396,7 +2417,7 @@ defmodule Postgrex.Protocol do
   defp handle_prepare_bind(%Query{name: ""} = query, params, res, opts, s) do
     status = new_status(opts)
 
-    case parse_describe_flush(s, status, query) do
+    case parse_describe_flush(s, status, query, nil) do
       {:ok, query, s} ->
         bind(s, status, query, params, res)
 
@@ -3371,6 +3392,7 @@ defmodule Postgrex.Protocol do
 
   defp msg_send(s, msgs, buffer) when is_list(msgs) do
     binaries = Enum.reduce(msgs, [], &[&2 | maybe_encode_msg(&1)])
+
     do_send(s, binaries, buffer)
   end
 

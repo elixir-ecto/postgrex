@@ -363,7 +363,8 @@ defmodule Postgrex do
           {:ok, Postgrex.Query.t()} | {:error, Exception.t()}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    opts = Keyword.put(opts, :postgrex_prepare, true)
+    prepare? = !Keyword.get(opts, :comment)
+    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
     DBConnection.prepare(conn, query, opts)
   end
 
@@ -373,7 +374,8 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t()
   def prepare!(conn, name, statement, opts \\ []) do
-    opts = Keyword.put(opts, :postgrex_prepare, true)
+    prepare? = !Keyword.get(opts, :comment)
+    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
