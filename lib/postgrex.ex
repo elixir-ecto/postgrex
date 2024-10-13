@@ -289,6 +289,9 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
+    prepare? = !Keyword.get(opts, :comment)
+    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
+
     if name = Keyword.get(opts, :cache_statement) do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 

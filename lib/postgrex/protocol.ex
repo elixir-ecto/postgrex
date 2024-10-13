@@ -371,11 +371,11 @@ defmodule Postgrex.Protocol do
     if new_query = cached_query(s, query) do
       {:ok, new_query, s}
     else
-      prepare = Keyword.get(opts, :postgrex_prepare, false)
-      status = new_status(opts, prepare: prepare)
+      prepare? = Keyword.get(opts, :postgrex_prepare, false)
+      status = new_status(opts, prepare: prepare?)
 
       result =
-        case prepare do
+        case prepare? do
           true -> close_parse_describe(s, status, query)
           false -> close_parse_describe_flush(s, status, query)
         end
