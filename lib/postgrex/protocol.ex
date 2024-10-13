@@ -346,19 +346,21 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_prepare(%Query{name: ""} = query, opts, s) do
-    prepare? = Keyword.get(opts, :postgrex_prepare, false)
-    status = new_status(opts, prepare: prepare?)
+    prepare = Keyword.get(opts, :postgrex_prepare, false)
+    status = new_status(opts, prepare: prepare)
 
-    if prepare? do
-      parse_describe_close(s, status, query)
-    else
-      comment = Keyword.get(opts, :comment)
+    case prepare do
+      true ->
+        parse_describe_close(s, status, query)
 
-      if is_binary(comment) && String.contains?(comment, "*/") do
-        raise @comment_validation_error
-      else
-        parse_describe_flush(s, status, query, comment)
-      end
+      false ->
+        comment = Keyword.get(opts, :comment)
+
+        if is_binary(comment) && String.contains?(comment, "*/") do
+          raise @comment_validation_error
+        else
+          parse_describe_flush(s, status, query, comment)
+        end
     end
   end
 
@@ -371,11 +373,11 @@ defmodule Postgrex.Protocol do
     if new_query = cached_query(s, query) do
       {:ok, new_query, s}
     else
-      prepare? = Keyword.get(opts, :postgrex_prepare, false)
-      status = new_status(opts, prepare: prepare?)
+      prepare = Keyword.get(opts, :postgrex_prepare, false)
+      status = new_status(opts, prepare: prepare)
 
       result =
-        case prepare? do
+        case prepare do
           true -> close_parse_describe(s, status, query)
           false -> close_parse_describe_flush(s, status, query)
         end
@@ -1605,7 +1607,7 @@ defmodule Postgrex.Protocol do
   end
 
   defp parse_describe_comment_msgs(query, comment, tail) when is_binary(comment) do
-    statement = query.statement <> "/* #{comment} */"
+    statement = query.statement <> "/*#{comment}*/"
     query = %{query | statement: statement}
     parse_describe_msgs(query, tail)
   end
@@ -3392,7 +3394,6 @@ defmodule Postgrex.Protocol do
 
   defp msg_send(s, msgs, buffer) when is_list(msgs) do
     binaries = Enum.reduce(msgs, [], &[&2 | maybe_encode_msg(&1)])
-
     do_send(s, binaries, buffer)
   end
 

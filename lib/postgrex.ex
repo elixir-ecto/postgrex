@@ -289,9 +289,6 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
-    prepare? = !Keyword.get(opts, :comment)
-    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
-
     if name = Keyword.get(opts, :cache_statement) do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 
@@ -366,7 +363,7 @@ defmodule Postgrex do
           {:ok, Postgrex.Query.t()} | {:error, Exception.t()}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    prepare? = !Keyword.get(opts, :comment)
+    prepare? = Keyword.get(opts, :comment) == nil
     opts = Keyword.put(opts, :postgrex_prepare, prepare?)
     DBConnection.prepare(conn, query, opts)
   end
@@ -377,7 +374,7 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t()
   def prepare!(conn, name, statement, opts \\ []) do
-    prepare? = !Keyword.get(opts, :comment)
+    prepare? = Keyword.get(opts, :comment) == nil
     opts = Keyword.put(opts, :postgrex_prepare, prepare?)
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
