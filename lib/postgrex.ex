@@ -169,6 +169,11 @@ defmodule Postgrex do
       This is useful when using Postgrex against systems that do not support composite types
       (default: `false`).
 
+    * `:comment` - When a binary string is provided, appends the given text as a comment to the
+      query.  This can be useful for tracing purposes, such as when using SQLCommenter or similar
+      tools to track query performance and behavior. Note that including a comment disables query
+      caching since each query with a different comment is treated as unique (default: `nil`).
+
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
   for more information.
