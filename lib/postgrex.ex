@@ -246,7 +246,7 @@ defmodule Postgrex do
       ]
 
   """
-  @spec start_link([start_option]) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
+  @spec start_link([start_option]) :: GenServer.on_start()
   def start_link(opts) do
     opts = Postgrex.Utils.default_opts(opts)
     DBConnection.start_link(Postgrex.Protocol, opts)
