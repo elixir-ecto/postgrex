@@ -16,9 +16,6 @@ defmodule Postgrex.Protocol do
                                      message:
                                        "`:commit_comment` option cannot contain sequence \"*/\""
                                    )
-  @comment_validation_error Postgrex.Error.exception(
-                              message: "`:comment` option cannot contain sequence \"*/\""
-                            )
 
   defstruct sock: nil,
             connection_id: nil,
@@ -355,12 +352,7 @@ defmodule Postgrex.Protocol do
 
       false ->
         comment = Keyword.get(opts, :comment)
-
-        if is_binary(comment) && String.contains?(comment, "*/") do
-          raise @comment_validation_error
-        else
-          parse_describe_flush(s, status, query, comment)
-        end
+        parse_describe_flush(s, status, query, comment)
     end
   end
 
