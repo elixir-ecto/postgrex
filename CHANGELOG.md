@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.19.2 (2024-10-23)
+
+* Bug fixes
+  * Protect against message length overflow vulnerability
+
 ## v0.19.1 (2024-08-13)
 
 * Enhancements
