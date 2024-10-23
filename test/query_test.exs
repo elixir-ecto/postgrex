@@ -1853,6 +1853,10 @@ defmodule QueryTest do
 
   test "comment", context do
     assert [[123]] = query("select 123", [], comment: "query comment goes here")
+
+    assert_raise Postgrex.Error, fn ->
+      query("select 123", [], comment: "*/ DROP TABLE 123 --")
+    end
   end
 
   @tag :big_binary

@@ -67,6 +67,10 @@ defmodule Postgrex do
   @max_rows 500
   @timeout 15_000
 
+  @comment_validation_error Postgrex.Error.exception(
+                              message: "`:comment` option cannot contain sequence \"*/\""
+                            )
+
   ### PUBLIC API ###
 
   @doc """
@@ -294,6 +298,8 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
+    :ok = validate_comment(opts)
+
     if name = Keyword.get(opts, :cache_statement) do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 
@@ -321,6 +327,20 @@ defmodule Postgrex do
     case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} -> {:ok, result}
       {:error, _} = error -> error
+    end
+  end
+
+  defp validate_comment(opts) do
+    case Keyword.get(opts, :comment) do
+      nil ->
+        :ok
+
+      comment when is_binary(comment) ->
+        if String.contains?(comment, "*/") do
+          raise @comment_validation_error
+        else
+          :ok
+        end
     end
   end
 
