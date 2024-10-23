@@ -261,6 +261,10 @@ defmodule Postgrex.Messages do
     {first, data} = encode(msg)
     size = IO.iodata_length(data) + 4
 
+    if size > 0xFFFFFFFF do
+      raise ArgumentError, "payload size #{size} exceeds maximum size of #{0xFFFFFFFF}"
+    end
+
     if first do
       [first, <<size::int32()>>, data]
     else
