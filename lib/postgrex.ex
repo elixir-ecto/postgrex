@@ -298,7 +298,7 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
-    :ok = validate_comment(opts)
+    validate_comment!(opts)
 
     if name = Keyword.get(opts, :cache_statement) do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
@@ -330,16 +330,16 @@ defmodule Postgrex do
     end
   end
 
-  defp validate_comment(opts) do
+  defp validate_comment!(opts) do
     case Keyword.get(opts, :comment) do
       nil ->
-        :ok
+        false
 
       comment when is_binary(comment) ->
         if String.contains?(comment, "*/") do
           raise @comment_validation_error
         else
-          :ok
+          true
         end
     end
   end
@@ -388,8 +388,7 @@ defmodule Postgrex do
           {:ok, Postgrex.Query.t()} | {:error, Exception.t()}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    prepare? = Keyword.get(opts, :comment) == nil
-    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
+    opts = Keyword.put(opts, :postgrex_prepare, not validate_comment!(opts))
     DBConnection.prepare(conn, query, opts)
   end
 
@@ -399,8 +398,7 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t()
   def prepare!(conn, name, statement, opts \\ []) do
-    prepare? = Keyword.get(opts, :comment) == nil
-    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
+    opts = Keyword.put(opts, :postgrex_prepare, not validate_comment!(opts))
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
