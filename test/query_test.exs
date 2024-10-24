@@ -1851,6 +1851,15 @@ defmodule QueryTest do
     assert [["1", "2"], ["3", "4"]] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [], opts)
   end
 
+  test "comment", context do
+    assert [[123]] = query("select 123", [], comment: "query comment goes here")
+
+    assert_raise Postgrex.Error, fn ->
+      query("select 123", [], comment: "*/ DROP TABLE 123 --")
+    end
+  end
+
+  @tag :big_binary
   test "receive packet with remainder greater than 64MB", context do
     # to ensure remainder is more than 64MB use 64MBx2+1
     big_binary = :binary.copy(<<1>>, 128 * 1024 * 1024 + 1)

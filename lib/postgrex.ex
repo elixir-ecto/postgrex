@@ -67,6 +67,10 @@ defmodule Postgrex do
   @max_rows 500
   @timeout 15_000
 
+  @comment_validation_error Postgrex.Error.exception(
+                              message: "`:comment` option cannot contain sequence \"*/\""
+                            )
+
   ### PUBLIC API ###
 
   @doc """
@@ -168,6 +172,11 @@ defmodule Postgrex do
     * `:disable_composite_types` - Set to `true` to disable composite types support.
       This is useful when using Postgrex against systems that do not support composite types
       (default: `false`).
+
+    * `:comment` - When a binary string is provided, appends the given text as a comment to the
+      query.  This can be useful for tracing purposes, such as when using SQLCommenter or similar
+      tools to track query performance and behavior. Note that including a comment disables query
+      caching since each query with a different comment is treated as unique (default: `nil`).
 
   `Postgrex` uses the `DBConnection` library and supports all `DBConnection`
   options like `:idle`, `:after_connect` etc. See `DBConnection.start_link/2`
@@ -289,6 +298,8 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
+    :ok = validate_comment(opts)
+
     if name = Keyword.get(opts, :cache_statement) do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 
@@ -316,6 +327,20 @@ defmodule Postgrex do
     case DBConnection.prepare_execute(conn, query, params, opts) do
       {:ok, _, result} -> {:ok, result}
       {:error, _} = error -> error
+    end
+  end
+
+  defp validate_comment(opts) do
+    case Keyword.get(opts, :comment) do
+      nil ->
+        :ok
+
+      comment when is_binary(comment) ->
+        if String.contains?(comment, "*/") do
+          raise @comment_validation_error
+        else
+          :ok
+        end
     end
   end
 
@@ -363,7 +388,8 @@ defmodule Postgrex do
           {:ok, Postgrex.Query.t()} | {:error, Exception.t()}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    opts = Keyword.put(opts, :postgrex_prepare, true)
+    prepare? = Keyword.get(opts, :comment) == nil
+    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
     DBConnection.prepare(conn, query, opts)
   end
 
@@ -373,7 +399,8 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t()
   def prepare!(conn, name, statement, opts \\ []) do
-    opts = Keyword.put(opts, :postgrex_prepare, true)
+    prepare? = Keyword.get(opts, :comment) == nil
+    opts = Keyword.put(opts, :postgrex_prepare, prepare?)
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
