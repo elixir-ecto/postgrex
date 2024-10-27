@@ -367,11 +367,12 @@ defmodule Postgrex.Protocol do
     else
       prepare = Keyword.get(opts, :postgrex_prepare, false)
       status = new_status(opts, prepare: prepare)
+      comment = Keyword.get(opts, :comment)
 
       result =
         case prepare do
           true -> close_parse_describe(s, status, query)
-          false -> close_parse_describe_flush(s, status, query)
+          false -> close_parse_describe_flush(s, status, query, comment)
         end
 
       with {:ok, query, s} <- result do
@@ -1535,11 +1536,13 @@ defmodule Postgrex.Protocol do
     transaction_error(s, postgres)
   end
 
-  defp close_parse_describe_flush(s, %{mode: :transaction} = status, query) do
+  defp close_parse_describe_flush(s, %{mode: :transaction} = status, query, comment) do
     %Query{name: name} = query
     %{buffer: buffer} = s
 
-    msgs = [msg_close(type: :statement, name: name)] ++ parse_describe_msgs(query, [msg_flush()])
+    msgs =
+      [msg_close(type: :statement, name: name)] ++
+        parse_describe_comment_msgs(query, comment, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
@@ -1563,7 +1566,8 @@ defmodule Postgrex.Protocol do
   defp close_parse_describe_flush(
          %{postgres: :transaction, buffer: buffer} = s,
          %{mode: :savepoint} = status,
-         query
+         query,
+         comment
        ) do
     %Query{name: name} = query
 
@@ -1571,7 +1575,7 @@ defmodule Postgrex.Protocol do
       [
         msg_query(statement: "SAVEPOINT postgrex_query"),
         msg_close(type: :statement, name: name)
-      ] ++ parse_describe_msgs(query, [msg_flush()])
+      ] ++ parse_describe_comment_msgs(query, comment, [msg_flush()])
 
     with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
          {:ok, _, %{buffer: buffer} = s} <- recv_transaction(s, status, buffer),
@@ -1593,7 +1597,7 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp close_parse_describe_flush(%{postgres: postgres} = s, %{mode: :savepoint}, _)
+  defp close_parse_describe_flush(%{postgres: postgres} = s, %{mode: :savepoint}, _, _)
        when postgres in [:idle, :error] do
     transaction_error(s, postgres)
   end
@@ -2132,7 +2136,7 @@ defmodule Postgrex.Protocol do
   defp handle_prepare_execute(%Query{} = query, params, opts, s) do
     status = new_status(opts)
 
-    case close_parse_describe_flush(s, status, query) do
+    case close_parse_describe_flush(s, status, query, nil) do
       {:ok, query, s} ->
         bind_execute(s, status, query, params)
 
@@ -2423,7 +2427,7 @@ defmodule Postgrex.Protocol do
   defp handle_prepare_bind(%Query{} = query, params, res, opts, s) do
     status = new_status(opts)
 
-    case close_parse_describe_flush(s, status, query) do
+    case close_parse_describe_flush(s, status, query, nil) do
       {:ok, query, s} ->
         bind(s, status, query, params, res)
 
