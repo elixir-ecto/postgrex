@@ -298,9 +298,9 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params, opts \\ []) do
-    validate_comment!(opts)
+    name = Keyword.get(opts, :cache_statement)
 
-    if name = Keyword.get(opts, :cache_statement) do
+    if comment_not_present!(opts) && name do
       query = %Query{name: name, cache: :statement, statement: IO.iodata_to_binary(statement)}
 
       case DBConnection.prepare_execute(conn, query, params, opts) do
@@ -330,16 +330,16 @@ defmodule Postgrex do
     end
   end
 
-  defp validate_comment!(opts) do
+  defp comment_not_present!(opts) do
     case Keyword.get(opts, :comment) do
       nil ->
-        false
+        true
 
       comment when is_binary(comment) ->
         if String.contains?(comment, "*/") do
           raise @comment_validation_error
         else
-          true
+          false
         end
     end
   end
@@ -388,7 +388,7 @@ defmodule Postgrex do
           {:ok, Postgrex.Query.t()} | {:error, Exception.t()}
   def prepare(conn, name, statement, opts \\ []) do
     query = %Query{name: name, statement: statement}
-    opts = Keyword.put(opts, :postgrex_prepare, not validate_comment!(opts))
+    opts = Keyword.put(opts, :postgrex_prepare, comment_not_present!(opts))
     DBConnection.prepare(conn, query, opts)
   end
 
@@ -398,7 +398,7 @@ defmodule Postgrex do
   """
   @spec prepare!(conn, iodata, iodata, [option]) :: Postgrex.Query.t()
   def prepare!(conn, name, statement, opts \\ []) do
-    opts = Keyword.put(opts, :postgrex_prepare, not validate_comment!(opts))
+    opts = Keyword.put(opts, :postgrex_prepare, comment_not_present!(opts))
     DBConnection.prepare!(conn, %Query{name: name, statement: statement}, opts)
   end
 
@@ -436,6 +436,7 @@ defmodule Postgrex do
           {:ok, Postgrex.Query.t(), Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
   def prepare_execute(conn, name, statement, params, opts \\ []) do
     query = %Query{name: name, statement: statement}
+    opts = Keyword.put(opts, :postgrex_prepare, comment_not_present!(opts))
     DBConnection.prepare_execute(conn, query, params, opts)
   end
 
@@ -447,6 +448,7 @@ defmodule Postgrex do
           {Postgrex.Query.t(), Postgrex.Result.t()}
   def prepare_execute!(conn, name, statement, params, opts \\ []) do
     query = %Query{name: name, statement: statement}
+    opts = Keyword.put(opts, :postgrex_prepare, comment_not_present!(opts))
     DBConnection.prepare_execute!(conn, query, params, opts)
   end
 
