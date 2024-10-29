@@ -1851,12 +1851,17 @@ defmodule QueryTest do
     assert [["1", "2"], ["3", "4"]] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [], opts)
   end
 
-  test "comment", context do
+  test "comment is not interfering with the query", context do
     assert [[123]] = query("select 123", [], comment: "query comment goes here")
-    assert [[123]] = query("select 123", [], comment: "query comment goes here;")
-    %Postgrex.Error{postgres: error} = query("select 123", [], comment: "*/ select 456 --")
+    assert [[123]] = query("select 123;", [], comment: "query comment goes here")
+  end
 
+  test "comment does not allow for sql injection", context do
+    %Postgrex.Error{postgres: error} = query("select 123", [], comment: "*/ select 456 --")
     assert error.message =~ "cannot insert multiple commands into a prepared statement"
+
+    %Postgrex.Error{postgres: error} = query("select 123", [], comment: "*/ where false --")
+    assert error.message =~ ~s'syntax error at or near "where"'
   end
 
   @tag :big_binary
