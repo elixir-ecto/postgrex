@@ -1852,6 +1852,7 @@ defmodule QueryTest do
   end
 
   test "comment is not interfering with the query", context do
+    assert [[123]] = query("select 123", [], comment: ["query", "comment" | ["goes here"]])
     assert [[123]] = query("select 123", [], comment: "query comment goes here")
     assert [[123]] = query("select 123;", [], comment: "query comment goes here")
   end
