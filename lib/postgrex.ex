@@ -67,10 +67,6 @@ defmodule Postgrex do
   @max_rows 500
   @timeout 15_000
 
-  @comment_validation_error Postgrex.Error.exception(
-                              message: "`:comment` option cannot contain sequence \"*/\""
-                            )
-
   ### PUBLIC API ###
 
   @doc """
@@ -332,15 +328,9 @@ defmodule Postgrex do
 
   defp comment_not_present!(opts) do
     case Keyword.get(opts, :comment) do
-      nil ->
-        true
-
-      comment when is_binary(comment) ->
-        if String.contains?(comment, "*/") do
-          raise @comment_validation_error
-        else
-          false
-        end
+      nil -> true
+      comment when is_binary(comment) -> false
+      comment when is_list(comment) -> false
     end
   end
 

@@ -1853,10 +1853,10 @@ defmodule QueryTest do
 
   test "comment", context do
     assert [[123]] = query("select 123", [], comment: "query comment goes here")
+    assert [[123]] = query("select 123", [], comment: "query comment goes here;")
+    %Postgrex.Error{postgres: error} = query("select 123", [], comment: "*/ select 456 --")
 
-    assert_raise Postgrex.Error, fn ->
-      query("select 123", [], comment: "*/ DROP TABLE 123 --")
-    end
+    assert error.message =~ "cannot insert multiple commands into a prepared statement"
   end
 
   @tag :big_binary
