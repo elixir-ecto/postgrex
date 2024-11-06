@@ -1927,4 +1927,30 @@ defmodule QueryTest do
     {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
     %{rows: [[1, "foo"]]} = P.query!(pid, "SELECT * from test_table", [])
   end
+
+  test "raise a nice message if params is not a list", context do
+    assert_raise FunctionClauseError, fn ->
+      query("SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Postgrex.query!(context[:pid], "SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      prepare_execute("name", "SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Postgrex.prepare_execute!(context[:pid], "name", "SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      execute("name", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Postgrex.execute!(context[:pid], "name", "postgrex")
+    end
+  end
 end
