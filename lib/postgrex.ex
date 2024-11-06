@@ -297,7 +297,7 @@ defmodule Postgrex do
   """
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
-  def query(conn, statement, params, opts \\ []) when is_list(params) do
+  def query(conn, statement, params \\ [], opts \\ []) when is_list(params) and is_list(opts) do
     name = Keyword.get(opts, :cache_statement)
 
     if comment_not_present!(opts) && name do
@@ -349,7 +349,7 @@ defmodule Postgrex do
   there was an error. See `query/3`.
   """
   @spec query!(conn, iodata, list, [execute_option]) :: Postgrex.Result.t()
-  def query!(conn, statement, params, opts \\ []) when is_list(params) do
+  def query!(conn, statement, params \\ [], opts \\ []) when is_list(params) and is_list(opts) do
     case query(conn, statement, params, opts) do
       {:ok, result} -> result
       {:error, err} -> raise err
