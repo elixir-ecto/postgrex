@@ -178,12 +178,8 @@ defmodule Postgrex.TypeModule do
       unquote(encodes)
 
       @doc false
-      def encode_params(params, types) when is_list(params) do
+      def encode_params(params, types) do
         encode_params(params, types, [])
-      end
-
-      def encode_params(params, _types) do
-        raise ArgumentError, "expected params to be a list, got: #{inspect(params)}"
       end
 
       defp encode_params([param | params], [type | types], encoded) do

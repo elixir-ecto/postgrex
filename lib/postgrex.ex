@@ -297,7 +297,7 @@ defmodule Postgrex do
   """
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
-  def query(conn, statement, params, opts \\ []) do
+  def query(conn, statement, params, opts \\ []) when is_list(params) do
     name = Keyword.get(opts, :cache_statement)
 
     if comment_not_present!(opts) && name do
@@ -349,7 +349,7 @@ defmodule Postgrex do
   there was an error. See `query/3`.
   """
   @spec query!(conn, iodata, list, [execute_option]) :: Postgrex.Result.t()
-  def query!(conn, statement, params, opts \\ []) do
+  def query!(conn, statement, params, opts \\ []) when is_list(params) do
     case query(conn, statement, params, opts) do
       {:ok, result} -> result
       {:error, err} -> raise err
@@ -434,7 +434,7 @@ defmodule Postgrex do
   """
   @spec prepare_execute(conn, iodata, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Query.t(), Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
-  def prepare_execute(conn, name, statement, params, opts \\ []) do
+  def prepare_execute(conn, name, statement, params, opts \\ []) when is_list(params) do
     query = %Query{name: name, statement: statement}
     opts = Keyword.put(opts, :postgrex_prepare, comment_not_present!(opts))
     DBConnection.prepare_execute(conn, query, params, opts)
@@ -446,7 +446,7 @@ defmodule Postgrex do
   """
   @spec prepare_execute!(conn, iodata, iodata, list, [execute_option]) ::
           {Postgrex.Query.t(), Postgrex.Result.t()}
-  def prepare_execute!(conn, name, statement, params, opts \\ []) do
+  def prepare_execute!(conn, name, statement, params, opts \\ []) when is_list(params) do
     query = %Query{name: name, statement: statement}
     opts = Keyword.put(opts, :postgrex_prepare, comment_not_present!(opts))
     DBConnection.prepare_execute!(conn, query, params, opts)
@@ -482,7 +482,7 @@ defmodule Postgrex do
   """
   @spec execute(conn, Postgrex.Query.t(), list, [execute_option]) ::
           {:ok, Postgrex.Query.t(), Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
-  def execute(conn, query, params, opts \\ []) do
+  def execute(conn, query, params, opts \\ []) when is_list(params) do
     DBConnection.execute(conn, query, params, opts)
   end
 
@@ -492,7 +492,7 @@ defmodule Postgrex do
   """
   @spec execute!(conn, Postgrex.Query.t(), list, [execute_option]) ::
           Postgrex.Result.t()
-  def execute!(conn, query, params, opts \\ []) do
+  def execute!(conn, query, params, opts \\ []) when is_list(params) do
     DBConnection.execute!(conn, query, params, opts)
   end
 

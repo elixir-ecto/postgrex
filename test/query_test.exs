@@ -1929,10 +1929,28 @@ defmodule QueryTest do
   end
 
   test "raise a nice message if params is not a list", context do
-    msg = ~r"expected params to be a list"
-
-    assert_raise ArgumentError, msg, fn ->
+    assert_raise FunctionClauseError, fn ->
       query("SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Postgrex.query!(context[:pid], "SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      prepare_execute("name", "SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Postgrex.prepare_execute!(context[:pid], "name", "SELECT 'hi ' <> $1", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      execute("name", "postgrex")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Postgrex.execute!(context[:pid], "name", "postgrex")
     end
   end
 end
