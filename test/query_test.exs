@@ -384,6 +384,10 @@ defmodule QueryTest do
     assert [[[{1, "2"}]]] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
+  test "decode enum", context do
+    assert [["elixir"]] = query("SELECT 'elixir'::enum1", [])
+  end
+
   @tag min_pg_version: "9.2"
   test "decode range", context do
     # These do not appear to match what is selected, but that's because
