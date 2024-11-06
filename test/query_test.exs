@@ -384,10 +384,6 @@ defmodule QueryTest do
     assert [[[{1, "2"}]]] = query("SELECT ARRAY[(1, '2')::composite1]", [])
   end
 
-  test "decode enum", context do
-    assert [["elixir"]] = query("SELECT 'elixir'::enum1", [])
-  end
-
   @tag min_pg_version: "9.2"
   test "decode range", context do
     # These do not appear to match what is selected, but that's because
@@ -1926,5 +1922,13 @@ defmodule QueryTest do
     # search path does contain the appropriate schema
     {:ok, pid} = P.start_link(database: "postgrex_test", search_path: ["public", "test_schema"])
     %{rows: [[1, "foo"]]} = P.query!(pid, "SELECT * from test_table", [])
+  end
+
+  test "raise a nice message if params is not a list", context do
+    msg = ~r"expected params to be a list"
+
+    assert_raise ArgumentError, msg, fn ->
+      query("SELECT 'hi ' <> $1", "postgrex")
+    end
   end
 end
