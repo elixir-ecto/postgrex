@@ -3286,7 +3286,7 @@ defmodule Postgrex.Protocol do
         disconnect(s, :tcp, "async_recv", reason, :active_once)
     after
       timeout ->
-        disconnect(s, :tcp, "async_recv", :timeout, :active_one)
+        disconnect(s, :tcp, "async_recv", :timeout, :active_once)
     end
   end
 
