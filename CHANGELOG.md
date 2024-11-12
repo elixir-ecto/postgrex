@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.19.3 (2024-11-12)
+
+* Enhancements
+  * Default params to in query APIs to `[]`
+  * Allow `:comment` as options to query APIs
+
+* Bug fixes
+  * Call disconnect on protocol when reconnecting in `Postgrex.SimpleConnection`
+
 ## v0.19.2 (2024-10-23)
 
 * Bug fixes
