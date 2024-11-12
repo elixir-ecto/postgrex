@@ -1209,9 +1209,6 @@ defmodule Postgrex.Protocol do
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
-
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        error_ready(s, status, err, buffer)
     end
   end
 
@@ -1319,10 +1316,6 @@ defmodule Postgrex.Protocol do
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
-
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        status = new_status([], mode: :transaction)
-        error_ready(s, status, err, buffer)
     end
   end
 
@@ -2997,14 +2990,6 @@ defmodule Postgrex.Protocol do
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
-
-      {:error, %Postgrex.Error{} = err, s, buffer} ->
-        # We convert {:error, err, state} to {:error, state}
-        # so that DBConnection will disconnect during handle_begin/handle_rollback
-        # and will attempt to rollback during handle_commit
-        with {:error, _err, s} <- error_ready(s, status, err, buffer) do
-          {:error, s}
-        end
     end
   end
 
