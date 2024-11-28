@@ -337,12 +337,13 @@ defmodule Postgrex.SimpleConnection do
   @impl :gen_statem
   def handle_event(type, content, statem_state, state)
 
-  def handle_event(:internal, {:connect, :reconnect}, @state, %{protocol: protocol} = state) do
+  def handle_event(:internal, {:connect, :reconnect}, @state, %{protocol: protocol} = state)
+      when protocol != nil do
     Protocol.disconnect(:reconnect, protocol)
     {:keep_state, %{state | protocol: nil}, {:next_event, :internal, {:connect, :init}}}
   end
 
-  def handle_event(:internal, {:connect, :init}, @state, %{state: {mod, mod_state}} = state) do
+  def handle_event(:internal, {:connect, _}, @state, %{state: {mod, mod_state}} = state) do
     opts =
       case Keyword.get(opts(mod), :configure) do
         {module, fun, args} -> apply(module, fun, [opts(mod) | args])
