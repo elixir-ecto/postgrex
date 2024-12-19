@@ -1851,12 +1851,28 @@ defmodule QueryTest do
     assert [["1", "2"], ["3", "4"]] = query("COPY (VALUES (1, 2), (3, 4)) TO STDOUT", [], opts)
   end
 
-  test "comment", context do
+  test "binary comment" do
     assert [[123]] = query("select 123", [], comment: "query comment goes here")
+  end
 
+  test "iodata comment" do
+    assert [[123]] = query("select 123", [], comment: ["query", ?=, ?', "comment", ?'])
+  end
+
+  test "comment validation error when comment is not iodata" do
     assert_raise Postgrex.Error, fn ->
-      query("select 123", [], comment: "*/ DROP TABLE 123 --")
+      query("select 123", [], comment: 123)
     end
+  end
+
+  test "comment error when comment tries sql injection" do
+    assert %Postgrex.Error{
+             postgres: %{
+               code: :syntax_error,
+               message: "cannot insert multiple commands into a prepared statement"
+             }
+           } =
+             query("select now()", [], comment: "*/ select sleep(1000)--")
   end
 
   @tag :big_binary
