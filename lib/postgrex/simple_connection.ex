@@ -234,9 +234,9 @@ defmodule Postgrex.SimpleConnection do
   ## Options
 
     * `:auto_reconnect` - automatically attempt to reconnect to the database
-      in event of a disconnection. See the
-      [note about async connect and auto-reconnects](#module-async-connect-and-auto-reconnects)
-      above. Defaults to `false`, which means the process terminates.
+      in event of a disconnection. Defaults to `false`, which means the process
+      terminates. See the note in `Postgrex.Notifications` about [async connect
+      and auto-reconnects][async-caveat].
 
     * `:configure` - A function to run before every connect attempt to dynamically
       configure the options as a `{module, function, args}`, where the current
@@ -250,6 +250,8 @@ defmodule Postgrex.SimpleConnection do
 
     * `:sync_connect` - controls if the connection should be established on boot
       or asynchronously right after boot. Defaults to `true`.
+
+  [async-caveat]: Postgrex.Notifications.html#module-async-connect-auto-reconnects-and-missed-notifications
   """
   @spec start_link(module, term, Keyword.t()) :: {:ok, pid} | {:error, Postgrex.Error.t() | term}
   def start_link(module, args, opts) do

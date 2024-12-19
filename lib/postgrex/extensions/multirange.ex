@@ -1,4 +1,6 @@
 defmodule Postgrex.Extensions.Multirange do
+  @moduledoc false
+
   import Postgrex.BinaryUtils, warn: false
 
   @behaviour Postgrex.SuperExtension
