@@ -1857,6 +1857,10 @@ defmodule QueryTest do
     assert_raise Postgrex.Error, fn ->
       query("select 123", [], comment: "*/ DROP TABLE 123 --")
     end
+
+    assert_raise Postgrex.Error, fn ->
+      query("select 123", [], comment: <<0>> <> "comment")
+    end
   end
 
   @tag :big_binary

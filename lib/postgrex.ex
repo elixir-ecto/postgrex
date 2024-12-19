@@ -68,7 +68,8 @@ defmodule Postgrex do
   @timeout 15_000
 
   @comment_validation_error Postgrex.Error.exception(
-                              message: "`:comment` option cannot contain sequence \"*/\""
+                              message:
+                                "`:comment` option cannot contain null bytes and \"*/\" sequence"
                             )
 
   ### PUBLIC API ###
@@ -336,7 +337,7 @@ defmodule Postgrex do
         true
 
       comment when is_binary(comment) ->
-        if String.contains?(comment, "*/") do
+        if String.contains?(comment, [<<0>>, "*/"]) do
           raise @comment_validation_error
         else
           false
