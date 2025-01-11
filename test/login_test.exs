@@ -62,7 +62,7 @@ defmodule LoginTest do
     assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
 
-    assert String.match?(P.parameters(pid)["server_version"], ~R"^\d+\.\d+")
+    assert String.match?(P.parameters(pid)["server_version"], ~r"^\d+\.\d+")
   end
 
   @tag min_pg_version: "9.0"
