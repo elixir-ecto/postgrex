@@ -50,7 +50,7 @@ jobs:
           - pg:
               version: 14
             pair:
-              elixir: 1.17.1
+              elixir: 1.17.2
               otp: 25.3
             lint: lint
     env:
