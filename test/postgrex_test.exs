@@ -10,7 +10,8 @@ defmodule PostgrexTest do
     assert result == Enum.join(search_path, ", ")
   end
 
-  # This test fails due to a bug betweem Elixir and Erlang in earlier versions of Elixir.
+  # gen_statem reports are only captured on Elixir v1.17+
+  # but a bug causes the Logger to crash on v1.17.0 and v1.17.1.
   if Version.match?(System.version(), ">= 1.17.2") do
     test "start_link/2 detects invalid search path" do
       # invalid argument
