@@ -11,7 +11,7 @@ defmodule PostgrexTest do
   end
 
   # This test fails due to a bug betweem Elixir and Erlang in earlier versions of Elixir.
-  if Version.match?(Version.parse!(System.version()), Version.parse_requirement!(">= 1.17.2")) do
+  if Version.match?(System.version(), ">= 1.17.2") do
     test "start_link/2 detects invalid search path" do
       # invalid argument
       Process.flag(:trap_exit, true)
