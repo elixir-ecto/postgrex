@@ -1,17 +1,18 @@
 defmodule PostgrexTest do
   use ExUnit.Case, async: false
+  import ExUnit.CaptureLog, warn: false
+
+  test "start_link/2 sets search path" do
+    search_path = ["public", "extension"]
+    {:ok, conn} = Postgrex.start_link(database: "postgrex_test", search_path: search_path)
+    %{rows: [[result]]} = Postgrex.query!(conn, "show search_path", [])
+
+    assert result == Enum.join(search_path, ", ")
+  end
 
   # This test fails due to a bug betweem Elixir and Erlang in earlier versions of Elixir.
   if Version.match?(Version.parse!(System.version()), Version.parse_requirement!(">= 1.17.2")) do
-    import ExUnit.CaptureLog
-
-    test "start_link/2 sets search path" do
-      # valid argument
-      search_path = ["public", "extension"]
-      {:ok, conn} = Postgrex.start_link(database: "postgrex_test", search_path: search_path)
-      %{rows: [[result]]} = Postgrex.query!(conn, "show search_path", [])
-      assert result == Enum.join(search_path, ", ")
-
+    test "start_link/2 detects invalid search path" do
       # invalid argument
       Process.flag(:trap_exit, true)
       search_path = "public, extension"
