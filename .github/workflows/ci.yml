@@ -44,8 +44,8 @@ jobs:
           - version: 14
 
         pair:
-          - elixir: 1.17.2
-            otp: 25.3
+          - elixir: 1.11.4
+            otp: 23.3.3
         include:
           - pg:
               version: 14
