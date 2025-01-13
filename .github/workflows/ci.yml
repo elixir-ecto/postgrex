@@ -44,14 +44,14 @@ jobs:
           - version: 14
 
         pair:
-          - elixir: 1.11.4
-            otp: 23.3.3
+          - elixir: 1.17.2
+            otp: 25.3
         include:
           - pg:
               version: 14
             pair:
-              elixir: 1.17.2
-              otp: 25.3
+              elixir: 1.18.1
+              otp: 27.2
             lint: lint
     env:
       MIX_ENV: test

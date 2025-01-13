@@ -8,7 +8,7 @@ defmodule Postgrex.Mixfile do
     [
       app: :postgrex,
       version: @version,
-      elixir: "~> 1.11",
+      elixir: "~> 1.17",
       deps: deps(),
       name: "Postgrex",
       description: "PostgreSQL driver for Elixir",
