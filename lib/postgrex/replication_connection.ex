@@ -487,6 +487,7 @@ defmodule Postgrex.ReplicationConnection do
   def handle_event(type, content, state, s)
 
   def handle_event({:timeout, :backoff}, nil, @state, s) do
+    Process.sleep(s.reconnect_backoff)
     {:keep_state, s, {:next_event, :internal, {:connect, :backoff}}}
   end
 
