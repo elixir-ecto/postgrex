@@ -490,12 +490,22 @@ defmodule Postgrex.ReplicationConnection do
     {:keep_state, s, {:next_event, :internal, {:connect, :backoff}}}
   end
 
+  def handle_event(:internal, {:connect, :reconnect}, @state, %{protocol: protocol} = state)
+      when protocol != nil do
+    Protocol.disconnect(:reconnect, protocol)
+    {:keep_state, %{state | protocol: nil}, {:next_event, :internal, {:connect, :init}}}
+  end
+
   def handle_event(:internal, {:connect, _info}, @state, %{state: {mod, mod_state}} = s) do
     case Protocol.connect(opts()) do
       {:ok, protocol} ->
         maybe_handle(mod, :handle_connect, [mod_state], %{s | protocol: protocol})
 
       {:error, reason} ->
+        Logger.error(
+          "#{inspect(pid_or_name())} (#{inspect(mod)}) failed to connect to Postgres: #{Exception.format(:error, reason)}"
+        )
+
         if s.auto_reconnect do
           {:keep_state, s, {{:timeout, :backoff}, s.reconnect_backoff, nil}}
         else
