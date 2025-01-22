@@ -362,6 +362,10 @@ defmodule Postgrex.SimpleConnection do
         end
 
       {:error, reason} ->
+        Logger.error(
+          "#{inspect(pid_or_name())} (#{inspect(mod)}) failed to connect to Postgres: #{Exception.format(:error, reason)}"
+        )
+
         if state.auto_reconnect do
           {:keep_state, state, {{:timeout, :backoff}, state.reconnect_backoff, nil}}
         else
@@ -463,6 +467,13 @@ defmodule Postgrex.SimpleConnection do
       {:keep_state, state, {:next_event, :internal, {:connect, :reconnect}}}
     else
       {:stop, reason, %{state | protocol: protocol}}
+    end
+  end
+
+  defp pid_or_name do
+    case Process.info(self(), :registered_name) do
+      {:registered_name, atom} when is_atom(atom) -> atom
+      _ -> self()
     end
   end
 

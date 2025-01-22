@@ -502,6 +502,10 @@ defmodule Postgrex.ReplicationConnection do
         maybe_handle(mod, :handle_connect, [mod_state], %{s | protocol: protocol})
 
       {:error, reason} ->
+        Logger.error(
+          "#{inspect(pid_or_name())} (#{inspect(mod)}) failed to connect to Postgres: #{Exception.format(:error, reason)}"
+        )
+
         if s.auto_reconnect do
           {:keep_state, s, {{:timeout, :backoff}, s.reconnect_backoff, nil}}
         else
