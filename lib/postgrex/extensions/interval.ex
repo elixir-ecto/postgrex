@@ -77,16 +77,8 @@ defmodule Postgrex.Extensions.Interval do
     end
 
     def decode_interval(microseconds, days, months, type_mod, Duration) do
-      years = div(months, 12)
-      months = rem(months, 12)
-      weeks = div(days, 7)
-      days = rem(days, 7)
       seconds = div(microseconds, 1_000_000)
       microseconds = rem(microseconds, 1_000_000)
-      minutes = div(seconds, 60)
-      seconds = rem(seconds, 60)
-      hours = div(minutes, 60)
-      minutes = rem(minutes, 60)
       precision = if type_mod, do: type_mod &&& unquote(@precision_mask)
 
       precision =
@@ -95,12 +87,8 @@ defmodule Postgrex.Extensions.Interval do
           else: precision
 
       Duration.new!(
-        year: years,
         month: months,
-        week: weeks,
         day: days,
-        hour: hours,
-        minute: minutes,
         second: seconds,
         microsecond: {microseconds, precision}
       )

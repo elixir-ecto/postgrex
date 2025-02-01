@@ -43,7 +43,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 | `timestamp`        | `%NaiveDateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14}`                                                           |
 | `timestamptz`      | `%DateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14, time_zone: "Etc/UTC"}` (2)                                      |
 | `interval`         | `%Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 315}`                                                                     |
-| `interval`         | `%Duration{year: 1, month: 2, week: 5, day: 5, hour: 3, minute: 2, second: 0, microsecond: {315, 6}}` (3)                                   |
+| `interval`         | `%Duration{month: 2, day: 5, second: 0, microsecond: {315, 6}}` (3)                                   |
 | `array`            | `[1, 2, 3]`                                                                                                                                 |
 | `composite type`   | `{42, "title", "content"}`                                                                                                                  |
 | `range`            | `%Postgrex.Range{lower: 1, upper: 5}`                                                                                                       |
