@@ -149,22 +149,22 @@ defmodule QueryTest do
       assert [[%Duration{microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '0'", []).rows
 
-      assert [[%Duration{year: 100, microsecond: {0, 6}}]] =
+      assert [[%Duration{month: 1200, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '100 years'", []).rows
 
       assert [[%Duration{month: 10, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '10 months'", []).rows
 
-      assert [[%Duration{week: 100, microsecond: {0, 6}}]] =
+      assert [[%Duration{day: 700, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '100 weeks'", []).rows
 
       assert [[%Duration{day: 5, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '5 days'", []).rows
 
-      assert [[%Duration{hour: 100, microsecond: {0, 6}}]] =
+      assert [[%Duration{second: 360_000, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '100 hours'", []).rows
 
-      assert [[%Duration{minute: 10, microsecond: {0, 6}}]] =
+      assert [[%Duration{second: 600, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '10 minutes'", []).rows
 
       assert [[%Duration{second: 10, microsecond: {0, 6}}]] =
@@ -173,13 +173,9 @@ defmodule QueryTest do
       assert [
                [
                  %Duration{
-                   year: 1,
-                   month: 2,
-                   week: 5,
-                   day: 5,
-                   hour: 3,
-                   minute: 2,
-                   second: 1,
+                   month: 14,
+                   day: 40,
+                   second: 10921,
                    microsecond: {0, 6}
                  }
                ]
@@ -215,10 +211,10 @@ defmodule QueryTest do
       opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
       {:ok, pid} = P.start_link(opts)
 
-      assert [[%Duration{week: 1, day: 3, microsecond: {0, 6}}]] =
+      assert [[%Duration{day: 10, microsecond: {0, 6}}]] =
                P.query!(pid, "SELECT interval '10' DAY", []).rows
 
-      assert [[[%Duration{week: 1, day: 3, microsecond: {0, 6}}]]] =
+      assert [[[%Duration{day: 10, microsecond: {0, 6}}]]] =
                P.query!(pid, "SELECT ARRAY[interval '10' DAY]", []).rows
     end
   end
