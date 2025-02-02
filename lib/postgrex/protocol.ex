@@ -120,6 +120,11 @@ defmodule Postgrex.Protocol do
     parameters =
       case opts[:search_path] do
         path when is_list(path) ->
+          Logger.warning(
+            "the `:search_path` option is deprecated. Please use the `:parameters` option by " <>
+              "passing `:search_path` as a key and a comma delimited string as the value."
+          )
+
           path = Enum.intersperse(path, ", ")
           Keyword.put(parameters, :search_path, path)
 
