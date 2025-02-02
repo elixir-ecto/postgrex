@@ -85,6 +85,7 @@ defmodule Postgrex.Protocol do
     disconnect_on_error_codes = opts[:disconnect_on_error_codes] || []
     target_server_type = opts[:target_server_type] || :any
     disable_composite_types = opts[:disable_composite_types] || false
+    parameters = opts[:parameters] || []
 
     {ssl_opts, opts} =
       case Keyword.pop(opts, :ssl, false) do
@@ -116,6 +117,25 @@ defmodule Postgrex.Protocol do
         :unnamed -> :unnamed
       end
 
+    parameters =
+      case opts[:search_path] do
+        path when is_list(path) ->
+          Logger.warning(
+            "the `:search_path` option is deprecated. Please use the `:parameters` option by " <>
+              "passing `:search_path` as a key and a comma delimited string as the value."
+          )
+
+          path = Enum.intersperse(path, ", ")
+          Keyword.put(parameters, :search_path, path)
+
+        nil ->
+          parameters
+
+        other ->
+          raise ArgumentError,
+                "expected :search_path to be a list of strings, got: #{inspect(other)}"
+      end
+
     s = %__MODULE__{
       timeout: timeout,
       ping_timeout: ping_timeout,
@@ -128,15 +148,14 @@ defmodule Postgrex.Protocol do
     connect_timeout = Keyword.get(opts, :connect_timeout, timeout)
 
     status = %{
-      opts: opts,
+      opts: Keyword.put(opts, :parameters, parameters),
       types_mod: types_mod,
       types_key: nil,
       types_lock: nil,
       prepare: prepare,
       messages: [],
       ssl: ssl_opts,
-      target_server_type: target_server_type,
-      search_path: opts[:search_path]
+      target_server_type: target_server_type
     }
 
     connect_endpoints(endpoints, sock_opts ++ @sock_opts, connect_timeout, s, status, [])
@@ -916,7 +935,7 @@ defmodule Postgrex.Protocol do
         init_recv(%{s | connection_id: pid, connection_key: key}, status, buffer)
 
       {:ok, msg_ready(), buffer} ->
-        set_search_path(s, status, buffer)
+        check_target_server_type(s, status, buffer)
 
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
@@ -929,68 +948,6 @@ defmodule Postgrex.Protocol do
         dis
     end
   end
-
-  ## set search path on connection startup
-
-  defp set_search_path(s, %{search_path: nil} = status, buffer),
-    do: set_search_path_done(s, status, buffer)
-
-  defp set_search_path(s, %{search_path: search_path} = status, buffer)
-       when is_list(search_path),
-       do: set_search_path_send(s, status, buffer)
-
-  defp set_search_path(_, %{search_path: search_path}, _) do
-    raise ArgumentError,
-          "expected :search_path to be a list of strings, got: #{inspect(search_path)}"
-  end
-
-  defp set_search_path_send(s, status, buffer) do
-    search_path = Enum.intersperse(status.search_path, ",")
-    msg = msg_query(statement: ["set search_path to " | search_path])
-
-    case msg_send(s, msg, buffer) do
-      :ok ->
-        set_search_path_recv(s, status, buffer)
-
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp set_search_path_recv(s, status, buffer) do
-    case msg_recv(s, :infinity, buffer) do
-      {:ok, msg_row_desc(fields: fields), buffer} ->
-        {[@text_type_oid], ["search_path"], _} = columns(fields)
-        set_search_path_recv(s, status, buffer)
-
-      {:ok, msg_data_row(), buffer} ->
-        set_search_path_recv(s, status, buffer)
-
-      {:ok, msg_command_complete(), buffer} ->
-        set_search_path_recv(s, status, buffer)
-
-      {:ok, msg_ready(status: :idle), buffer} ->
-        set_search_path_done(s, status, buffer)
-
-      {:ok, msg_ready(status: postgres), _buffer} ->
-        err = %Postgrex.Error{message: "unexpected postgres status: #{postgres}"}
-        {:disconnect, err, s}
-
-      {:ok, msg_error(fields: fields), buffer} ->
-        err = Postgrex.Error.exception(postgres: fields)
-        {:disconnect, err, %{s | buffer: buffer}}
-
-      {:ok, msg, buffer} ->
-        s = handle_msg(s, status, msg)
-        set_search_path_recv(s, status, buffer)
-
-      {:disconnect, _, _} = dis ->
-        dis
-    end
-  end
-
-  defp set_search_path_done(s, status, buffer),
-    do: check_target_server_type(s, status, buffer)
 
   ## check_target_server_type
 

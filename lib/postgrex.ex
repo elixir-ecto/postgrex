@@ -52,7 +52,6 @@ defmodule Postgrex do
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
           | {:types, module}
-          | {:search_path, [String.t()]}
           | {:disconnect_on_error_codes, [atom]}
           | DBConnection.start_option()
 
@@ -161,14 +160,6 @@ defmodule Postgrex do
     * `:types` - The types module to use, see `Postgrex.Types.define/3`, this
       option is only required when using custom encoding or decoding (default:
       `Postgrex.DefaultTypes`);
-
-    * `:search_path` - A list of strings used to set the search path for the connection.
-      This is useful when, for instance, an extension like `citext` is installed in a
-      separate schema. If that schema is not in the connection's search path, Postgrex
-      might not be able to recognize the extension's data type. When this option is `nil`,
-      the search path is not modified. (default: `nil`).
-      See the [PostgreSQL docs](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
-      for more details.
 
     * `:disable_composite_types` - Set to `true` to disable composite types support.
       This is useful when using Postgrex against systems that do not support composite types
