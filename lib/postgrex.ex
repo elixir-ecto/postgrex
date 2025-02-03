@@ -83,11 +83,9 @@ defmodule Postgrex do
 
     * `:hostname` - Server hostname (default: PGHOST env variable, then localhost);
     * `:port` - Server port (default: PGPORT env variable, then 5432);
-    * `:endpoints` - A list of endpoints (host and port pairs, with an optional
-      extra_opts keyword list);
-      Postgrex will try each endpoint in order, one by one, until the connection succeeds;
-      The syntax is `[{host1, port1},{host2, port2},{host3, port3}]` or
-      `[{host1, port1, extra_opt1: value},{host2, port2, extra_opt2: value}}]`;
+    * `:endpoints` - A list of endpoints (host and port pairs) which Postgrex will attempt
+      to connect in order, until one succeeds.
+      The syntax is `[{host1, port1}, {host2, port2}, {host3, port3}]`.
       This option takes precedence over `:hostname+:port`;
     * `:socket_dir` - Connect to PostgreSQL via UNIX sockets in the given directory;
       The socket name is derived based on the port. This is the preferred method
