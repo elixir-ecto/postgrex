@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.20.0 (2024-11-12)
+
+* Deprecations
+  * Deprecate `:search_path` and use `:parameters` option instead
+
+* Bug fixes
+  * Ensure `Duration` type returns same units as `Postgrex.Interval`
+  * Call disconnect on protocol when reconnecting in `Postgrex.ReplicationConnection`
+  * Call disconnect only if there is protocol in `Postgrex.SimpleConnection`
+
 ## v0.19.3 (2024-11-12)
 
 * Enhancements
