@@ -87,7 +87,7 @@ defimpl DBConnection.Query, for: Postgrex.Query do
   end
 
   def decode(_, %Postgrex.Result{rows: rows} = res, opts) do
-    %Postgrex.Result{res | rows: decode_map(rows, opts)}
+    %{res | rows: decode_map(rows, opts)}
   end
 
   def decode(_, %Postgrex.Copy{} = copy, _opts) do

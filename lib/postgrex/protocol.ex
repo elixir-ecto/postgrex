@@ -377,7 +377,7 @@ defmodule Postgrex.Protocol do
 
   def handle_prepare(%Query{} = query, opts, %{queries: nil} = s) do
     # always use unnamed if no cache
-    handle_prepare(%Query{query | name: ""}, opts, s)
+    handle_prepare(%{query | name: ""}, opts, s)
   end
 
   def handle_prepare(%Query{} = query, opts, s) do
@@ -1684,11 +1684,11 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp describe_params(%{types: types}, query, param_oids) do
+  defp describe_params(%{types: types}, %Query{} = query, param_oids) do
     with {:ok, param_info} <- fetch_type_info(param_oids, types) do
       {param_formats, param_types} = Enum.unzip(param_info)
 
-      query = %Query{
+      query = %{
         query
         | param_oids: param_oids,
           param_formats: param_formats,
@@ -1716,8 +1716,8 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  defp describe_result(%{types: types}, query, nil, nil, nil) do
-    query = %Query{
+  defp describe_result(%{types: types}, %Query{} = query, nil, nil, nil) do
+    query = %{
       query
       | ref: make_ref(),
         types: types,
@@ -1730,7 +1730,7 @@ defmodule Postgrex.Protocol do
     {:ok, query}
   end
 
-  defp describe_result(%{types: types}, query, result_oids, result_mods, columns) do
+  defp describe_result(%{types: types}, %Query{} = query, result_oids, result_mods, columns) do
     with {:ok, result_info} <- fetch_type_info(result_oids, types) do
       {result_formats, result_types} = Enum.unzip(result_info)
 
@@ -1742,7 +1742,7 @@ defmodule Postgrex.Protocol do
           {extension, mod} -> {extension, mod}
         end)
 
-      query = %Query{
+      query = %{
         query
         | ref: make_ref(),
           types: types,
@@ -3040,7 +3040,7 @@ defmodule Postgrex.Protocol do
     case recv_ready(s, status, buffer) do
       {:ok, s} ->
         %{connection_id: connection_id} = s
-        {:error, %Postgrex.Error{err | connection_id: connection_id}, s}
+        {:error, %{err | connection_id: connection_id}, s}
 
       {:disconnect, _, _} = disconnect ->
         disconnect
@@ -3113,7 +3113,7 @@ defmodule Postgrex.Protocol do
     case done(s, query, rows, tag) do
       {%Postgrex.Result{rows: rows} = result, s} when is_list(rows) ->
         # shows rows for all streamed results but we only want for last chunk.
-        {%Postgrex.Result{result | num_rows: length(rows)}, s}
+        {%{result | num_rows: length(rows)}, s}
 
       {result, s} ->
         {result, s}
