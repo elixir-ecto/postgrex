@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.20.0 (2024-11-12)
+## v0.20.0 (2025-02-05)
 
 * Deprecations
   * Deprecate `:search_path` and use `:parameters` option instead
