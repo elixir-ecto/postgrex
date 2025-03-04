@@ -765,6 +765,12 @@ defmodule QueryTest do
     assert [[ltree]] == query("SELECT '#{ltree}'::ltree", [])
   end
 
+  @tag min_pg_version: "13.0"
+  test "decode ltxtquery", context do
+    ltxtquery = "Europe% & Russia@* & !( Transportation & Test )"
+    assert [[ltxtquery]] == query("SELECT '#{ltxtquery}'::ltxtquery", [])
+  end
+
   test "encode oid and its aliases", context do
     # oid's range is 0 to 4294967295
     assert [[0]] = query("select $1::oid;", [0])
@@ -1531,6 +1537,12 @@ defmodule QueryTest do
   test "encode ltree", context do
     ltree = "this.is.a.path"
     assert [[ltree]] == query("SELECT $1::ltree", [ltree])
+  end
+
+  @tag min_pg_version: "13.0"
+  test "encode ltxtquery", context do
+    ltxtquery = "Europe% & Russia@* & !( Transportation & Test )"
+    assert [[ltxtquery]] == query("SELECT $1::ltxtquery", [ltxtquery])
   end
 
   test "fail on encode arrays", context do
