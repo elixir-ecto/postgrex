@@ -283,6 +283,8 @@ defmodule Postgrex do
 
       Postgrex.query(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
 
+      Postgrex.query(conn, "SELECT id FROM posts WHERE state = ANY($1)", [["draft", "scheduled"]])
+
       Postgrex.query(conn, "COPY posts TO STDOUT", [])
   """
   @spec query(conn, iodata, list, [execute_option]) ::
