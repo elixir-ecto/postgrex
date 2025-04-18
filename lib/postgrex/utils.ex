@@ -41,6 +41,7 @@ defmodule Postgrex.Utils do
     Postgrex.Extensions.TimeTZ,
     Postgrex.Extensions.TSVector,
     Postgrex.Extensions.UUID,
+    Postgrex.Extensions.Vector,
     Postgrex.Extensions.VoidBinary,
     Postgrex.Extensions.VoidText,
     Postgrex.Extensions.Xid8
