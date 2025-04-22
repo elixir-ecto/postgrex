@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     services:
       pg:
@@ -44,8 +44,8 @@ jobs:
           - version: 14
 
         pair:
-          - elixir: 1.11.4
-            otp: 23.3.3
+          - elixir: 1.12
+            otp: 24.3
         include:
           - pg:
               version: 14
