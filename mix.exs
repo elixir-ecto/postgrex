@@ -2,13 +2,13 @@ defmodule Postgrex.Mixfile do
   use Mix.Project
 
   @source_url "https://github.com/elixir-ecto/postgrex"
-  @version "0.20.0"
+  @version "0.21.0-dev"
 
   def project do
     [
       app: :postgrex,
       version: @version,
-      elixir: "~> 1.11",
+      elixir: "~> 1.13",
       deps: deps(),
       name: "Postgrex",
       description: "PostgreSQL driver for Elixir",
