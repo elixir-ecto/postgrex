@@ -93,13 +93,14 @@ defmodule Postgrex.Protocol do
           {nil, opts}
 
         {true, opts} ->
-          Logger.warning(
-            "setting ssl: true on your database connection offers only limited protection, " <>
-              "as the server's certificate is not verified. Set \"ssl: [cacertfile: path/to/file]\" instead"
-          )
+          case Keyword.pop(opts, :ssl_opts) do
+            {nil, _opts} ->
+              [cacerts: :public_key.cacerts_get()] ++ default_ssl_opts()
 
-          # Read ssl_opts for backwards compatibility
-          Keyword.pop(opts, :ssl_opts, [])
+            {ssl_opts, opts} ->
+              Logger.warning(":ssl_opts is deprecated, pass opts to :ssl instead")
+              {ssl_opts, opts}
+          end
 
         {ssl_opts, opts} when is_list(ssl_opts) ->
           {Keyword.merge(default_ssl_opts(), ssl_opts), opts}
