@@ -72,4 +72,37 @@ defmodule Utils.EnvsTest do
       assert ctx.opts[:socket] == <<0, "foo">>
     end
   end
+
+  describe "PGHOST with manual overrides" do
+    @env PGHOST: "/test/socket"
+    test "respects explicit hostname even if PGHOST is set" do
+      opts = Postgrex.Utils.default_opts(hostname: "localhost")
+
+      assert Keyword.get(opts, :hostname) == "localhost"
+      refute Keyword.has_key?(opts, :socket_dir)
+    end
+
+    @env PGHOST: "/test/socket"
+    test "respects explicit endpoints even if PGHOST is set" do
+      opts = Postgrex.Utils.default_opts(endpoints: [{"localhost", 5432}])
+
+      assert Keyword.get(opts, :endpoints) == [{"localhost", 5432}]
+      refute Keyword.has_key?(opts, :socket_dir)
+    end
+
+    @env PGHOST: "/test/socket"
+    test "respects explicit socket even if PGHOST is set" do
+      opts = Postgrex.Utils.default_opts(socket: "/var/run/postgresql")
+
+      assert Keyword.get(opts, :socket) == "/var/run/postgresql"
+      refute Keyword.has_key?(opts, :socket_dir)
+    end
+
+    @env PGHOST: "/test/socket"
+    test "respects explicit socket_dir even if PGHOST is set" do
+      opts = Postgrex.Utils.default_opts(socket_dir: "/another/test/socket")
+
+      assert Keyword.get(opts, :socket_dir) == "/another/test/socket"
+    end
+  end
 end

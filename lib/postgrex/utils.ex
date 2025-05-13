@@ -84,16 +84,22 @@ defmodule Postgrex.Utils do
 
   @doc """
   Fills in the given `opts` with default options.
+  Only adds keys extracted via PGHOST if no endpoint-related keys are explicitly provided.
   """
   @spec default_opts(Keyword.t()) :: Keyword.t()
   def default_opts(opts) do
     {field, value} = extract_host(System.get_env("PGHOST"))
 
+    endpoint_keys = [:socket, :socket_dir, :hostname, :endpoints]
+    has_endpoint? = Enum.any?(endpoint_keys, &Keyword.has_key?(opts, &1))
+
     opts
     |> Keyword.put_new(:username, System.get_env("PGUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("PGPASSWORD"))
     |> Keyword.put_new(:database, System.get_env("PGDATABASE"))
-    |> Keyword.put_new(field, value)
+    |> then(fn opts ->
+      if has_endpoint?, do: opts, else: Keyword.put(opts, field, value)
+    end)
     |> Keyword.put_new(:port, System.get_env("PGPORT"))
     |> Keyword.update!(:port, &normalize_port/1)
     |> Keyword.put_new(:types, Postgrex.DefaultTypes)
