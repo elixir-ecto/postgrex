@@ -804,6 +804,10 @@ defmodule Postgrex.Protocol do
 
   ## ssl
 
+  defp ssl(s, %{opts: %{ ssl_negotiaton_direct: true}} = status, ssl_opts) do
+    ssl_recv(s, status, ssl_opts)
+  end
+
   defp ssl(s, status, ssl_opts) do
     case msg_send(s, msg_ssl_request(), "") do
       :ok -> ssl_recv(s, status, ssl_opts)

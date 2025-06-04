@@ -103,6 +103,7 @@ defmodule Postgrex.Utils do
     |> Keyword.put_new(:port, System.get_env("PGPORT"))
     |> Keyword.update!(:port, &normalize_port/1)
     |> Keyword.put_new(:types, Postgrex.DefaultTypes)
+    |> Keyword.put_new(:ssl_negotiation_direct, false)
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
   end
 

@@ -48,6 +48,7 @@ defmodule Postgrex do
           | {:handshake_timeout, timeout}
           | {:ping_timeout, timeout}
           | {:ssl, boolean | [:ssl.tls_client_option()]}
+          | {:ssl_negotiation_direct, boolean}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
@@ -124,6 +125,10 @@ defmodule Postgrex do
       `:cacerts` or `:cacertfile` set to a CA trust store, to enable server certificate
       verification. Defaults to `false`;
 
+    * `:ssl_negotiation_direct - Initiate directly SSL handshake without asking server if it supports it.
+      Use this option for networks that only allow TLS traffic and you already know the server supports
+      SSL. Defaults to `false`; Requires ssl: true or configured
+
     * `:socket_options` - Options to be given to the underlying socket
       (applies to both TCP and UNIX sockets);
 
@@ -197,6 +202,19 @@ defmodule Postgrex do
   The server name indication (SNI) will be automatically set based on the `:hostname`
   configuration, if one was provided. Other options, such as `depth: 3`, may be necessary
   depending on the server.
+
+  ## sslnegotiation direct
+
+  Start the SSL handshake before asking the Postgres server if it supports SSL
+
+  [ssl_negotiation_direct: true]
+
+  Usually the client driver will ask the server if it supports SSL in plain
+  text before establishing the SSL connection, this doesn't work in networks
+  that only allow TLS traffic, more common on corporate or cloud environments
+  (like AWS PrivateLink, Google Cloud SQL).
+
+  This option only has effect when [ssl: true] or configured
 
   ## PgBouncer
 
