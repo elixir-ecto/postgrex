@@ -172,6 +172,17 @@ defmodule Postgrex.ReplicationConnection do
 
   """
   @type stream_opts :: [max_messages: pos_integer]
+
+  @query_timeout :infinity
+
+  @typedoc """
+  The following options configure querying:
+
+    * `:timeout` - Query request timeout (default: `#{@query_timeout}`);
+
+  """
+  @type query_opts :: [timeout: timeout]
+
   @max_lsn_component_size 8
   @max_uint64 18_446_744_073_709_551_615
   @max_messages 500
@@ -192,6 +203,7 @@ defmodule Postgrex.ReplicationConnection do
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
+              | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
               | {:disconnect, reason}
 
@@ -220,6 +232,7 @@ defmodule Postgrex.ReplicationConnection do
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
+              | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
               | {:disconnect, reason}
 
@@ -230,6 +243,7 @@ defmodule Postgrex.ReplicationConnection do
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
+              | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
               | {:disconnect, reason}
 
@@ -249,17 +263,19 @@ defmodule Postgrex.ReplicationConnection do
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
+              | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
               | {:disconnect, reason}
 
   @doc """
   Callback for `:query` outputs.
 
-  If any callback returns `{:query, iodata, state}`,
-  then this callback will be immediately called with
-  the result of the query. Please note that even though
-  replication connections use the simple query protocol,
-  Postgres currently limits them to single command queries.
+  If any callback returns `{:query, iodata, state}` or
+  `{:query, iodata, opts, state}`, then this callback will
+  be immediately called with the result of the query.
+  Please note that even though replication connections use
+  the simple query protocol, Postgres currently limits them to
+  single command queries.
   Due to this constraint, this callback will be passed
   either a list with a single successful query result or
   an error.
@@ -268,6 +284,7 @@ defmodule Postgrex.ReplicationConnection do
               {:noreply, state}
               | {:noreply, ack, state}
               | {:query, query, state}
+              | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
               | {:disconnect, reason}
 
@@ -586,22 +603,32 @@ defmodule Postgrex.ReplicationConnection do
         stream_in_progress(:stream, mod, mod_state, from, s)
 
       {:query, query, mod_state} when streaming == nil ->
-        case Protocol.handle_simple(query, [], s.protocol) do
-          {:ok, results, protocol} when is_list(results) ->
-            handle(mod, :handle_result, [results, mod_state], from, %{s | protocol: protocol})
+        handle_query(query, mod, from, s, mod_state, timeout: @query_timeout)
 
-          {:error, %Postgrex.Error{} = error, protocol} ->
-            handle(mod, :handle_result, [error, mod_state], from, %{s | protocol: protocol})
-
-          {:disconnect, reason, protocol} ->
-            reconnect_or_stop(:disconnect, reason, protocol, %{s | state: {mod, mod_state}})
-        end
+      {:query, query, opts, mod_state} when streaming == nil ->
+        handle_query(query, mod, from, s, mod_state, opts)
 
       {:query, _query, mod_state} ->
         stream_in_progress(:query, mod, mod_state, from, s)
 
+      {:query, _query, _opts, mod_state} ->
+        stream_in_progress(:query, mod, mod_state, from, s)
+
       {:disconnect, reason} ->
         reconnect_or_stop(:disconnect, reason, s.protocol, s)
+    end
+  end
+
+  defp handle_query(query, mod, from, s, mod_state, opts) do
+    case Protocol.handle_simple(query, opts, s.protocol) do
+      {:ok, results, protocol} when is_list(results) ->
+        handle(mod, :handle_result, [results, mod_state], from, %{s | protocol: protocol})
+
+      {:error, %Postgrex.Error{} = error, protocol} ->
+        handle(mod, :handle_result, [error, mod_state], from, %{s | protocol: protocol})
+
+      {:disconnect, reason, protocol} ->
+        reconnect_or_stop(:disconnect, reason, protocol, %{s | state: {mod, mod_state}})
     end
   end
 

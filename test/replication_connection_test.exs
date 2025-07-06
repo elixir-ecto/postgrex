@@ -93,9 +93,12 @@ defmodule ReplicationTest do
       {:noreply, pid}
     end
 
-    @impl true
     def handle_call({:query, query}, from, pid) do
       {:query, query, {from, pid}}
+    end
+
+    def handle_call({:query, query, %{timeout: timeout}}, from, pid) do
+      {:query, query, [timeout: timeout], {from, pid}}
     end
 
     # This is part of the "stream_continuation" test and handles call that
@@ -108,7 +111,6 @@ defmodule ReplicationTest do
       {:query, query, Map.merge(opts, %{from: from, pid: pid})}
     end
 
-    @impl true
     def handle_call({:disconnect, reason}, _, _) do
       {:disconnect, reason}
     end
@@ -165,6 +167,24 @@ defmodule ReplicationTest do
 
     test "on error", context do
       assert {:error, %Postgrex.Error{}} = PR.call(context.repl, {:query, "SELCT"})
+    end
+
+    @tag :capture_log
+    test "on timeout", context do
+      Process.flag(:trap_exit, true)
+      repl_ref = Process.monitor(context.repl)
+
+      {_pid, call_ref} =
+        spawn_monitor(fn ->
+          assert {:error, %Postgrex.Error{}} =
+                   PR.call(context.repl, {:query, "SELECT pg_sleep(0.1);", %{timeout: 10}})
+        end)
+
+      assert_receive {:DOWN, ^call_ref, _, _,
+                      {%DBConnection.ConnectionError{message: "tcp async_recv: timeout"}, _}}
+
+      assert_receive {:DOWN, ^repl_ref, _, _,
+                      %DBConnection.ConnectionError{message: "tcp async_recv: timeout"}}
     end
 
     @tag :capture_log
