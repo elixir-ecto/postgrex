@@ -1153,36 +1153,37 @@ defmodule Postgrex.Protocol do
 
   ## replication/notifications
 
-  @spec handle_simple(String.t() | iolist(), state) ::
+  @spec handle_simple(String.t() | iolist(), Keyword.t(), state) ::
           {:ok, [Postgrex.Result.t()], state}
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_simple(statement, opts \\ [], %{buffer: buffer} = s) do
     status = new_status(opts, mode: :transaction)
     msgs = [msg_query(statement: statement)]
+    timeout = Keyword.get(opts, :timeout, :infinity)
 
     case msg_send(%{s | buffer: nil}, msgs, buffer) do
       :ok ->
-        recv_simple(s, status, [], [], [], buffer)
+        recv_simple(s, status, [], [], [], buffer, timeout)
 
       {:disconnect, err, s} ->
         {:disconnect, err, s}
     end
   end
 
-  defp recv_simple(s, status, results, columns, rows, buffer) do
-    case msg_recv(s, :infinity, buffer) do
+  defp recv_simple(s, status, results, columns, rows, buffer, timeout) do
+    case msg_recv(s, timeout, buffer) do
       {:ok, msg_row_desc(fields: fields), buffer} ->
         columns = column_names(fields)
-        recv_simple(s, status, results, columns, rows, buffer)
+        recv_simple(s, status, results, columns, rows, buffer, timeout)
 
       {:ok, msg_data_row(values: values), buffer} ->
         row = Types.decode_simple(values, s.types)
-        recv_simple(s, status, results, columns, [row | rows], buffer)
+        recv_simple(s, status, results, columns, [row | rows], buffer, timeout)
 
       {:ok, msg_command_complete(tag: tag), buffer} ->
         {result, s} = done(s, columns, Enum.reverse(rows), [tag])
-        recv_simple(s, status, [result | results], [], [], buffer)
+        recv_simple(s, status, [result | results], [], [], buffer, timeout)
 
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
@@ -1194,7 +1195,7 @@ defmodule Postgrex.Protocol do
 
       {:ok, msg, buffer} ->
         s = handle_msg(s, status, msg)
-        recv_simple(s, status, results, columns, rows, buffer)
+        recv_simple(s, status, results, columns, rows, buffer, timeout)
 
       {:disconnect, _, _} = dis ->
         dis
