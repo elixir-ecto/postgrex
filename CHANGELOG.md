@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.21.0 (2025-07-31)
+
+This release requires Erlang/OTP 25+
+
+* Enhancements
+  * Add query timeout option on ReplicationConnection
+
+* Bug fixes
+  * PGHOST option does not override explicitly given endpoint configuration
+  * Add ltxtquery support
+
 ## v0.20.0 (2025-02-05)
 
 * Deprecations
