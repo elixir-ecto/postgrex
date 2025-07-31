@@ -3507,7 +3507,7 @@ defmodule Postgrex.Protocol do
         :ok
 
       {:error, reason} ->
-        disconnect(s, tag(mod), "setopts", reason, buffer)
+        disconnect(s, tag(mod), "setopts: #{inspect(opts)}", reason, buffer)
     end
   end
 
