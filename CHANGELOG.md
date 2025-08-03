@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.21.1 (2025-08-03)
+
+* Bug fixes
+  * Fix `ssl: true` with missing ssl_opts handling
+
 ## v0.21.0 (2025-07-31)
 
 This release requires Erlang/OTP 25+
