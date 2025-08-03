@@ -94,8 +94,8 @@ defmodule Postgrex.Protocol do
 
         {true, opts} ->
           case Keyword.pop(opts, :ssl_opts) do
-            {nil, _opts} ->
-              [cacerts: :public_key.cacerts_get()] ++ default_ssl_opts()
+            {nil, opts} ->
+              {[cacerts: :public_key.cacerts_get()] ++ default_ssl_opts(), opts}
 
             {ssl_opts, opts} ->
               Logger.warning(":ssl_opts is deprecated, pass opts to :ssl instead")
