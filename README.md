@@ -133,14 +133,13 @@ query("select nextval($1)", [sequence_oid])
 
 ## PgBouncer
 
-When using PgBouncer with transaction or statement pooling named prepared
-queries can not be used because the bouncer may route requests from the same
-postgrex connection to different PostgreSQL backend processes and discards named
-queries after the transactions closes. To force unnamed prepared queries:
+PgBouncer versions 1.21.0 and later support named prepared statements. If you are using an older version of PgBouncer with transaction or statement pooling, named prepared queries cannot be used because the bouncer may route requests from the same Postgrex connection to different PostgreSQL backend processes and discards named queries after the transaction closes. To force unnamed prepared queries in such older versions:
 
 ```elixir
 Postgrex.start_link(prepare: :unnamed)
 ```
+
+[PgBouncer 1.21.0 release notes](https://www.pgbouncer.org/changelog.html#pgbouncer-121x)
 
 ## Contributing
 

@@ -200,11 +200,11 @@ defmodule Postgrex do
 
   ## PgBouncer
 
-  When using PgBouncer with transaction or statement pooling named prepared
-  queries can not be used because the bouncer may route requests from
-  the same postgrex connection to different PostgreSQL backend processes
-  and discards named queries after the transactions closes.
-  To force unnamed prepared queries set the `:prepare` option to `:unnamed`.
+  PgBouncer versions 1.21.0 and later support named prepared statements. If you are using an
+  older version of PgBouncer with transaction or statement pooling, named prepared queries
+  cannot be used because the bouncer may route requests from the same Postgrex connection
+  to different PostgreSQL backend processes and discards named queries after the transaction closes.
+  To force unnamed prepared queries in such older versions, set the `:prepare` option to `:unnamed`.
 
   ## Handling failover
 
