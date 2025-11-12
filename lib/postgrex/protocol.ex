@@ -365,14 +365,19 @@ defmodule Postgrex.Protocol do
   def handle_prepare(%Query{name: ""} = query, opts, s) do
     prepare = Keyword.get(opts, :postgrex_prepare, false)
     status = new_status(opts, prepare: prepare)
+    comment = Keyword.get(opts, :comment)
 
-    case prepare do
-      true ->
-        parse_describe_close(s, status, query)
+    result =
+      case prepare do
+        true ->
+          parse_describe_close(s, status, query)
 
-      false ->
-        comment = Keyword.get(opts, :comment)
-        parse_describe_flush(s, status, query, comment)
+        false ->
+          parse_describe_flush(s, status, query, comment)
+      end
+
+    with {:disconnect, %{reason: :closed} = err, s} <- result do
+      {:disconnect_and_retry, err, s}
     end
   end
 
@@ -395,8 +400,15 @@ defmodule Postgrex.Protocol do
           false -> close_parse_describe_flush(s, status, query, comment)
         end
 
-      with {:ok, query, s} <- result do
-        {:ok, query, %{s | messages: []}}
+      case result do
+        {:ok, query, s} ->
+          {:ok, query, %{s | messages: []}}
+
+        {:disconnect, %{reason: :closed} = err, s} ->
+          {:disconnect_and_retry, err, s}
+
+        other ->
+          other
       end
     end
   end
@@ -591,7 +603,11 @@ defmodule Postgrex.Protocol do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when postgres == :idle ->
         statement = "BEGIN"
-        handle_transaction(statement, opts, s)
+
+        with {:disconnect, %{reason: :closed} = err, s} <-
+               handle_transaction(statement, opts, s) do
+          {:disconnect_and_retry, err, s}
+        end
 
       :savepoint when postgres == :transaction ->
         statement = "SAVEPOINT postgrex_savepoint"
@@ -3391,7 +3407,13 @@ defmodule Postgrex.Protocol do
   end
 
   defp conn_error(mod, action, reason) when reason in @nonposix_errors do
-    conn_error("#{mod} #{action}: #{reason}")
+    msg = "#{mod} #{action}: #{reason}"
+
+    if reason == :closed do
+      conn_error(msg, :closed)
+    else
+      conn_error(msg)
+    end
   end
 
   defp conn_error(:tcp, action, reason) do
@@ -3402,6 +3424,10 @@ defmodule Postgrex.Protocol do
   defp conn_error(:ssl, action, reason) do
     formatted_reason = :ssl.format_error(reason)
     conn_error("ssl #{action}: #{formatted_reason} - #{inspect(reason)}")
+  end
+
+  defp conn_error(message, reason) do
+    DBConnection.ConnectionError.exception(message: message, reason: reason)
   end
 
   defp conn_error(message) do
