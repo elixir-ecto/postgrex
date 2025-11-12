@@ -3443,9 +3443,6 @@ defmodule Postgrex.Protocol do
   defp handle_disconnect_retry({:disconnect, %{reason: :closed} = err, s}),
     do: {:disconnect_and_retry, err, s}
 
-  defp handle_disconnect_retry({:disconnect, err, s}),
-    do: {:disconnect, err, s}
-
   defp handle_disconnect_retry(other), do: other
 
   defp sync_recv(s, status, buffer) do
