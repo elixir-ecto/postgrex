@@ -595,7 +595,7 @@ defmodule Postgrex.Protocol do
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
           | {:disconnect | :disconnect_and_retry,
-            %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
+             %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
