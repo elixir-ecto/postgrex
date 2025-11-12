@@ -350,8 +350,7 @@ defmodule Postgrex.Protocol do
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:error, %DBConnection.TransactionError{}, state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{}, state}
-          | {:disconnect_and_retry, %DBConnection.ConnectionError{}, state}
+          | {:disconnect | :disconnect_and_retry, %DBConnection.ConnectionError{}, state}
   def handle_prepare(%Query{} = query, _, %{postgres: {_, _}} = s) do
     lock_error(s, :prepare, query)
   end
@@ -595,8 +594,7 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {DBConnection.status(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
-          | {:disconnect_and_retry, %DBConnection.ConnectionError{}, state}
+          | {:disconnect | :disconnect_and_retry, %DBConnection.ConnectionError{} | Postgrex.Error.t(), state}
   def handle_begin(_, %{postgres: {_, _}} = s) do
     lock_error(s, :begin)
   end
