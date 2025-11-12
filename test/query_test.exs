@@ -2010,7 +2010,7 @@ defmodule QueryTest do
     opts = [database: "postgrex_test", backoff_min: 1, backoff_max: 1]
     {:ok, pid} = P.start_link(opts)
 
-    # Prepare query that we wil try to close after disconnecting
+    # Prepare query that we wil try to execute after disconnecting
     {:ok, query} = P.prepare(pid, "42", "SELECT 42")
 
     # Drop socket
