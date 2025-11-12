@@ -1967,15 +1967,22 @@ defmodule QueryTest do
   end
 
   test "disconnect_and_retry", context do
+    # Start new connection so we can retry on disconnect
+    opts = [database: "postgrex_test", backoff_min: 1, backoff_max: 1]
+    {:ok, pid} = P.start_link(opts)
+
+    # Have to get socket by knowing DBConnection specifics
     fun = fn conn ->
       {:pool_ref, _, _, _, holder, _} = conn.pool_ref
-      [{:conn, _, _ ,state , _, _, _, _}] = :ets.lookup(holder, :conn)
+      [{:conn, _, _ , state , _, _, _, _}] = :ets.lookup(holder, :conn)
       {:gen_tcp, sock} = state.sock
       sock
     end
 
-    sock = DBConnection.run(context.pid, fun)
+    sock = DBConnection.run(pid, fun)
     :gen_tcp.shutdown(sock, :read_write)
-    assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
+
+    # Assert preparation happens instead of returning error
+    assert {:ok, %Postgrex.Query{}} = P.prepare(pid, "42", "SELECT 42")
   end
 end
