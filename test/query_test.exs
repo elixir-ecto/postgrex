@@ -1965,4 +1965,17 @@ defmodule QueryTest do
       Postgrex.execute!(context[:pid], "name", "postgrex")
     end
   end
+
+  test "disconnect_and_retry", context do
+    fun = fn conn ->
+      {:pool_ref, _, _, _, holder, _} = conn.pool_ref
+      [{:conn, _, _ ,state , _, _, _, _}] = :ets.lookup(holder, :conn)
+      {:gen_tcp, sock} = state.sock
+      sock
+    end
+
+    sock = DBConnection.run(context.pid, fun)
+    :gen_tcp.shutdown(sock, :read_write)
+    assert (%Postgrex.Query{} = query) = prepare("42", "SELECT 42")
+  end
 end
