@@ -1974,7 +1974,7 @@ defmodule QueryTest do
     # Have to get socket by knowing DBConnection specifics
     fun = fn conn ->
       {:pool_ref, _, _, _, holder, _} = conn.pool_ref
-      [{:conn, _, _, state , _, _, _, _}] = :ets.lookup(holder, :conn)
+      [{:conn, _, _, state, _, _, _, _}] = :ets.lookup(holder, :conn)
       {:gen_tcp, sock} = state.sock
       sock
     end
