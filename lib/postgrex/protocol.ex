@@ -376,9 +376,7 @@ defmodule Postgrex.Protocol do
           parse_describe_flush(s, status, query, comment)
       end
 
-    with {:disconnect, %{reason: :closed} = err, s} <- result do
-      {:disconnect_and_retry, err, s}
-    end
+    handle_disconnect_retry(result)
   end
 
   def handle_prepare(%Query{} = query, opts, %{queries: nil} = s) do
@@ -401,14 +399,8 @@ defmodule Postgrex.Protocol do
         end
 
       case result do
-        {:ok, query, s} ->
-          {:ok, query, %{s | messages: []}}
-
-        {:disconnect, %{reason: :closed} = err, s} ->
-          {:disconnect_and_retry, err, s}
-
-        other ->
-          other
+        {:ok, query, s} -> {:ok, query, %{s | messages: []}}
+        other -> handle_disconnect_retry(other)
       end
     end
   end
@@ -434,11 +426,15 @@ defmodule Postgrex.Protocol do
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:error, %DBConnection.TransactionError{}, state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{}, state}
+          | {:disconnect | :disconnect_and_retry, %DBConnection.ConnectionError{}, state}
   def handle_execute(%Query{} = query, params, opts, s) do
     case Keyword.get(opts, :postgrex_copy, false) do
-      true -> handle_execute_copy(query, params, opts, s)
-      false -> handle_execute_result(query, params, opts, s)
+      true ->
+        handle_execute_copy(query, params, opts, s)
+
+      false ->
+        result = handle_execute_result(query, params, opts, s)
+        handle_disconnect_retry(result)
     end
   end
 
@@ -515,9 +511,10 @@ defmodule Postgrex.Protocol do
           {:ok, Postgrex.Result.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:disconnect, %RuntimeError{}, state}
-          | {:disconnect, %DBConnection.ConnectionError{}, state}
+          | {:disconnect | :disconnect_and_retry, %DBConnection.ConnectionError{}, state}
   def handle_close(%Query{ref: ref} = query, opts, %{postgres: {_, ref}} = s) do
-    flushed_close(s, new_status(opts), query)
+    result = flushed_close(s, new_status(opts), query)
+    handle_disconnect_retry(result)
   end
 
   def handle_close(%Query{} = query, _, %{postgres: {_, _}} = s) do
@@ -525,7 +522,8 @@ defmodule Postgrex.Protocol do
   end
 
   def handle_close(%Query{} = query, opts, s) do
-    close(s, new_status(opts), query)
+    result = close(s, new_status(opts), query)
+    handle_disconnect_retry(result)
   end
 
   @impl true
@@ -604,11 +602,8 @@ defmodule Postgrex.Protocol do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when postgres == :idle ->
         statement = "BEGIN"
-
-        with {:disconnect, %{reason: :closed} = err, s} <-
-               handle_transaction(statement, opts, s) do
-          {:disconnect_and_retry, err, s}
-        end
+        result = handle_transaction(statement, opts, s)
+        handle_disconnect_retry(result)
 
       :savepoint when postgres == :transaction ->
         statement = "SAVEPOINT postgrex_savepoint"
@@ -2098,7 +2093,7 @@ defmodule Postgrex.Protocol do
         bind_execute_close(s, status, query, params)
 
       {error, _, _} = other when error in [:error, :disconnect] ->
-        other
+        handle_disconnect_retry(other)
     end
   end
 
@@ -2110,7 +2105,7 @@ defmodule Postgrex.Protocol do
         bind_execute(s, status, query, params)
 
       {error, _, _} = other when error in [:error, :disconnect] ->
-        other
+        handle_disconnect_retry(other)
     end
   end
 
@@ -2322,7 +2317,9 @@ defmodule Postgrex.Protocol do
         recv_execute(s, status, query, rows, buffer)
 
       {:disconnect, _, _} = dis ->
-        dis
+        with {_, %{reason: :closed} = err, s} <- dis do
+          {:disconnect, %{err | reason: :execute_closed}, s}
+        end
     end
   end
 
@@ -3442,6 +3439,14 @@ defmodule Postgrex.Protocol do
   defp disconnect(s, %RuntimeError{} = err, buffer) do
     {:disconnect, err, %{s | buffer: buffer}}
   end
+
+  defp handle_disconnect_retry({:disconnect, %{reason: :closed} = err, s}),
+    do: {:disconnect_and_retry, err, s}
+
+  defp handle_disconnect_retry({:disconnect, err, s}),
+    do: {:disconnect, err, s}
+
+  defp handle_disconnect_retry(other), do: other
 
   defp sync_recv(s, status, buffer) do
     %{postgres: postgres, transactions: transactions} = s
