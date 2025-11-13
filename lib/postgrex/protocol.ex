@@ -433,8 +433,7 @@ defmodule Postgrex.Protocol do
         handle_execute_copy(query, params, opts, s)
 
       false ->
-        result = handle_execute_result(query, params, opts, s)
-        handle_disconnect_retry(result)
+        handle_execute_result(query, params, opts, s)
     end
   end
 
@@ -2126,8 +2125,8 @@ defmodule Postgrex.Protocol do
       msg_sync()
     ]
 
-    with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
-         {:ok, s, buffer} <- recv_bind(s, status, buffer),
+    with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer) |> handle_disconnect_retry(),
+         {:ok, s, buffer} <- recv_bind(s, status, buffer) |> handle_disconnect_retry(),
          {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
          {:ok, s, buffer} <- recv_close(s, status, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
@@ -2137,7 +2136,7 @@ defmodule Postgrex.Protocol do
         error_ready(s, status, err, buffer)
         |> maybe_disconnect()
 
-      {:disconnect, _err, _s} = disconnect ->
+      {_disconnect_or_retry, _err, _s} = disconnect ->
         disconnect
     end
   end
@@ -2163,8 +2162,8 @@ defmodule Postgrex.Protocol do
       msg_sync()
     ]
 
-    with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer),
-         {:ok, s, buffer} <- recv_bind(s, status, buffer),
+    with :ok <- msg_send(%{s | buffer: nil}, msgs, buffer) |> handle_disconnect_retry(),
+         {:ok, s, buffer} <- recv_bind(s, status, buffer) |> handle_disconnect_retry(),
          {:ok, result, s, buffer} <- recv_execute(s, status, query, buffer),
          {:ok, s} <- recv_ready(s, status, buffer) do
       {:ok, query, result, s}
@@ -2175,7 +2174,7 @@ defmodule Postgrex.Protocol do
         error_ready(s, status, err, buffer)
         |> maybe_disconnect()
 
-      {:disconnect, _err, _s} = disconnect ->
+      {_disconnect_or_retry, _err, _s} = disconnect ->
         disconnect
     end
   end
@@ -2317,9 +2316,7 @@ defmodule Postgrex.Protocol do
         recv_execute(s, status, query, rows, buffer)
 
       {:disconnect, _, _} = dis ->
-        with {_, %{reason: :closed} = err, s} <- dis do
-          {:disconnect, %{err | reason: :execute_closed}, s}
-        end
+        dis
     end
   end
 
