@@ -3437,6 +3437,11 @@ defmodule Postgrex.Protocol do
     {:disconnect, err, %{s | buffer: buffer}}
   end
 
+  # This function is used in two ways:
+  #
+  # * When we know the operation is fully retriable, we invoke it at the top
+  # * When only part is retriable (such as bind in execute or begin in a transaction),
+  #   we invoke it at the specific instructions
   defp handle_disconnect_retry({:disconnect, %{reason: :closed} = err, s}),
     do: {:disconnect_and_retry, err, s}
 
