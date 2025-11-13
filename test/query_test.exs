@@ -1965,4 +1965,70 @@ defmodule QueryTest do
       Postgrex.execute!(context[:pid], "name", "postgrex")
     end
   end
+
+  test "disconnect_and_retry with prepare" do
+    # Start new connection so we can retry on disconnect
+    opts = [database: "postgrex_test", backoff_min: 1, backoff_max: 1]
+    {:ok, pid} = P.start_link(opts)
+
+    # Drop socket
+    disconnect(pid)
+
+    # Assert preparation happens instead of returning error
+    assert {:ok, _} = P.prepare(pid, "42", "SELECT 42")
+  end
+
+  test "disconnect_and_retry with transaction" do
+    # Start new connection so we can retry on disconnect
+    opts = [database: "postgrex_test", backoff_min: 1, backoff_max: 1]
+    {:ok, pid} = P.start_link(opts)
+
+    # Drop socket
+    disconnect(pid)
+
+    # Assert transaction happens instead of returning error
+    assert {:ok, _} = P.transaction(pid, fn conn -> P.query(conn, "SELECT 1", []) end)
+  end
+
+  test "disconnect_and_retry with closing prepared statement" do
+    # Start new connection so we can retry on disconnect
+    opts = [database: "postgrex_test", backoff_min: 1, backoff_max: 1]
+    {:ok, pid} = P.start_link(opts)
+
+    # Prepare query that we wil try to close after disconnecting
+    {:ok, query} = P.prepare(pid, "42", "SELECT 42")
+
+    # Drop socket
+    disconnect(pid)
+
+    # Assert close happens instead of returning error
+    assert :ok = P.close(pid, query)
+  end
+
+  test "disconnect_and_retry on attempting execution of prepared statement" do
+    # Start new connection so we can retry on disconnect
+    opts = [database: "postgrex_test", backoff_min: 1, backoff_max: 1]
+    {:ok, pid} = P.start_link(opts)
+
+    # Prepare query that we wil try to execute after disconnecting
+    {:ok, query} = P.prepare(pid, "42", "SELECT 42")
+
+    # Drop socket
+    disconnect(pid)
+
+    # Assert execute happens instead of returning error
+    assert {:ok, _, _} = P.execute(pid, query, [])
+  end
+
+  defp disconnect(pid) do
+    sock = DBConnection.run(pid, &get_socket/1)
+    :gen_tcp.shutdown(sock, :read_write)
+  end
+
+  defp get_socket(conn) do
+    {:pool_ref, _, _, _, holder, _} = conn.pool_ref
+    [{:conn, _, _, state, _, _, _, _}] = :ets.lookup(holder, :conn)
+    {:gen_tcp, sock} = state.sock
+    sock
+  end
 end

@@ -33,7 +33,7 @@ defmodule Postgrex.Mixfile do
       {:jason, "~> 1.0", optional: true},
       {:table, "~> 0.1.0", optional: true},
       {:decimal, "~> 1.5 or ~> 2.0"},
-      {:db_connection, "~> 2.1"}
+      {:db_connection, github: "elixir-ecto/db_connection", branch: "master"}
     ]
   end
 
