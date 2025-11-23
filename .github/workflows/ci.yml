@@ -31,38 +31,61 @@ jobs:
       fail-fast: false
       matrix:
         pg:
-          - version: 9.4
+          - version: "9.4"
             skip_wal: skip_wal
-          - version: 9.5
+          - version: "9.5"
             skip_wal: skip_wal
-          - version: 9.6
+          - version: "9.6"
             skip_wal: skip_wal
-          - version: 10
-          - version: 11
-          - version: 12
-          - version: 13
-          - version: 14
+          - version: "10"
+          - version: "11"
+          - version: "12"
+          - version: "13"
+          - version: "14"
+          - version: "15"
+          - version: "16"
+          - version: "17"
+          - version: "18"
 
         pair:
-          - elixir: 1.13
-            otp: 25.3
+          - elixir: "1.13"
+            otp: "24"
         include:
           - pg:
-              version: 14
+              version: "18"
             pair:
-              elixir: 1.18.1
-              otp: 27.2
+              elixir: "1.19"
+              otp: "28"
             lint: lint
     env:
       MIX_ENV: test
     steps:
       - name: "Set PG settings"
         run: |
-          docker exec ${{ job.services.pg.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
-          docker restart ${{ job.services.pg.id }}
+          PG_ID=${{ job.services.pg.id }}
+          # PG 18 config path is different from previous versions
+          # - /var/lib/postgresql/18/docker/postgresql.conf (PG 18)
+          # - /var/lib/postgresql/data/postgresql.conf (PG 17 and below)
+
+          # Dynamically find the path to postgresql.conf using psql
+          # We use the credentials from the service environment
+          CONFIG_FILE=$(docker exec $PG_ID psql -U postgres -d postgres -t -A -c 'SHOW config_file;')
+
+          # Trim whitespace and ensure the path is valid
+          CONFIG_FILE=$(echo $CONFIG_FILE | xargs)
+          if [ -z "$CONFIG_FILE" ]; then
+            echo "Error: Could not determine postgresql.conf path dynamically."
+            exit 1
+          fi
+
+          echo "Found config file at: $CONFIG_FILE"
+
+          # Use the discovered path to append the setting and restart the database
+          docker exec $PG_ID sh -c 'echo "wal_level=logical" >> '"$CONFIG_FILE"
+          docker restart $PG_ID
         if: ${{ matrix.pg.skip_wal }} != 'skip_wal'
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
 
       - uses: erlef/setup-beam@v1
         with:

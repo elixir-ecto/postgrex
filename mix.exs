@@ -80,7 +80,10 @@ defmodule Postgrex.Mixfile do
     [
       maintainers: ["Eric Meadows-Jönsson", "José Valim", "Greg Rychlewski", "Wojtek Mach"],
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => @source_url}
+      links: %{
+        "GitHub" => @source_url,
+        "Changelog" => "https://hexdocs.pm/postgrex/changelog.html"
+      }
     ]
   end
 end
