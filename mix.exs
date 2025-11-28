@@ -23,7 +23,7 @@ defmodule Postgrex.Mixfile do
     [
       extra_applications: [:logger, :crypto, :ssl],
       mod: {Postgrex.App, []},
-      env: [type_server_reap_after: 3 * 60_000, json_library: Jason]
+      env: [type_server_reap_after: 3 * 60_000, type_server_timeout: 60_000, json_library: Jason]
     ]
   end
 
