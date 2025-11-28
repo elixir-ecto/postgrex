@@ -5,8 +5,6 @@ defmodule Postgrex.TypeServer do
 
   defstruct [:types, :connections, :lock, :waiting]
 
-  @timeout 60_000
-
   @doc """
   Starts a type server.
   """
@@ -24,8 +22,10 @@ defmodule Postgrex.TypeServer do
   @spec fetch(pid) ::
           {:lock, reference, Postgrex.Types.state()} | :noproc | :error
   def fetch(server) do
+    timeout = Application.fetch_env!(:postgrex, :type_server_timeout)
+
     try do
-      GenServer.call(server, :fetch, @timeout)
+      GenServer.call(server, :fetch, timeout)
     catch
       # module timed out, pretend it did not exist.
       :exit, {:normal, _} -> :noproc
@@ -38,7 +38,8 @@ defmodule Postgrex.TypeServer do
   """
   @spec update(pid, reference, [Postgrex.TypeInfo.t()]) :: :ok
   def update(server, ref, [_ | _] = type_infos) do
-    GenServer.call(server, {:update, ref, type_infos}, @timeout)
+    timeout = Application.fetch_env!(:postgrex, :type_server_timeout)
+    GenServer.call(server, {:update, ref, type_infos}, timeout)
   end
 
   def update(server, ref, []) do
