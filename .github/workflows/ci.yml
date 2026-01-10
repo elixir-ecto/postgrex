@@ -48,8 +48,8 @@ jobs:
           - version: "18"
 
         pair:
-          - elixir: "1.13"
-            otp: "24"
+          - elixir: "1.15"
+            otp: "25"
         include:
           - pg:
               version: "18"

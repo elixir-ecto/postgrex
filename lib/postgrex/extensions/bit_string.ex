@@ -13,7 +13,7 @@ defmodule Postgrex.Extensions.BitString do
       val when is_bitstring(val) ->
         bin_size = byte_size(val)
         last_pos = bin_size - 1
-        <<binary::binary-size(last_pos), last::bits>> = val
+        <<binary::binary-size(^last_pos), last::bits>> = val
         pad = 8 - bit_size(last)
         bit_count = bit_size(val)
 

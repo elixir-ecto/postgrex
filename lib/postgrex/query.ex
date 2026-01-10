@@ -52,8 +52,6 @@ defmodule Postgrex.Query do
 end
 
 defimpl DBConnection.Query, for: Postgrex.Query do
-  require Postgrex.Messages
-
   def parse(%{types: nil, name: name} = query, _) do
     # for query table to match names must be equal
     %{query | name: IO.iodata_to_binary(name)}

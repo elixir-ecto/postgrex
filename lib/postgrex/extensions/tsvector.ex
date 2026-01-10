@@ -49,7 +49,7 @@ defmodule Postgrex.Extensions.TSVector do
   def decode_tsvector_values(words) do
     [word, <<positions_count::16, rest::binary>>] = :binary.split(words, <<0>>)
     positions_bytes = positions_count * 2
-    <<positions::binary-size(positions_bytes), remaining_data::binary>> = rest
+    <<positions::binary-size(^positions_bytes), remaining_data::binary>> = rest
 
     positions =
       for <<weight::2, position::14 <- positions>>, do: {position, decode_weight(weight)}

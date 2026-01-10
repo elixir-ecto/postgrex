@@ -95,7 +95,7 @@ defmodule Postgrex.Messages do
 
         :gss_cont ->
           rest_size = size - 2
-          <<data::size(rest_size)>> = rest
+          <<data::size(^rest_size)>> = rest
           data
 
         :sasl ->

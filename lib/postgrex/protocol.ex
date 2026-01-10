@@ -3299,7 +3299,7 @@ defmodule Postgrex.Protocol do
     size = size - 4
 
     case rest do
-      <<body::binary(size), rest::binary>> ->
+      <<body::binary(^size), rest::binary>> ->
         {:ok, parse(body, type, size), rest}
 
       _ ->
