@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.22.0 (2026-01-10)
+
+* Enhancements
+  * Automatically retry when a connection disconnects on first read/write
+  * Make timeouts for TypeServer configurable
+  * Require Elixir v1.15+
+
 ## v0.21.1 (2025-08-03)
 
 * Bug fixes

@@ -2,7 +2,7 @@ defmodule Postgrex.Mixfile do
   use Mix.Project
 
   @source_url "https://github.com/elixir-ecto/postgrex"
-  @version "0.22.0-dev"
+  @version "0.22.0"
 
   def project do
     [
@@ -33,7 +33,7 @@ defmodule Postgrex.Mixfile do
       {:jason, "~> 1.0", optional: true},
       {:table, "~> 0.1.0", optional: true},
       {:decimal, "~> 1.5 or ~> 2.0"},
-      {:db_connection, github: "elixir-ecto/db_connection", branch: "master"}
+      {:db_connection, "~> 2.9"}
     ]
   end
 
