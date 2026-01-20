@@ -186,7 +186,7 @@ defmodule Postgrex.Extensions.Interval do
 
   def raise_encode_infinity(type) do
     raise ArgumentError, """
-    got query parameter value of `#{type}`. If you want to support infinite intervals \
+    got query parameter value of `#{inpsect(type)}`. If you want to support infinite intervals \
     in your application, you can enable them by defining your own types:
 
         Postgrex.Types.define(MyApp.PostgrexTypes, [], allow_infinite_intervals: true)

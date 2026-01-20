@@ -149,8 +149,8 @@ defmodule QueryTest do
     opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
     {:ok, pid} = P.start_link(opts)
 
-    assert P.query(pid, "SELECT 'infinity'::interval", []) == [[:inf]]
-    assert P.query(pid, "SELECT '-infinity'::interval", []) == [[:"-inf"]]
+    assert P.query(pid, "SELECT 'infinity'::interval", []).rows == [[:inf]]
+    assert P.query(pid, "SELECT '-infinity'::interval", []).rows == [[:"-inf"]]
   end
 
   @tag min_pg_version: "17.0"
@@ -1037,8 +1037,8 @@ defmodule QueryTest do
     opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
     {:ok, pid} = P.start_link(opts)
 
-    assert P.query(pid, "SELECT $1::interval", [:inf]) == [[:inf]]
-    assert P.query(pid, "SELECT $1::interval", [:"-inf"]) == [[:"-inf"]]
+    assert P.query(pid, "SELECT $1::interval", [:inf]).rows == [[:inf]]
+    assert P.query(pid, "SELECT $1::interval", [:"-inf"]).rows == [[:"-inf"]]
   end
 
   @tag min_pg_version: "17.0"
