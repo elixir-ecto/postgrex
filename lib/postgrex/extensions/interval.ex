@@ -12,7 +12,7 @@ defmodule Postgrex.Extensions.Interval do
     infinity? = Keyword.get(opts, :allow_infinite_intervals, false)
     type = Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
-    unless type in [Postgrex.Interval, Duration] do
+    if type not in [Postgrex.Interval, Duration] do
       raise ArgumentError,
             "#{inspect(type)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
     end
