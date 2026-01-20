@@ -31,10 +31,14 @@ defmodule Postgrex.Extensions.Interval do
     def encode({_type, infinity?}) do
       quote location: :keep do
         :inf ->
-          if unquote(infinity?), do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
+          if unquote(infinity?),
+            do: unquote(__MODULE__).infinity_binary(:inf),
+            else: unquote(__MODULE__).raise_encode_infinity(:inf)
 
         :"-inf" ->
-          if unquote(infinity?), do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
+          if unquote(infinity?),
+            do: unquote(__MODULE__).infinity_binary(:"-inf"),
+            else: unquote(__MODULE__).raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
@@ -118,10 +122,14 @@ defmodule Postgrex.Extensions.Interval do
     def encode({_type, infinity?}) do
       quote location: :keep do
         :inf ->
-          if unquote(infinity?), do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
+          if unquote(infinity?),
+            do: infinity_binary(:inf),
+            else: unquote(__MODULE__).raise_encode_infinity(:inf)
 
         :"-inf" ->
-          if unquote(infinity?), do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
+          if unquote(infinity?),
+            do: infinity_binary(:"-inf"),
+            else: unquote(__MODULE__).raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
@@ -168,17 +176,17 @@ defmodule Postgrex.Extensions.Interval do
     end
   end
 
-  defp infinity_binary(:inf) do
+  def infinity_binary(:inf) do
     <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
       unquote(@int32_max)::int32()>>
   end
 
-  defp infinity_binary(:"-inf") do
+  def infinity_binary(:"-inf") do
     <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
       unquote(@int32_min)::int32()>>
   end
 
-  defp raise_encode_infinity(type) do
+  def raise_encode_infinity(type) do
     raise ArgumentError, """
     got query parameter value of `#{type}`. If you want to support infinite intervals \
     in your application, you can enable them by defining your own types:
