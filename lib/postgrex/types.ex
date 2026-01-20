@@ -316,7 +316,11 @@ defmodule Postgrex.Types do
 
     * `:allow_infinite_timestamps` - A boolean controlling whether or not
       the built-in extensions `timestamp` and `timestamptz` will allow
-      a value of infinity to be decoded. Defaults to `false`.
+      infinite values (`:inf`/`:"-inf"`) to be decoded. Defaults to `false`.
+
+    * `:allow_infinite_intervals` - A boolean controlling whether or not
+      the built-in extension `interval` will allow infinite values (`:inf`/`:"-inf"`)
+      to be encoded and decoded. Defaults to `false`.
 
     * `:interval_decode_type` - The struct that intervals will be decoded
       into. Either `Postgrex.Interval` or `Duration` (Elixir 1.17.0+ only).

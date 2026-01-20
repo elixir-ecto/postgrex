@@ -9,14 +9,15 @@ defmodule Postgrex.Extensions.Interval do
   @int32_min -2_147_483_648
 
   def init(opts) do
-    case Keyword.get(opts, :interval_decode_type, Postgrex.Interval) do
-      type when type in [Postgrex.Interval, Duration] ->
-        type
+    infinity? = Keyword.get(opts, :allow_infinite_intervals, false)
+    type = Keyword.get(opts, :interval_decode_type, Postgrex.Interval)
 
-      other ->
-        raise ArgumentError,
-              "#{inspect(other)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
+    unless type in [Postgrex.Interval, Duration] do
+      raise ArgumentError,
+            "#{inspect(other)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
     end
+
+    {type, infinity?}
   end
 
   if Code.ensure_loaded?(Duration) do
@@ -27,15 +28,13 @@ defmodule Postgrex.Extensions.Interval do
     # nil: coming from a super type that does not pass modifier for sub-type
     @unspecified_precision [0xFFFF, nil]
 
-    def encode(_) do
+    def encode({_type, infinity?}) do
       quote location: :keep do
         :inf ->
-          <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
-            unquote(@int32_max)::int32()>>
+          if infinity?, do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
 
         :"-inf" ->
-          <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
-            unquote(@int32_min)::int32()>>
+          if infinity?, do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
@@ -62,7 +61,7 @@ defmodule Postgrex.Extensions.Interval do
       end
     end
 
-    def decode(type) do
+    def decode({type, infinity?}) do
       quote location: :keep, generated: true do
         <<16::int32(), microseconds::int64(), days::int32(), months::int32()>> ->
           unquote(__MODULE__).decode_interval(
@@ -70,22 +69,23 @@ defmodule Postgrex.Extensions.Interval do
             days,
             months,
             var!(mod),
-            unquote(type)
+            unquote(type),
+            unquote(infinity?)
           )
       end
     end
 
     ## Helpers
 
-    def decode_interval(@int64_max, @int32_max, @int32_max, _type_mod, _struct) do
-      :inf
+    def decode_interval(@int64_max, @int32_max, @int32_max, _type_mod, _struct, infinity?) do
+      if infinity?, do: :inf, else: raise_decode_nfinity("infinity")
     end
 
-    def decode_interval(@int64_min, @int32_min, @int32_min, _type_mod, _struct) do
-      :"-inf"
+    def decode_interval(@int64_min, @int32_min, @int32_min, _type_mod, _struct, infinity?) do
+      if infinity?, do: :"-inf", else: raise_decode_infinity("-infinity")
     end
 
-    def decode_interval(microseconds, days, months, _type_mod, Postgrex.Interval) do
+    def decode_interval(microseconds, days, months, _type_mod, Postgrex.Interval, _infinity?) do
       seconds = div(microseconds, 1_000_000)
       microseconds = rem(microseconds, 1_000_000)
 
@@ -97,7 +97,7 @@ defmodule Postgrex.Extensions.Interval do
       }
     end
 
-    def decode_interval(microseconds, days, months, type_mod, Duration) do
+    def decode_interval(microseconds, days, months, type_mod, Duration, _infinity?) do
       seconds = div(microseconds, 1_000_000)
       microseconds = rem(microseconds, 1_000_000)
       precision = if type_mod, do: type_mod &&& unquote(@precision_mask)
@@ -115,15 +115,13 @@ defmodule Postgrex.Extensions.Interval do
       )
     end
   else
-    def encode(_) do
+    def encode({_type, infinity?}) do
       quote location: :keep do
         :inf ->
-          <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
-            unquote(@int32_max)::int32()>>
+          if infinity?, do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
 
         :"-inf" ->
-          <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
-            unquote(@int32_min)::int32()>>
+          if infinity?, do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
@@ -134,24 +132,30 @@ defmodule Postgrex.Extensions.Interval do
       end
     end
 
-    def decode(_) do
+    def decode({_type, infinity?}) do
       quote location: :keep do
         <<16::int32(), microseconds::int64(), days::int32(), months::int32()>> ->
-          unquote(__MODULE__).decode_interval(microseconds, days, months, Postgrex.Interval)
+          unquote(__MODULE__).decode_interval(
+            microseconds,
+            days,
+            months,
+            Postgrex.Interval,
+            unquote(infinity?)
+          )
       end
     end
 
     ## Helpers
 
-    def decode_interval(@int64_max, @int32_max, @int32_max, _struct) do
-      :inf
+    def decode_interval(@int64_max, @int32_max, @int32_max, _struct, infinity?) do
+      if infinity?, do: :inf, else: raise_decode_nfinity("infinity")
     end
 
-    def decode_interval(@int64_min, @int32_min, @int32_min, _struct) do
-      :"-inf"
+    def decode_interval(@int64_min, @int32_min, @int32_min, _struct, infinity?) do
+      if infinity?, do: :"-inf", else: raise_decode_infinity("-infinity")
     end
 
-    def decode_interval(microseconds, days, months, Postgrex.Interval) do
+    def decode_interval(microseconds, days, months, Postgrex.Interval, _infinity?) do
       seconds = div(microseconds, 1_000_000)
       microseconds = rem(microseconds, 1_000_000)
 
@@ -162,5 +166,41 @@ defmodule Postgrex.Extensions.Interval do
         microsecs: microseconds
       }
     end
+  end
+
+  defp infinity_binary(:inf) do
+    <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
+      unquote(@int32_max)::int32()>>
+  end
+
+  defp infinity_binary(:"-inf") do
+    <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
+      unquote(@int32_min)::int32()>>
+  end
+
+  defp raise_encode_infinity(type) do
+    raise ArgumentError, """
+    got query parameter value of `#{type}`. If you want to support infinite intervals \
+    in your application, you can enable them by defining your own types:
+
+        Postgrex.Types.define(MyApp.PostgrexTypes, [], allow_infinite_intervals: true)
+
+    And then configuring your database to use it:
+
+        types: MyApp.PostgrexTypes
+    """
+  end
+
+  defp raise_decode_infinity(type) do
+    raise ArgumentError, """
+    got \"#{type}\" from PostgreSQL. If you want to support infinite intervals \
+    in your application, you can enable them by defining your own types:
+
+        Postgrex.Types.define(MyApp.PostgrexTypes, [], allow_infinite_intervals: true)
+
+    And then configuring your database to use it:
+
+        types: MyApp.PostgrexTypes
+    """
   end
 end

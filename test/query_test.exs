@@ -4,7 +4,10 @@ defmodule QueryTest do
   import ExUnit.CaptureLog
   alias Postgrex, as: P
 
-  Postgrex.Types.define(Postgrex.ElixirDurationTypes, [], interval_decode_type: Duration)
+  Postgrex.Types.define(Postgrex.ElixirDurationTypes, [],
+    interval_decode_type: Duration,
+    allow_infinite_intervals: true
+  )
 
   setup context do
     opts = [
@@ -142,9 +145,23 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "17.0"
-  test "decode infinite interval", context do
-    assert query("SELECT 'infinity'::interval", []) == [[:inf]]
-    assert query("SELECT '-infinity'::interval", []) == [[:"-inf"]]
+  test "decode infinite interval" do
+    opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
+    {:ok, pid} = P.start_link(opts)
+
+    assert P.query(pid, "SELECT 'infinity'::interval", []) == [[:inf]]
+    assert P.query(pid, "SELECT '-infinity'::interval", []) == [[:"-inf"]]
+  end
+
+  @tag min_pg_version: "17.0"
+  test "decode infinite interval raise when option not specified", context do
+    assert_raise ArgumentError, ~r/got "infinity" from PostgreSQL/, fn ->
+      query("SELECT 'infinity'::interval", [])
+    end
+
+    assert_raise ArgumentError, ~r/got "-infinity" from PostgreSQL/, fn ->
+      query("SELECT '-infinity'::interval", [])
+    end
   end
 
   if Version.match?(System.version(), ">= 1.17.0") do
@@ -1016,9 +1033,23 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "17.0"
-  test "encode infinite interval", context do
-    assert query("SELECT $1::interval", [:inf]) == [[:inf]]
-    assert query("SELECT $1::interval", [:"-inf"]) == [[:"-inf"]]
+  test "encode infinite interval" do
+    opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
+    {:ok, pid} = P.start_link(opts)
+
+    assert P.query(pid, "SELECT $1::interval", [:inf]) == [[:inf]]
+    assert P.query(pid, "SELECT $1::interval", [:"-inf"]) == [[:"-inf"]]
+  end
+
+  @tag min_pg_version: "17.0"
+  test "encode infinite interval raise when option not specified", context do
+    assert_raise ArgumentError, ~r/got query parameter value of `:inf`/, fn ->
+      query("SELECT $1::interval", [:inf]) == [[:inf]]
+    end
+
+    assert_raise ArgumentError, ~r/got query parameter value of `:"-inf"`/, fn ->
+      query("SELECT $1::interval", [:"-inf"]) == [[:"-inf"]]
+    end
   end
 
   if Version.match?(System.version(), ">= 1.17.0") do
