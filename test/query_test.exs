@@ -149,18 +149,21 @@ defmodule QueryTest do
     opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
     {:ok, pid} = P.start_link(opts)
 
-    assert P.query(pid, "SELECT 'infinity'::interval", []).rows == [[:inf]]
-    assert P.query(pid, "SELECT '-infinity'::interval", []).rows == [[:"-inf"]]
+    assert P.query!(pid, "SELECT 'infinity'::interval", []).rows == [[:inf]]
+    assert P.query!(pid, "SELECT '-infinity'::interval", []).rows == [[:"-inf"]]
   end
 
   @tag min_pg_version: "17.0"
   test "decode infinite interval raise when option not specified", context do
+    opts = [database: "postgrex_test", backoff_type: :stop]
+    {:ok, pid} = P.start_link(opts)
+
     assert_raise ArgumentError, ~r/got "infinity" from PostgreSQL/, fn ->
-      query("SELECT 'infinity'::interval", [])
+      P.query(pid, "SELECT 'infinity'::interval", [])
     end
 
     assert_raise ArgumentError, ~r/got "-infinity" from PostgreSQL/, fn ->
-      query("SELECT '-infinity'::interval", [])
+      P.query(pid, "SELECT '-infinity'::interval", [])
     end
   end
 
@@ -1037,18 +1040,21 @@ defmodule QueryTest do
     opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
     {:ok, pid} = P.start_link(opts)
 
-    assert P.query(pid, "SELECT $1::interval", [:inf]).rows == [[:inf]]
-    assert P.query(pid, "SELECT $1::interval", [:"-inf"]).rows == [[:"-inf"]]
+    assert P.query!(pid, "SELECT $1::interval", [:inf]).rows == [[:inf]]
+    assert P.query!(pid, "SELECT $1::interval", [:"-inf"]).rows == [[:"-inf"]]
   end
 
   @tag min_pg_version: "17.0"
   test "encode infinite interval raise when option not specified", context do
+    opts = [database: "postgrex_test", backoff_type: :stop]
+    {:ok, pid} = P.start_link(opts)
+
     assert_raise ArgumentError, ~r/got query parameter value of `:inf`/, fn ->
-      query("SELECT $1::interval", [:inf]) == [[:inf]]
+      P.query(pid, "SELECT $1::interval", [:inf])
     end
 
     assert_raise ArgumentError, ~r/got query parameter value of `:"-inf"`/, fn ->
-      query("SELECT $1::interval", [:"-inf"]) == [[:"-inf"]]
+      P.query(pid, "SELECT $1::interval", [:"-inf"])
     end
   end
 
