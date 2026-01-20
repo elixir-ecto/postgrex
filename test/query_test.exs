@@ -154,7 +154,7 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "17.0"
-  test "decode infinite interval raise when option not specified", context do
+  test "decode infinite interval raise when option not specified" do
     opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = P.start_link(opts)
 
@@ -1045,7 +1045,7 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "17.0"
-  test "encode infinite interval raise when option not specified", context do
+  test "encode infinite interval raise when option not specified" do
     opts = [database: "postgrex_test", backoff_type: :stop]
     {:ok, pid} = P.start_link(opts)
 
