@@ -141,6 +141,12 @@ defmodule QueryTest do
              query("SELECT interval '10240000 microseconds'", [])
   end
 
+  @tag min_pg_version: "17.0"
+  test "decode infinite interval", context do
+    assert query("SELECT 'infinity'::interval", []) == [[:inf]]
+    assert query("SELECT '-infinity'::interval", []) == [[:"-inf"]]
+  end
+
   if Version.match?(System.version(), ">= 1.17.0") do
     test "decode interval with Elixir Duration" do
       opts = [database: "postgrex_test", backoff_type: :stop, types: Postgrex.ElixirDurationTypes]
@@ -1007,6 +1013,12 @@ defmodule QueryTest do
              query("SELECT $1::interval", [
                %Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 1_024_000}
              ])
+  end
+
+  @tag min_pg_version: "17.0"
+  test "encode infinite interval", context do
+    assert query("SELECT $1::interval", [:inf]) == [[:inf]]
+    assert query("SELECT $1::interval", [:"-inf"]) == [[:"-inf"]]
   end
 
   if Version.match?(System.version(), ">= 1.17.0") do

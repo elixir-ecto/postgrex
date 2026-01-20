@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - infinite_duration
   pull_request:
 
 jobs:

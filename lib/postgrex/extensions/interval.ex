@@ -3,6 +3,11 @@ defmodule Postgrex.Extensions.Interval do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "interval_send"
 
+  @int64_max 9_223_372_036_854_775_807
+  @int64_min -9_223_372_036_854_775_808
+  @int32_max 2_147_483_647
+  @int32_min -2_147_483_648
+
   def init(opts) do
     case Keyword.get(opts, :interval_decode_type, Postgrex.Interval) do
       type when type in [Postgrex.Interval, Duration] ->
@@ -24,6 +29,14 @@ defmodule Postgrex.Extensions.Interval do
 
     def encode(_) do
       quote location: :keep do
+        :inf ->
+          <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
+            unquote(@int32_max)::int32()>>
+
+        :"-inf" ->
+          <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
+            unquote(@int32_min)::int32()>>
+
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
           <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
@@ -64,6 +77,14 @@ defmodule Postgrex.Extensions.Interval do
 
     ## Helpers
 
+    def decode_interval(@int64_max, @int32_max, @int32_max, _type_mod, _struct) do
+      :inf
+    end
+
+    def decode_interval(@int64_min, @int32_min, @int32_min, _type_mod, _struct) do
+      :"-inf"
+    end
+
     def decode_interval(microseconds, days, months, _type_mod, Postgrex.Interval) do
       seconds = div(microseconds, 1_000_000)
       microseconds = rem(microseconds, 1_000_000)
@@ -96,6 +117,14 @@ defmodule Postgrex.Extensions.Interval do
   else
     def encode(_) do
       quote location: :keep do
+        :inf ->
+          <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
+            unquote(@int32_max)::int32()>>
+
+        :"-inf" ->
+          <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
+            unquote(@int32_min)::int32()>>
+
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
           <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
@@ -113,6 +142,14 @@ defmodule Postgrex.Extensions.Interval do
     end
 
     ## Helpers
+
+    def decode_interval(@int64_max, @int32_max, @int32_max, _struct) do
+      :inf
+    end
+
+    def decode_interval(@int64_min, @int32_min, @int32_min, _struct) do
+      :"-inf"
+    end
 
     def decode_interval(microseconds, days, months, Postgrex.Interval) do
       seconds = div(microseconds, 1_000_000)
