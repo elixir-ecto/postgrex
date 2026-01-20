@@ -14,7 +14,7 @@ defmodule Postgrex.Extensions.Interval do
 
     unless type in [Postgrex.Interval, Duration] do
       raise ArgumentError,
-            "#{inspect(other)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
+            "#{inspect(type)} is not valid for `:interval_decode_type`. Please use either `Postgrex.Interval` or `Duration`"
     end
 
     {type, infinity?}
@@ -31,10 +31,10 @@ defmodule Postgrex.Extensions.Interval do
     def encode({_type, infinity?}) do
       quote location: :keep do
         :inf ->
-          if infinity?, do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
+          if unquote(infinity?), do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
 
         :"-inf" ->
-          if infinity?, do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
+          if unquote(infinity?), do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
@@ -118,10 +118,10 @@ defmodule Postgrex.Extensions.Interval do
     def encode({_type, infinity?}) do
       quote location: :keep do
         :inf ->
-          if infinity?, do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
+          if unquote(infinity?), do: infinity_binary(:inf), else: raise_encode_infinity(:inf)
 
         :"-inf" ->
-          if infinity?, do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
+          if unquote(infinity?), do: infinity_binary(:"-inf"), else: raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
