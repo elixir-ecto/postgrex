@@ -123,12 +123,12 @@ defmodule Postgrex.Extensions.Interval do
       quote location: :keep do
         :inf ->
           if unquote(infinity?),
-            do: infinity_binary(:inf),
+            do: unquote(__MODULE__).infinity_binary(:inf),
             else: unquote(__MODULE__).raise_encode_infinity(:inf)
 
         :"-inf" ->
           if unquote(infinity?),
-            do: infinity_binary(:"-inf"),
+            do: unquote(__MODULE__).infinity_binary(:"-inf"),
             else: unquote(__MODULE__).raise_encode_infinity(:"-inf")
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
