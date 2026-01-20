@@ -78,7 +78,7 @@ defmodule Postgrex.Extensions.Interval do
     ## Helpers
 
     def decode_interval(@int64_max, @int32_max, @int32_max, _type_mod, _struct, infinity?) do
-      if infinity?, do: :inf, else: raise_decode_nfinity("infinity")
+      if infinity?, do: :inf, else: raise_decode_infinity("infinity")
     end
 
     def decode_interval(@int64_min, @int32_min, @int32_min, _type_mod, _struct, infinity?) do
@@ -148,7 +148,7 @@ defmodule Postgrex.Extensions.Interval do
     ## Helpers
 
     def decode_interval(@int64_max, @int32_max, @int32_max, _struct, infinity?) do
-      if infinity?, do: :inf, else: raise_decode_nfinity("infinity")
+      if infinity?, do: :inf, else: raise_decode_infinity("infinity")
     end
 
     def decode_interval(@int64_min, @int32_min, @int32_min, _struct, infinity?) do
