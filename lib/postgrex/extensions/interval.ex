@@ -177,13 +177,11 @@ defmodule Postgrex.Extensions.Interval do
   end
 
   def infinity_binary(:inf) do
-    <<16::int32(), unquote(@int64_max)::int64(), unquote(@int32_max)::int32(),
-      unquote(@int32_max)::int32()>>
+    <<16::int32(), @int64_max::int64(), @int32_max::int32(), @int32_max::int32()>>
   end
 
   def infinity_binary(:"-inf") do
-    <<16::int32(), unquote(@int64_min)::int64(), unquote(@int32_min)::int32(),
-      unquote(@int32_min)::int32()>>
+    <<16::int32(), @int64_min::int64(), @int32_min::int32(), @int32_min::int32()>>
   end
 
   def raise_encode_infinity(type) do
