@@ -4,13 +4,7 @@ defmodule Postgrex.TextQuery do
   defstruct [:statement]
 end
 
-defmodule Postgrex.TextQueries do
-  @moduledoc false
-
-  defstruct [:statement]
-end
-
-defimpl DBConnection.Query, for: [Postgrex.TextQuery, Postgrex.TextQueries] do
+defimpl DBConnection.Query, for: Postgrex.TextQuery do
   def parse(query, _opts), do: query
 
   def describe(query, _opts), do: query
@@ -24,7 +18,7 @@ defimpl DBConnection.Query, for: [Postgrex.TextQuery, Postgrex.TextQueries] do
   def decode(_query, result, _opts), do: result
 end
 
-defimpl String.Chars, for: [Postgrex.TextQuery, Postgrex.TextQueries] do
+defimpl String.Chars, for: Postgrex.TextQuery do
   def to_string(%{statement: statement}) do
     IO.iodata_to_binary(statement)
   end
