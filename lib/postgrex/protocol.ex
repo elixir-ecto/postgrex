@@ -1,7 +1,7 @@
 defmodule Postgrex.Protocol do
   @moduledoc false
 
-  alias Postgrex.{Types, TypeServer, Query, Cursor, Copy}
+  alias Postgrex.{Types, TypeServer, Query, TextQuery, Cursor, Copy}
   import Postgrex.{Messages, BinaryUtils}
   require Logger
   use DBConnection
@@ -54,6 +54,8 @@ defmodule Postgrex.Protocol do
         }
 
   @type notify :: (binary, binary -> any)
+
+  @type binary_or_text_query :: Postgrex.Query.t() | Postgrex.TextQuery.t()
 
   defmacrop new_status(opts, fields \\ []) do
     defaults =
@@ -421,8 +423,9 @@ defmodule Postgrex.Protocol do
     end
   end
 
-  @spec handle_execute(Postgrex.Query.t(), list, Keyword.t(), state) ::
-          {:ok, Postgrex.Query.t(), Postgrex.Result.t() | Postgrex.Copy.t(), state}
+  @spec handle_execute(binary_or_text_query, list, Keyword.t(), state) ::
+          {:ok, binary_or_text_query,
+           Postgrex.Result.t() | [Postgrex.Result.t()] | Postgrex.Copy.t(), state}
           | {:error, %ArgumentError{} | Postgrex.Error.t(), state}
           | {:error, %DBConnection.TransactionError{}, state}
           | {:disconnect, %RuntimeError{}, state}
@@ -434,6 +437,16 @@ defmodule Postgrex.Protocol do
 
       false ->
         handle_execute_result(query, params, opts, s)
+    end
+  end
+
+  def handle_execute(%TextQuery{statement: statement} = query, [], opts, s) do
+    case handle_simple(statement, opts, s) do
+      {:ok, [first_result | _], s} ->
+        {:ok, query, first_result, s}
+
+      {error, _, _} = other when error in [:error, :disconnect] ->
+        other
     end
   end
 

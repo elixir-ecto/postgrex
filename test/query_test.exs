@@ -2069,6 +2069,38 @@ defmodule QueryTest do
     assert {:ok, _, _} = P.execute(pid, query, [])
   end
 
+  test "query with query_type: text", context do
+    {:ok, %{rows: result}} =
+      P.query(context[:pid], "SELECT * FROM UNNEST(ARRAY[1, 2], ARRAY[3, 4])", [],
+        query_type: :text
+      )
+
+    assert result == [["1", "3"], ["2", "4"]]
+
+    %{rows: result} =
+      P.query!(context[:pid], "SELECT * FROM UNNEST(ARRAY[1, 2], ARRAY[3, 4])", [],
+        query_type: :text
+      )
+
+    assert result == [["1", "3"], ["2", "4"]]
+  end
+
+  test "query with query_type: :text only returns first result", context do
+    {:ok, %{rows: result}} =
+      P.query(context[:pid], "SELECT 1; SELECT 2", [], query_type: :text)
+
+    assert result == [["1"]]
+  end
+
+  test "query with query_type: :text handles errors properly", context do
+    {:error, %Postgrex.Error{}} =
+      P.query(context[:pid], "SELEC;", [], query_type: :text)
+
+    assert_raise Postgrex.Error, fn ->
+      P.query!(context[:pid], "SELEC;", [], query_type: :text)
+    end
+  end
+
   defp disconnect(pid) do
     sock = DBConnection.run(pid, &get_socket/1)
     :gen_tcp.shutdown(sock, :read_write)

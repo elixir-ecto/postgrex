@@ -23,7 +23,7 @@ defmodule Postgrex do
   you need to start a separate (notifications) connection.
   """
 
-  alias Postgrex.Query
+  alias Postgrex.{Query, TextQuery}
 
   @typedoc """
   A connection process name, pid or reference.
@@ -252,12 +252,18 @@ defmodule Postgrex do
   end
 
   @doc """
-  Runs an (extended) query and returns the result as `{:ok, %Postgrex.Result{}}`
-  or `{:error, %Postgrex.Error{}}` if there was a database error. Parameters can
-  be set in the query as `$1` embedded in the query string. Parameters are given
-  as a list of elixir values. See the README for information on how Postgrex
-  encodes and decodes Elixir values by default. See `Postgrex.Result` for the
-  result data.
+  Runs a query and returns the result as `{:ok, %Postgrex.Result{}}` or
+  `{:error, %Postgrex.Error{}}` if there was a database error.
+
+  Queries can be run using both the extended query protocol (binary format)
+  or the simple query protocol (text format). This can be controlled using
+  the `:query_type` option.
+
+  If using the extended query protocol, parameters can be set as `$1` embedded
+  in the query string and results are encoded and decoded according to the
+  [data representation chart](readme.html#data-representation). If using the
+  simple query protocol, queries cannot be parameterized and results are encoded
+  and decoded in text format. See `Postgrex.Result` for the result data.
 
   This function may still raise an exception if there is an issue with types
   (`ArgumentError`), connection (`DBConnection.ConnectionError`), ownership
@@ -272,6 +278,9 @@ defmodule Postgrex do
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     query on error, otherwise set to `:transaction` (default: `:transaction`);
     * `:cache_statement` - Caches the query with the given name
+    * `:query_type` - Either `:binary` or `:text`. If `:binary` then the
+      extended query protocol is used. If `:text` then the simple protocol
+      is used. Defaults to `:binary`.
 
   ## Examples
 
@@ -290,6 +299,22 @@ defmodule Postgrex do
   @spec query(conn, iodata, list, [execute_option]) ::
           {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   def query(conn, statement, params \\ [], opts \\ []) when is_list(params) and is_list(opts) do
+    query_type = Keyword.get(opts, :query_type, :binary)
+
+    case query_type do
+      :binary ->
+        binary_query(conn, statement, params, opts)
+
+      :text ->
+        text_query(conn, statement, params, opts)
+
+      _ ->
+        raise ArgumentError,
+              "allowed query types are `:binary` and `:text`, got: #{inspect(query_type)}"
+    end
+  end
+
+  defp binary_query(conn, statement, params, opts) do
     name = Keyword.get(opts, :cache_statement)
 
     if comment_not_present!(opts) && name do
@@ -312,6 +337,15 @@ defmodule Postgrex do
       end
     else
       query_prepare_execute(conn, %Query{name: "", statement: statement}, params, opts)
+    end
+  end
+
+  defp text_query(conn, statement, params, opts) do
+    query = %TextQuery{statement: statement}
+
+    case DBConnection.execute(conn, query, params, opts) do
+      {:ok, _, result} -> {:ok, result}
+      {:error, _} = error -> error
     end
   end
 
