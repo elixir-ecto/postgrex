@@ -470,25 +470,16 @@ defmodule Postgrex.TypeModule do
   end
 
   defp decode_simple() do
-    rest = quote do: rest
-    acc = quote do: acc
-
-    dispatch = decode_simple_dispatch(Postgrex.Extensions.Raw, rest, acc)
-
     quote do
       @doc false
-      def decode_simple(binary) do
-        decode_simple(binary, [])
-      end
+      def decode_simple(<<>>),
+        do: []
 
-      defp decode_simple(<<>>, unquote(acc)), do: Enum.reverse(acc)
-      defp decode_simple(<<unquote(rest)::binary>>, unquote(acc)), do: unquote(dispatch)
-    end
-  end
+      def decode_simple(<<-1::int32(), rest::binary>>),
+        do: [@null | decode_simple(rest)]
 
-  defp decode_simple_dispatch(extension, rest, acc) do
-    quote do
-      unquote(extension)(unquote(rest), nil, unquote(acc), &decode_simple/2)
+      def decode_simple(<<len::int32(), value::binary-size(len), rest::binary>>),
+        do: [:binary.copy(value) | decode_simple(rest)]
     end
   end
 
@@ -719,17 +710,6 @@ defmodule Postgrex.TypeModule do
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
              var!(mod),
-             acc,
-             callback
-           )
-           when unquote(guard) do
-        _ = var!(mod)
-        unquote(extension)(rest, var!(mod), [unquote(body) | acc], callback)
-      end
-
-      defp unquote(extension)(
-             <<unquote(pattern), rest::binary>>,
-             var!(mod),
              oids,
              types,
              n,
@@ -770,17 +750,6 @@ defmodule Postgrex.TypeModule do
       defp unquote(extension)(
              <<unquote(pattern), rest::binary>>,
              var!(mod),
-             acc,
-             callback
-           ) do
-        _ = var!(mod)
-        decoded = unquote(body)
-        unquote(extension)(rest, var!(mod), [decoded | acc], callback)
-      end
-
-      defp unquote(extension)(
-             <<unquote(pattern), rest::binary>>,
-             var!(mod),
              oids,
              types,
              n,
@@ -816,14 +785,6 @@ defmodule Postgrex.TypeModule do
 
       defp unquote(extension)(<<>>, _, acc) do
         acc
-      end
-
-      defp unquote(extension)(<<-1::int32(), rest::binary>>, var!(mod), acc, callback) do
-        unquote(extension)(rest, var!(mod), [@null | acc], callback)
-      end
-
-      defp unquote(extension)(<<rest::binary-size(0)>>, _, acc, callback) do
-        callback.(rest, acc)
       end
 
       defp unquote(extension)(<<-1::int32(), rest::binary>>, _mod, oids, types, n, acc) do
