@@ -170,6 +170,17 @@ defmodule Postgrex.Utils do
 
   ## Helpers
 
+  @doc """
+  Set a process label if `Process.set_label/1` is available.
+  """
+  def set_label(label) do
+    if function_exported?(Process, :set_label, 1) do
+      apply(Process, :set_label, [label])
+    else
+      :ok
+    end
+  end
+
   defp parse_version_bit(bit) do
     {int, _} = Integer.parse(bit)
     int
