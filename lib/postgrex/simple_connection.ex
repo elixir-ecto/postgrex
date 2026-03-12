@@ -299,6 +299,8 @@ defmodule Postgrex.SimpleConnection do
   @doc false
   @impl :gen_statem
   def init({mod, args, opts}) do
+    Postgrex.Utils.set_label({Postgrex.SimpleConnection, mod})
+
     case mod.init(args) do
       {:ok, mod_state} ->
         idle_timeout = opts[:idle_timeout]
