@@ -466,6 +466,8 @@ defmodule Postgrex.ReplicationConnection do
   @doc false
   @impl :gen_statem
   def init({mod, arg, opts}) do
+    Postgrex.Utils.set_label({Postgrex.ReplicationConnection, mod})
+
     case mod.init(arg) do
       {:ok, mod_state} ->
         opts =

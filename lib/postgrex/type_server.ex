@@ -57,6 +57,7 @@ defmodule Postgrex.TypeServer do
   ## Callbacks
 
   def init({module, starter}) do
+    Postgrex.Utils.set_label({Postgrex.TypeServer, module})
     _ = Process.flag(:trap_exit, true)
     Process.link(starter)
 

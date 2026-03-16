@@ -229,6 +229,7 @@ defmodule Postgrex.Protocol do
     with {:ok, database} <- fetch_database(opts),
          status = %{status | types_key: if(types_mod, do: {host, port, database})},
          {:ok, ret} <- connect_and_handshake(host, port, sock_opts, timeout, s, status) do
+      Postgrex.Utils.set_label({Postgrex.Protocol, database})
       {:ok, ret}
     else
       {:error, err} ->
@@ -1907,7 +1908,12 @@ defmodule Postgrex.Protocol do
     end)
 
     ref = make_ref()
-    {_, mon} = spawn_monitor(fn -> reload_init(s, status, oids, ref, buffer) end)
+
+    {_, mon} =
+      spawn_monitor(fn ->
+        Postgrex.Utils.set_label({Postgrex.Protocol, :fetch_type_info})
+        reload_init(s, status, oids, ref, buffer)
+      end)
 
     receive do
       {:DOWN, ^mon, _, _, {^ref, s, buffer}} ->
