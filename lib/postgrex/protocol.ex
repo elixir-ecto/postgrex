@@ -3068,6 +3068,12 @@ defmodule Postgrex.Protocol do
     end
   end
 
+  defp error_ready(s, _status, %Postgrex.Error{postgres: %{severity: severity}} = err, buffer)
+       when severity in ["FATAL", "PANIC"] do
+    %{connection_id: connection_id} = s
+    {:disconnect, %{err | connection_id: connection_id}, %{s | buffer: buffer}}
+  end
+
   defp error_ready(s, status, %Postgrex.Error{} = err, buffer) do
     case recv_ready(s, status, buffer) do
       {:ok, s} ->

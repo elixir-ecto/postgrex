@@ -1940,6 +1940,26 @@ defmodule QueryTest do
            end) =~ "** (Postgrex.Error) FATAL 57P01 (admin_shutdown)"
   end
 
+  test "terminate backend during query returns FATAL error", context do
+    assert {:ok, pid} = P.start_link([idle_interval: 10] ++ context[:options])
+
+    %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(pid, "SELECT 42", [])
+
+    # Start a long-running query in a separate process so we can terminate the
+    # backend while it's executing.
+    task =
+      Task.async(fn ->
+        Postgrex.query(pid, "SELECT pg_sleep(10)", [])
+      end)
+
+    Process.sleep(100)
+
+    assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
+
+    assert {:error, %Postgrex.Error{postgres: %{code: :admin_shutdown, severity: "FATAL"}}} =
+             Task.await(task, 5000)
+  end
+
   test "terminate backend with socket", context do
     Process.flag(:trap_exit, true)
     socket = System.get_env("PG_SOCKET_DIR") || "/tmp"
