@@ -1940,6 +1940,36 @@ defmodule QueryTest do
            end) =~ "** (Postgrex.Error) FATAL 57P01 (admin_shutdown)"
   end
 
+  test "terminate backend during query returns FATAL error", context do
+    assert {:ok, pid} = P.start_link([idle_interval: 10] ++ context[:options])
+
+    %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(pid, "SELECT 42", [])
+
+    task =
+      Task.async(fn ->
+        receive do
+          :go -> :ok
+        end
+
+        Postgrex.query(pid, "SELECT pg_sleep(10)", [])
+      end)
+
+    :erlang.trace(task.pid, true, [:call])
+    :erlang.trace_pattern({Postgrex.Protocol, :recv_bind, :_}, [], [:local])
+
+    send(task.pid, :go)
+
+    assert_receive {:trace, _, :call, {Postgrex.Protocol, :recv_bind, _}}, 200
+
+    assert [[true]] = query("SELECT pg_terminate_backend($1)", [connection_id])
+
+    assert {:error, %Postgrex.Error{postgres: %{code: :admin_shutdown, severity: "FATAL"}}} =
+             Task.await(task, 5000)
+  after
+    :erlang.trace_pattern({Postgrex.Protocol, :recv_bind, :_}, false, [])
+    :erlang.trace(:all, false, [:call])
+  end
+
   test "terminate backend with socket", context do
     Process.flag(:trap_exit, true)
     socket = System.get_env("PG_SOCKET_DIR") || "/tmp"
