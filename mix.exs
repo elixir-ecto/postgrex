@@ -61,6 +61,7 @@ defmodule Postgrex.Mixfile do
           Postgrex.Line,
           Postgrex.LineSegment,
           Postgrex.MACADDR,
+          Postgrex.Multirange,
           Postgrex.Path,
           Postgrex.Point,
           Postgrex.Polygon,
