@@ -119,8 +119,10 @@ sql_test =
     sql_test <>
       """
       DROP ROLE IF EXISTS postgrex_scram_pw;
+      DROP ROLE IF EXISTS postgrex_scram_unicode_pw;
       SET password_encryption = 'scram-sha-256';
       CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';
+      CREATE USER postgrex_scram_unicode_pw WITH PASSWORD 'pass！';
       CREATE PUBLICATION postgrex_example FOR ALL TABLES;
       """
   else

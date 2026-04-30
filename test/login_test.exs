@@ -58,6 +58,17 @@ defmodule LoginTest do
              ~r"\*\* \(Postgrex.Error\) FATAL (28P01 \(invalid_password\)|28000 \(invalid_authorization_specification\))"
   end
 
+  # Bug repro: Postgrex.SCRAM does not apply SASLprep (RFC 4013) to the password
+  # before PBKDF2. Postgres SASLpreps at CREATE USER time, so 'pass！' (U+FF01)
+  # is stored as the PBKDF2 of 'pass!' (U+0021); postgrex sends the raw UTF-8
+  # bytes and auth fails with 28P01.
+  @tag min_pg_version: "10.0"
+  test "login scram password with unicode characters", context do
+    opts = [username: "postgrex_scram_unicode_pw", password: "pass！"]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
   test "parameters", context do
     assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
