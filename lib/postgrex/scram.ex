@@ -21,7 +21,7 @@ defmodule Postgrex.SCRAM do
     server_i = String.to_integer(server[?i])
 
     # Create and cache client and server keys if they don't already exist
-    pass = Keyword.fetch!(opts, :password)
+    pass = opts |> Keyword.fetch!(:password) |> PgSASLprep.scram_normalize()
     cache_key = create_cache_key(pass, server_s, server_i)
 
     {client_key, _server_key} =
@@ -60,7 +60,7 @@ defmodule Postgrex.SCRAM do
     {:ok, server_sig} = Base.decode64(server_v)
 
     # Construct expected server signature
-    pass = Keyword.fetch!(opts, :password)
+    pass = opts |> Keyword.fetch!(:password) |> PgSASLprep.scram_normalize()
     cache_key = create_cache_key(pass, scram_state.salt, scram_state.iterations)
     {_client_key, server_key} = SCRAM.LockedCache.get(cache_key)
     expected_server_sig = hmac(:sha256, server_key, scram_state.auth_message)
