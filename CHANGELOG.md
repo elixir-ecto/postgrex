@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.22.1 (2026-03-05)
+
+* Enhancements
+  * Relax decimal requirement
+  * Set process labels in Postgrex processes
+
+* Bug fixes
+  * Return proper error when getting tcp closed after fatal errors
+
 ## v0.22.0 (2026-01-10)
 
 * Enhancements
