@@ -151,8 +151,18 @@ defmodule Postgrex.Notifications do
   """
   @spec listen(server, String.t(), Keyword.t()) ::
           {:ok, reference} | {:eventually, reference}
-  def listen(pid, channel, opts \\ []) do
-    SimpleConnection.call(pid, {:listen, channel}, Keyword.get(opts, :timeout, @timeout))
+  def listen(pid, channel, opts \\ []) when is_binary(channel) do
+    cond do
+      String.contains?(channel, <<0>>) ->
+        raise ArgumentError, "channel name cannot contain null bytes"
+
+      byte_size(channel) > 63 ->
+        raise ArgumentError,
+              "channel name cannot exceed 63 bytes, got #{byte_size(channel)} bytes: #{inspect(channel)}"
+
+      true ->
+        SimpleConnection.call(pid, {:listen, channel}, Keyword.get(opts, :timeout, @timeout))
+    end
   end
 
   @doc """
@@ -213,7 +223,7 @@ defmodule Postgrex.Notifications do
       listen_statements =
         state.listener_channels
         |> Map.keys()
-        |> Enum.map_join("\n", &~s(LISTEN "#{&1}";))
+        |> Enum.map_join("\n", &~s(LISTEN #{quote_channel(&1)};))
 
       query = "DO $$BEGIN #{listen_statements} END$$"
 
@@ -250,7 +260,7 @@ defmodule Postgrex.Notifications do
         {:noreply, state}
 
       map_size(state.listener_channels[channel]) == 1 ->
-        {:query, ~s(LISTEN "#{channel}"), %{state | from: from, ref: ref}}
+        {:query, ~s(LISTEN #{quote_channel(channel)}), %{state | from: from, ref: ref}}
 
       true ->
         SimpleConnection.reply(from, {:ok, ref})
@@ -270,7 +280,7 @@ defmodule Postgrex.Notifications do
         if map_size(state.listener_channels[channel]) == 0 do
           {_, state} = pop_in(state.listener_channels[channel])
 
-          {:query, ~s(UNLISTEN "#{channel}"), %{state | from: from}}
+          {:query, ~s(UNLISTEN #{quote_channel(channel)}), %{state | from: from}}
         else
           from && SimpleConnection.reply(from, :ok)
 
@@ -314,5 +324,9 @@ defmodule Postgrex.Notifications do
       true ->
         {:noreply, state}
     end
+  end
+
+  defp quote_channel(channel) do
+    ~s("#{String.replace(channel, "\"", "\"\"")}")
   end
 end

@@ -68,6 +68,31 @@ defmodule NotificationTest do
     assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
   end
 
+  test "listening, notify, then receive (sql escape)", context do
+    assert {:ok, ref} = PN.listen(context.pid_ps, "quote:\"")
+
+    assert {:ok, %Postgrex.Result{command: :notify}} =
+             P.query(context.pid, "NOTIFY \"quote:\"\"\"", [])
+
+    receiver_pid = context.pid_ps
+    assert_receive {:notification, ^receiver_pid, ^ref, "quote:\"", ""}
+  end
+
+  test "listen rejects channel names containing null bytes", context do
+    assert_raise ArgumentError, ~r/null bytes/, fn ->
+      PN.listen(context.pid_ps, "bad\0channel")
+    end
+  end
+
+  test "listen rejects channel names longer than 63 bytes", context do
+    assert_raise ArgumentError, ~r/cannot exceed 63 bytes/, fn ->
+      PN.listen(context.pid_ps, String.duplicate("a", 64))
+    end
+
+    assert {:ok, _ref} = PN.listen(context.pid_ps, String.duplicate("a", 63))
+    assert {:ok, _ref} = PN.listen(context.pid_ps, String.duplicate("\"", 63))
+  end
+
   test "listening, notify, then receive (using registered names)", _context do
     {:ok, _} = P.start_link(Keyword.put(@opts, :name, :client))
     {:ok, _pn} = PN.start_link(Keyword.put(@opts, :name, :notifications))
