@@ -2,7 +2,7 @@ defmodule Postgrex.Mixfile do
   use Mix.Project
 
   @source_url "https://github.com/elixir-ecto/postgrex"
-  @version "0.22.1"
+  @version "0.22.2"
 
   def project do
     [

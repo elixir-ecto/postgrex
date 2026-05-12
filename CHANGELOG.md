@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.22.2 (2026-05-12)
+
+* Security
+  * Escape quotes in channel names in `Postgrex.Notifications.listen/3` (CVE-2026-32687)
+
 ## v0.22.1 (2026-03-05)
 
 * Enhancements
