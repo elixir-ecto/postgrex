@@ -2730,7 +2730,7 @@ defmodule Postgrex.Protocol do
   defp copied(%{connection_id: connection_id}) do
     %Postgrex.Result{
       command: :copy_stream,
-      num_rows: :copy_stream,
+      num_rows: nil,
       rows: nil,
       columns: nil,
       connection_id: connection_id

@@ -409,7 +409,7 @@ defmodule StreamTest do
       assert_received %DBConnection.LogEntry{} = entry
       assert entry.query.query == query
 
-      assert {:ok, ^query, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} =
+      assert {:ok, ^query, %{command: :copy_stream, rows: nil, num_rows: nil}} =
                entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
@@ -678,7 +678,7 @@ defmodule StreamTest do
       assert_received %DBConnection.LogEntry{} = entry
       assert entry.query.query == query_in
 
-      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} =
+      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: nil}} =
                entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
@@ -706,7 +706,7 @@ defmodule StreamTest do
       assert_received %DBConnection.LogEntry{} = entry
       assert entry.query.query == query_in
 
-      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} =
+      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: nil}} =
                entry.result
 
       assert_received %DBConnection.LogEntry{} = entry
@@ -746,7 +746,7 @@ defmodule StreamTest do
       assert_received %DBConnection.LogEntry{} = entry
       assert entry.query.query == query_in
 
-      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: :copy_stream}} =
+      assert {:ok, ^query_in, %{command: :copy_stream, rows: nil, num_rows: nil}} =
                entry.result
 
       assert_received %DBConnection.LogEntry{} = entry

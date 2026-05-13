@@ -17,7 +17,7 @@ defmodule Postgrex.Result do
           command: atom | [atom],
           columns: [String.t()] | nil,
           rows: [[term] | binary] | nil,
-          num_rows: integer,
+          num_rows: integer | nil,
           connection_id: pos_integer,
           messages: [map()]
         }
