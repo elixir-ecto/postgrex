@@ -7,7 +7,8 @@ defmodule Postgrex.Result do
     * `columns` - The column names;
     * `rows` - The result set. A list of lists, each inner list corresponding to a
       row, each element in the inner list corresponds to a column;
-    * `num_rows` - The number of fetched or affected rows;
+    * `num_rows` - The number of fetched or affected rows, or `:copy_stream` while
+      a COPY FROM STDIN stream is in progress, or `nil` for multi-command results;
     * `connection_id` - The OS pid of the PostgreSQL backend that executed the query;
     * `messages` - A list of maps of messages, such as hints and notices, sent by the
       driver during the execution of the query.
@@ -17,7 +18,7 @@ defmodule Postgrex.Result do
           command: atom | [atom],
           columns: [String.t()] | nil,
           rows: [[term] | binary] | nil,
-          num_rows: integer,
+          num_rows: integer | :copy_stream | nil,
           connection_id: pos_integer,
           messages: [map()]
         }
