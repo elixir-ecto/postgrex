@@ -14,7 +14,7 @@ defmodule Postgrex.Mixfile do
       description: "PostgreSQL driver for Elixir",
       docs: docs(),
       package: package(),
-      xref: [exclude: [Jason]]
+      elixirc_options: [no_warn_undefined: [Jason]]
     ]
   end
 
