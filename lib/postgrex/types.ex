@@ -134,7 +134,7 @@ defmodule Postgrex.Types do
     %TypeInfo{
       oid: oid,
       type: :binary.copy(type),
-      send: :binary.copy(send),
+      send: unqualify_proc(send),
       receive: :binary.copy(receive),
       output: :binary.copy(output),
       input: :binary.copy(input),
@@ -143,6 +143,9 @@ defmodule Postgrex.Types do
       comp_elems: comp_oids
     }
   end
+
+  defp unqualify_proc("pg_catalog." <> name), do: :binary.copy(name)
+  defp unqualify_proc(name), do: :binary.copy(name)
 
   @doc false
   @spec associate_type_infos([TypeInfo.t()], state) :: :ok
