@@ -365,7 +365,20 @@ defmodule Postgrex.SimpleConnection do
 
       {:error, reason} ->
         Logger.error(
-          "#{inspect(pid_or_name())} (#{inspect(mod)}) failed to connect to Postgres: #{Exception.format(:error, reason)}"
+          %{
+            log_id: {Postgrex, :connection_error},
+            pid_or_name: pid_or_name(),
+            mod: mod,
+            reason: reason
+          },
+          report_cb: fn report ->
+            {"~ts (~ts) failed to connect to Postgres: ~ts",
+             [
+               inspect(report.pid_or_name),
+               inspect(report.mod),
+               Exception.format(:error, report.reason)
+             ]}
+          end
         )
 
         if state.auto_reconnect do
