@@ -93,7 +93,7 @@ defmodule Postgrex.Types do
         ARRAY (
           SELECT a.atttypid
           FROM pg_attribute AS a
-          WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
+          WHERE a.attrelid = coalesce(d.typrelid, t.typrelid) AND a.attnum > 0 AND NOT a.attisdropped
           ORDER BY a.attnum
         )
         """
