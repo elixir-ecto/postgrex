@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - fix_domain
+      - master
   pull_request:
 
 jobs:
