@@ -72,7 +72,20 @@ replication_exclude =
   end
 
 version_exclude =
-  [{8, 4}, {9, 0}, {9, 1}, {9, 2}, {9, 3}, {9, 4}, {9, 5}, {10, 0}, {13, 0}, {14, 0}, {17, 0}]
+  [
+    {8, 4},
+    {9, 0},
+    {9, 1},
+    {9, 2},
+    {9, 3},
+    {9, 4},
+    {9, 5},
+    {10, 0},
+    {11, 0},
+    {13, 0},
+    {14, 0},
+    {17, 0}
+  ]
   |> Enum.filter(fn x -> x > pg_version end)
   |> Enum.map(fn {major, minor} -> {:min_pg_version, "#{major}.#{minor}"} end)
 
@@ -122,6 +135,20 @@ sql_test =
       SET password_encryption = 'scram-sha-256';
       CREATE USER postgrex_scram_pw WITH PASSWORD 'postgrex_scram_pw';
       CREATE PUBLICATION postgrex_example FOR ALL TABLES;
+      """
+  else
+    sql_test
+  end
+
+sql_test =
+  if pg_version >= {11, 0} do
+    sql_test <>
+      """
+      DROP TYPE IF EXISTS composite_test;
+      CREATE TYPE composite_test AS (a text, b integer);
+
+      DROP DOMAIN IF EXISTS composite_domain;
+      CREATE DOMAIN composite_domain AS composite_test CHECK ((VALUE).a is NOT NULL);
       """
   else
     sql_test

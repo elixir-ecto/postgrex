@@ -84,6 +84,16 @@ defmodule QueryTest do
     assert [[^uuid]] = query("SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid", [])
   end
 
+  @tag min_pg_version: "11.0"
+  test "decode composite domain", context do
+    assert [[{"a", 1}]] = query("SELECT '(a, 1)'::composite_domain", [])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "decode arrays of composite domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::composite_domain[]", [])
+  end
+
   test "decode arrays", context do
     assert [[[]]] = query("SELECT ARRAY[]::integer[]", [])
     assert [[[1]]] = query("SELECT ARRAY[1]", [])
@@ -119,6 +129,16 @@ defmodule QueryTest do
 
     points_string = "{\"(1,1)\",\"(2,2)\",\"(3,3)\"}"
     assert [[^points_string]] = query("SELECT $1::points_domain::text", [points])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode composite domain", context do
+    assert [[{"a", 1}]] = query("SELECT $1::composite_domain", [{"a", 1}])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode arrays of composite domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT $1::composite_domain[]", [[{"a", 1}]])
   end
 
   test "decode interval", context do
