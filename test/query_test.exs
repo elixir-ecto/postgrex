@@ -846,6 +846,22 @@ defmodule QueryTest do
     assert [[{5, 10}]] = query("select $1::tid;", [{5, 10}])
   end
 
+  test "encode enforces bounds on tid", context do
+    # block's range is 0 to 4294967295
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("select $1::tid;", [{4_294_967_295 + 1, 0}]))
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("select $1::tid;", [{0 - 1, 0}]))
+
+    # tuple's range is 0 to 65535
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("select $1::tid;", [{0, 65_535 + 1}]))
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("select $1::tid;", [{0, 0 - 1}]))
+  end
+
   test "encoding oids as binary fails with a helpful error message", context do
     assert_raise ArgumentError,
                  ~r"See https://github.com/elixir-ecto/postgrex#oid-type-encoding",
@@ -921,6 +937,15 @@ defmodule QueryTest do
       dec = Decimal.new(num)
       assert [[dec]] == query("SELECT $1::numeric", [dec])
     end)
+  end
+
+  test "encode enforces bounds on numeric", context do
+    # the digit count, weight and scale headers must each fit an int16
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("SELECT $1::numeric", [Decimal.new("1E140000")]))
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(query("SELECT $1::numeric", [Decimal.new("1E-140000")]))
   end
 
   test "encode integers and floats as numeric", context do
@@ -1053,6 +1078,45 @@ defmodule QueryTest do
              query("SELECT $1::interval", [
                %Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 1_024_000}
              ])
+  end
+
+  test "encode enforces bounds on interval", context do
+    # months' range is -2147483648 to 2147483647
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::interval", [%Postgrex.Interval{months: 2_147_483_647 + 1}])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::interval", [%Postgrex.Interval{months: -2_147_483_648 - 1}])
+             )
+
+    # days' range is -2147483648 to 2147483647
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::interval", [%Postgrex.Interval{days: 2_147_483_647 + 1}])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::interval", [%Postgrex.Interval{days: -2_147_483_648 - 1}])
+             )
+
+    # microseconds' range is -9223372036854775808 to 9223372036854775807
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::interval", [
+                 %Postgrex.Interval{microsecs: 9_223_372_036_854_775_807 + 1}
+               ])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::interval", [
+                 %Postgrex.Interval{microsecs: -9_223_372_036_854_775_808 - 1}
+               ])
+             )
   end
 
   @tag min_pg_version: "17.0"
@@ -1552,6 +1616,75 @@ defmodule QueryTest do
 
     assert [["08:01:2b:05:07:09"]] =
              query("SELECT $1::macaddr::text", [%Postgrex.MACADDR{address: {8, 1, 43, 5, 7, 9}}])
+  end
+
+  test "encode enforces bounds on inet", context do
+    # IPv4 octet's range is 0 to 255
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [
+                 %Postgrex.INET{address: {255 + 1, 0, 0, 0}, netmask: nil}
+               ])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [%Postgrex.INET{address: {0 - 1, 0, 0, 0}, netmask: nil}])
+             )
+
+    # IPv4 netmask's range is 0 to 32
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [%Postgrex.INET{address: {10, 0, 0, 0}, netmask: 32 + 1}])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [%Postgrex.INET{address: {10, 0, 0, 0}, netmask: 0 - 1}])
+             )
+
+    # IPv6 group's range is 0 to 65535
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [
+                 %Postgrex.INET{address: {65_535 + 1, 0, 0, 0, 0, 0, 0, 0}, netmask: nil}
+               ])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [
+                 %Postgrex.INET{address: {0 - 1, 0, 0, 0, 0, 0, 0, 0}, netmask: nil}
+               ])
+             )
+
+    # IPv6 netmask's range is 0 to 128
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [
+                 %Postgrex.INET{address: {1, 0, 0, 0, 0, 0, 0, 0}, netmask: 128 + 1}
+               ])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::inet", [
+                 %Postgrex.INET{address: {1, 0, 0, 0, 0, 0, 0, 0}, netmask: 0 - 1}
+               ])
+             )
+  end
+
+  test "encode enforces bounds on macaddr", context do
+    # macaddr octet's range is 0 to 255
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::macaddr", [%Postgrex.MACADDR{address: {255 + 1, 0, 0, 0, 0, 0}}])
+             )
+
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::macaddr", [%Postgrex.MACADDR{address: {0 - 1, 0, 0, 0, 0, 0}}])
+             )
   end
 
   test "encode bit string", context do

@@ -7,6 +7,8 @@ defmodule Postgrex.Extensions.Interval do
   @int64_min -9_223_372_036_854_775_808
   @int32_max 2_147_483_647
   @int32_min -2_147_483_648
+  @int64_range @int64_min..@int64_max
+  @int32_range @int32_min..@int32_max
 
   def init(opts) do
     infinity? = Keyword.get(opts, :allow_infinite_intervals, false)
@@ -42,7 +44,7 @@ defmodule Postgrex.Extensions.Interval do
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
-          <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
+          unquote(__MODULE__).encode_interval(microseconds, days, months)
 
         %Duration{
           year: years,
@@ -57,7 +59,7 @@ defmodule Postgrex.Extensions.Interval do
           months = 12 * years + months
           days = 7 * weeks + days
           microseconds = 1_000_000 * (3600 * hours + 60 * minutes + seconds) + microseconds
-          <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
+          unquote(__MODULE__).encode_interval(microseconds, days, months)
 
         other ->
           raise DBConnection.EncodeError,
@@ -133,7 +135,7 @@ defmodule Postgrex.Extensions.Interval do
 
         %Postgrex.Interval{months: months, days: days, secs: seconds, microsecs: microseconds} ->
           microseconds = 1_000_000 * seconds + microseconds
-          <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
+          unquote(__MODULE__).encode_interval(microseconds, days, months)
 
         other ->
           raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, Postgrex.Interval)
@@ -173,6 +175,22 @@ defmodule Postgrex.Extensions.Interval do
         secs: seconds,
         microsecs: microseconds
       }
+    end
+  end
+
+  def encode_interval(microseconds, days, months) do
+    cond do
+      months not in @int32_range ->
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(months, @int32_range)
+
+      days not in @int32_range ->
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(days, @int32_range)
+
+      microseconds not in @int64_range ->
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(microseconds, @int64_range)
+
+      true ->
+        <<16::int32(), microseconds::int64(), days::int32(), months::int32()>>
     end
   end
 

@@ -4,6 +4,8 @@ defmodule Postgrex.Extensions.TSVector do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "tsvectorsend"
 
+  @max_position 16383
+
   def encode(_) do
     quote location: :keep do
       values when is_list(values) ->
@@ -36,6 +38,14 @@ defmodule Postgrex.Extensions.TSVector do
   defp encode_positions(%Postgrex.Lexeme{word: word, positions: positions}) do
     positions =
       Enum.map(positions, fn {position, weight} ->
+        # Lexeme positions can range from 1 to 16383 with a silent ceiling at the top.
+        # Ref: https://www.postgresql.org/docs/current/datatype-textsearch.html#DATATYPE-TSVECTOR
+        if position < 1 do
+          raise DBConnection.EncodeError,
+                Postgrex.Utils.encode_msg(position, 1..@max_position)
+        end
+
+        position = min(position, @max_position)
         <<encode_weight_binary(weight)::2, position::14>>
       end)
 

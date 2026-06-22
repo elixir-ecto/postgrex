@@ -3,6 +3,8 @@ defmodule Postgrex.Extensions.Numeric do
   import Postgrex.BinaryUtils, warn: false
   use Postgrex.BinaryExtension, send: "numeric_send"
 
+  @int16_range -32_768..32_767
+
   def encode(_) do
     quote location: :keep, generated: true do
       %Decimal{} = decimal ->
@@ -54,7 +56,23 @@ defmodule Postgrex.Extensions.Numeric do
     weight = max(length(integer_digits) - 1, 0)
 
     bin = for digit <- digits, into: "", do: <<digit::uint16()>>
-    [<<num_digits::int16(), weight::int16(), sign::uint16(), scale::int16()>> | bin]
+    [encode_header(num_digits, weight, sign, scale) | bin]
+  end
+
+  defp encode_header(num_digits, weight, sign, scale) do
+    cond do
+      num_digits not in @int16_range ->
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(num_digits, @int16_range)
+
+      weight not in @int16_range ->
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(weight, @int16_range)
+
+      scale not in @int16_range ->
+        raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(scale, @int16_range)
+
+      true ->
+        <<num_digits::int16(), weight::int16(), sign::uint16(), scale::int16()>>
+    end
   end
 
   defp encode_sign(1), do: 0x0000
