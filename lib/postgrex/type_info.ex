@@ -25,6 +25,7 @@ defmodule Postgrex.TypeInfo do
   @type t :: %__MODULE__{
           oid: Types.oid(),
           type: String.t(),
+          category: atom(),
           send: String.t(),
           receive: String.t(),
           output: String.t(),
@@ -34,5 +35,16 @@ defmodule Postgrex.TypeInfo do
           comp_elems: [Types.oid()]
         }
 
-  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem, :base_type, :comp_elems]
+  defstruct [
+    :oid,
+    :type,
+    :category,
+    :send,
+    :receive,
+    :output,
+    :input,
+    :array_elem,
+    :base_type,
+    :comp_elems
+  ]
 end

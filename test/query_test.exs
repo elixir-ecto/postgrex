@@ -90,8 +90,28 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "11.0"
-  test "decode arrays of composite domain", context do
+  test "decode composite array domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::composite_array_domain", [])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "decode array of composite domain", context do
     assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::composite_domain[]", [])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "decode nested composite domain", context do
+    assert [[{"a", 1}]] = query("SELECT '(a, 1)'::nested_composite_domain", [])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "decode array of nested composite domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::nested_composite_domain[]", [])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "decode nested composite array domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::nested_composite_array_domain", [])
   end
 
   test "decode arrays", context do
@@ -137,8 +157,28 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "11.0"
-  test "encode arrays of composite domain", context do
+  test "encode composite array domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT $1::composite_array_domain", [[{"a", 1}]])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode array of composite domain", context do
     assert [[[{"a", 1}]]] = query("SELECT $1::composite_domain[]", [[{"a", 1}]])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode nested composite domain", context do
+    assert [[{"a", 1}]] = query("SELECT $1::nested_composite_domain", [{"a", 1}])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode array of nested composite domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT $1::nested_composite_domain[]", [[{"a", 1}]])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode nested composite array domain", context do
+    assert [[[{"a", 1}]]] = query("SELECT $1::nested_composite_array_domain", [[{"a", 1}]])
   end
 
   test "decode interval", context do
@@ -594,6 +634,12 @@ defmodule QueryTest do
     ]
 
     query("SELECT ARRAY['[2014-1-1,2014-12-31)'::tsrange, '[2014-1-1,2014-12-31)'::tsrange]", [])
+  end
+
+  @tag min_pg_version: "9.2"
+  test "decode range over composite type", context do
+    [[%Postgrex.Range{lower: {1, 0, 0}, upper: {2, 0, 0}}]] =
+      query("SELECT version_range('(1,0,0)', '(2,0,0)', '[)')", [])
   end
 
   @tag min_pg_version: "14.0"
@@ -1329,6 +1375,12 @@ defmodule QueryTest do
                  upper_inclusive: true
                }
              ])
+  end
+
+  @tag min_pg_version: "9.2"
+  test "encode range over composite type", context do
+    [[%Postgrex.Range{lower: {1, 0, 0}, upper: {2, 0, 0}}]] =
+      query("SELECT $1::version_range", [%Postgrex.Range{lower: {1, 0, 0}, upper: {2, 0, 0}}])
   end
 
   @tag min_pg_version: "9.2"

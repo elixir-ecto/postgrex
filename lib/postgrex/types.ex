@@ -6,6 +6,16 @@ defmodule Postgrex.Types do
   alias Postgrex.TypeInfo
   import Postgrex.BinaryUtils
 
+  @type_categories %{
+    "b" => :base,
+    "c" => :composite,
+    "d" => :domain,
+    "e" => :enum,
+    "p" => :pseudo,
+    "r" => :range,
+    "m" => :multirange
+  }
+
   @typedoc """
   PostgreSQL internal identifier that maps to a type. See
   <https://www.postgresql.org/docs/9.4/static/datatype-oid.html>.
@@ -64,25 +74,18 @@ defmodule Postgrex.Types do
   end
 
   defp build_bootstrap_query(version, filter_oids, s) do
-    {typelem, join_domain} =
-      if version >= {9, 0, 0} do
-        {"coalesce(d.typelem, t.typelem)", "LEFT JOIN pg_type AS d ON t.typbasetype = d.oid"}
-      else
-        {"t.typelem", ""}
-      end
-
-    {rngsubtype, join_range} =
+    {base_oid, join_range} =
       cond do
         version >= {14, 0, 0} ->
-          {"coalesce(r.rngsubtype, 0)",
-           "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR r.rngmultitypid = t.oid OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype)"}
+          {"coalesce(r.rngsubtype, t.typbasetype)",
+           "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR r.rngmultitypid = t.oid"}
 
         version >= {9, 2, 0} ->
-          {"coalesce(r.rngsubtype, 0)",
-           "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR (t.typbasetype <> 0 AND r.rngtypid = t.typbasetype)"}
+          {"coalesce(r.rngsubtype, t.typbasetype)",
+           "LEFT JOIN pg_range AS r ON r.rngtypid = t.oid"}
 
         true ->
-          {"0", ""}
+          {"t.typbasetype", ""}
       end
 
     comp_oids =
@@ -93,17 +96,16 @@ defmodule Postgrex.Types do
         ARRAY (
           SELECT a.atttypid
           FROM pg_attribute AS a
-          WHERE a.attrelid = coalesce(d.typrelid, t.typrelid) AND a.attnum > 0 AND NOT a.attisdropped
+          WHERE a.attrelid =  t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
           ORDER BY a.attnum
         )
         """
       end
 
     """
-    SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,
-           #{typelem}, #{rngsubtype}, #{comp_oids}
+    SELECT t.oid, t.typname, t.typtype, t.typsend, t.typreceive, t.typoutput, t.typinput,
+           t.typelem, #{base_oid}, #{comp_oids}
     FROM pg_type AS t
-    #{join_domain}
     #{join_range}
     #{filter_oids}
     """
@@ -125,7 +127,10 @@ defmodule Postgrex.Types do
   @doc false
   @spec build_type_info(binary) :: TypeInfo.t()
   def build_type_info(row) do
-    [oid, type, send, receive, output, input, array_oid, base_oid, comp_oids] = row_decode(row)
+    [oid, type, category, send, receive, output, input, array_oid, base_oid, comp_oids] =
+      row_decode(row)
+
+    category = Map.get(@type_categories, category, :unknown)
     oid = String.to_integer(oid)
     array_oid = String.to_integer(array_oid)
     base_oid = String.to_integer(base_oid)
@@ -134,6 +139,7 @@ defmodule Postgrex.Types do
     %TypeInfo{
       oid: oid,
       type: :binary.copy(type),
+      category: category,
       send: unqualify_proc(send),
       receive: :binary.copy(receive),
       output: :binary.copy(output),
@@ -157,11 +163,27 @@ defmodule Postgrex.Types do
 
     _ =
       for %TypeInfo{oid: oid} = type_info <- type_infos do
-        info = find(type_info, :any, module, table)
-        true = :ets.update_element(table, oid, {3, info})
+        case find(type_info, :any, module, table) do
+          :missing_type ->
+            # Did not bootstrap necessary subtypes i.e domain over composites
+            # so we remove and rely on reload behaviour
+            :ets.delete(table, oid)
+
+          info ->
+            true = :ets.update_element(table, oid, {3, info})
       end
 
     :ok
+  end
+
+  defp find(%{category: :domain, base_type: base_oid}, formats, module, table) do
+    case resolve_domain(base_oid, table) do
+      :missing_type ->
+        :missing_type
+
+      info ->
+        find(info, formats, module, table)
+    end
   end
 
   defp find(type_info, formats, module, table) do
@@ -184,13 +206,26 @@ defmodule Postgrex.Types do
     end
   end
 
+  defp resolve_domain(oid, table) do
+    case :ets.lookup(table, oid) do
+      [{_, %{category: :domain, base_type: base_oid}, _}] ->
+        resolve_domain(base_oid, table)
+
+      [{_, type_info, _}] ->
+        type_info
+
+      [] ->
+        :missing_type
+    end
+  end
+
   defp super_find(sub_oids, extension, module, table) do
     case sub_find(sub_oids, module, table, []) do
       {:ok, sub_types} ->
         {:binary, {extension, sub_oids, sub_types}}
 
-      :error ->
-        nil
+      nil_or_missing_type ->
+        nil_or_missing_type
     end
   end
 
@@ -204,12 +239,12 @@ defmodule Postgrex.Types do
           {:binary, types} ->
             sub_find(oids, module, table, [types | acc])
 
-          nil ->
-            :error
+          nil_or_missing_type ->
+            nil_or_missing_type
         end
 
       [] ->
-        :error
+        :missing_type
     end
   end
 
