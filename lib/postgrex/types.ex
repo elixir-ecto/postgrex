@@ -171,6 +171,7 @@ defmodule Postgrex.Types do
 
           info ->
             true = :ets.update_element(table, oid, {3, info})
+        end
       end
 
     :ok
