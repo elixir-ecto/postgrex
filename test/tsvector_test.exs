@@ -49,6 +49,20 @@ defmodule TsvectorTest do
              ])
   end
 
+  test "encode caps tsvector positions over 16383 and rejects positions below 1", context do
+    # Postgres silently caps positions above 16383.
+    assert [["'x':16383"]] =
+             query("SELECT $1::tsvector::text", [
+               [%Lexeme{word: "x", positions: [{16_383 + 1, nil}]}]
+             ])
+
+    # Postgres rejects positions below 1.
+    assert %DBConnection.EncodeError{} =
+             catch_error(
+               query("SELECT $1::tsvector", [[%Lexeme{word: "x", positions: [{1 - 1, nil}]}]])
+             )
+  end
+
   test "decode basic tsvectors", context do
     assert [[[%Lexeme{positions: [], word: "1"}]]] = query("SELECT '1'::tsvector", [])
     assert [[[%Lexeme{positions: [], word: "1"}]]] = query("SELECT '1 '::tsvector", [])
