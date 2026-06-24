@@ -128,6 +128,26 @@ CREATE DOMAIN floats_domain AS float[] CONSTRAINT is_populated CHECK (COALESCE(a
 """
 
 sql_test =
+  if pg_version >= {9, 2} do
+    sql_test <>
+      """
+      DROP TYPE IF EXISTS version_number;
+      CREATE TYPE version_number AS (
+          major integer,
+          minor integer,
+          patch integer
+      );
+
+      DROP TYPE IF EXISTS version_range;
+      CREATE TYPE version_range AS RANGE (
+          subtype = version_number
+      );
+      """
+  else
+    sql_test
+  end
+
+sql_test =
   if pg_version >= {10, 0} do
     sql_test <>
       """
@@ -149,6 +169,15 @@ sql_test =
 
       DROP DOMAIN IF EXISTS composite_domain;
       CREATE DOMAIN composite_domain AS composite_test CHECK ((VALUE).a is NOT NULL);
+
+      DROP DOMAIN IF EXISTS composite_array_domain;
+      CREATE DOMAIN composite_array_domain AS composite_test[] CHECK (array_length(VALUE, 1) > 0);
+
+      DROP DOMAIN IF EXISTS nested_composite_domain;
+      CREATE DOMAIN nested_composite_domain AS composite_domain;
+
+      DROP DOMAIN IF EXISTS nested_composite_array_domain;
+      CREATE DOMAIN nested_composite_array_domain AS composite_array_domain;
       """
   else
     sql_test

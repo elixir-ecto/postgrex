@@ -15,7 +15,7 @@ defmodule Postgrex.TypeInfo do
     * `input` - The name of the "input" function (the function postgres uses
       to convert the type from its text format);
     * `array_elem` - If this is an array, the array elements' oid;
-    * `base_type` - If this is a range type, the base type's oid;
+    * `base_type` - If this is a range type, the base type's oid. If this is a domain, the underlying oid is pointed to;
     * `comp_elems` - If this is a composite type (record), the tuple
       elements' oid;
   """
@@ -25,6 +25,7 @@ defmodule Postgrex.TypeInfo do
   @type t :: %__MODULE__{
           oid: Types.oid(),
           type: String.t(),
+          category: atom(),
           send: String.t(),
           receive: String.t(),
           output: String.t(),
@@ -34,5 +35,16 @@ defmodule Postgrex.TypeInfo do
           comp_elems: [Types.oid()]
         }
 
-  defstruct [:oid, :type, :send, :receive, :output, :input, :array_elem, :base_type, :comp_elems]
+  defstruct [
+    :oid,
+    :type,
+    :category,
+    :send,
+    :receive,
+    :output,
+    :input,
+    :array_elem,
+    :base_type,
+    :comp_elems
+  ]
 end
