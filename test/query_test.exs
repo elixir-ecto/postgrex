@@ -2123,6 +2123,7 @@ defmodule QueryTest do
     :erlang.trace(:all, false, [:call])
   end
 
+  @tag :unix
   test "terminate backend with socket", context do
     Process.flag(:trap_exit, true)
     socket = System.get_env("PG_SOCKET_DIR") || "/tmp"
