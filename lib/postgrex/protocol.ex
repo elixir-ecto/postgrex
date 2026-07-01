@@ -801,10 +801,7 @@ defmodule Postgrex.Protocol do
           pid: pid,
           timeout: timeout
         },
-        report_cb: fn %{source: {module, _}} = report ->
-          {"~ts (~tw) timed out because it was handshaking for longer than ~twms",
-           [inspect(module), report.pid, report.timeout]}
-        end
+        report_cb: &__MODULE__._format_handshake_shutdown/1
       )
 
       :gen_tcp.shutdown(sock, :read_write)
@@ -816,6 +813,12 @@ defmodule Postgrex.Protocol do
   def cancel_handshake_timer({:timer, tref}) do
     {:ok, _} = :timer.cancel(tref)
     :ok
+  end
+
+  @doc false
+  def _format_handshake_shutdown(%{source: {module, _}} = report) do
+    {"~ts (~tw) timed out because it was handshaking for longer than ~twms",
+     [inspect(module), report.pid, report.timeout]}
   end
 
   defp do_handshake(_host, s, %{ssl: nil} = status), do: startup(s, status)

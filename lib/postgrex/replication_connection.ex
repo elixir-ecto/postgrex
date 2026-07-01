@@ -528,14 +528,7 @@ defmodule Postgrex.ReplicationConnection do
             mod: mod,
             reason: reason
           },
-          report_cb: fn report ->
-            {"~ts (~ts) failed to connect to Postgres: ~ts",
-             [
-               inspect(report.pid_or_name),
-               inspect(report.mod),
-               Exception.format(:error, report.reason)
-             ]}
-          end
+          report_cb: &__MODULE__._format_connection_error/1
         )
 
         if s.auto_reconnect do
@@ -565,6 +558,25 @@ defmodule Postgrex.ReplicationConnection do
   end
 
   ## Helpers
+  @doc false
+  def _format_connection_error(report) do
+    {"~ts (~ts) failed to connect to Postgres: ~ts",
+     [
+       inspect(report.pid_or_name),
+       inspect(report.mod),
+       Exception.format(:error, report.reason)
+     ]}
+  end
+
+  @doc false
+  def _format_reconnect_error(report) do
+    {"~ts (~ts) is reconnecting due to reason: ~ts",
+     [
+       inspect(report.pid_or_name),
+       inspect(report.mod),
+       Exception.format(:error, report.reason)
+     ]}
+  end
 
   defp handle_data([], s), do: {:keep_state, s}
 
@@ -674,14 +686,7 @@ defmodule Postgrex.ReplicationConnection do
         mod: mod,
         reason: reason
       },
-      report_cb: fn report ->
-        {"~ts (~ts) is reconnecting due to reason: ~ts",
-         [
-           inspect(report.pid_or_name),
-           inspect(report.mod),
-           Exception.format(:error, report.reason)
-         ]}
-      end
+      report_cb: &__MODULE__._format_reconnect_error/1
     )
 
     {:keep_state, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
