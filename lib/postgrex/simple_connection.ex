@@ -371,14 +371,7 @@ defmodule Postgrex.SimpleConnection do
             mod: mod,
             reason: reason
           },
-          report_cb: fn report ->
-            {"~ts (~ts) failed to connect to Postgres: ~ts",
-             [
-               inspect(report.pid_or_name),
-               inspect(report.mod),
-               Exception.format(:error, report.reason)
-             ]}
-          end
+          report_cb: &__MODULE__._format_connection_error/1
         )
 
         if state.auto_reconnect do
@@ -440,6 +433,15 @@ defmodule Postgrex.SimpleConnection do
   end
 
   ## Helpers
+  @doc false
+  def _format_connection_error(report) do
+    {"~ts (~ts) failed to connect to Postgres: ~ts",
+     [
+       inspect(report.pid_or_name),
+       inspect(report.mod),
+       Exception.format(:error, report.reason)
+     ]}
+  end
 
   defp maybe_handle(mod, fun, args, state) do
     if function_exported?(mod, fun, length(args)) do
