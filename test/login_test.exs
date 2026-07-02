@@ -88,6 +88,41 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
+  @tag :ssl
+  @tag min_pg_version: "11.0"
+  test "login scram password with channel binding required", context do
+    opts = [
+      username: "postgrex_scram_pw",
+      password: "postgrex_scram_pw",
+      ssl: [verify: :verify_none],
+      channel_binding: :require
+    ]
+
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  @tag :ssl
+  @tag min_pg_version: "11.0"
+  test "login scram password with channel binding disabled", context do
+    opts = [
+      username: "postgrex_scram_pw",
+      password: "postgrex_scram_pw",
+      ssl: [verify: :verify_none],
+      channel_binding: :disable
+    ]
+
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "invalid channel_binding option", context do
+    assert capture_log(fn ->
+             opts = [channel_binding: :invalid, show_sensitive_data_on_connection_error: true]
+             assert_start_and_killed(opts ++ context[:options])
+           end) =~ "expected :channel_binding to be :prefer, :require or :disable"
+  end
+
   test "env var defaults", context do
     assert {:ok, pid} = P.start_link(context[:options])
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])

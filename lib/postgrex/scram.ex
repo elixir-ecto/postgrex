@@ -6,15 +6,56 @@ defmodule Postgrex.SCRAM do
   @hash_length 32
   @nonce_length 24
   @nonce_rand_bytes div(@nonce_length * 6, 8)
-  @nonce_prefix "n,,n=,r="
-  @nonce_encoded_size <<byte_size(@nonce_prefix) + @nonce_length::signed-size(32)>>
+  @cb_gs2_header "p=tls-server-end-point,,"
 
-  def client_first do
-    nonce = @nonce_rand_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()
-    ["SCRAM-SHA-256", 0, @nonce_encoded_size, @nonce_prefix, nonce]
+  # Chooses the SCRAM mechanism and gs2 header from the mechanisms the server offered.
+  def negotiate_channel_binding(server_mechanisms, sock, mode) do
+    offered = parse_mechanisms(server_mechanisms)
+    plus_offered? = "SCRAM-SHA-256-PLUS" in offered
+    tls? = match?({:ssl, _}, sock)
+
+    cond do
+      mode == :disable ->
+        {:ok, {"SCRAM-SHA-256", "n,,", ""}}
+
+      tls? and plus_offered? ->
+        case cert_hash(sock) do
+          {:ok, hash} ->
+            {:ok, {"SCRAM-SHA-256-PLUS", @cb_gs2_header, hash}}
+
+          :error when mode == :require ->
+            {:error,
+             %Postgrex.Error{
+               message:
+                 "channel binding is required but the server certificate has no usable hash"
+             }}
+
+          # Fallback
+          :error ->
+            {:ok, {"SCRAM-SHA-256", "y,,", ""}}
+        end
+
+      mode == :require ->
+        {:error,
+         %Postgrex.Error{
+           message:
+             "channel binding is required but not offered by the server, or the connection is not using SSL"
+         }}
+
+      true ->
+        cbind_flag = if tls?, do: "y,,", else: "n,,"
+        {:ok, {"SCRAM-SHA-256", cbind_flag, ""}}
+    end
   end
 
-  def client_final(data, opts) do
+  def client_first({mechanism, gs2_header, _cbind_data}) do
+    nonce = @nonce_rand_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()
+    sasl_data = [gs2_header, "n=,r=", nonce]
+    size = <<IO.iodata_length(sasl_data)::signed-size(32)>>
+    [mechanism, 0, size, sasl_data]
+  end
+
+  def client_final(data, {_mechanism, gs2_header, cbind_data}, opts) do
     # Extract data from server-first message
     server = parse_server_data(data)
     {:ok, server_s} = Base.decode64(server[?s])
@@ -30,7 +71,8 @@ defmodule Postgrex.SCRAM do
       end)
 
     # Construct client signature and proof
-    message_without_proof = ["c=biws,r=", server[?r]]
+    cbind_input = Base.encode64(IO.iodata_to_binary([gs2_header, cbind_data]))
+    message_without_proof = ["c=", cbind_input, ",r=", server[?r]]
     client_nonce = binary_part(server[?r], 0, @nonce_length)
     message = ["n=,r=", client_nonce, ",r=", server[?r], ",s=", server[?s], ",i=", server[?i], ?,]
     auth_message = IO.iodata_to_binary([message | message_without_proof])
@@ -48,6 +90,30 @@ defmodule Postgrex.SCRAM do
     data
     |> parse_server_data()
     |> do_verify_server(scram_state, opts)
+  end
+
+  defp parse_mechanisms(data) do
+    data |> :binary.split(<<0>>, [:global]) |> Enum.reject(&(&1 == ""))
+  end
+
+  # RFC 5929 tls-server-end-point
+  defp cert_hash({:ssl, sslsock}) do
+    with {:ok, der} <- :ssl.peercert(sslsock),
+         {:Certificate, _tbs, sig_alg, _sig} <- :public_key.pkix_decode_cert(der, :plain),
+         {_tag, oid, _params} <- sig_alg,
+         {digest, _sign} when digest != :none <- pkix_sign_type(oid) do
+      # Ref: https://www.rfc-editor.org/info/rfc5929/#section-4.1
+      digest = if digest in [:md5, :sha], do: :sha256, else: digest
+      {:ok, :crypto.hash(digest, der)}
+    else
+      _ -> :error
+    end
+  end
+
+  defp pkix_sign_type(oid) do
+    :public_key.pkix_sign_types(oid)
+  rescue
+    _ -> {:none, :unknown}
   end
 
   defp do_verify_server(%{?e => server_e}, _scram_state, _opts) do

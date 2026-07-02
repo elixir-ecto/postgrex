@@ -32,6 +32,7 @@ defmodule Postgrex.Protocol do
             buffer: nil,
             disconnect_on_error_codes: [],
             scram: nil,
+            scram_cb: nil,
             disable_composite_types: false,
             messages: []
 
@@ -120,6 +121,16 @@ defmodule Postgrex.Protocol do
         :unnamed -> :unnamed
       end
 
+    channel_binding =
+      case opts[:channel_binding] || :prefer do
+        binding when binding in [:prefer, :require, :disable] ->
+          binding
+
+        other ->
+          raise ArgumentError,
+                "expected :channel_binding to be :prefer, :require or :disable, got: #{inspect(other)}"
+      end
+
     parameters =
       case opts[:search_path] do
         path when is_list(path) ->
@@ -158,6 +169,7 @@ defmodule Postgrex.Protocol do
       prepare: prepare,
       messages: [],
       ssl: ssl_opts,
+      channel_binding: channel_binding,
       target_server_type: target_server_type
     }
 
@@ -900,8 +912,8 @@ defmodule Postgrex.Protocol do
       {:ok, msg_auth(type: :md5, data: salt), buffer} ->
         auth_md5(s, status, salt, buffer)
 
-      {:ok, msg_auth(type: :sasl, data: _), buffer} ->
-        auth_sasl(s, status, buffer)
+      {:ok, msg_auth(type: :sasl, data: mechanisms), buffer} ->
+        auth_sasl(s, status, mechanisms, buffer)
 
       {:ok, msg_auth(type: :sasl_cont, data: data), buffer} ->
         auth_cont(s, status, data, buffer)
@@ -931,12 +943,19 @@ defmodule Postgrex.Protocol do
     auth_send(s, msg_password(pass: ["md5", digest, 0]), status, buffer)
   end
 
-  defp auth_sasl(s, status = _, buffer) do
-    auth_send(s, msg_password(pass: Postgrex.SCRAM.client_first()), status, buffer)
+  defp auth_sasl(s, %{channel_binding: channel_binding} = status, mechanisms, buffer) do
+    case Postgrex.SCRAM.negotiate_channel_binding(mechanisms, s.sock, channel_binding) do
+      {:ok, cb} ->
+        s = %{s | scram_cb: cb}
+        auth_send(s, msg_password(pass: Postgrex.SCRAM.client_first(cb)), status, buffer)
+
+      {:error, error} ->
+        disconnect(s, error, buffer)
+    end
   end
 
   defp auth_cont(s, %{opts: opts} = status, data, buffer) do
-    {client_final_msg, scram_state} = Postgrex.SCRAM.client_final(data, opts)
+    {client_final_msg, scram_state} = Postgrex.SCRAM.client_final(data, s.scram_cb, opts)
     s = %{s | scram: scram_state}
     auth_send(s, msg_password(pass: client_final_msg), status, buffer)
   end
