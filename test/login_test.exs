@@ -116,11 +116,21 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
-  test "invalid channel_binding option", context do
-    assert capture_log(fn ->
-             opts = [channel_binding: :invalid, show_sensitive_data_on_connection_error: true]
-             assert_start_and_killed(opts ++ context[:options])
-           end) =~ "expected :channel_binding to be :prefer, :require or :disable"
+  # gen_statem reports (raised in connect/2) are only captured on Elixir v1.17+,
+  # and a bug crashes the Logger on v1.17.0/v1.17.1.
+  if Version.match?(System.version(), ">= 1.17.2") do
+    test "invalid channel_binding option", context do
+      Process.flag(:trap_exit, true)
+      opts = [channel_binding: :invalid, show_sensitive_data_on_connection_error: true]
+
+      error_log =
+        capture_log(fn ->
+          Postgrex.start_link(opts ++ context[:options])
+          assert_receive {:EXIT, _, :killed}
+        end)
+
+      assert error_log =~ "expected :channel_binding to be :prefer, :require or :disable"
+    end
   end
 
   test "env var defaults", context do
