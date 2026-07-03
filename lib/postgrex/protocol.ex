@@ -816,9 +816,9 @@ defmodule Postgrex.Protocol do
   end
 
   @doc false
-  def _format_handshake_shutdown(%{source: {module, _}} = report) do
+  def _format_handshake_shutdown(report) do
     {"~ts (~tw) timed out because it was handshaking for longer than ~twms",
-     [inspect(module), report.pid, report.timeout]}
+     [inspect(__MODULE__), report.pid, report.timeout]}
   end
 
   defp do_handshake(_host, s, %{ssl: nil} = status), do: startup(s, status)
