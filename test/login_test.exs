@@ -102,6 +102,33 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
+  @tag min_pg_version: "10.0"
+  test "login scram password with channel binding required without SSL", context do
+    assert capture_log(fn ->
+             opts = [
+               username: "postgrex_scram_pw",
+               password: "postgrex_scram_pw",
+               channel_binding: :require
+             ]
+
+             assert_start_and_killed(opts ++ context[:options])
+           end) =~ "channel binding is required"
+  end
+
+  @tag :ssl
+  @tag min_pg_version: "11.0"
+  test "login scram password with channel binding preferred", context do
+    opts = [
+      username: "postgrex_scram_pw",
+      password: "postgrex_scram_pw",
+      ssl: [verify: :verify_none],
+      channel_binding: :prefer
+    ]
+
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
   @tag :ssl
   @tag min_pg_version: "11.0"
   test "login scram password with channel binding disabled", context do
