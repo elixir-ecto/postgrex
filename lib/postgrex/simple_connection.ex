@@ -433,6 +433,7 @@ defmodule Postgrex.SimpleConnection do
   end
 
   ## Helpers
+
   @doc false
   def _format_connection_error(report) do
     {"~ts (~ts) failed to connect to Postgres: ~ts",
