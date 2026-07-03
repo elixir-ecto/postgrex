@@ -48,6 +48,7 @@ defmodule Postgrex do
           | {:handshake_timeout, timeout}
           | {:ping_timeout, timeout}
           | {:ssl, boolean | [:ssl.tls_client_option()]}
+          | {:channel_binding, :prefer | :require | :disable}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
           | {:transactions, :strict | :naive}
