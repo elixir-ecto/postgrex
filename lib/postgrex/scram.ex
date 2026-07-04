@@ -32,7 +32,7 @@ defmodule Postgrex.SCRAM do
 
           # Fallback
           :error ->
-            {:ok, {"SCRAM-SHA-256", "y,,", ""}}
+            {:ok, {"SCRAM-SHA-256", "n,,", ""}}
         end
 
       mode == :require ->
