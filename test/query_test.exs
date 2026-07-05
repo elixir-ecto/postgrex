@@ -95,6 +95,15 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "11.0"
+  test "decode array of composite array domain", context do
+    assert [[[[{"a", 1}]]]] =
+             query(
+               "SELECT ARRAY[ARRAY['(a, 1)']::composite_array_domain]::composite_array_domain[]",
+               []
+             )
+  end
+
+  @tag min_pg_version: "11.0"
   test "decode array of composite domain", context do
     assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::composite_domain[]", [])
   end
@@ -112,6 +121,15 @@ defmodule QueryTest do
   @tag min_pg_version: "11.0"
   test "decode nested composite array domain", context do
     assert [[[{"a", 1}]]] = query("SELECT ARRAY['(a, 1)']::nested_composite_array_domain", [])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "decode array of nested composite array domain", context do
+    assert [[[[{"a", 1}]]]] =
+             query(
+               "SELECT ARRAY[ARRAY['(a, 1)']::nested_composite_array_domain]::nested_composite_array_domain[]",
+               []
+             )
   end
 
   test "decode arrays", context do
@@ -162,6 +180,14 @@ defmodule QueryTest do
   end
 
   @tag min_pg_version: "11.0"
+  test "encode array of composite array domain", context do
+    nrow = 3
+    ncol = 2
+    params = Enum.map(1..nrow, fn _ -> Enum.map(1..ncol, fn _ -> {"a", 1} end) end)
+    assert [[^params]] = query("SELECT $1::composite_array_domain[]", [params])
+  end
+
+  @tag min_pg_version: "11.0"
   test "encode array of composite domain", context do
     assert [[[{"a", 1}]]] = query("SELECT $1::composite_domain[]", [[{"a", 1}]])
   end
@@ -179,6 +205,14 @@ defmodule QueryTest do
   @tag min_pg_version: "11.0"
   test "encode nested composite array domain", context do
     assert [[[{"a", 1}]]] = query("SELECT $1::nested_composite_array_domain", [[{"a", 1}]])
+  end
+
+  @tag min_pg_version: "11.0"
+  test "encode array of nested composite array domain", context do
+    nrow = 3
+    ncol = 2
+    params = Enum.map(1..nrow, fn _ -> Enum.map(1..ncol, fn _ -> {"a", 1} end) end)
+    assert [[^params]] = query("SELECT $1::nested_composite_array_domain[]", [params])
   end
 
   test "decode interval", context do

@@ -17,9 +17,9 @@ defmodule Postgrex.Extensions.Array do
   def encode(_) do
     quote location: :keep do
       list, [oid], [type] when is_list(list) ->
+        recurse_nested? = unquote(__MODULE__).recurse_nested_arrays(type)
         # encode_list/2 defined by TypeModule
-        encoder = &encode_list(&1, type)
-        unquote(__MODULE__).encode(list, oid, encoder)
+        unquote(__MODULE__).encode(list, recurse_nested?, oid, &encode_list(&1, type))
 
       other, _, _ ->
         raise DBConnection.EncodeError, Postgrex.Utils.encode_msg(other, "a list")
@@ -50,29 +50,29 @@ defmodule Postgrex.Extensions.Array do
   # Special case for empty lists. This treats an empty list as an empty 1-dim array.
   # While libpq will decode a payload encoded for a 0-dim array, CockroachDB will not.
   # Also, this is how libpq actually encodes 0-dim arrays.
-  def encode([], elem_oid, _encoder) do
+  def encode([], _, elem_oid, _encoder) do
     <<20::int32(), 1::int32(), 0::int32(), elem_oid::uint32(), 0::int32(), 1::int32()>>
   end
 
-  def encode(list, elem_oid, encoder) do
-    {data, ndims, lengths} = encode(list, 0, [], encoder)
+  def encode(list, recurse_nested?, elem_oid, encoder) do
+    {data, ndims, lengths} = encode(list, recurse_nested?, 0, [], encoder)
     lengths = for len <- Enum.reverse(lengths), do: <<len::int32(), 1::int32()>>
     iodata = [<<ndims::int32(), 0::int32(), elem_oid::uint32()>>, lengths, data]
     [<<IO.iodata_length(iodata)::int32()>> | iodata]
   end
 
-  defp encode([], ndims, lengths, _encoder) do
+  defp encode([], _, ndims, lengths, _encoder) do
     {"", ndims, lengths}
   end
 
-  defp encode([head | tail] = list, ndims, lengths, encoder) when is_list(head) do
+  defp encode([head | tail] = list, true, ndims, lengths, encoder) when is_list(head) do
     lengths = [length(list) | lengths]
-    {data, ndims, lengths} = encode(head, ndims, lengths, encoder)
+    {data, ndims, lengths} = encode(head, true, ndims, lengths, encoder)
     [dimlength | _] = lengths
 
     rest =
       Enum.reduce(tail, [], fn sublist, acc ->
-        {data, _, [len | _]} = encode(sublist, ndims, lengths, encoder)
+        {data, _, [len | _]} = encode(sublist, true, ndims, lengths, encoder)
 
         if len != dimlength do
           raise ArgumentError, "nested lists must have lists with matching lengths"
@@ -84,7 +84,7 @@ defmodule Postgrex.Extensions.Array do
     {[data | rest], ndims + 1, lengths}
   end
 
-  defp encode(list, ndims, lengths, encoder) do
+  defp encode(list, _, ndims, lengths, encoder) do
     {encoder.(list), ndims + 1, [length(list) | lengths]}
   end
 
@@ -109,6 +109,16 @@ defmodule Postgrex.Extensions.Array do
   defp decode_dims(<<>>, acc) do
     Enum.reverse(acc)
   end
+
+  # A nested array is normally handled by recursing through the dimensions
+  # until you hit the base element. However, there is a special case
+  # where a parameter may look like a nested array but we cannot treat it
+  # this way. An array whose element type is a domain that is defined
+  # over an array will look like a nested array from Elixir, but the
+  # Postgres protocol must treat it as a single dimensional array over
+  # the domain type
+  def recurse_nested_arrays({__MODULE__, _, _}), do: false
+  def recurse_nested_arrays(_), do: true
 
   # elems and lengths in reverse order
   defp nest(elems, [len]) do
