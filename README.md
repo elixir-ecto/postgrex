@@ -43,7 +43,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 | `timestamp`        | `%NaiveDateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14}`                                                           |
 | `timestamptz`      | `%DateTime{year: 2013, month: 10, day: 12, hour: 0, minute: 37, second: 14, time_zone: "Etc/UTC"}` (2)                                      |
 | `interval`         | `%Postgrex.Interval{months: 14, days: 40, secs: 10920, microsecs: 315}`                                                                     |
-| `interval`         | `%Duration{month: 2, day: 5, second: 0, microsecond: {315, 6}}` (3)                                   |
+| `interval`         | `%Duration{month: 14, day: 40, second: 10920, microsecond: {315, 6}}` (3)                                   |
 | `array`            | `[1, 2, 3]`                                                                                                                                 |
 | `composite type`   | `{42, "title", "content"}`                                                                                                                  |
 | `range`            | `%Postgrex.Range{lower: 1, upper: 5}`                                                                                                       |
@@ -60,7 +60,7 @@ iex> Postgrex.query!(pid, "INSERT INTO comments (user_id, text) VALUES (10, 'hey
 
 (2) Timezones will always be normalized to UTC or assumed to be UTC when no information is available, either by PostgreSQL or Postgrex
 
-(3) `%Duration{}` may only be used with Elixir 1.17+. Intervals will only be decoded into a `%Duration{}` struct if the option `interval_decode_type: Duration` is passed to `Postgrex.Types.define/3`.
+(3) `%Duration{}` may only be used with Elixir 1.17+. Intervals will only be decoded into a `%Duration{}` struct if the option `interval_decode_type: Duration` is passed to `Postgrex.Types.define/3`. Like `Postgrex.Interval`, the decoded `Duration` keeps the same coarse units returned by PostgreSQL: the time part is stored in `:second` and is not split into `:hour`/`:minute` (e.g. `1 day 02:03:04` decodes to `%Duration{day: 1, second: 7384}`).
 
 (4) Enumerated types (enum) are custom named database types with strings as values.
 

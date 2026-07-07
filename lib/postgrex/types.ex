@@ -363,7 +363,12 @@ defmodule Postgrex.Types do
 
     * `:interval_decode_type` - The struct that intervals will be decoded
       into. Either `Postgrex.Interval` or `Duration` (Elixir 1.17.0+ only).
-      Defaults to `Postgrex.Interval`.
+      Defaults to `Postgrex.Interval`. Note that, like `Postgrex.Interval`,
+      the decoded `Duration` keeps the same coarse units returned by
+      PostgreSQL: the time part is stored in `:second` and is not split into
+      `:hour`/`:minute`. For example, the interval `1 day 02:03:04` decodes to
+      `%Duration{day: 1, second: 7384}`, not `%Duration{day: 1, hour: 2,
+      minute: 3, second: 4}`. Both represent the same value.
 
   """
   def define(module, extensions, opts \\ []) do
