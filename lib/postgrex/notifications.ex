@@ -225,7 +225,7 @@ defmodule Postgrex.Notifications do
         |> Map.keys()
         |> Enum.map_join("\n", &~s(LISTEN #{quote_channel(&1)};))
 
-      query = "DO $$BEGIN #{listen_statements} END$$"
+      query = "DO #{dollar_quote("BEGIN #{listen_statements} END")}"
 
       {:query, query, state}
     else
@@ -328,5 +328,14 @@ defmodule Postgrex.Notifications do
 
   defp quote_channel(channel) do
     ~s("#{String.replace(channel, "\"", "\"\"")}")
+  end
+
+  defp dollar_quote(string) do
+    delimiter =
+      Stream.iterate(0, &(&1 + 1))
+      |> Stream.map(&"$postgrex_notifications_#{&1}$")
+      |> Enum.find(&(not String.contains?(string, &1)))
+
+    delimiter <> string <> delimiter
   end
 end

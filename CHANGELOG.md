@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.22.3 (2026-07-09)
+
+* Security
+  * Escape dollar signs in channel names in `Postgrex.Notifications.listen/3` (CVE-2026-58225)
+
 ## v0.22.2 (2026-05-12)
 
 * Security

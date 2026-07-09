@@ -156,6 +156,23 @@ defmodule NotificationTest do
       assert_receive {:notification, ^receiver_pid, ^ref, "channel", ""}
     end
 
+    test "reconnection with dollar-quoted channel", context do
+      channel = "channel:$$"
+
+      assert {:ok, ref} = PN.listen(context.pid_ps, channel)
+
+      disconnect(context.pid_ps)
+
+      # Give the notifier a chance to re-establish the connection and listeners
+      Process.sleep(500)
+
+      assert {:ok, %Postgrex.Result{command: :notify}} =
+               P.query(context.pid, ~s(NOTIFY "channel:$$"), [])
+
+      receiver_pid = context.pid_ps
+      assert_receive {:notification, ^receiver_pid, ^ref, ^channel, ""}
+    end
+
     test "reestablish multiple listeners and channels", context do
       receiver_pid = context.pid_ps
 
