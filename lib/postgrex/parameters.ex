@@ -60,6 +60,7 @@ defmodule Postgrex.Parameters do
   end
 
   def handle_cast({:delete, ref}, state) do
+    Process.demonitor(ref, [:flush])
     :ets.delete(state, ref)
     {:noreply, state}
   end
