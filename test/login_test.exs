@@ -143,6 +143,30 @@ defmodule LoginTest do
     assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
   end
 
+  test "channel binding required refuses cleartext authentication downgrade", context do
+    assert capture_log(fn ->
+             opts = [
+               username: "postgrex_cleartext_pw",
+               password: "postgrex_cleartext_pw",
+               channel_binding: :require
+             ]
+
+             assert_start_and_killed(opts ++ context[:options])
+           end) =~ "channel binding is required"
+  end
+
+  test "channel binding required refuses md5 authentication downgrade", context do
+    assert capture_log(fn ->
+             opts = [
+               username: "postgrex_md5_pw",
+               password: "postgrex_md5_pw",
+               channel_binding: :require
+             ]
+
+             assert_start_and_killed(opts ++ context[:options])
+           end) =~ "channel binding is required"
+  end
+
   # gen_statem reports (raised in connect/2) are only captured on Elixir v1.17+,
   # and a bug crashes the Logger on v1.17.0/v1.17.1.
   if Version.match?(System.version(), ">= 1.17.2") do

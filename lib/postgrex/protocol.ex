@@ -907,7 +907,26 @@ defmodule Postgrex.Protocol do
   defp auth_recv(s, status, buffer) do
     case msg_recv(s, :infinity, buffer) do
       {:ok, msg_auth(type: :ok), buffer} ->
-        init_recv(s, status, buffer)
+        # When channel binding is required, the server must not be able to
+        # finish authentication without it.
+        if status.channel_binding == :require and
+             not match?({"SCRAM-SHA-256-PLUS", _, _}, s.scram_cb) do
+          disconnect(
+            s,
+            %Postgrex.Error{message: "channel binding is required but the server did not use it"},
+            buffer
+          )
+        else
+          init_recv(s, status, buffer)
+        end
+
+      {:ok, msg_auth(type: type), buffer}
+      when status.channel_binding == :require and type in [:cleartext, :md5] ->
+        disconnect(
+          s,
+          %Postgrex.Error{message: "channel binding is required but the server did not use it"},
+          buffer
+        )
 
       {:ok, msg_auth(type: :cleartext), buffer} ->
         auth_cleartext(s, status, buffer)
