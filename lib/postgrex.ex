@@ -294,6 +294,9 @@ defmodule Postgrex do
     * `:query_type` - Either `:binary` or `:text`. If `:binary` then the
       extended query protocol is used. If `:text` then the simple protocol
       is used. Defaults to `:binary`.
+    * `:comment` - When a binary string is provided, appends the given text to the
+      query wrapped in a `/* ... */` SQL comment. The comment cannot contain null
+      bytes or the sequence `*/`. Note it is not supported with `:cache_statement`.
 
   ## Examples
 
