@@ -421,6 +421,9 @@ defmodule Postgrex do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     prepare on error, otherwise set to `:transaction` (default: `:transaction`);
+    * `:comment` - When a binary string is provided, appends the given text to the
+      query wrapped in a `/* ... */` SQL comment. The comment cannot contain null
+      bytes or the sequence `*/`.
 
   ## Examples
 
@@ -468,6 +471,9 @@ defmodule Postgrex do
     decoding, (default: `fn x -> x end`);
     * `:mode` - set to `:savepoint` to use a savepoint to rollback to before the
     execute on error, otherwise set to `:transaction` (default: `:transaction`);
+    * `:comment` - When a binary string is provided, appends the given text to the
+      query wrapped in a `/* ... */` SQL comment. The comment cannot contain null
+      bytes or the sequence `*/`.
 
   ## Examples
 
