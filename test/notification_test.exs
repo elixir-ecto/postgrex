@@ -39,6 +39,19 @@ defmodule NotificationTest do
     refute_receive {:EXIT, _, ^pid}, 100
   end
 
+  test "does not fail on unlisten while disconnected" do
+    Process.flag(:trap_exit, true)
+
+    assert {:ok, pid} =
+             PN.start_link(database: "nobody_knows_it", auto_reconnect: true, sync_connect: false)
+
+    assert {:eventually, ref} = PN.listen(pid, "channel")
+
+    assert :ok = PN.unlisten(pid, ref)
+    refute_receive {:EXIT, _, ^pid}, 100
+    assert Process.alive?(pid)
+  end
+
   test "listening", context do
     assert {:ok, ref} = PN.listen(context.pid_ps, "channel")
 

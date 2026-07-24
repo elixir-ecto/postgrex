@@ -280,7 +280,13 @@ defmodule Postgrex.Notifications do
         if map_size(state.listener_channels[channel]) == 0 do
           {_, state} = pop_in(state.listener_channels[channel])
 
-          {:query, ~s(UNLISTEN #{quote_channel(channel)}), %{state | from: from}}
+          if state.connected do
+            {:query, ~s(UNLISTEN #{quote_channel(channel)}), %{state | from: from}}
+          else
+            from && SimpleConnection.reply(from, :ok)
+
+            {:noreply, state}
+          end
         else
           from && SimpleConnection.reply(from, :ok)
 
