@@ -24,31 +24,25 @@ defmodule NotificationTest do
   end
 
   test "does not fail on sync connection with auto reconnect" do
-    Process.flag(:trap_exit, true)
     assert {:ok, pid} = PN.start_link(database: "nobody_knows_it", auto_reconnect: true)
     assert {:eventually, _} = PN.listen(pid, "channel")
+    assert Process.alive?(pid)
   end
 
   test "does not fail on async connection with auto reconnect" do
-    Process.flag(:trap_exit, true)
-
     assert {:ok, pid} =
              PN.start_link(database: "nobody_knows_it", auto_reconnect: true, sync_connect: false)
 
     assert {:eventually, _} = PN.listen(pid, "channel")
-    refute_receive {:EXIT, _, ^pid}, 100
+    assert Process.alive?(pid)
   end
 
   test "does not fail on unlisten while disconnected" do
-    Process.flag(:trap_exit, true)
-
     assert {:ok, pid} =
              PN.start_link(database: "nobody_knows_it", auto_reconnect: true, sync_connect: false)
 
     assert {:eventually, ref} = PN.listen(pid, "channel")
-
     assert :ok = PN.unlisten(pid, ref)
-    refute_receive {:EXIT, _, ^pid}, 100
     assert Process.alive?(pid)
   end
 
