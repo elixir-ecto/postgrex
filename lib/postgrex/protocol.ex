@@ -1253,6 +1253,10 @@ defmodule Postgrex.Protocol do
         {result, s} = done(s, columns, Enum.reverse(rows), [tag])
         recv_simple(s, status, [result | results], [], [], buffer, timeout)
 
+      {:ok, msg_empty_query(), buffer} ->
+        {result, s} = done_empty(s)
+        recv_simple(s, status, [result | results], [], [], buffer, timeout)
+
       {:ok, msg_error(fields: fields), buffer} ->
         err = Postgrex.Error.exception(postgres: fields)
         error_ready(s, status, err, buffer)
@@ -3182,6 +3186,19 @@ defmodule Postgrex.Protocol do
       num_rows: nrows || 0,
       rows: rows,
       columns: cols,
+      connection_id: connection_id,
+      messages: messages
+    }
+
+    {result, %{s | messages: []}}
+  end
+
+  defp done_empty(%{connection_id: connection_id, messages: messages} = s) do
+    result = %Postgrex.Result{
+      command: nil,
+      num_rows: 0,
+      rows: nil,
+      columns: nil,
       connection_id: connection_id,
       messages: messages
     }

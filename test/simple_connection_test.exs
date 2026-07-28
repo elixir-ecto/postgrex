@@ -98,6 +98,24 @@ defmodule SimpleConnectionTest do
       assert result2.num_rows == 1
     end
 
+    test "relaying empty query results", context do
+      assert {:ok,
+              [
+                %Postgrex.Result{
+                  command: nil,
+                  columns: nil,
+                  rows: nil,
+                  num_rows: 0
+                }
+              ]} = SC.call(context.conn, {:query, ""})
+
+      assert {:ok, [%Postgrex.Result{command: nil, rows: nil, num_rows: 0}]} =
+               SC.call(context.conn, {:query, "-- no statement"})
+
+      assert {:ok, [%Postgrex.Result{rows: [["1"]]}]} =
+               SC.call(context.conn, {:query, "SELECT 1"})
+    end
+
     test "relaying query errors", context do
       assert {:ok, %Postgrex.Error{}} = SC.call(context.conn, {:query, "SELCT"})
     end
