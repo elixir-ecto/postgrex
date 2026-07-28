@@ -716,7 +716,7 @@ defmodule QueryTest do
                []
              )
 
-    # Contiuous ranges can't be normalized
+    # Continuous ranges can't be normalized
     expected_num_multirange = %Postgrex.Multirange{
       ranges: [
         %Postgrex.Range{
