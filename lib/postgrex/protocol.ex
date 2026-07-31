@@ -1363,6 +1363,11 @@ defmodule Postgrex.Protocol do
         err = Postgrex.Error.exception(postgres: fields)
         error_ready(s, status, err, buffer)
 
+      {:ok, msg, buffer} ->
+        status = new_status([], mode: :transaction)
+        s = handle_msg(s, status, msg)
+        recv_streaming(s, buffer)
+
       {:disconnect, _, _} = dis ->
         dis
     end
