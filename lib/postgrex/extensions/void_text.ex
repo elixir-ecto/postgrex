@@ -5,7 +5,9 @@ defmodule Postgrex.Extensions.VoidText do
 
   def init(_), do: nil
 
-  def matching(_), do: [output: "void_out"]
+  # CockroachDB names void's send/output procs without underscores
+  # (voidsend / voidout), so match its spelling in addition to Postgres'.
+  def matching(_), do: [output: "void_out", output: "voidout"]
 
   def format(_), do: :text
 

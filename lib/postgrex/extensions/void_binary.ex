@@ -1,7 +1,9 @@
 defmodule Postgrex.Extensions.VoidBinary do
   @moduledoc false
   import Postgrex.BinaryUtils, warn: false
-  use Postgrex.BinaryExtension, send: "void_send"
+  # CockroachDB names void's send/output procs without underscores
+  # (voidsend / voidout), so match its spelling in addition to Postgres'.
+  use Postgrex.BinaryExtension, send: "void_send", send: "voidsend"
 
   def encode(_) do
     quote location: :keep do

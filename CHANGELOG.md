@@ -11,6 +11,7 @@
   * Fix composite type loading when `record_send` is duplicated
   * Fix encoding of domains over composite types
   * Enforce integer bounds in type encoders
+  * Decode the `void` type on CockroachDB (`voidsend`/`voidout`)
 
 ## v0.22.3 (2026-07-09)
 
