@@ -2,7 +2,9 @@ defmodule Postgrex.Extensions.INET do
   @moduledoc false
 
   import Postgrex.BinaryUtils, warn: false
-  use Postgrex.BinaryExtension, send: "cidr_send", send: "inet_send"
+  # CockroachDB names inet's send proc without an underscore (inetsend),
+  # so match its spelling in addition to Postgres'.
+  use Postgrex.BinaryExtension, send: "cidr_send", send: "inet_send", send: "inetsend"
 
   @octet_range 0..255
   @hextet_range 0..65535

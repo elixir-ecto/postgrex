@@ -1,7 +1,9 @@
 defmodule Postgrex.Extensions.Ltree do
   @moduledoc false
   import Postgrex.BinaryUtils, warn: false
-  use Postgrex.BinaryExtension, send: "ltree_send"
+  # CockroachDB names ltree's send proc without an underscore (ltreesend),
+  # so match its spelling in addition to Postgres'.
+  use Postgrex.BinaryExtension, send: "ltree_send", send: "ltreesend"
 
   def init(opts), do: Keyword.fetch!(opts, :decode_binary)
 

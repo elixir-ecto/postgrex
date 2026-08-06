@@ -12,6 +12,7 @@
   * Fix encoding of domains over composite types
   * Enforce integer bounds in type encoders
   * Decode the `void` type on CockroachDB (`voidsend`/`voidout`)
+  * Decode the `inet`, `pg_lsn`, and `ltree` types on CockroachDB (`inetsend`/`pg_lsnsend`/`ltreesend`)
 
 ## v0.22.3 (2026-07-09)
 

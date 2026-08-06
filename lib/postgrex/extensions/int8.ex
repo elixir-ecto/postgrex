@@ -1,7 +1,9 @@
 defmodule Postgrex.Extensions.Int8 do
   @moduledoc false
   import Postgrex.BinaryUtils, warn: false
-  use Postgrex.BinaryExtension, send: "int8send", send: "pg_lsn_send"
+  # CockroachDB names pg_lsn's send proc without an underscore (pg_lsnsend),
+  # so match its spelling in addition to Postgres'.
+  use Postgrex.BinaryExtension, send: "int8send", send: "pg_lsn_send", send: "pg_lsnsend"
 
   @int8_range -9_223_372_036_854_775_808..9_223_372_036_854_775_807
 
