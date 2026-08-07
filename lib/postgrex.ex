@@ -689,6 +689,7 @@ defmodule Postgrex do
           Postgrex.Stream.t()
         when option: execute_option | {:max_rows, pos_integer}
   def stream(%DBConnection{} = conn, query, params, options \\ []) do
+    comment_not_present!(options)
     options = Keyword.put_new(options, :max_rows, @max_rows)
     %Postgrex.Stream{conn: conn, query: query, params: params, options: options}
   end

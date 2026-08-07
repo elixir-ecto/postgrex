@@ -38,6 +38,18 @@ defmodule StreamTest do
     end)
   end
 
+  test "rejects invalid comments", context do
+    transaction(fn conn ->
+      assert_raise Postgrex.Error, fn ->
+        stream("SELECT 123", [], comment: "*/ UNION SELECT 456 --")
+      end
+
+      assert_raise Postgrex.Error, fn ->
+        stream("SELECT 123", [], comment: <<0>> <> "comment")
+      end
+    end)
+  end
+
   test "results contain num rows", context do
     query = prepare("", "SELECT * FROM generate_series(1, 2)")
 
