@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.22.4 (2026-08-07)
+
+* Security
+  * Escape comments on `Postgrex.stream/4` (CVE-2026-66838)
+
 ## v0.22.3 (2026-07-09)
 
 * Security
