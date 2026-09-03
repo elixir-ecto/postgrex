@@ -37,8 +37,19 @@ defmodule Postgrex.Extensions.TimestampTZ do
   ## Helpers
 
   def encode_elixir(%DateTime{utc_offset: 0, std_offset: 0} = datetime) do
-    microsecs = DateTime.to_unix(datetime, :microsecond)
-    <<8::int32(), microsecs - @us_epoch::int64()>>
+    microsecs = DateTime.to_unix(datetime, :microsecond) - @us_epoch
+
+    # PostgreSQL rejects timestamps outside its own range, but only when it
+    # receives the value we meant to send. Anything that does not fit in a
+    # signed 64-bit integer is silently truncated by the binary construction
+    # below and arrives as a different, in-range timestamp; the two endpoints
+    # are the infinity sentinels.
+    if microsecs > @minus_infinity and microsecs < @plus_infinity do
+      <<8::int32(), microsecs::int64()>>
+    else
+      raise ArgumentError,
+            "#{inspect(datetime)} is beyond the range PostgreSQL can represent in a timestamptz"
+    end
   end
 
   def encode_elixir(%DateTime{} = datetime) do
