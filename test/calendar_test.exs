@@ -306,13 +306,14 @@ defmodule CalendarTest do
       # the value has to be rejected here instead.
       sentinel =
         DateTime.from_naive!(NaiveDateTime.new!(294_277, 1, 9, 4, 0, 54, {775_807, 6}), "Etc/UTC")
-  
-      wraps_into_range = DateTime.from_naive!(NaiveDateTime.new!(585_706, 1, 1, 0, 0, 0), "Etc/UTC")
-  
+
+      wraps_into_range =
+        DateTime.from_naive!(NaiveDateTime.new!(585_706, 1, 1, 0, 0, 0), "Etc/UTC")
+
       assert_raise ArgumentError, ~r/beyond the range/, fn ->
         query("SELECT $1::timestamptz", [sentinel])
       end
-  
+
       assert_raise ArgumentError, ~r/beyond the range/, fn ->
         query("SELECT $1::timestamptz", [wraps_into_range])
       end
