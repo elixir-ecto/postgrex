@@ -476,7 +476,14 @@ defmodule Postgrex.SimpleConnection do
           handle(mod, :handle_result, [results, mod_state], from, state)
         else
           {:error, %Postgrex.Error{} = error, protocol} ->
-            handle(mod, :handle_result, [error, mod_state], from, %{state | protocol: protocol})
+            case Protocol.checkin(protocol) do
+              {:ok, protocol} ->
+                state = %{state | protocol: protocol}
+                handle(mod, :handle_result, [error, mod_state], from, state)
+
+              {:disconnect, reason, protocol} ->
+                reconnect_or_stop(:disconnect, reason, protocol, state)
+            end
 
           {:disconnect, reason, protocol} ->
             reconnect_or_stop(:disconnect, reason, protocol, state)

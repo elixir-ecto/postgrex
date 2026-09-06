@@ -127,6 +127,30 @@ defmodule SimpleConnectionTest do
     test "relaying query errors", context do
       assert {:ok, %Postgrex.Error{}} = SC.call(context.conn, {:query, "SELCT"})
     end
+
+    @tag opts: [idle_interval: :infinity]
+    test "rearms the socket after a query error", context do
+      notifier = start_supervised!({Postgrex, @opts})
+      channel = "simple_connection_error_#{System.unique_integer([:positive])}"
+
+      assert {:ok, _result} =
+               SC.call(context.conn, {:query, ~s(LISTEN "#{channel}")})
+
+      assert {:ok, _result} =
+               Postgrex.query(notifier, ~s(NOTIFY "#{channel}", 'before'), [])
+
+      assert_receive {^channel, "before"}
+
+      assert {:ok, %Postgrex.Error{postgres: %{code: :division_by_zero}}} =
+               SC.call(context.conn, {:query, "SELECT 1/0"})
+
+      assert {:ok, [active: :once]} = :inet.getopts(socket(context.conn), [:active])
+
+      assert {:ok, _result} =
+               Postgrex.query(notifier, ~s(NOTIFY "#{channel}", 'after'), [])
+
+      assert_receive {^channel, "after"}
+    end
   end
 
   describe "notify/3" do
@@ -226,6 +250,12 @@ defmodule SimpleConnectionTest do
     {_, state} = :sys.get_state(conn)
     {:gen_tcp, sock} = state.protocol.sock
     :gen_tcp.shutdown(sock, :read_write)
+  end
+
+  defp socket(conn) do
+    {_, state} = :sys.get_state(conn)
+    {:gen_tcp, sock} = state.protocol.sock
+    sock
   end
 
   defp backend_message(type, data) do
