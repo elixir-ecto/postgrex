@@ -1,7 +1,8 @@
 defmodule SimpleConnectionTest do
   use ExUnit.Case, async: true
 
-  alias Postgrex.SimpleConnection, as: SC
+  alias Postgrex.{Protocol, SimpleConnection}
+  alias SimpleConnection, as: SC
 
   defmodule Conn do
     @behaviour Postgrex.SimpleConnection
@@ -57,6 +58,13 @@ defmodule SimpleConnectionTest do
       Postgrex.SimpleConnection.reply(from, {:ok, result})
 
       {:noreply, state}
+    end
+  end
+
+  defmodule Socket do
+    def send(pid, data) do
+      Kernel.send(pid, {:sent, IO.iodata_to_binary(data)})
+      :ok
     end
   end
 
@@ -130,6 +138,37 @@ defmodule SimpleConnectionTest do
     end
   end
 
+  describe "idle ping" do
+    test "relays notifications received while pinging" do
+      responses =
+        IO.iodata_to_binary([
+          backend_message(?A, [<<123::32>>, "events", 0, "ready", 0]),
+          backend_message(?Z, [?I])
+        ])
+
+      protocol = %Protocol{
+        sock: {Socket, self()},
+        buffer: responses,
+        postgres: :idle,
+        transactions: :naive,
+        messages: []
+      }
+
+      state = %SC{
+        idle_interval: 10,
+        protocol: protocol,
+        state: {Conn, %{pid: self()}}
+      }
+
+      assert {:keep_state, state, {:timeout, 10, nil}} =
+               SC.handle_event(:timeout, nil, :no_state, state)
+
+      assert state.protocol.buffer == ""
+      assert_receive {"events", "ready"}
+      assert_receive {:sent, <<?S, 4::32>>}
+    end
+  end
+
   describe "auto-reconnect" do
     @tag opts: [auto_reconnect: true]
     test "disconnect and connect handlers are invoked on reconnection", context do
@@ -187,5 +226,9 @@ defmodule SimpleConnectionTest do
     {_, state} = :sys.get_state(conn)
     {:gen_tcp, sock} = state.protocol.sock
     :gen_tcp.shutdown(sock, :read_write)
+  end
+
+  defp backend_message(type, data) do
+    [type, <<IO.iodata_length(data) + 4::32>>, data]
   end
 end

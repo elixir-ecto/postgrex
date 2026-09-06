@@ -313,12 +313,17 @@ defmodule Postgrex.Protocol do
   @spec ping(state) ::
           {:ok, state}
           | {:disconnect, Postgrex.Error.t() | %DBConnection.ConnectionError{}, state}
-  def ping(%{postgres: :transaction, transactions: :strict} = s) do
+  def ping(s), do: ping(s, [])
+
+  @spec ping(state, Keyword.t()) ::
+          {:ok, state}
+          | {:disconnect, Postgrex.Error.t() | %DBConnection.ConnectionError{}, state}
+  def ping(%{postgres: :transaction, transactions: :strict} = s, _opts) do
     sync_error(s, :transaction)
   end
 
-  def ping(%{buffer: buffer} = s) do
-    status = new_status([], mode: :transaction)
+  def ping(%{buffer: buffer} = s, opts) do
+    status = new_status(opts, mode: :transaction)
     s = %{s | buffer: nil}
 
     case msg_send(s, msg_sync(), buffer) do
