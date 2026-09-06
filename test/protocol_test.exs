@@ -34,6 +34,29 @@ defmodule Postgrex.ProtocolTest do
     assert_receive {:sent, <<?Q, _size::32, "START_REPLICATION", 0>>}
   end
 
+  test "ping handles notifications received before ready" do
+    responses =
+      IO.iodata_to_binary([
+        backend_message(?A, [<<123::32>>, "events", 0, "ready", 0]),
+        backend_message(?Z, [?I])
+      ])
+
+    state = %Protocol{
+      sock: {Socket, self()},
+      buffer: responses,
+      postgres: :idle,
+      transactions: :naive,
+      messages: []
+    }
+
+    notify = fn channel, payload -> send(self(), {:notification, channel, payload}) end
+
+    assert {:ok, state} = Protocol.ping(state, notify: notify)
+    assert state.buffer == ""
+    assert_receive {:notification, "events", "ready"}
+    assert_receive {:sent, <<?S, 4::32>>}
+  end
+
   defp backend_message(type, data) do
     [type, <<IO.iodata_length(data) + 4::32>>, data]
   end
