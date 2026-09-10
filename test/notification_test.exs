@@ -37,6 +37,31 @@ defmodule NotificationTest do
     assert Process.alive?(pid)
   end
 
+  @tag capture_log: true
+  test "ignores idle timeout while waiting to reconnect" do
+    {:ok, listener} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, {_, port}} = :inet.sockname(listener)
+    :ok = :gen_tcp.close(listener)
+
+    pid =
+      start_supervised!(
+        {PN,
+         hostname: "127.0.0.1",
+         port: port,
+         sync_connect: false,
+         auto_reconnect: true,
+         reconnect_backoff: 5_000,
+         idle_interval: 20}
+      )
+
+    monitor = Process.monitor(pid)
+    assert {:eventually, ref} = PN.listen(pid, "reconnect_backoff_channel")
+    assert is_reference(ref)
+
+    refute_receive {:DOWN, ^monitor, :process, ^pid, _reason}, 100
+    assert Process.alive?(pid)
+  end
+
   test "does not fail on unlisten while disconnected" do
     assert {:ok, pid} =
              PN.start_link(database: "nobody_knows_it", auto_reconnect: true, sync_connect: false)

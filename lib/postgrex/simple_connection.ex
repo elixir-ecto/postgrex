@@ -397,6 +397,10 @@ defmodule Postgrex.SimpleConnection do
     handle(mod, :handle_call, [msg, callback_from, mod_state], from, state)
   end
 
+  def handle_event(:timeout, nil, @state, %{protocol: nil} = state) do
+    {:keep_state, state}
+  end
+
   def handle_event(
         :timeout,
         nil,
