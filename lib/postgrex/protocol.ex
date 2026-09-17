@@ -1288,56 +1288,64 @@ defmodule Postgrex.Protocol do
     msg_send(s, msgs, buffer)
   end
 
-  @spec handle_copy_recv(any, Keyword.t(), state) ::
+  @spec handle_copy_recv(any, pos_integer() | nil, state) ::
           {:ok, [binary | atom], state}
           | :unknown
           | {:error, Postgrex.Error.t(), state}
           | {:disconnect, %DBConnection.ConnectionError{}, state}
   def handle_copy_recv(msg, max_copies, s) do
+    handle_copy_recv(msg, max_copies, s, true)
+  end
+
+  @doc false
+  def handle_copy_recv(msg, max_copies, s, reactivate?) do
     case handle_socket(msg, s) do
-      {:data, data} -> handle_copy_recv(s, max_copies, [], 0, data)
+      {:data, data} -> handle_copy_recv(s, max_copies, [], 0, data, reactivate?)
       :ignore -> {:ok, [], s}
       :unknown -> :unknown
       disconnect -> disconnect
     end
   end
 
-  defp handle_copy_recv(s, max_copies, copies, max_copies, buffer) do
-    with {:ok, s} <- activate(s, buffer) do
+  defp handle_copy_recv(s, max_copies, copies, max_copies, buffer, reactivate?) do
+    with {:ok, s} <- copy_recv_buffer(s, buffer, reactivate?) do
       {:ok, Enum.reverse(copies), s}
     end
   end
 
-  defp handle_copy_recv(%{timeout: timeout} = s, max_copies, copies, ncopies, buffer) do
+  defp handle_copy_recv(%{timeout: timeout} = s, max_copies, copies, ncopies, buffer, reactivate?) do
     case msg_recv(s, timeout, buffer) do
       {:ok, msg_error(fields: fields), buffer} ->
         disconnect(s, Postgrex.Error.exception(postgres: fields), buffer)
 
       {:ok, msg_copy_data(data: data), <<>>} ->
-        with {:ok, s} <- activate(s, <<>>) do
+        with {:ok, s} <- copy_recv_buffer(s, <<>>, reactivate?) do
           {:ok, Enum.reverse([data | copies]), s}
         end
 
       {:ok, msg_copy_data(data: data), buffer} ->
-        handle_copy_recv(s, max_copies, [data | copies], ncopies + 1, buffer)
+        handle_copy_recv(s, max_copies, [data | copies], ncopies + 1, buffer, reactivate?)
 
       {:ok, msg_copy_done(), buffer} ->
-        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer, reactivate?)
 
       {:ok, msg_command_complete(), buffer} ->
-        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer, reactivate?)
 
       {:ok, msg_ready(status: postgres), buffer} ->
         s = %{s | postgres: postgres, buffer: buffer}
         {:ok, Enum.reverse([:copy_done | copies]), s}
 
       {:ok, _msg, buffer} ->
-        handle_copy_recv(s, max_copies, copies, ncopies, buffer)
+        handle_copy_recv(s, max_copies, copies, ncopies, buffer, reactivate?)
 
       {:disconnect, _, _} = dis ->
         dis
     end
   end
+
+  defp copy_recv_buffer(s, buffer, true), do: activate(s, buffer)
+  defp copy_recv_buffer(s, buffer, false), do: {:ok, %{s | buffer: buffer}}
 
   @spec handle_streaming(String.t() | iolist(), state) ::
           {:ok, state}
