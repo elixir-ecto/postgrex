@@ -1297,7 +1297,6 @@ defmodule Postgrex.Protocol do
     handle_copy_recv(msg, max_copies, s, true)
   end
 
-  @doc false
   def handle_copy_recv(msg, max_copies, s, reactivate?) do
     case handle_socket(msg, s) do
       {:data, data} -> handle_copy_recv(s, max_copies, [], 0, data, reactivate?)
