@@ -158,7 +158,7 @@ defmodule Postgrex.Types do
   def associate_type_infos(type_infos, {module, table}) do
     _ =
       for %TypeInfo{oid: oid} = type_info <- type_infos do
-        true = :ets.insert_new(table, {oid, type_info, nil})
+        true = :ets.insert_new(table, {oid, type_info, :associating})
       end
 
     _ =
@@ -407,6 +407,9 @@ defmodule Postgrex.Types do
     else
       {_, _} = info ->
         {:ok, info}
+
+      :associating ->
+        {:error, nil, mod}
 
       nil ->
         fetch_type_info(oid, mod, table)
