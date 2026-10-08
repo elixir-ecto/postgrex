@@ -190,6 +190,50 @@ defmodule TypeServerTest do
     assert {:lock, _, ^types} = Task.await(task)
   end
 
+  defmodule PausingTypes do
+    def find(type_info, formats) do
+      if type_info.type == "int4" do
+        send(Process.get(:test_pid), {:finding, self()})
+        receive do: (:continue -> :ok)
+      end
+
+      Postgrex.DefaultTypes.find(type_info, formats)
+    end
+  end
+
+  test "types being associated are unknown, not unsupported" do
+    int4 = %Postgrex.TypeInfo{oid: 23, type: "int4", send: "int4send", receive: "int4recv"}
+
+    other = %Postgrex.TypeInfo{
+      oid: 100_000,
+      type: "other",
+      send: "othersend",
+      receive: "otherrecv"
+    }
+
+    top = self()
+
+    {:ok, pid} =
+      Task.start_link(fn ->
+        Process.put(:test_pid, top)
+        types = Postgrex.Types.new(PausingTypes)
+        send(top, {:types, types})
+        Postgrex.Types.associate_type_infos([int4, other], types)
+        send(top, :associated)
+        :timer.sleep(:infinity)
+      end)
+
+    assert_receive {:types, types}
+    assert_receive {:finding, ^pid}
+    assert Postgrex.Types.fetch(23, types) == {:error, nil, PausingTypes}
+    assert Postgrex.Types.fetch(100_000, types) == {:error, nil, PausingTypes}
+
+    send(pid, :continue)
+    assert_receive :associated
+    assert {:ok, {:binary, _}} = Postgrex.Types.fetch(23, types)
+    assert Postgrex.Types.fetch(100_000, types) == {:error, other, PausingTypes}
+  end
+
   defp wait_until_dead(pid) do
     ref = Process.monitor(pid)
     receive do: ({:DOWN, ^ref, _, _, _} -> :ok)
