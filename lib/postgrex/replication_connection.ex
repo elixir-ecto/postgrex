@@ -153,7 +153,10 @@ defmodule Postgrex.ReplicationConnection do
             state: nil,
             auto_reconnect: false,
             reconnect_backoff: 500,
-            streaming: nil
+            streaming: nil,
+            paused: false,
+            pending: [],
+            needs_checkin: false
 
   ## PUBLIC API ##
 
@@ -227,10 +230,28 @@ defmodule Postgrex.ReplicationConnection do
   Replication messages may require explicit acknowledgement, which can
   be done by returning a list of binaries according to the replication
   protocol.
+
+  Return `{:pause, state}` or `{:pause, replies, state}` from this callback to
+  pause delivery after the current message. Already received messages remain
+  ordered and the socket is not reactivated until `handle_info/2` or
+  `handle_call/3` returns `{:resume, state}` or `{:resume, replies, state}`.
+  Pausing is supported while a stream is active, not for the `:done` callback.
+
+  The process remains responsive to calls and messages while paused. For logical
+  replication, the callback module must send periodic standby feedback using
+  `{:noreply, replies, state}` to avoid the server's `wal_sender_timeout`. Feedback
+  must acknowledge only durably processed data. Incoming keepalives are paused
+  along with other stream messages.
+
+  `:max_messages` bounds the number of decoded messages in a receive batch, not
+  its byte size. A partial wire message and the remainder of the socket buffer
+  may also be retained; this API is not a hard process-memory limit.
   """
   @callback handle_data(binary | :done, state) ::
               {:noreply, state}
               | {:noreply, ack, state}
+              | {:pause, state}
+              | {:pause, ack, state}
               | {:query, query, state}
               | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
@@ -242,6 +263,8 @@ defmodule Postgrex.ReplicationConnection do
   @callback handle_info(term, state) ::
               {:noreply, state}
               | {:noreply, ack, state}
+              | {:resume, state}
+              | {:resume, ack, state}
               | {:query, query, state}
               | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
@@ -262,6 +285,8 @@ defmodule Postgrex.ReplicationConnection do
   @callback handle_call(term, :gen_statem.from(), state) ::
               {:noreply, state}
               | {:noreply, ack, state}
+              | {:resume, state}
+              | {:resume, ack, state}
               | {:query, query, state}
               | {:query, query, query_opts, state}
               | {:stream, query, stream_opts, state}
@@ -518,7 +543,13 @@ defmodule Postgrex.ReplicationConnection do
   def handle_event(:internal, {:connect, _info}, @state, %{state: {mod, mod_state}} = s) do
     case Protocol.connect(opts()) do
       {:ok, protocol} ->
-        maybe_handle(mod, :handle_connect, [mod_state], %{s | protocol: protocol})
+        maybe_handle(mod, :handle_connect, [mod_state], %{
+          s
+          | protocol: protocol,
+            paused: false,
+            pending: [],
+            needs_checkin: false
+        })
 
       {:error, reason} ->
         Logger.error(
@@ -543,10 +574,17 @@ defmodule Postgrex.ReplicationConnection do
     handle(mod, :handle_call, [msg, from, mod_state], from, s)
   end
 
+  def handle_event(:internal, :resume, @state, s) do
+    handle_data(s.pending, %{s | pending: []})
+  end
+
   def handle_event(:info, msg, @state, %{protocol: protocol, streaming: streaming} = s) do
-    case Protocol.handle_copy_recv(msg, streaming, protocol) do
+    case Protocol.handle_copy_recv(msg, streaming, protocol, false) do
+      {:ok, [], ^protocol} ->
+        {:keep_state, s}
+
       {:ok, copies, protocol} ->
-        handle_data(copies, %{s | protocol: protocol})
+        handle_data(copies, %{s | protocol: protocol, needs_checkin: true})
 
       :unknown ->
         %{state: {mod, mod_state}} = s
@@ -576,6 +614,19 @@ defmodule Postgrex.ReplicationConnection do
        inspect(report.mod),
        Exception.format(:error, report.reason)
      ]}
+  end
+
+  defp handle_data(copies, %{paused: true} = s), do: {:keep_state, %{s | pending: copies}}
+
+  defp handle_data(
+         [],
+         %{needs_checkin: true, streaming: streaming, protocol: %{buffer: buffer}} = s
+       )
+       when streaming != nil and is_binary(buffer) do
+    case Protocol.checkin(s.protocol) do
+      {:ok, protocol} -> {:keep_state, %{s | protocol: protocol, needs_checkin: false}}
+      {error, reason, protocol} -> reconnect_or_stop(error, reason, protocol, s)
+    end
   end
 
   defp handle_data([], s), do: {:keep_state, s}
@@ -614,13 +665,26 @@ defmodule Postgrex.ReplicationConnection do
           {error, reason, protocol} -> reconnect_or_stop(error, reason, protocol, s)
         end
 
+      {:pause, mod_state} when fun == :handle_data and streaming != nil ->
+        {:keep_state, %{s | state: {mod, mod_state}, paused: true}}
+
+      {:pause, replies, mod_state} when fun == :handle_data and streaming != nil ->
+        s = %{s | state: {mod, mod_state}, paused: true}
+        send_replies(replies, s, [])
+
+      {:resume, mod_state} when fun in [:handle_info, :handle_call] ->
+        resume(%{s | state: {mod, mod_state}}, [])
+
+      {:resume, replies, mod_state} when fun in [:handle_info, :handle_call] ->
+        resume(%{s | state: {mod, mod_state}}, replies)
+
       {:stream, query, opts, mod_state} when streaming == nil ->
         s = %{s | state: {mod, mod_state}}
         max_messages = opts[:max_messages] || @max_messages
 
         with {:ok, protocol} <- Protocol.handle_streaming(query, s.protocol),
              {:ok, protocol} <- Protocol.checkin(protocol) do
-          {:keep_state, %{s | protocol: protocol, streaming: max_messages}}
+          {:keep_state, %{s | protocol: protocol, streaming: max_messages, needs_checkin: false}}
         else
           {error_or_disconnect, reason, protocol} ->
             reconnect_or_stop(error_or_disconnect, reason, protocol, s)
@@ -643,6 +707,20 @@ defmodule Postgrex.ReplicationConnection do
 
       {:disconnect, reason} ->
         reconnect_or_stop(:disconnect, reason, s.protocol, s)
+    end
+  end
+
+  defp resume(%{paused: true} = s, replies) do
+    send_replies(replies, %{s | paused: false}, [{:next_event, :internal, :resume}])
+  end
+
+  defp resume(s, replies), do: send_replies(replies, s, [])
+
+  defp send_replies(replies, s, actions) do
+    case Protocol.handle_copy_send(replies, s.protocol) do
+      :ok when actions == [] -> {:keep_state, s}
+      :ok -> {:keep_state, s, actions}
+      {error, reason, protocol} -> reconnect_or_stop(error, reason, protocol, s)
     end
   end
 
@@ -690,7 +768,9 @@ defmodule Postgrex.ReplicationConnection do
     )
 
     {:keep_state, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
-    {:keep_state, %{s | streaming: nil}, {:next_event, :internal, {:connect, :reconnect}}}
+
+    {:keep_state, %{s | streaming: nil, paused: false, pending: [], needs_checkin: false},
+     {:next_event, :internal, {:connect, :reconnect}}}
   end
 
   defp pid_or_name do
