@@ -53,7 +53,10 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, state) :: binary | nil
+  @spec bootstrap_query({pos_integer, non_neg_integer, non_neg_integer}, %{
+          optional(atom) => any,
+          types: state
+        }) :: binary | nil
   def bootstrap_query(version, %{types: {_, table}} = s) do
     case :ets.info(table, :size) do
       0 ->
@@ -112,7 +115,10 @@ defmodule Postgrex.Types do
   end
 
   @doc false
-  @spec reload_query({pos_integer, non_neg_integer, non_neg_integer}, [oid, ...], state) ::
+  @spec reload_query({pos_integer, non_neg_integer, non_neg_integer}, [oid, ...], %{
+          optional(atom) => any,
+          types: state
+        }) ::
           binary | nil
   def reload_query(version, oids, %{types: {_, table}} = s) do
     case Enum.reject(oids, &:ets.member(table, &1)) do
