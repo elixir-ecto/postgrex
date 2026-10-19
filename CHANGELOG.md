@@ -6,6 +6,8 @@
   * Add SCRAM-SHA-256-PLUS support
   * Use reports for logging errors
   * Support arrays of domains defined over arrays
+  * Allow replication callbacks to pause the next receive batch without
+    disconnecting, resuming on ordinary callback returns.
 
 * Bug fixes
   * Do not UNLISTEN while disconnected
