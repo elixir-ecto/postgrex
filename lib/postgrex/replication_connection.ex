@@ -239,7 +239,7 @@ defmodule Postgrex.ReplicationConnection do
 
   A paused stream is still active. Returning `{:query, ...}` while streaming,
   including while paused, is rejected by the existing stream-in-progress
-  guard; the query is not sent or queued. Queries needed to process replication
+  guard, the query is not sent or queued. Queries needed to process replication
   messages must use a separate database connection. Queries on this connection
   are supported before streaming starts or after it finishes, including from
   `handle_data(:done, state)`.
@@ -252,7 +252,7 @@ defmodule Postgrex.ReplicationConnection do
 
   `:max_messages` bounds the number of decoded messages in a receive batch, not
   its byte size. A partial wire message and the remainder of the socket buffer
-  may also be retained; this API is not a hard process-memory limit.
+  may also be retained. This API is not a hard process-memory limit.
   """
   @callback handle_data(binary | :done, state) ::
               {:noreply, state}
