@@ -237,6 +237,13 @@ defmodule Postgrex.ReplicationConnection do
   `handle_call/3` returns `{:resume, state}` or `{:resume, replies, state}`.
   Pausing is supported while a stream is active, not for the `:done` callback.
 
+  A paused stream is still active. Returning `{:query, ...}` while streaming,
+  including while paused, is rejected by the existing stream-in-progress
+  guard; the query is not sent or queued. Queries needed to process replication
+  messages must use a separate database connection. Queries on this connection
+  are supported before streaming starts or after it finishes, including from
+  `handle_data(:done, state)`.
+
   The process remains responsive to calls and messages while paused. For logical
   replication, the callback module must send periodic standby feedback using
   `{:noreply, replies, state}` to avoid the server's `wal_sender_timeout`. Feedback
