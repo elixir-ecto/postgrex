@@ -83,6 +83,10 @@ defmodule ReplicationTest do
       {:stream, query, [], pid}
     end
 
+    def handle_info(:request_keepalive, pid) do
+      {:noreply, [<<?r, 0::64, 0::64, 0::64, current_time()::64, 1>>], pid}
+    end
+
     def handle_info(_, pid) do
       {:noreply, pid}
     end
@@ -239,7 +243,9 @@ defmodule ReplicationTest do
     @tag :capture_log
     test "resumes streaming after reconnect", context do
       assert_receive {:connect, i1}
+      # Request a reply instead of relying on an unsolicited server keepalive.
       start_replication(context.repl)
+      send(context.repl, :request_keepalive)
       assert_receive <<?k, _wal_end::64, _clock::64, _reply>>, @timeout
 
       :sys.suspend(context.repl)
@@ -250,6 +256,7 @@ defmodule ReplicationTest do
       assert_receive {:disconnect, i2} when i1 < i2, @timeout
       assert_receive {:connect, i3} when i2 < i3, @timeout
       start_replication(context.repl)
+      send(context.repl, :request_keepalive)
       assert_receive <<?k, _wal_end::64, _clock::64, _reply>>, @timeout
     end
   end
@@ -319,6 +326,7 @@ defmodule ReplicationTest do
 
     test "on replication", context do
       start_replication(context.repl)
+      send(context.repl, :request_keepalive)
       assert_receive <<?k, _::64, _::64, _>>, @timeout
     end
 
@@ -363,6 +371,7 @@ defmodule ReplicationTest do
       assert_receive {"1\t1\n", i2} when i1 < i2, @timeout
       assert_receive {:done, i3} when i2 < i3, @timeout
       # Prior to allowing one stream to start after another, this would fail
+      send(context.repl, :request_keepalive)
       assert_receive <<?k, _::64, _::64, _>>, @timeout
     end
   end
