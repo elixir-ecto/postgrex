@@ -2180,6 +2180,7 @@ defmodule QueryTest do
   end
 
   test "terminate backend during query returns FATAL error", context do
+    Process.flag(:trap_exit, true)
     assert {:ok, pid} = P.start_link([idle_interval: 10] ++ context[:options])
 
     %Postgrex.Result{connection_id: connection_id} = Postgrex.query!(pid, "SELECT 42", [])
@@ -2204,6 +2205,8 @@ defmodule QueryTest do
 
     assert {:error, %Postgrex.Error{postgres: %{code: :admin_shutdown, severity: "FATAL"}}} =
              Task.await(task, 5000)
+
+    assert_receive {:EXIT, ^pid, :killed}, 5000
   after
     :erlang.trace_pattern({Postgrex.Protocol, :recv_bind, :_}, false, [])
     :erlang.trace(:all, false, [:call])

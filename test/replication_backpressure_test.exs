@@ -4,6 +4,7 @@ defmodule Postgrex.ReplicationBackpressureTest do
   alias Postgrex.ReplicationConnection, as: Connection
 
   @moduletag :logical_replication
+  @moduletag min_pg_version: "10.0"
 
   defmodule Receiver do
     use Postgrex.ReplicationConnection
@@ -100,6 +101,7 @@ defmodule Postgrex.ReplicationBackpressureTest do
     end
   end
 
+  @tag min_pg_version: "14.0"
   test "paused logical replication keeps slot ownership and can send feedback" do
     receiver = start_supervised!({Receiver, owner: self(), database: "postgrex_test"})
     slot = "postgrex_pause_#{System.unique_integer([:positive])}"
