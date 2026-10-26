@@ -359,9 +359,7 @@ defmodule Postgrex.SimpleConnection do
       {:ok, protocol} ->
         state = %{state | protocol: protocol}
 
-        with {:keep_state, state, _} <- maybe_handle(mod, :handle_connect, [mod_state], state) do
-          {:keep_state, state}
-        end
+        maybe_handle(mod, :handle_connect, [mod_state], state)
 
       {:error, reason} ->
         Logger.error(
