@@ -61,6 +61,26 @@ defmodule SimpleConnectionTest do
     end
   end
 
+  defmodule DropOnConnect do
+    @behaviour Postgrex.SimpleConnection
+
+    @impl true
+    def init(pid), do: {:ok, %{pid: pid, connects: 0}}
+
+    @impl true
+    def notify(_channel, _payload, _state), do: :ok
+
+    @impl true
+    def handle_connect(%{connects: 0} = state) do
+      {:query, "SELECT pg_terminate_backend(pg_backend_pid())", %{state | connects: 1}}
+    end
+
+    def handle_connect(state) do
+      send(state.pid, :reconnected)
+      {:noreply, state}
+    end
+  end
+
   defmodule Socket do
     def send(pid, data) do
       Kernel.send(pid, {:sent, IO.iodata_to_binary(data)})
@@ -223,6 +243,14 @@ defmodule SimpleConnectionTest do
     after
       :erlang.trace_pattern({SC, :_, :_}, false, [])
       :erlang.trace(:all, false, [:call])
+    end
+
+    @tag capture_log: true
+    test "reconnects when the connection drops during the handle_connect query" do
+      opts = Keyword.merge(@opts, auto_reconnect: true, sync_connect: false)
+      start_supervised!(Supervisor.child_spec({SC, [DropOnConnect, self(), opts]}, id: :drop))
+
+      assert_receive :reconnected, 1_000
     end
 
     @tag capture_log: true
