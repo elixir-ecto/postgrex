@@ -57,6 +57,41 @@ defmodule Postgrex.ProtocolTest do
     assert_receive {:sent, <<?S, 4::32>>}
   end
 
+  test "connection errors after authentication do not include the password" do
+    {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false])
+    {:ok, port} = :inet.port(listener)
+
+    server =
+      Task.async(fn ->
+        {:ok, socket} = :gen_tcp.accept(listener)
+        {:ok, <<size::32>>} = :gen_tcp.recv(socket, 4)
+        {:ok, _startup} = :gen_tcp.recv(socket, size - 4)
+
+        :ok =
+          :gen_tcp.send(socket, [
+            backend_message(?R, <<0::32>>),
+            backend_message(?A, [<<123::32>>, "events", 0, "ready", 0])
+          ])
+
+        :gen_tcp.close(socket)
+      end)
+
+    opts =
+      Postgrex.Utils.default_opts(
+        hostname: "localhost",
+        port: port,
+        database: "postgrex_test",
+        password: "do-not-log-me",
+        types: Postgrex.DefaultTypes
+      )
+
+    error = assert_raise MatchError, fn -> Protocol.connect(opts) end
+    Task.await(server)
+    :gen_tcp.close(listener)
+
+    refute Exception.message(error) =~ "do-not-log-me"
+  end
+
   defp backend_message(type, data) do
     [type, <<IO.iodata_length(data) + 4::32>>, data]
   end

@@ -922,6 +922,7 @@ defmodule Postgrex.Protocol do
             buffer
           )
         else
+          status = %{status | opts: Keyword.delete(status.opts, :password)}
           init_recv(s, status, buffer)
         end
 
