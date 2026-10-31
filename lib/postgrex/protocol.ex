@@ -886,7 +886,9 @@ defmodule Postgrex.Protocol do
   defp ssl_connect(%{sock: {:gen_tcp, sock}, timeout: timeout} = s, status, ssl_opts) do
     case :ssl.connect(sock, ssl_opts, timeout) do
       {:ok, ssl_sock} ->
-        startup(%{s | sock: {:ssl, ssl_sock}}, status)
+        # SSL options may hold sensitive data (such as keys and their passwords)
+        # and are no longer needed, so we clear them to avoid leaking them in logs
+        startup(%{s | sock: {:ssl, ssl_sock}}, %{status | ssl: nil})
 
       {:error, reason} ->
         disconnect(s, :ssl, "connect", reason)
@@ -922,6 +924,9 @@ defmodule Postgrex.Protocol do
             buffer
           )
         else
+          # The password is no longer needed once authenticated,
+          # so we clear it to avoid leaking it in logs
+          status = %{status | opts: Keyword.delete(status.opts, :password)}
           init_recv(s, status, buffer)
         end
 
