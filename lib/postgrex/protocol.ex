@@ -922,7 +922,7 @@ defmodule Postgrex.Protocol do
             buffer
           )
         else
-          init_recv(s, status, buffer)
+          init_recv(s, Map.drop(status, [:opts, :ssl]), buffer)
         end
 
       {:ok, msg_auth(type: type), buffer}
