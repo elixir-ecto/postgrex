@@ -89,6 +89,48 @@ defmodule LoginTest do
   end
 
   @tag :ssl
+  @tag min_pg_version: "17.0"
+  test "ssl with direct negotiation", context do
+    opts = [ssl: [verify: :verify_none], ssl_negotiation: :direct]
+    assert {:ok, pid} = P.start_link(opts ++ context[:options])
+    assert {:ok, %Postgrex.Result{}} = P.query(pid, "SELECT 123", [])
+  end
+
+  test "ssl with direct negotiation requires the postgresql ALPN protocol", context do
+    cert_opts = [key: {:namedCurve, :secp256r1}, digest: :sha256]
+
+    %{server_config: server_config} =
+      :public_key.pkix_test_data(%{
+        server_chain: %{root: cert_opts, intermediates: [], peer: cert_opts},
+        client_chain: %{root: cert_opts, intermediates: [], peer: cert_opts}
+      })
+
+    {:ok, listen} = :ssl.listen(0, [active: false] ++ server_config)
+    {:ok, {_, port}} = :ssl.sockname(listen)
+
+    server =
+      Task.async(fn ->
+        {:ok, sock} = :ssl.transport_accept(listen)
+        {:ok, sock} = :ssl.handshake(sock)
+        :ssl.recv(sock, 0)
+      end)
+
+    opts = [
+      hostname: "localhost",
+      port: port,
+      ssl: [verify: :verify_none],
+      ssl_negotiation: :direct
+    ]
+
+    assert capture_log(fn ->
+             assert_start_and_killed(opts ++ context[:options])
+           end) =~
+             "direct SSL connection was established without ALPN protocol negotiation extension"
+
+    assert {:ok, [?X, 0, 0, 0, 4]} = Task.await(server)
+  end
+
+  @tag :ssl
   @tag min_pg_version: "11.0"
   test "login scram password with channel binding required", context do
     opts = [
@@ -181,6 +223,32 @@ defmodule LoginTest do
         end)
 
       assert error_log =~ "expected :channel_binding to be :prefer, :require or :disable"
+    end
+
+    test "invalid ssl_negotiation option", context do
+      Process.flag(:trap_exit, true)
+      opts = [ssl: true, ssl_negotiation: :invalid, show_sensitive_data_on_connection_error: true]
+
+      error_log =
+        capture_log(fn ->
+          Postgrex.start_link(opts ++ context[:options])
+          assert_receive {:EXIT, _, :killed}
+        end)
+
+      assert error_log =~ "expected :ssl_negotiation to be :postgres or :direct"
+    end
+
+    test "direct ssl_negotiation without ssl", context do
+      Process.flag(:trap_exit, true)
+      opts = [ssl_negotiation: :direct, show_sensitive_data_on_connection_error: true]
+
+      error_log =
+        capture_log(fn ->
+          Postgrex.start_link(opts ++ context[:options])
+          assert_receive {:EXIT, _, :killed}
+        end)
+
+      assert error_log =~ "ssl_negotiation: :direct requires the :ssl option to be set"
     end
   end
 
