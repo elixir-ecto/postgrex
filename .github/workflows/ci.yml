@@ -10,33 +10,13 @@ jobs:
   test:
     runs-on: ubuntu-22.04
 
-    services:
-      pg:
-        image: postgres:${{ matrix.pg.version }}
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-        ports:
-          - 5432:5432
-        volumes:
-          - /var/run/postgresql:/var/run/postgresql
-
     strategy:
       fail-fast: false
       matrix:
         pg:
           - version: "9.4"
-            skip_wal: skip_wal
           - version: "9.5"
-            skip_wal: skip_wal
           - version: "9.6"
-            skip_wal: skip_wal
           - version: "10"
           - version: "11"
           - version: "12"
@@ -60,30 +40,40 @@ jobs:
     env:
       MIX_ENV: test
     steps:
-      - name: "Set PG settings"
+      - name: Start PostgreSQL
         run: |
-          PG_ID=${{ job.services.pg.id }}
-          # PG 18 config path is different from previous versions
-          # - /var/lib/postgresql/18/docker/postgresql.conf (PG 18)
-          # - /var/lib/postgresql/data/postgresql.conf (PG 17 and below)
+          # Server certificate for localhost signed by a throwaway CA. The CA
+          # is trusted on the runner so `ssl: true` (verify_peer) works.
+          CERTS=$RUNNER_TEMP/certs
+          mkdir -p $CERTS && cd $CERTS
+          openssl req -new -x509 -days 1 -nodes -newkey rsa:2048 \
+            -subj "/CN=Postgrex Test CA" -keyout ca.key -out ca.crt
+          openssl req -new -nodes -newkey rsa:2048 \
+            -subj "/CN=localhost" -keyout server.key -out server.csr
+          openssl x509 -req -days 1 -in server.csr -CA ca.crt -CAkey ca.key -set_serial 1 \
+            -extfile <(echo "subjectAltName=DNS:localhost,IP:127.0.0.1") -out server.crt
+          sudo cp ca.crt /usr/local/share/ca-certificates/postgrex-test-ca.crt
+          sudo update-ca-certificates
 
-          # Dynamically find the path to postgresql.conf using psql
-          # We use the credentials from the service environment
-          CONFIG_FILE=$(docker exec $PG_ID psql -U postgres -d postgres -t -A -c 'SHOW config_file;')
+          # Postgres requires the key to be owned by its user with mode 0600,
+          # so copy it into place before handing over to the image entrypoint.
+          docker run -d --name pg -p 5432:5432 \
+            -e POSTGRES_PASSWORD=postgres \
+            -v $CERTS:/certs:ro \
+            -v /var/run/postgresql:/var/run/postgresql \
+            --entrypoint bash postgres:${{ matrix.pg.version }} \
+            -c 'install -o postgres -g postgres -m 600 /certs/server.key /tmp/server.key && exec docker-entrypoint.sh "$@"' -- \
+            postgres -c ssl=on -c ssl_cert_file=/certs/server.crt \
+              -c ssl_key_file=/tmp/server.key -c wal_level=logical
 
-          # Trim whitespace and ensure the path is valid
-          CONFIG_FILE=$(echo $CONFIG_FILE | xargs)
-          if [ -z "$CONFIG_FILE" ]; then
-            echo "Error: Could not determine postgresql.conf path dynamically."
-            exit 1
-          fi
-
-          echo "Found config file at: $CONFIG_FILE"
-
-          # Use the discovered path to append the setting and restart the database
-          docker exec $PG_ID sh -c 'echo "wal_level=logical" >> '"$CONFIG_FILE"
-          docker restart $PG_ID
-        if: ${{ matrix.pg.skip_wal }} != 'skip_wal'
+          # Check over TCP: during initialization the image runs a temporary
+          # server that only listens on the unix socket.
+          for i in $(seq 1 60); do
+            docker exec pg pg_isready -h localhost -U postgres && exit 0
+            sleep 1
+          done
+          docker logs pg
+          exit 1
 
       - uses: actions/checkout@v5
 
