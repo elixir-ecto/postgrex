@@ -48,6 +48,7 @@ defmodule Postgrex do
           | {:handshake_timeout, timeout}
           | {:ping_timeout, timeout}
           | {:ssl, boolean | [:ssl.tls_client_option()]}
+          | {:ssl_negotiation, :postgres | :direct}
           | {:channel_binding, :prefer | :require | :disable}
           | {:socket_options, [:gen_tcp.connect_option()]}
           | {:prepare, :named | :unnamed}
@@ -130,6 +131,12 @@ defmodule Postgrex do
        - false (default): no SSL.
        - true: enable SSL with secure defaults, including peer certificate verification and hostname checking.
        - keyword list of `t::ssl.tls_client_option()/0` values: enable SSL and merge your options on top of secure defaults.
+
+    * `:ssl_negotiation` - Controls how SSL encryption is negotiated with the server. Requires `:ssl`
+      to be set. Set to:
+       - `:postgres` (default): the client first asks the server if SSL is supported.
+       - `:direct`: the client starts the SSL handshake directly after establishing the TCP connection.
+         This requires one fewer round trip. Requires PostgreSQL 17 or later.
 
     * `:channel_binding` - Controls the use of SCRAM channel binding (`SCRAM-SHA-256-PLUS`).
       Only applies to SSL connections against servers using SCRAM authentication. Set to:

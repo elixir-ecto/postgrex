@@ -109,6 +109,19 @@ defmodule Postgrex.Protocol do
           {Keyword.merge(default_ssl_opts(), ssl_opts), opts}
       end
 
+    ssl_negotiation =
+      case opts[:ssl_negotiation] || :postgres do
+        :direct when ssl_opts == nil ->
+          raise ArgumentError, "ssl_negotiation: :direct requires the :ssl option to be set"
+
+        negotiation when negotiation in [:postgres, :direct] ->
+          negotiation
+
+        other ->
+          raise ArgumentError,
+                "expected :ssl_negotiation to be :postgres or :direct, got: #{inspect(other)}"
+      end
+
     transactions =
       case opts[:transactions] || :naive do
         :naive -> :naive
@@ -169,6 +182,7 @@ defmodule Postgrex.Protocol do
       prepare: prepare,
       messages: [],
       ssl: ssl_opts,
+      ssl_negotiation: ssl_negotiation,
       channel_binding: channel_binding,
       target_server_type: target_server_type
     }
@@ -851,6 +865,13 @@ defmodule Postgrex.Protocol do
 
   ## ssl
 
+  defp ssl(s, %{ssl_negotiation: :direct} = status, ssl_opts) do
+    # The server only accepts a direct TLS connection when the client
+    # negotiates the "postgresql" ALPN protocol.
+    ssl_opts = Keyword.put(ssl_opts, :alpn_advertised_protocols, ["postgresql"])
+    ssl_connect(s, status, ssl_opts)
+  end
+
   defp ssl(s, status, ssl_opts) do
     case msg_send(s, msg_ssl_request(), "") do
       :ok -> ssl_recv(s, status, ssl_opts)
@@ -888,10 +909,30 @@ defmodule Postgrex.Protocol do
       {:ok, ssl_sock} ->
         # SSL options may hold sensitive data (such as keys and their passwords)
         # and are no longer needed, so we clear them to avoid leaking them in logs
-        startup(%{s | sock: {:ssl, ssl_sock}}, %{status | ssl: nil})
+        ssl_startup(%{s | sock: {:ssl, ssl_sock}}, %{status | ssl: nil})
 
       {:error, reason} ->
         disconnect(s, :ssl, "connect", reason)
+    end
+  end
+
+  defp ssl_startup(s, %{ssl_negotiation: :postgres} = status), do: startup(s, status)
+
+  # ALPN is mandatory for direct SSL connections.
+  defp ssl_startup(%{sock: {:ssl, sock}} = s, %{ssl_negotiation: :direct} = status) do
+    case :ssl.negotiated_protocol(sock) do
+      {:ok, "postgresql"} ->
+        startup(s, status)
+
+      {:ok, _} ->
+        message = "SSL connection was established with unexpected ALPN protocol"
+        disconnect(s, %Postgrex.Error{message: message}, "")
+
+      {:error, :protocol_not_negotiated} ->
+        message =
+          "direct SSL connection was established without ALPN protocol negotiation extension"
+
+        disconnect(s, %Postgrex.Error{message: message}, "")
     end
   end
 
