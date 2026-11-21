@@ -122,8 +122,8 @@ defmodule Postgrex.ReplicationConnection do
   and `:sys.get_status/1`, which returns the dictionary outside `format_status/1`.
   Use the `:configure` option to resolve credentials before each connection attempt,
   keeping credentials out of the original options and callback arguments. The
-  resolved options are not retained for reconnects. Status formatting omits protocol
-  authentication state and pending message data.
+  resolved options are not retained for reconnects, keeping those credentials out
+  of the process dictionary, `:sys.get_status/1` and crash reports.
 
   ## `use` options
 
@@ -626,24 +626,6 @@ defmodule Postgrex.ReplicationConnection do
       {error, reason, protocol} ->
         reconnect_or_stop(error, reason, protocol, s)
     end
-  end
-
-  @doc false
-  @impl :gen_statem
-  def format_status(status) do
-    Map.new(status, fn
-      {:data, %{state: {module, _state}} = data} ->
-        {:data, %{module: module, connected: data.protocol != nil}}
-
-      {key, _value} when key in [:queue, :postponed, :log, :timeouts] ->
-        {key, []}
-
-      {:reason, _reason} ->
-        {:reason, :redacted}
-
-      pair ->
-        pair
-    end)
   end
 
   ## Helpers

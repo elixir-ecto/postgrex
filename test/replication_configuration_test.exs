@@ -30,17 +30,6 @@ defmodule Postgrex.ReplicationConfigurationTest do
       {:query, "SELECT pg_backend_pid()", {from, owner}}
     end
 
-    def handle_call({:stream, query}, from, owner) do
-      Connection.reply(from, :ok)
-      {:stream, query, [max_messages: 3], owner}
-    end
-
-    @impl true
-    def handle_data(_data, owner) do
-      send(owner, {:paused, self()})
-      {:pause, owner}
-    end
-
     @impl true
     def handle_result([%Postgrex.Result{rows: [[pid]]}], {from, owner}) do
       Connection.reply(from, String.to_integer(pid))
@@ -114,24 +103,11 @@ defmodule Postgrex.ReplicationConfigurationTest do
     assert is_integer(Connection.call(receiver, :backend))
   end
 
-  test "status and crash reports omit resolved credentials and protocol state", context do
+  test "configured credentials stay out of status and crash reports", context do
     receiver = receiver(configure: {__MODULE__, :configure, [self()]}, restart: :temporary)
     assert_receive {:connected, ^receiver}
 
-    assert :ok =
-             Connection.call(
-               receiver,
-               {:stream,
-                "COPY (SELECT '#{context.password}' FROM generate_series(1, 3)) TO STDOUT"}
-             )
-
-    assert_receive {:paused, ^receiver}
-    {:no_state, state} = :sys.get_state(receiver)
-    assert state.protocol.connection_key != nil
-    assert state.pending != []
-    refute exposed?(:sys.get_status(receiver), context.password)
-    protocol_exposed? = inspect(:sys.get_status(receiver)) =~ "connection_key"
-    refute protocol_exposed?
+    status_exposed? = exposed?(:sys.get_status(receiver), context.password)
 
     monitor = Process.monitor(receiver)
 
@@ -152,10 +128,9 @@ defmodule Postgrex.ReplicationConfigurationTest do
     try do
       File.write!(path, report)
       credential_exposed? = path |> File.read!() |> String.contains?(context.password)
-      protocol_exposed? = path |> File.read!() |> String.contains?("connection_key")
       crash_reported? = String.contains?(report, inspect(receiver))
       refute credential_exposed?
-      refute protocol_exposed?
+      refute status_exposed?
       assert crash_reported?
     after
       File.rm_rf!(directory)
@@ -167,7 +142,10 @@ defmodule Postgrex.ReplicationConfigurationTest do
 
     start_supervised!(
       {Receiver,
-       [owner: self(), database: "unconfigured", password: nil, auto_reconnect: true] ++ options},
+       Keyword.merge(
+         [owner: self(), database: "unconfigured", password: nil, auto_reconnect: true],
+         options
+       )},
       restart: restart
     )
   end

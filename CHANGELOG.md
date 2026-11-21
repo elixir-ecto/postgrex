@@ -11,7 +11,6 @@
     then resume buffered messages in order while continuing to send feedback.
 
 * Bug fixes
-  * Omit replication protocol state and pending events from status and error reports
   * Do not UNLISTEN while disconnected
   * Do not set `num_rows` to non-nil atom
   * Fix composite type loading when `record_send` is duplicated
