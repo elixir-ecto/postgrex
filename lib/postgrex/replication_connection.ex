@@ -115,6 +115,16 @@ defmodule Postgrex.ReplicationConnection do
 
       Process.sleep(:infinity)
 
+  ## Credentials and diagnostics
+
+  The original connection options are retained in the process dictionary for
+  reconnects. Literal passwords in those options remain visible in crash reports
+  and `:sys.get_status/1`, which returns the dictionary outside `format_status/1`.
+  Use the `:configure` option to resolve credentials before each connection attempt,
+  keeping credentials out of the original options and callback arguments. The
+  resolved options are not retained for reconnects, keeping those credentials out
+  of the process dictionary, `:sys.get_status/1` and crash reports.
+
   ## `use` options
 
   `use Postgrex.ReplicationConnection` accepts a list of options which configures the
@@ -391,6 +401,15 @@ defmodule Postgrex.ReplicationConnection do
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
       `:auto_reconnect` is enabled. Defaults to `500`.
+
+    * `:configure` - A function to run before every connect attempt to dynamically
+      configure the options as a `{module, function, args}`, where the current
+      options are prepended to `args`, or a function that takes the current
+      options. It must return the connection options. The returned options are
+      used only for that attempt; reconnects call the function with the original
+      options again. To keep credentials out of status and crash reports, resolve
+      them in this function and keep the original options and callback arguments
+      free of credentials.
   """
   @spec start_link(module(), term(), Keyword.t()) ::
           {:ok, pid} | {:error, Postgrex.Error.t() | term}
@@ -548,7 +567,14 @@ defmodule Postgrex.ReplicationConnection do
   end
 
   def handle_event(:internal, {:connect, _info}, @state, %{state: {mod, mod_state}} = s) do
-    case Protocol.connect(opts()) do
+    options =
+      case Keyword.get(opts(), :configure) do
+        {module, fun, args} -> apply(module, fun, [opts() | args])
+        fun when is_function(fun, 1) -> fun.(opts())
+        nil -> opts()
+      end
+
+    case Protocol.connect(options) do
       {:ok, protocol} ->
         maybe_handle(mod, :handle_connect, [mod_state], %{
           s
