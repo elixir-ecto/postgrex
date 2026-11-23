@@ -122,9 +122,11 @@ defmodule Postgrex.ReplicationConnection do
   and `:auto_reconnect` to `true` to retry connections automatically.
 
   When auto-reconnecting, `c:handle_disconnect/1` is invoked after a disconnection
-  and after each failed connection attempt. Failed attempts wait for
-  `:reconnect_backoff` after the callback returns. The callback may return updated
-  connection options, such as refreshed credentials, to use for subsequent attempts.
+  and after each failed connection attempt, including the initial attempt with
+  either value of `:sync_connect`. It may run before `c:handle_connect/1` has ever
+  run, and once per backoff while the server is unavailable. Failed attempts wait
+  for `:reconnect_backoff` after the callback returns. The callback may return
+  updated connection options, such as refreshed credentials, for subsequent attempts.
 
   ## `use` options
 
@@ -227,13 +229,22 @@ defmodule Postgrex.ReplicationConnection do
 
   After a disconnection, this is invoked regardless of `:auto_reconnect`.
   After a failed connection attempt, this is invoked only if `:auto_reconnect`
-  is true, before waiting for `:reconnect_backoff`.
+  is true, before waiting for `:reconnect_backoff`. This includes the initial
+  attempt, even during initialization with `:sync_connect` set to true. The state
+  may never have been connected: `c:handle_connect/1` may not have run yet.
 
   Return `{:noreply, state}` to keep the connection options or
   `{:noreply, connect_options, state}` to merge the keyword list `connect_options`
   into the options used for all subsequent connection attempts with `Keyword.merge/2`.
   For example, returning `{:noreply, [password: refreshed_password], state}` updates
   only the password.
+
+  Returning nil removes the stored value and allows its default to be used.
+  The merged options then use the same default normalization as `start_link/3`,
+  including converting string ports to integers. Returning any of `:hostname`,
+  `:endpoints`, `:socket_dir`, `:socket`, or `:port` replaces that whole group of
+  stored options; omitted endpoint options use their defaults. Include all the
+  endpoint options needed for the new connection, such as both hostname and port.
 
   Connection `:parameters` are replaced as a whole, with `replication: "database"`
   added if missing, as in `start_link/3`. The `:auto_reconnect` and
@@ -688,7 +699,21 @@ defmodule Postgrex.ReplicationConnection do
         end
 
         connect_options = Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff])
-        put_opts(Keyword.merge(opts(), connect_options))
+        endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket, :port]
+
+        opts =
+          if Enum.any?(endpoint_keys, &Keyword.has_key?(connect_options, &1)) do
+            Keyword.drop(opts(), endpoint_keys)
+          else
+            opts()
+          end
+
+        opts
+        |> Keyword.merge(connect_options)
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Postgrex.Utils.default_opts()
+        |> put_opts()
+
         {:keep_state, %{s | state: {mod, mod_state}}}
     end
   end

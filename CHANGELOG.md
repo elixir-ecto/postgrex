@@ -3,7 +3,12 @@
 ## v0.24.0-dev
 
 * Enhancements
-  * Allow replication disconnect callbacks to update connection options and run before backoff retries
+  * Allow replication disconnect callbacks to update connection options
+
+* Backwards incompatible changes
+  * Invoke replication `handle_disconnect/1` after each failed connection attempt when
+    `auto_reconnect: true`, including before any successful connection and during
+    initialization with `sync_connect: true`. It may run once per backoff while the server is down.
 
 ## v0.23.0 (2026-11-22)
 

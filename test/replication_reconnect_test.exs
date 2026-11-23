@@ -28,6 +28,11 @@ defmodule Postgrex.ReplicationReconnectTest do
     end
 
     @impl true
+    def handle_disconnect({from, state}) do
+      Connection.reply(from, :disconnected)
+      handle_disconnect(state)
+    end
+
     def handle_disconnect(state) do
       state = %{state | disconnects: state.disconnects + 1}
       send(state.owner, {:disconnected, self(), state.disconnects})
@@ -62,8 +67,8 @@ defmodule Postgrex.ReplicationReconnectTest do
     %Postgrex.Result{rows: [[replication]]} =
       query!(admin, "SELECT rolreplication FROM pg_roles WHERE rolname = $1", [@role])
 
-    # The harness gives this role a password-authenticated HBA entry. Tests run
-    # serially and restore its original password and replication privilege.
+    # Like the login tests, these tests rely on the server's password authentication.
+    # They run serially and restore the role's original password and replication privilege.
     on_exit(fn ->
       {:ok, cleanup} = Postgrex.start_link(database: "postgrex_test")
 
@@ -89,23 +94,23 @@ defmodule Postgrex.ReplicationReconnectTest do
     original_backend = backend(receiver)
     rotate_password(context.admin, password)
 
-    terminate_backend(context.admin, original_backend)
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 1}
     assert_receive {:connected, ^receiver}
     next_backend = backend(receiver)
     assert next_backend != original_backend
 
-    terminate_backend(context.admin, next_backend)
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 2}
     assert_receive {:connected, ^receiver}
     assert backend(receiver) != next_backend
     refute_received {:disconnected, ^receiver, _}
   end
 
-  test "refreshes credentials after an unchanged reconnect attempt fails", context do
+  test "refreshes credentials after consecutive failed reconnect attempts", context do
     password = replacement_password()
 
-    receiver = receiver(disconnect_options: [:unchanged, [password: password]])
+    receiver = receiver(disconnect_options: [:unchanged, :unchanged, [password: password]])
 
     assert_receive {:connected, ^receiver}
     original_backend = backend(receiver)
@@ -113,9 +118,10 @@ defmodule Postgrex.ReplicationReconnectTest do
 
     log =
       capture_log(fn ->
-        terminate_backend(context.admin, original_backend)
+        disconnect(receiver)
         assert_receive {:disconnected, ^receiver, 1}
         assert_receive {:disconnected, ^receiver, 2}
+        assert_receive {:disconnected, ^receiver, 3}
         assert_receive {:connected, ^receiver}
         assert backend(receiver) != original_backend
         refute_received {:disconnected, ^receiver, _}
@@ -140,8 +146,24 @@ defmodule Postgrex.ReplicationReconnectTest do
     assert log =~ "28P01 (invalid_password)"
   end
 
+  test "refreshes credentials after a failed asynchronous initial connection attempt", context do
+    password = replacement_password()
+    rotate_password(context.admin, password)
+
+    log =
+      capture_log(fn ->
+        receiver = receiver(sync_connect: false, disconnect_options: [[password: password]])
+        assert_receive {:disconnected, ^receiver, 1}
+        assert_receive {:connected, ^receiver}
+        assert is_integer(backend(receiver))
+        refute_received {:disconnected, ^receiver, _}
+      end)
+
+    assert log =~ "28P01 (invalid_password)"
+  end
+
   @tag :capture_log
-  test "restores replication mode when replacing connection parameters", context do
+  test "restores replication mode when replacing connection parameters" do
     receiver =
       receiver(
         parameters: [application_name: "before_reconnect"],
@@ -153,7 +175,7 @@ defmodule Postgrex.ReplicationReconnectTest do
     assert [%Postgrex.Result{rows: [["before_reconnect"]]}] =
              Connection.call(receiver, {:query, "SHOW application_name"})
 
-    terminate_backend(context.admin, backend(receiver))
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 1}
     assert_receive {:connected, ^receiver}
 
@@ -177,47 +199,197 @@ defmodule Postgrex.ReplicationReconnectTest do
       )
 
     assert_receive {:connected, ^receiver}
-    original_backend = backend(receiver)
     rotate_password(context.admin, password)
 
-    terminate_backend(context.admin, original_backend)
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 1}
     assert_receive {:disconnected, ^receiver, 2}
     assert_receive {:connected, ^receiver}
 
-    terminate_backend(context.admin, backend(receiver))
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 3}
     assert_receive {:connected, ^receiver}
     assert is_integer(backend(receiver))
+
+    refute stored_option?(receiver, :auto_reconnect)
+    refute stored_option?(receiver, :reconnect_backoff)
+
     refute_received {:disconnected, ^receiver, _}
   end
 
   @tag :capture_log
-  test "rejects disconnect options that are not a keyword list", context do
+  test "normalizes string ports and replaces endpoints with a hostname", context do
+    %Postgrex.Result{rows: [[port]]} = query!(context.admin, "SHOW port")
+
+    receiver =
+      receiver(
+        endpoints: [{"localhost", String.to_integer(port)}],
+        disconnect_options: [[hostname: "localhost", port: port]]
+      )
+
+    assert_receive {:connected, ^receiver}
+    disconnect(receiver)
+    assert_receive {:disconnected, ^receiver, 1}
+    assert_receive {:connected, ^receiver}
+    assert is_integer(backend(receiver))
+
+    assert stored_option(receiver, :hostname) == "localhost"
+    assert stored_option(receiver, :port) == String.to_integer(port)
+    refute stored_option?(receiver, :endpoints)
+    refute stored_option?(receiver, :socket_dir)
+    refute stored_option?(receiver, :socket)
+    refute_received {:disconnected, ^receiver, _}
+  end
+
+  @tag :capture_log
+  test "replaces the endpoint group when only a port is returned", context do
+    %Postgrex.Result{rows: [[port]]} = query!(context.admin, "SHOW port")
+
+    receiver =
+      receiver(
+        endpoints: [{"localhost", String.to_integer(port)}],
+        disconnect_options: [[port: port]]
+      )
+
+    assert_receive {:connected, ^receiver}
+    disconnect(receiver)
+    assert_receive {:disconnected, ^receiver, 1}
+    assert_receive {:connected, ^receiver}
+    assert is_integer(backend(receiver))
+
+    assert stored_option(receiver, :port) == String.to_integer(port)
+    refute stored_option?(receiver, :endpoints)
+    refute_received {:disconnected, ^receiver, _}
+  end
+
+  @tag :capture_log
+  @tag :unix
+  test "replaces each endpoint selector as a group", context do
+    %Postgrex.Result{rows: [[port]]} = query!(context.admin, "SHOW port")
+    socket_dir = System.get_env("PG_SOCKET_DIR") || "/tmp"
+    socket = Path.join(socket_dir, ".s.PGSQL.#{port}")
+    endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket]
+
+    endpoints = [
+      [endpoints: [{"localhost", String.to_integer(port)}]],
+      [socket_dir: socket_dir, port: port],
+      [hostname: "localhost", port: port],
+      [socket: socket]
+    ]
+
+    transitions = Enum.zip(endpoints, tl(endpoints) ++ [hd(endpoints)])
+
+    # Use the same login as the admin connection, including on peer-authenticated sockets.
+    credentials =
+      [database: "postgrex_test"]
+      |> Postgrex.Utils.default_opts()
+      |> Keyword.take([:username, :password])
+
+    for {initial, refreshed} <- transitions do
+      options =
+        initial
+        |> Keyword.merge(credentials)
+        |> Keyword.put(:disconnect_options, [refreshed])
+
+      receiver = receiver(options)
+      assert_receive {:connected, ^receiver}
+      disconnect(receiver)
+      assert_receive {:disconnected, ^receiver, 1}
+      assert_receive {:connected, ^receiver}
+      assert is_integer(backend(receiver))
+
+      for key <- endpoint_keys do
+        assert stored_option(receiver, key) == Keyword.get(refreshed, key)
+      end
+
+      refute_received {:disconnected, ^receiver, _}
+      stop_supervised!(Receiver)
+    end
+  end
+
+  @tag :capture_log
+  test "uses default ports when replacing the endpoint selector", context do
+    %Postgrex.Result{rows: [[port]]} = query!(context.admin, "SHOW port")
+    endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket]
+
+    endpoint_options =
+      []
+      |> Postgrex.Utils.default_opts()
+      |> Keyword.take(endpoint_keys)
+
+    receiver =
+      receiver(
+        endpoints: [{"localhost", String.to_integer(port)}],
+        port: 1,
+        disconnect_options: [endpoint_options]
+      )
+
+    assert_receive {:connected, ^receiver}
+    disconnect(receiver)
+    assert_receive {:disconnected, ^receiver, 1}
+    assert_receive {:connected, ^receiver}
+    assert is_integer(backend(receiver))
+
+    refute stored_option(receiver, :port) == 1
+    refute stored_option?(receiver, :endpoints)
+    refute_received {:disconnected, ^receiver, _}
+  end
+
+  @tag :capture_log
+  test "removes nil options and reapplies environment defaults" do
+    previous_password = System.get_env("PGPASSWORD")
+
+    on_exit(fn ->
+      if previous_password do
+        System.put_env("PGPASSWORD", previous_password)
+      else
+        System.delete_env("PGPASSWORD")
+      end
+    end)
+
+    System.put_env("PGPASSWORD", @role)
+
+    receiver =
+      receiver(disconnect_options: [[password: nil, parameters: nil, socket_options: nil]])
+
+    assert_receive {:connected, ^receiver}
+    disconnect(receiver)
+    assert_receive {:disconnected, ^receiver, 1}
+    assert_receive {:connected, ^receiver}
+    assert is_integer(backend(receiver))
+
+    assert stored_option?(receiver, :password)
+    assert stored_option(receiver, :parameters) == [replication: "database"]
+    refute stored_option?(receiver, :socket_options)
+    refute_received {:disconnected, ^receiver, _}
+  end
+
+  @tag :capture_log
+  test "rejects disconnect options that are not a keyword list" do
     receiver = receiver(disconnect_options: [[:invalid]])
     assert_receive {:connected, ^receiver}
     monitor = Process.monitor(receiver)
 
-    terminate_backend(context.admin, backend(receiver))
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 1}
 
     assert_receive {:DOWN, ^monitor, :process, ^receiver, {%ArgumentError{message: message}, _}}
-    assert message ==
-             "expected handle_disconnect/1 to return connection options as a keyword list"
+
+    expected = "expected handle_disconnect/1 to return connection options as a keyword list"
+    assert message == expected
     refute_received {:connected, ^receiver}
   end
 
   @tag :capture_log
-  test "stops after a live disconnection when auto_reconnect is false", context do
+  test "stops after a live disconnection when auto_reconnect is false" do
     receiver = receiver(auto_reconnect: false, disconnect_options: [[password: @role]])
     assert_receive {:connected, ^receiver}
     monitor = Process.monitor(receiver)
 
-    terminate_backend(context.admin, backend(receiver))
+    disconnect(receiver)
     assert_receive {:disconnected, ^receiver, 1}
 
-    assert_receive {:DOWN, ^monitor, :process, ^receiver,
-                    %Postgrex.Error{postgres: %{code: :admin_shutdown}}}
+    assert_receive {:DOWN, ^monitor, :process, ^receiver, %DBConnection.ConnectionError{}}
 
     refute_received {:disconnected, ^receiver, _}
     refute_received {:connected, ^receiver}
@@ -283,10 +455,21 @@ defmodule Postgrex.ReplicationReconnectTest do
     query!(admin, "ALTER ROLE #{@role} PASSWORD '#{password}'")
   end
 
-  defp terminate_backend(admin, pid) do
-    assert %Postgrex.Result{rows: [[true]]} =
-             query!(admin, "SELECT pg_terminate_backend($1)", [pid])
+  defp disconnect(receiver) do
+    {_, state} = :sys.get_state(receiver)
+    {:gen_tcp, socket} = state.protocol.sock
+    :ok = :gen_tcp.shutdown(socket, :read_write)
+    assert :disconnected = Connection.call(receiver, {:query, "SELECT 1"})
   end
+
+  defp stored_options(receiver) do
+    {:dictionary, dictionary} = Process.info(receiver, :dictionary)
+    Keyword.get(dictionary, Connection, [])
+  end
+
+  defp stored_option(receiver, key), do: Keyword.get(stored_options(receiver), key)
+
+  defp stored_option?(receiver, key), do: Keyword.has_key?(stored_options(receiver), key)
 
   defp query!(connection, sql, params \\ []) do
     case Postgrex.query(connection, sql, params) do
