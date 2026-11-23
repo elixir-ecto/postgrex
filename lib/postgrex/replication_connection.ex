@@ -115,15 +115,16 @@ defmodule Postgrex.ReplicationConnection do
 
       Process.sleep(:infinity)
 
-  ## Credentials and diagnostics
+  ## Async connect and auto-reconnects
 
-  The original connection options are retained in the process dictionary for
-  reconnects. Literal passwords in those options remain visible in crash reports
-  and `:sys.get_status/1`, which returns the dictionary outside `format_status/1`.
-  Use the `:configure` option to resolve credentials before each connection attempt,
-  keeping credentials out of the original options and callback arguments. The
-  resolved options are not retained for reconnects, keeping those credentials out
-  of the process dictionary, `:sys.get_status/1` and crash reports.
+  By default, the process connects synchronously and stops if it cannot connect
+  or loses its connection. Set `:sync_connect` to `false` to connect asynchronously,
+  and `:auto_reconnect` to `true` to retry connections automatically.
+
+  When auto-reconnecting, `c:handle_disconnect/1` is invoked after a disconnection
+  and after each failed connection attempt. Failed attempts wait for
+  `:reconnect_backoff` after the callback returns. The callback may return updated
+  connection options, such as refreshed credentials, to use for subsequent attempts.
 
   ## `use` options
 
@@ -221,11 +222,24 @@ defmodule Postgrex.ReplicationConnection do
               | {:disconnect, reason}
 
   @doc """
-  Invoked after disconnecting.
+  Invoked after a disconnection, or after a failed connection attempt if
+  `:auto_reconnect` is set to true.
 
-  This is only invoked if `:auto_reconnect` is set to true.
+  After a disconnection, this is invoked regardless of `:auto_reconnect`.
+  After a failed connection attempt, this is invoked only if `:auto_reconnect`
+  is true, before waiting for `:reconnect_backoff`.
+
+  Return `{:noreply, state}` to keep the connection options or
+  `{:noreply, connect_options, state}` to merge the keyword list `connect_options`
+  into the options used for all subsequent connection attempts with `Keyword.merge/2`.
+  For example, returning `{:noreply, [password: refreshed_password], state}` updates
+  only the password.
+
+  Connection `:parameters` are replaced as a whole, with `replication: "database"`
+  added if missing, as in `start_link/3`. The `:auto_reconnect` and
+  `:reconnect_backoff` options are set at startup and ignored in returned options.
   """
-  @callback handle_disconnect(state) :: {:noreply, state}
+  @callback handle_disconnect(state) :: {:noreply, state} | {:noreply, Keyword.t(), state}
 
   @doc """
   Callback for `:stream` outputs.
@@ -401,15 +415,6 @@ defmodule Postgrex.ReplicationConnection do
 
     * `:reconnect_backoff` - time (in ms) between reconnection attempts when
       `:auto_reconnect` is enabled. Defaults to `500`.
-
-    * `:configure` - A function to run before every connect attempt to dynamically
-      configure the options as a `{module, function, args}`, where the current
-      options are prepended to `args`, or a function that takes the current
-      options. It must return the connection options. The returned options are
-      used only for that attempt; reconnects call the function with the original
-      options again. To keep credentials out of status and crash reports, resolve
-      them in this function and keep the original options and callback arguments
-      free of credentials.
   """
   @spec start_link(module(), term(), Keyword.t()) ::
           {:ok, pid} | {:error, Postgrex.Error.t() | term}
@@ -521,14 +526,6 @@ defmodule Postgrex.ReplicationConnection do
 
     case mod.init(arg) do
       {:ok, mod_state} ->
-        opts =
-          Keyword.update(
-            opts,
-            :parameters,
-            [replication: "database"],
-            &Keyword.put_new(&1, :replication, "database")
-          )
-
         {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
         {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
 
@@ -567,14 +564,7 @@ defmodule Postgrex.ReplicationConnection do
   end
 
   def handle_event(:internal, {:connect, _info}, @state, %{state: {mod, mod_state}} = s) do
-    options =
-      case Keyword.get(opts(), :configure) do
-        {module, fun, args} -> apply(module, fun, [opts() | args])
-        fun when is_function(fun, 1) -> fun.(opts())
-        nil -> opts()
-      end
-
-    case Protocol.connect(options) do
+    case Protocol.connect(opts()) do
       {:ok, protocol} ->
         maybe_handle(mod, :handle_connect, [mod_state], %{
           s
@@ -596,6 +586,7 @@ defmodule Postgrex.ReplicationConnection do
         )
 
         if s.auto_reconnect do
+          {:keep_state, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
           {:keep_state, s, {{:timeout, :backoff}, s.reconnect_backoff, nil}}
         else
           {:stop, reason, s}
@@ -682,6 +673,23 @@ defmodule Postgrex.ReplicationConnection do
       handle(mod, fun, args, nil, s)
     else
       {:keep_state, s}
+    end
+  end
+
+  defp handle(mod, :handle_disconnect, args, _from, s) do
+    case apply(mod, :handle_disconnect, args) do
+      {:noreply, mod_state} ->
+        {:keep_state, %{s | state: {mod, mod_state}}}
+
+      {:noreply, connect_options, mod_state} ->
+        unless Keyword.keyword?(connect_options) do
+          raise ArgumentError,
+                "expected handle_disconnect/1 to return connection options as a keyword list"
+        end
+
+        connect_options = Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff])
+        put_opts(Keyword.merge(opts(), connect_options))
+        {:keep_state, %{s | state: {mod, mod_state}}}
     end
   end
 
@@ -814,5 +822,16 @@ defmodule Postgrex.ReplicationConnection do
   end
 
   defp opts(), do: Process.get(__MODULE__)
-  defp put_opts(opts), do: Process.put(__MODULE__, opts)
+
+  defp put_opts(opts) do
+    opts =
+      Keyword.update(
+        opts,
+        :parameters,
+        [replication: "database"],
+        &Keyword.put_new(&1, :replication, "database")
+      )
+
+    Process.put(__MODULE__, opts)
+  end
 end
