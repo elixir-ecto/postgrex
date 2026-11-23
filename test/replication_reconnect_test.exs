@@ -193,7 +193,7 @@ defmodule Postgrex.ReplicationReconnectTest do
     receiver =
       receiver(
         disconnect_options: [
-          [auto_reconnect: false, reconnect_backoff: :invalid],
+          [auto_reconnect: false, reconnect_backoff: :invalid, sync_connect: :invalid],
           [password: password]
         ]
       )
@@ -213,6 +213,7 @@ defmodule Postgrex.ReplicationReconnectTest do
 
     refute stored_option?(receiver, :auto_reconnect)
     refute stored_option?(receiver, :reconnect_backoff)
+    assert stored_option(receiver, :sync_connect) == true
 
     refute_received {:disconnected, ^receiver, _}
   end
@@ -382,7 +383,8 @@ defmodule Postgrex.ReplicationReconnectTest do
 
   @tag :capture_log
   test "stops after a live disconnection when auto_reconnect is false" do
-    receiver = receiver(auto_reconnect: false, disconnect_options: [[password: @role]])
+    # Merged options would fail normalization, so the stop reason proves they are ignored.
+    receiver = receiver(auto_reconnect: false, disconnect_options: [[port: "not-a-port"]])
     assert_receive {:connected, ^receiver}
     monitor = Process.monitor(receiver)
 

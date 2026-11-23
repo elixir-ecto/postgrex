@@ -247,8 +247,10 @@ defmodule Postgrex.ReplicationConnection do
   endpoint options needed for the new connection, such as both hostname and port.
 
   Connection `:parameters` are replaced as a whole, with `replication: "database"`
-  added if missing, as in `start_link/3`. The `:auto_reconnect` and
-  `:reconnect_backoff` options are set at startup and ignored in returned options.
+  added if missing, as in `start_link/3`. The `:auto_reconnect`, `:reconnect_backoff`
+  and `:sync_connect` options are set at startup and ignored in returned options.
+  When `:auto_reconnect` is false the process stops after this callback, so returned
+  options are ignored.
   """
   @callback handle_disconnect(state) :: {:noreply, state} | {:noreply, Keyword.t(), state}
 
@@ -698,24 +700,29 @@ defmodule Postgrex.ReplicationConnection do
                 "expected handle_disconnect/1 to return connection options as a keyword list"
         end
 
-        connect_options = Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff])
-        endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket, :port]
-
-        opts =
-          if Enum.any?(endpoint_keys, &Keyword.has_key?(connect_options, &1)) do
-            Keyword.drop(opts(), endpoint_keys)
-          else
-            opts()
-          end
-
-        opts
-        |> Keyword.merge(connect_options)
-        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-        |> Postgrex.Utils.default_opts()
-        |> put_opts()
-
+        if s.auto_reconnect, do: merge_connect_options(connect_options)
         {:keep_state, %{s | state: {mod, mod_state}}}
     end
+  end
+
+  defp merge_connect_options(connect_options) do
+    connect_options =
+      Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff, :sync_connect])
+
+    endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket, :port]
+
+    opts =
+      if Enum.any?(endpoint_keys, &Keyword.has_key?(connect_options, &1)) do
+        Keyword.drop(opts(), endpoint_keys)
+      else
+        opts()
+      end
+
+    opts
+    |> Keyword.merge(connect_options)
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Postgrex.Utils.default_opts()
+    |> put_opts()
   end
 
   defp handle(mod, fun, args, from, %{streaming: streaming} = s) do
