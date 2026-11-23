@@ -705,26 +705,6 @@ defmodule Postgrex.ReplicationConnection do
     end
   end
 
-  defp merge_connect_options(connect_options) do
-    connect_options =
-      Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff, :sync_connect])
-
-    endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket, :port]
-
-    opts =
-      if Enum.any?(endpoint_keys, &Keyword.has_key?(connect_options, &1)) do
-        Keyword.drop(opts(), endpoint_keys)
-      else
-        opts()
-      end
-
-    opts
-    |> Keyword.merge(connect_options)
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Postgrex.Utils.default_opts()
-    |> put_opts()
-  end
-
   defp handle(mod, fun, args, from, %{streaming: streaming} = s) do
     case apply(mod, fun, args) do
       {:noreply, mod_state} ->
@@ -781,6 +761,26 @@ defmodule Postgrex.ReplicationConnection do
       {:disconnect, reason} ->
         reconnect_or_stop(:disconnect, reason, s.protocol, s)
     end
+  end
+
+  defp merge_connect_options(connect_options) do
+    connect_options =
+      Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff, :sync_connect])
+
+    endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket, :port]
+
+    opts =
+      if Enum.any?(endpoint_keys, &Keyword.has_key?(connect_options, &1)) do
+        Keyword.drop(opts(), endpoint_keys)
+      else
+        opts()
+      end
+
+    opts
+    |> Keyword.merge(connect_options)
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Postgrex.Utils.default_opts()
+    |> put_opts()
   end
 
   defp resume(%{paused: true} = s, replies) do
