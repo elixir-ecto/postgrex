@@ -115,6 +115,19 @@ defmodule Postgrex.ReplicationConnection do
 
       Process.sleep(:infinity)
 
+  ## Async connect and auto-reconnects
+
+  By default, the process connects synchronously and stops if it cannot connect
+  or loses its connection. Set `:sync_connect` to `false` to connect asynchronously,
+  and `:auto_reconnect` to `true` to retry connections automatically.
+
+  When auto-reconnecting, `c:handle_disconnect/1` is invoked after a disconnection
+  and after each failed connection attempt, including the initial attempt with
+  either value of `:sync_connect`. It may run before `c:handle_connect/1` has ever
+  run, and once per backoff while the server is unavailable. Failed attempts wait
+  for `:reconnect_backoff` after the callback returns. The callback may return
+  updated connection options, such as refreshed credentials, for subsequent attempts.
+
   ## `use` options
 
   `use Postgrex.ReplicationConnection` accepts a list of options which configures the
@@ -211,11 +224,35 @@ defmodule Postgrex.ReplicationConnection do
               | {:disconnect, reason}
 
   @doc """
-  Invoked after disconnecting.
+  Invoked after a disconnection, or after a failed connection attempt if
+  `:auto_reconnect` is set to true.
 
-  This is only invoked if `:auto_reconnect` is set to true.
+  After a disconnection, this is invoked regardless of `:auto_reconnect`.
+  After a failed connection attempt, this is invoked only if `:auto_reconnect`
+  is true, before waiting for `:reconnect_backoff`. This includes the initial
+  attempt, even during initialization with `:sync_connect` set to true. The state
+  may never have been connected: `c:handle_connect/1` may not have run yet.
+
+  Return `{:noreply, state}` to keep the connection options or
+  `{:noreply, connect_options, state}` to merge the keyword list `connect_options`
+  into the options used for all subsequent connection attempts with `Keyword.merge/2`.
+  For example, returning `{:noreply, [password: refreshed_password], state}` updates
+  only the password.
+
+  Returning nil removes the stored value and allows its default to be used.
+  The merged options then use the same default normalization as `start_link/3`,
+  including converting string ports to integers. Returning any of `:hostname`,
+  `:endpoints`, `:socket_dir`, `:socket`, or `:port` replaces that whole group of
+  stored options; omitted endpoint options use their defaults. Include all the
+  endpoint options needed for the new connection, such as both hostname and port.
+
+  Connection `:parameters` are replaced as a whole, with `replication: "database"`
+  added if missing, as in `start_link/3`. The `:auto_reconnect`, `:reconnect_backoff`
+  and `:sync_connect` options are set at startup and ignored in returned options.
+  When `:auto_reconnect` is false the process stops after this callback, so returned
+  options must still be a keyword list but are not merged.
   """
-  @callback handle_disconnect(state) :: {:noreply, state}
+  @callback handle_disconnect(state) :: {:noreply, state} | {:noreply, Keyword.t(), state}
 
   @doc """
   Callback for `:stream` outputs.
@@ -502,14 +539,6 @@ defmodule Postgrex.ReplicationConnection do
 
     case mod.init(arg) do
       {:ok, mod_state} ->
-        opts =
-          Keyword.update(
-            opts,
-            :parameters,
-            [replication: "database"],
-            &Keyword.put_new(&1, :replication, "database")
-          )
-
         {auto_reconnect, opts} = Keyword.pop(opts, :auto_reconnect, false)
         {reconnect_backoff, opts} = Keyword.pop(opts, :reconnect_backoff, 500)
 
@@ -570,6 +599,7 @@ defmodule Postgrex.ReplicationConnection do
         )
 
         if s.auto_reconnect do
+          {:keep_state, s} = maybe_handle(mod, :handle_disconnect, [mod_state], s)
           {:keep_state, s, {{:timeout, :backoff}, s.reconnect_backoff, nil}}
         else
           {:stop, reason, s}
@@ -659,6 +689,22 @@ defmodule Postgrex.ReplicationConnection do
     end
   end
 
+  defp handle(mod, :handle_disconnect, args, _from, s) do
+    case apply(mod, :handle_disconnect, args) do
+      {:noreply, mod_state} ->
+        {:keep_state, %{s | state: {mod, mod_state}}}
+
+      {:noreply, connect_options, mod_state} ->
+        unless Keyword.keyword?(connect_options) do
+          raise ArgumentError,
+                "expected handle_disconnect/1 to return connection options as a keyword list"
+        end
+
+        if s.auto_reconnect, do: merge_connect_options(connect_options)
+        {:keep_state, %{s | state: {mod, mod_state}}}
+    end
+  end
+
   defp handle(mod, fun, args, from, %{streaming: streaming} = s) do
     case apply(mod, fun, args) do
       {:noreply, mod_state} ->
@@ -715,6 +761,26 @@ defmodule Postgrex.ReplicationConnection do
       {:disconnect, reason} ->
         reconnect_or_stop(:disconnect, reason, s.protocol, s)
     end
+  end
+
+  defp merge_connect_options(connect_options) do
+    connect_options =
+      Keyword.drop(connect_options, [:auto_reconnect, :reconnect_backoff, :sync_connect])
+
+    endpoint_keys = [:hostname, :endpoints, :socket_dir, :socket, :port]
+
+    opts =
+      if Enum.any?(endpoint_keys, &Keyword.has_key?(connect_options, &1)) do
+        Keyword.drop(opts(), endpoint_keys)
+      else
+        opts()
+      end
+
+    opts
+    |> Keyword.merge(connect_options)
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Postgrex.Utils.default_opts()
+    |> put_opts()
   end
 
   defp resume(%{paused: true} = s, replies) do
@@ -788,5 +854,16 @@ defmodule Postgrex.ReplicationConnection do
   end
 
   defp opts(), do: Process.get(__MODULE__)
-  defp put_opts(opts), do: Process.put(__MODULE__, opts)
+
+  defp put_opts(opts) do
+    opts =
+      Keyword.update(
+        opts,
+        :parameters,
+        [replication: "database"],
+        &Keyword.put_new(&1, :replication, "database")
+      )
+
+    Process.put(__MODULE__, opts)
+  end
 end
