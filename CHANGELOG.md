@@ -1,9 +1,13 @@
 # Changelog
 
-## v0.23.0 (2026-11-22)
+## v0.24.0-dev
 
 * Enhancements
   * Allow replication disconnect callbacks to update connection options and run before backoff retries
+
+## v0.23.0 (2026-11-22)
+
+* Enhancements
   * Add SCRAM-SHA-256-PLUS support
   * Use reports for logging errors
   * Support arrays of domains defined over arrays
