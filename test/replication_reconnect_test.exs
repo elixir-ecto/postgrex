@@ -382,6 +382,22 @@ defmodule Postgrex.ReplicationReconnectTest do
   end
 
   @tag :capture_log
+  test "rejects non-keyword disconnect options when auto_reconnect is false" do
+    receiver = receiver(auto_reconnect: false, disconnect_options: [[:invalid]])
+    assert_receive {:connected, ^receiver}
+    monitor = Process.monitor(receiver)
+
+    disconnect(receiver)
+    assert_receive {:disconnected, ^receiver, 1}
+
+    assert_receive {:DOWN, ^monitor, :process, ^receiver, {%ArgumentError{message: message}, _}}
+
+    expected = "expected handle_disconnect/1 to return connection options as a keyword list"
+    assert message == expected
+    refute_received {:connected, ^receiver}
+  end
+
+  @tag :capture_log
   test "stops after a live disconnection when auto_reconnect is false" do
     # Merged options would fail normalization, so the stop reason proves they are ignored.
     receiver = receiver(auto_reconnect: false, disconnect_options: [[port: "not-a-port"]])

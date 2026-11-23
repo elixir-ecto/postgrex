@@ -250,7 +250,7 @@ defmodule Postgrex.ReplicationConnection do
   added if missing, as in `start_link/3`. The `:auto_reconnect`, `:reconnect_backoff`
   and `:sync_connect` options are set at startup and ignored in returned options.
   When `:auto_reconnect` is false the process stops after this callback, so returned
-  options are ignored.
+  options must still be a keyword list but are not merged.
   """
   @callback handle_disconnect(state) :: {:noreply, state} | {:noreply, Keyword.t(), state}
 
