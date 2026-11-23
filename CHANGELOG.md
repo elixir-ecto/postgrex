@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.23.0-dev
+## v0.23.0 (2026-11-22)
 
 * Enhancements
   * Allow replication disconnect callbacks to update connection options and run before backoff retries
@@ -9,6 +9,8 @@
   * Support arrays of domains defined over arrays
   * Allow replication callbacks to pause stream delivery without disconnecting,
     then resume buffered messages in order while continuing to send feedback.
+  * Support direct SSL negotiation via the `:ssl_negotiation` option
+  * Do not keep password and SSL options in the connection state after connect
 
 * Bug fixes
   * Do not UNLISTEN while disconnected
@@ -17,6 +19,15 @@
   * Fix async messages during replication startup
   * Enforce integer bounds in type encoders
   * Decode the `void`, `inet`, `pg_lsn`, and `ltree` types on CockroachDB (`voidsend`/`inetsend`/`pg_lsnsend`/`ltreesend`)
+  * Reject auth downgrade when channel binding is required
+  * Demonitor on `Postgrex.Parameters` delete to avoid monitor leak
+  * Fix simple queries with empty responses
+  * Reject `timestamptz` values that do not fit the 64-bit wire format
+  * Fix notifications lost during idle ping
+  * Rearm `Postgrex.SimpleConnection` after query errors
+  * Ignore idle timeout while disconnected
+  * Fix type errors while another connection loads types
+  * Reconnect when the connection drops during a `handle_connect` query
 
 ## v0.22.4 (2026-08-07)
 
